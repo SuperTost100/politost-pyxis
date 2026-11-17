@@ -59,11 +59,12 @@ const db = <T>(userData: string, sql: string) => {
 const smartbooks = (userData: string) => db<{ title: string }>(userData, "SELECT title FROM sources WHERE kind = 'smartbook' AND status != 'removed'");
 
 /** The new exam's material step, for an exam with this name and no date. */
-async function toMaterial(page: Page, name: string) {
+async function toMaterial(page: Page, name: string, subject?: string) {
   await page.evaluate(() => {
     location.hash = "/plans/new";
   });
   await page.getByLabel("Nome dell'esame", { exact: true }).fill(name);
+  if (subject) await page.getByRole("combobox", { name: "Materia" }).fill(subject);
   await page.getByRole("button", { name: "Non ho ancora la data" }).click();
   await page.getByRole("button", { name: "Continua" }).click();
   await expect(page.getByRole("heading", { name: "Da cosa studi?" })).toBeVisible();
@@ -200,6 +201,43 @@ test("After a creation that failed the book is among the sources, in the reader 
     await panel.getByRole("button", { name: "Aggiungi alle fonti" }).click();
     await expect(panel.getByText("È tra le fonti di questo esame.")).toBeVisible();
     await expect(sourcesList.getByText("Fisica 1")).toBeVisible();
+  } finally {
+    await finish(run);
+    rmSync(lose, { force: true });
+  }
+});
+
+test("A reader stays on the book it was opened for when adding that book exposes another offer", async () => {
+  test.setTimeout(180_000);
+  const lose = join(tmpdir(), `pyxis-exam-books-lose-${process.pid}-${Date.now()}`);
+  const run = await start({ PYXIS_E2E_READ_FAIL: `plans.create=${lose}` });
+  const { page } = run;
+  try {
+    // The exam's name is one book's and its subject another's: the first is offered, and the second once it is in.
+    await toMaterial(page, "Chimica", "Fisica 1");
+    const physics = page.locator('[data-book-choice="fisica-1"]');
+    const chemistry = page.locator('[data-book-choice="chimica"]');
+    await expect(physics).toBeVisible({ timeout: 30_000 });
+    await physics.getByRole("button", { name: "Apri il libro Fisica 1" }).click();
+    const panel = reader(page, "Fisica 1");
+    await expect(panel.getByText("È tra le fonti di questo esame.")).toBeVisible();
+    // The book is added and the exam then fails to be made: Fisica 1 is a source and Chimica is offered.
+    writeFileSync(lose, "");
+    await page.getByRole("button", { name: "Crea l'esame" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Qualcosa non ha funzionato" })).toBeVisible({ timeout: 30_000 });
+    const sourcesList = page.getByRole("list", { name: "Fonti dell'esame" });
+    await expect(sourcesList.getByText("Fisica 1")).toBeVisible();
+    await expect(chemistry.getByRole("checkbox")).toBeChecked();
+    // The reader still shows Fisica 1, and its switch changes Fisica 1 and leaves the other offer as it was.
+    await expect(panel.getByText("È tra le fonti di questo esame.")).toBeVisible();
+    await panel.getByRole("button", { name: "Togli dalle fonti" }).click();
+    await expect(panel.getByText("Non è tra le fonti di questo esame.")).toBeVisible();
+    await expect(sourcesList).toHaveCount(0);
+    await expect(chemistry.getByRole("checkbox")).toBeChecked();
+    await panel.getByRole("button", { name: "Aggiungi alle fonti" }).click();
+    await expect(panel.getByText("È tra le fonti di questo esame.")).toBeVisible();
+    await expect(sourcesList.getByText("Fisica 1")).toBeVisible();
+    await expect(chemistry.getByRole("checkbox")).toBeChecked();
   } finally {
     await finish(run);
     rmSync(lose, { force: true });

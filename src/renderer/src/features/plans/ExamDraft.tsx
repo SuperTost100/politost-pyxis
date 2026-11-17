@@ -73,13 +73,14 @@ export function useExamDraft({
     [subject, title],
     (freeBooks.data ?? []).filter((book) => !book.sourceId),
   )[0];
-  // The book this exam was offered, kept once it has been seen. When it is added (by this form, or from another place
-  // while the form is open) it leaves the offer and becomes the Library source `bookSource`, which the form then
-  // treats as any picked source: the tick is whether that source is picked.
-  const [askedBook, setAskedBook] = useState<string | null>(null);
-  if (offered && askedBook !== offered.id) setAskedBook(offered.id);
-  const bookSource = (askedBook ? freeBooks.data?.find((book) => book.id === askedBook)?.sourceId : null) ?? null;
-  const bookOn = bookSource ? picked.includes(bookSource) : offered !== undefined && !leftOut.has(offered.id);
+  // Every book this exam was offered, kept once it has been seen. A book that is added (by this form, or from another
+  // place while the form is open) leaves the offer and becomes a Library source, which the form then treats as any
+  // picked source: the tick is whether that source is picked. A reader is bound to its book, so it keeps working on
+  // that book when the offer moves on to another one.
+  const [asked, setAsked] = useState<readonly string[]>([]);
+  if (offered && !asked.includes(offered.id)) setAsked([...asked, offered.id]);
+  const sourceOf = (bookId: string) => freeBooks.data?.find((book) => book.id === bookId)?.sourceId ?? null;
+  const bookOn = offered !== undefined && !leftOut.has(offered.id);
   const setLeft = (id: string, left: boolean) =>
     setLeftOut((current) => {
       const next = new Set(current);
@@ -87,22 +88,32 @@ export function useExamDraft({
       else next.delete(id);
       return next;
     });
+  /** Whether the book is in the exam: its source is picked once it is in the Library, otherwise it is the ticked offer. */
+  const bookOnFor = (bookId: string) => {
+    const source = sourceOf(bookId);
+    return source ? picked.includes(source) : offered?.id === bookId && !leftOut.has(bookId);
+  };
+  const setBookOnFor = (bookId: string, on: boolean) => {
+    const source = sourceOf(bookId);
+    if (source) {
+      if (on) setPicked((current) => (current.includes(source) ? current : [...current, source]));
+      else setPicked((current) => current.filter((id) => id !== source));
+      setLeft(bookId, !on);
+    } else if (offered?.id === bookId) setLeft(bookId, !on);
+  };
   const setBookOn = (on: boolean) => {
-    if (bookSource) {
-      if (on) setPicked((current) => (current.includes(bookSource) ? current : [...current, bookSource]));
-      else setPicked((current) => current.filter((id) => id !== bookSource));
-      if (askedBook) setLeft(askedBook, !on);
-      return;
-    }
-    if (offered) setLeft(offered.id, !on);
+    if (offered) setBookOnFor(offered.id, on);
   };
   // A book ticked on this form that arrives in the Library by another add joins the exam, unless it was left out.
   const joined = useRef(new Set<string>());
   useEffect(() => {
-    if (!askedBook || !bookSource || joined.current.has(askedBook)) return;
-    joined.current.add(askedBook);
-    if (!leftOut.has(askedBook)) setPicked((current) => (current.includes(bookSource) ? current : [...current, bookSource]));
-  }, [askedBook, bookSource]);
+    for (const id of asked) {
+      const source = sourceOf(id);
+      if (!source || joined.current.has(id)) continue;
+      joined.current.add(id);
+      if (!leftOut.has(id)) setPicked((current) => (current.includes(source) ? current : [...current, source]));
+    }
+  }, [asked, freeBooks.data]);
   // Nothing is chosen for the student: a made-up deadline would start pushing simulations within days.
   const [examChoice, setExamChoice] = useState<ExamChoice>(seed?.examChoice ?? "");
   const [sessions, setSessions] = useState<SessionDraft[]>(
@@ -249,6 +260,8 @@ export function useExamDraft({
     offered,
     bookOn,
     setBookOn,
+    bookOnFor,
+    setBookOnFor,
     bookBusy: offered !== undefined && adding.adding.has(offered.id),
     sources,
     chosenSources,
@@ -411,16 +424,12 @@ export function MaterialStep({ draft }: { draft: ExamDraft }) {
   const { t } = useTranslation();
   const [options, setOptions] = useState(false);
   const optionsId = useId();
-  // The reader opened on the offered book says whether it is ticked, and follows the tick made on this page.
-  const latestOn = useRef(draft.bookOn);
-  latestOn.current = draft.bookOn;
-  // The setter of the tick as it is now, which changes once the book is added and is a source of the form.
-  const latestSet = useRef(draft.setBookOn);
-  latestSet.current = draft.setBookOn;
+  // The reader opened on a book says whether it is in the exam, and follows the tick made on this page. It is bound to
+  // the book it was opened for, and reads what is true when it is drawn or pressed, not what was when it opened.
+  const latest = useRef(draft);
+  latest.current = draft;
   // Once the exam is being created the choice is made: the reader shows it locked, as the page does.
-  const latestStarting = useRef(draft.starting);
-  latestStarting.current = draft.starting;
-  useEffect(() => refreshSourceViewer(), [draft.bookOn, draft.starting]);
+  useEffect(() => refreshSourceViewer(), [draft.bookOn, draft.starting, draft.picked]);
   return (
     <>
       <WizardSources
@@ -440,7 +449,12 @@ export function MaterialStep({ draft }: { draft: ExamDraft }) {
                   const book = draft.offered;
                   if (book)
                     openBook(book.id, {
-                      choice: { words: "exam", on: () => latestOn.current, set: (on) => latestSet.current(on), locked: () => latestStarting.current },
+                      choice: {
+                        words: "exam",
+                        on: () => latest.current.bookOnFor(book.id),
+                        set: (on) => latest.current.setBookOnFor(book.id, on),
+                        locked: () => latest.current.starting,
+                      },
                     });
                 },
               }
