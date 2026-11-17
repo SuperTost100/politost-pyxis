@@ -116,9 +116,28 @@ export function configurePythonRuntime(path: string): void {
     workspace = path;
   }
 }
+/**
+ * What the last requests did and when (epoch milliseconds): queued, past the queue and the clearing of the session
+ * (`entered`), the window ready (`opened`), answered or failed (`ended`), the clearing after it done (`left`). A request
+ * that is still running has no `ended`, so a test that gives up on a slow run can tell which step it was waiting in.
+ */
+type RequestRecord = {
+  operation: "run" | "check";
+  method: string;
+  queued: number;
+  entered?: number;
+  opened?: number;
+  ended?: number;
+  left?: number;
+  outcome?: string;
+};
+const records: RequestRecord[] = [];
+const RECORDS_KEPT = 8;
+
 /** A handle for the end-to-end tests, which reach it through `app.evaluate`; only a run with PYXIS_E2E=1 installs it. */
 export function pythonTestHandle() {
   return {
+    requests: () => records.map((record) => ({ ...record })),
     windows: () => (window && !window.isDestroyed() ? [window.id] : []),
     /** Runs a script in the Python window's page, as code in that page would. */
     evaluate: (script: string) => {
@@ -226,9 +245,14 @@ async function dispatch(
   timeoutMs: number | undefined,
   method: "run" | "check" | "grade",
 ): Promise<unknown> {
+  const record: RequestRecord = { operation, method, queued: Date.now() };
+  records.push(record);
+  if (records.length > RECORDS_KEPT) records.shift();
   await enter(operation);
+  record.entered = Date.now();
   try {
     const target = await sandbox();
+    record.opened = Date.now();
     if (target.isDestroyed()) throw new Error("runtime-crashed");
     const extra =
       operation === "run"
@@ -267,9 +291,15 @@ async function dispatch(
       if (timer) clearTimeout(timer);
       if (onClosed) target.removeListener("closed", onClosed);
     }
+  } catch (error) {
+    record.outcome = error instanceof Error ? error.message : String(error);
+    throw error;
   } finally {
+    record.ended = Date.now();
+    record.outcome ??= "ok";
     // Cleared when this was the last request using the session, and not under one that is still running.
     await leave();
+    record.left = Date.now();
   }
 }
 /**

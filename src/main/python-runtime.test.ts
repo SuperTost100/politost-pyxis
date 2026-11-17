@@ -125,6 +125,7 @@ import {
   configurePythonRuntime,
   disposePythonRuntime,
   handleRuntimeRequest,
+  pythonTestHandle,
 } from "./python-runtime";
 
 const claim = { kind: "equal", expr: "x+x", claimed: "2*x" };
@@ -215,6 +216,28 @@ describe("python runtime queue", () => {
     await tick();
     fake.held[0]!.fail(new Error("Script failed to execute"));
     await expect(running).rejects.toThrow("Script failed to execute");
+  });
+
+  it("records how far a request got, with no end while it runs and the reason when it fails", async () => {
+    const running = handleRuntimeRequest("python", { code: "1" });
+    await tick();
+    const pending = pythonTestHandle().requests().at(-1)!;
+    expect(pending).toMatchObject({ operation: "run", method: "run" });
+    expect(pending.entered).toBeTypeOf("number");
+    expect(pending.opened).toBeTypeOf("number");
+    expect(pending.ended).toBeUndefined();
+    expect(pending.outcome).toBeUndefined();
+    fake.held[0]!.settle({ stdout: "1\n" });
+    await running;
+    expect(pythonTestHandle().requests().at(-1)).toMatchObject({ outcome: "ok" });
+    expect(pythonTestHandle().requests().at(-1)!.left).toBeTypeOf("number");
+
+    const crashing = handleRuntimeRequest("python", { code: "2" });
+    await tick();
+    fake.windows[0]!.crashed = true;
+    fake.held.at(-1)!.fail(new Error("Render frame was disposed before the request completed"));
+    await expect(crashing).rejects.toThrow("runtime-crashed");
+    expect(pythonTestHandle().requests().at(-1)).toMatchObject({ outcome: "runtime-crashed" });
   });
 
   it("keeps queued work when the same workspace is configured again", async () => {
