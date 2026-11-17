@@ -381,9 +381,16 @@ export function CardsPage() {
     gcTime: 0,
     queryFn: () => invoke("study.reviewSession", { planId: planId ?? "", finished: true }),
   });
-  const answers = reviewing
-    ? (reviewQueue.data?.answers ?? (readFinished ? finishedReview.data?.answers : undefined) ?? seen)
-    : seen;
+  // The page is not empty while that read is on its way, so it shows nothing yet rather than "No cards are due."
+  const finishedLoading = readFinished && finishedReview.isPending;
+  // Until that read has landed there are no answers to list: this visit's own would be only part of the review's.
+  const answers = !reviewing
+    ? seen
+    : readFinished
+      ? finishedReview.isSuccess
+        ? (finishedReview.data?.answers ?? seen)
+        : []
+      : (reviewQueue.data?.answers ?? seen);
   // The session is on its last screen: a card waits for its next learning step, or nothing is due any more; in a Ripasso
   // the cards are done, once the finished review's answers are read.
   const ended =
@@ -833,11 +840,15 @@ export function CardsPage() {
                 <p>{t("cards.writingFirst")}</p>
               </div>
             </div>
-          ) : deckLoading ? null : shown.isError ? (
+          ) : deckLoading || finishedLoading ? null : shown.isError ? (
             <LoadError
               onRetry={() => void shown.refetch()}
               details={errorDetails(shown.error)}
             >
+              {t("cards.loadFailed")}
+            </LoadError>
+          ) : readFinished && finishedReview.isError ? (
+            <LoadError onRetry={() => void finishedReview.refetch()} details={errorDetails(finishedReview.error)}>
               {t("cards.loadFailed")}
             </LoadError>
           ) : ended ? (

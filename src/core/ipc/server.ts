@@ -85,7 +85,8 @@ const readFailures = new Map<string, string>();
 
 /**
  * End-to-end seam (PYXIS_E2E_READ_FAIL, `maps.build=/tmp/lose-it`): the next request of that name fails once, with the
- * file removed as it does, so a spec decides when by creating the file.
+ * file removed as it does, so a spec decides when by creating the file. `study.reviewSession?finished=/tmp/lose-it`
+ * fails only the read that asks for the finished review, not the one that asks for the unfinished.
  */
 export function failReadsOnce(spec: string): void {
   readFailures.clear();
@@ -139,7 +140,8 @@ async function onRendererMessage(from: CorePort, data: unknown): Promise<void> {
   try {
     const hold = readDelays.get(message.name);
     if (hold) await new Promise((resolve) => setTimeout(resolve, hold));
-    const lose = readFailures.get(message.name);
+    const finished = (message.input as { finished?: unknown } | null)?.finished === true;
+    const lose = (finished ? readFailures.get(`${message.name}?finished`) : undefined) ?? readFailures.get(message.name);
     if (lose && existsSync(lose)) {
       rmSync(lose, { force: true });
       throw new Error("The end-to-end seam lost this read.");

@@ -987,6 +987,32 @@ describe("the steps of an open answer", () => {
     db.close();
   });
 
+  it("stores what was handed in as the draft, so a page opened while it is graded reads that and not the last autosave", async () => {
+    const { db, attemptId } = fixture([open("a"), open("b")], "diagnostic");
+    const runner = createRunner(db, () => {});
+    registerQuizGradingJobs(db, runner, async () => reply(1));
+    // The autosave had the first answer and its steps when the student handed in a changed answer and longer steps.
+    saveQuizDraft(db, attemptId, { a: "ten" }, 1, "plan", undefined, [], [], { a: "5" });
+    submitQuiz(db, runner, attemptId, { a: "ten", b: "twelve" }, undefined, { a: "5 + 5", b: "6 + 6" });
+    expect(readQuiz(db, attemptId).draft).toEqual({
+      picks: { a: "ten", b: "twelve" },
+      steps: { a: "5 + 5", b: "6 + 6" },
+      index: 1,
+    });
+    await until(db, attemptId, (view) => view.state === "succeeded");
+    db.close();
+  });
+
+  it("stores the hand-in as a draft when no autosave had written one, and drops steps that were emptied", async () => {
+    const { db, attemptId } = fixture([open("a")], "diagnostic");
+    const runner = createRunner(db, () => {});
+    registerQuizGradingJobs(db, runner, async () => reply(1));
+    submitQuiz(db, runner, attemptId, { a: "ten" }, undefined, { a: "  " });
+    expect(readQuiz(db, attemptId).draft).toEqual({ picks: { a: "ten" }, index: 0 });
+    await until(db, attemptId, (view) => view.state === "succeeded");
+    db.close();
+  });
+
   it("carries the steps through the contract and the handlers, from the draft to the results", async () => {
     const { db, attemptId } = fixture([open("a")], "diagnostic");
     const prompts: Array<Record<string, unknown>> = [];

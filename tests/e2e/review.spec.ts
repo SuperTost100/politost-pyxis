@@ -14,6 +14,7 @@ import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedPlan } from "./seed";
@@ -321,8 +322,8 @@ test("the card phase of a Review that still waits for questions ends with the no
 });
 
 /** A plan with three flashcards and nothing else to ask, so a Ripasso of it is only those cards. */
-async function reviewOfThreeCards(userData: string) {
-  const app = await launchPyxis({ userData });
+async function reviewOfThreeCards(userData: string, env?: Record<string, string>) {
+  const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
   await fromChiediToExams(page);
@@ -374,6 +375,55 @@ test("a Ripasso of only flashcards, reloaded before its last card, ends with eve
     // Leaving the page and coming back reads the same three from the stored reviews.
     await page.reload();
     await expect(bars).toHaveText(["Non la sapevo1", "Difficile1", "La sapevo0", "Facile1"]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a Ripasso whose finished answers cannot be read says so and retries, and never lists only this visit's answers", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-review-lost-"));
+  // The first read of the finished review is lost; the next one, from Riprova, comes back.
+  const lose = join(tmpdir(), `pyxis-review-lose-${process.pid}-${Date.now()}`);
+  const { app, page } = await reviewOfThreeCards(userData, { PYXIS_E2E_READ_FAIL: `study.reviewSession?finished=${lose}` });
+  try {
+    const front = page.locator("article.px-card .px-card-front");
+    const rate = async (key: string) => {
+      await page.keyboard.press("Space");
+      await expect(page.locator("article.px-card")).toHaveAttribute("data-face", "back");
+      await page.keyboard.press(key);
+    };
+    await expect(front).toHaveText("Prima carta?");
+    await rate("1");
+    await expect(front).toHaveText("Seconda carta?");
+    await rate("4");
+    await expect(front).toHaveText("Terza carta?");
+    // The page is mounted again with two answers stored: only the last one is this visit's.
+    await page.reload();
+    await expect(front).toHaveText("Terza carta?");
+    writeFileSync(lose, "");
+    await rate("3");
+    // The page says it could not read the answers, with a way to try again, and lists none of them: one answer is not
+    // the review's summary, and the empty page is not its end.
+    await expect(page.getByText("Non è stato possibile caricare le flashcard.")).toBeVisible();
+    await expect(page.locator(".px-end")).toHaveCount(0);
+    await expect(page.getByText("Nessuna flashcard in scadenza.")).toHaveCount(0);
+    await expectNoAxeViolations(page);
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await saveShot(page, `review-cards-answers-lost-${theme}.png`, { animations: "disabled" });
+    }
+    await page.getByRole("button", { name: "Riprova" }).click();
+    const end = page.locator(".px-end");
+    await expect(end.locator(".px-end-text")).toHaveText("Hai dato 3 risposte. Il ripasso è finito.");
+    await expect(end.getByRole("list", { name: "Le tue risposte" }).getByRole("listitem")).toHaveText([
+      "Non la sapevo1",
+      "Difficile0",
+      "La sapevo1",
+      "Facile1",
+    ]);
   } finally {
     await app.close();
     removeTestFolder(userData);

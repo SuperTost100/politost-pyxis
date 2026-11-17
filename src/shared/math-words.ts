@@ -652,10 +652,65 @@ class Reader {
     const here = this.skip(next, to);
     if (here >= to) return [{ text: label, kind: "closed" }, next];
     // The argument: what is in the brackets after the name, or the term after it.
-    const [argument, after] = this.term(here, to);
+    let [argument, after] = this.term(here, to);
     if (!argument || argument.kind === "link") return [{ text: label, kind: "closed" }, next];
     const bare = argument.kind === "closed" ? this.plain(here, to, after) : null;
+    if (!this.brackets(here, to)) [argument, after] = this.product(argument, here, after, to);
     return [{ text: `${label} ${words.of} ${bare ?? bracket(argument)}`, kind: "open" }, after];
+  }
+
+  /** Whether the token at `at` opens a bracket or a group, which then holds a function's whole argument. */
+  private brackets(at: number, to: number): boolean {
+    return this.is(at, to, "command", "left") || ["(", "[", "{"].some((text) => this.is(at, to, "char", text));
+  }
+
+  /** Whether a letter, or a command that writes one (`\pi`, not `\cdot`), stands at `at`, as a variable does in a product. */
+  private variable(at: number, to: number): boolean {
+    const token = at < to ? this.list[at] : undefined;
+    if (token?.kind === "command") return /^\p{L}$/u.test(own(SIGNS, token.text) ?? "");
+    return token?.kind === "char" && /^\p{L}$/u.test(token.text);
+  }
+
+  /** Whether a `d` that stands at `at` opens a differential: it is followed by a variable, as in "dx". */
+  private differentialAt(at: number, to: number): boolean {
+    return this.is(at, to, "char", "d") && this.variable(this.skip(at + 1, to), to);
+  }
+
+  /**
+   * The whole argument of a function written with no brackets. A number followed by letters is one product, "2x" in
+   * `\sin 2x`. Where the argument could end at more than one place (`\sin xy`, a number and then a fraction or a
+   * bracket) there is no reading, since a wrong one would mislead. A sign, another function or a differential after it
+   * end the argument as they always did.
+   */
+  private product(first: Term, from: number, after: number, to: number): [Term, number] {
+    const terms = [first];
+    let end = after;
+    if (this.list[from]!.kind === "number" && first.kind === "atom") {
+      for (;;) {
+        const at = this.skip(end, to);
+        if (!this.variable(at, to) || this.differentialAt(at, to)) break;
+        const [factor, next] = this.term(at, to);
+        if (!factor) break;
+        terms.push(factor);
+        end = next;
+      }
+    }
+    if (this.continues(end, to)) throw new Unreadable();
+    return [join(terms)!, end];
+  }
+
+  /** Whether what stands at `at` goes on as a factor beside the term before it, with no sign between. */
+  private continues(from: number, to: number): boolean {
+    for (let at = this.skip(from, to); at < to; ) {
+      const token = this.list[at]!;
+      if (token.kind === "char" && token.text === "|") return false;
+      if (this.differentialAt(at, to)) return false;
+      if (token.kind === "command" && (token.text === "operatorname" || own(this.words.functions, token.text))) return false;
+      const [term, next] = this.primary(at, to);
+      if (term) return term.kind !== "link" && !term.glue;
+      at = this.skip(next, to);
+    }
+    return false;
   }
 
   /** What is inside the round brackets that open at `at`, without them when it is a single term: "x", not "(x)". */

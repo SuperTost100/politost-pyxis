@@ -78,6 +78,40 @@ describe("formulaWords", () => {
     expect(both("\\sin\\left(x+1\\right)")).toEqual(["seno di (x più 1)", "sine of (x plus 1)"]);
   });
 
+  it("reads a function's argument written with no brackets as the whole product, `\\sin 2x` as the sine of 2x", () => {
+    expect(both("\\sin 2x")).toEqual(["seno di 2x", "sine of 2x"]);
+    expect(both("\\sin 2x+1")).toEqual(["seno di 2x più 1", "sine of 2x plus 1"]);
+    expect(both("\\sin 2\\pi x")).toEqual(["seno di 2πx", "sine of 2πx"]);
+    expect(both("\\cos 2,5\\theta=0")).toEqual(["coseno di 2,5θ uguale a 0", "cosine of 2,5θ equals 0"]);
+    expect(both("\\ln 2x")).toEqual(["logaritmo naturale di 2x", "natural log of 2x"]);
+    expect(both("\\sin 2x^{2}")).toEqual(["seno di (2 x al quadrato)", "sine of (2 x squared)"]);
+    // A differential after the argument is not part of it, however it is written.
+    expect(both("\\int \\sin 2x\\,\\mathrm{d}x")).toEqual([
+      "integrale di seno di 2x in dx",
+      "integral of sine of 2x dx",
+    ]);
+    expect(both("\\int \\sin 2xdx")).toEqual(["integrale di (seno di 2x) dx", "integral of (sine of 2x) dx"]);
+    // The same readings as before: brackets, a sign, another function or a differential after a letter end the argument.
+    expect(both("\\sin(2x)")).toEqual(["seno di 2x", "sine of 2x"]);
+    expect(both("\\sin(x)y")).toEqual(["(seno di x) y", "(sine of x) y"]);
+    expect(both("\\sin 2x\\cos 2x")).toEqual(["(seno di 2x)(coseno di 2x)", "(sine of 2x)(cosine of 2x)"]);
+    expect(both("\\sin x\\cos x")).toEqual(["(seno di x)(coseno di x)", "(sine of x)(cosine of x)"]);
+    expect(both("\\sin x+1")).toEqual(["seno di x più 1", "sine of x plus 1"]);
+    expect(both("\\sin 2\\cdot x")).toEqual(["seno di 2 per x", "sine of 2 times x"]);
+    expect(both("\\sin^{2}x")).toEqual(["seno al quadrato di x", "sine squared of x"]);
+    expect(both("\\int_{0}^{1}\\sin x dx")).toEqual([
+      "integrale da 0 a 1 di (seno di x) dx",
+      "integral from 0 to 1 of (sine of x) dx",
+    ]);
+  });
+
+  it("gives nothing when the end of a function's argument is not clear, instead of a wrong reading", () => {
+    // `\sin xy` could be the sine of xy or the sine of x times y, and a number then a fraction or a bracket as well.
+    for (const latex of ["\\sin xy", "\\sin x y", "\\sin x(y+1)", "\\sin 2x(y+1)", "\\sin 2\\frac{1}{x}", "\\sin x\\frac{1}{2}", "\\sin 2 3"])
+      expect([formulaWords(latex, "it"), formulaWords(latex, "en")], latex).toEqual([null, null]);
+    expect(answerReading("Vale $\\sin xy$.", "it")).toBeNull();
+  });
+
   it("takes one symbol for an argument written without braces, as LaTeX does", () => {
     // `x^12` is x to the 1, then a 2; `\\frac12` is one half.
     expect(both("x^12")).toEqual(["x alla 1 2", "x to the 1 2"]);
