@@ -247,17 +247,15 @@ test("plots and circuits in a lesson and an Ask answer are drawn in the Python s
       "alt",
       /circuito RC in serie/,
     );
-    const widths = await figures
-      .getByRole("img")
-      .evaluateAll((images) =>
-        images.map((image) => (image as HTMLImageElement).naturalWidth),
-      );
-    expect(widths).toHaveLength(3);
-    // Every image is a real drawing, the circuit at a size that reads in the text column.
-    for (const width of widths) {
-      expect(width).toBeGreaterThanOrEqual(200);
-      expect(width).toBeLessThanOrEqual(2000);
-    }
+    // Every image is a real drawing, the circuit at a size that reads in the text column. A figure is there with its alt
+    // text before its image has loaded, and a width of 0 is an image still on its way, so the widths are polled.
+    await expect
+      .poll(async () =>
+        (await figures.getByRole("img").evaluateAll((images) => images.map((image) => (image as HTMLImageElement).naturalWidth))).map(
+          (width) => width >= 200 && width <= 2000,
+        ),
+      )
+      .toEqual([true, true, true]);
     // Two figures failed and each was sent to the model once, with its block and the error and nothing else.
     const fixes = readFileSync(prompts, "utf8")
       .split("\n")
@@ -573,10 +571,14 @@ test("a graph in a lesson and an Ask answer is drawn by the drawing window, with
     await expect(figures).toHaveCount(2, { timeout: 120000 });
     await expect(figures.first().getByRole("img")).toHaveAttribute("alt", /automa con tre stati/);
     await expect(figures.nth(1).getByRole("img")).toHaveAttribute("alt", /albero binario/);
-    for (const width of await figures.getByRole("img").evaluateAll((images) => images.map((image) => (image as HTMLImageElement).naturalWidth))) {
-      expect(width).toBeGreaterThanOrEqual(150);
-      expect(width).toBeLessThanOrEqual(2000);
-    }
+    // A figure is there with its alt text before its image has loaded: poll the widths.
+    await expect
+      .poll(async () =>
+        (await figures.getByRole("img").evaluateAll((images) => images.map((image) => (image as HTMLImageElement).naturalWidth))).map(
+          (width) => width >= 150 && width <= 2000,
+        ),
+      )
+      .toEqual([true, true]);
     await expect(page.getByText("pyxis-")).toHaveCount(0);
     await expect(page.getByText("Quanti stati ha l'automa?")).toBeVisible();
     await expectNoAxeViolations(page);
