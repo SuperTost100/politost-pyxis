@@ -54,11 +54,13 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
     PYXIS_E2E_SIMULATION_REPLIES: process.env.PYXIS_LIVE_SIMULATION
       ? undefined
       : JSON.stringify({
-          score: {
-            score: 1,
-            feedback: "La formula e il risultato sono corretti.",
-            missed: [],
-          },
+          // Calls to the recorded engine count from zero in each launch. Launch 2 grades question 1 with the first reply and
+          // holds question 2 on the second, which the test never releases, so the quit always catches the job half done.
+          // Launch 3 resumes at question 2 and takes the first reply again.
+          score: [
+            { score: 1, feedback: "La formula e il risultato sono corretti.", missed: [] },
+            { score: 1, feedback: "La formula e il risultato sono corretti.", missed: [], hold: join(userData, "never") },
+          ],
         }),
     PYXIS_E2E_SIMULATION_DELAY: "1500",
   };
@@ -267,9 +269,16 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
         return next?.grading?.state ?? "done";
       })
       .not.toBe("running");
-    const reopened = await page.evaluate((attemptId) => window.pyxis.invoke("study.simulationRead", { attemptId }), run.attemptId);
+    const reopened = (await page.evaluate(
+      (attemptId) => window.pyxis.invoke("study.simulationRead", { attemptId }),
+      run.attemptId,
+    )) as { submitted: boolean; grading?: { state: string } };
+    // A student who reopens during grading is taken to the exam. Once it is graded this address is the setup of a new
+    // exam, and the grade is at the exam's own address.
+    if (!process.env.PYXIS_LIVE_SIMULATION) expect(reopened.submitted).toBe(false);
     if (reopened.grading && ["interrupted", "failed", "cancelled"].includes(reopened.grading.state))
       await retry.click();
+    await expect(page).toHaveURL(new RegExp(`/plans/${plan.planId}/exam/${run.attemptId}$`));
     await expect
       .poll(
         async () =>
