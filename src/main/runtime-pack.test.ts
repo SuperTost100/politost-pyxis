@@ -8,9 +8,16 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+
+// `stat` is how a pack that was verified before is looked at again, so a test can hold that look.
+vi.mock("node:fs/promises", async (original) => {
+  const actual = await original<typeof import("node:fs/promises")>();
+  return { ...actual, stat: vi.fn(actual.stat) };
+});
 
 vi.mock("node:crypto", async (original) => {
   const actual = await original<typeof import("node:crypto")>();
@@ -495,4 +502,29 @@ it("counts only the packs it is fetching in a transfer's total and progress, not
   release();
   await installing;
   expect(await currentRuntimeStatus(path)).toMatchObject({ phase: "ready", bytes: 8, totalBytes: 8 });
+});
+
+it("a look at the disk that an installation overtakes does not overwrite what the installation did", async () => {
+  const path = workspace();
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => published(url)));
+  await downloadRuntime(path, ["pyodide"]);
+  // A first look verifies Python's file, so the next one only has to `stat` it.
+  expect((await currentRuntimeStatus(path)).packs).toEqual({ pyodide: "ready", drawing: "idle" });
+  // The look finds the drawing pack missing at once and waits on Python's check, which a held `stat` keeps open.
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  vi.mocked(stat).mockImplementationOnce((async (...args: Parameters<typeof actual.stat>) => {
+    await held;
+    return actual.stat(...args);
+  }) as typeof stat);
+  const looking = currentRuntimeStatus(path);
+  await downloadRuntime(path, ["drawing"]);
+  release();
+  const seen = await looking;
+  // The installation finished while the look was waiting, so its result is the newer one.
+  expect(seen.packs).toEqual({ pyodide: "ready", drawing: "ready" });
+  expect((await currentRuntimeStatus(path)).phase).toBe("ready");
 });

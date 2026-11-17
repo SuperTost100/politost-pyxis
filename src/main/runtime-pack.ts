@@ -85,8 +85,16 @@ export type RuntimeStatus = {
   info: Record<PackId, PackInfo>;
 };
 type PackState = { phase: PackPhase; bytes: number; totalBytes: number; error?: string };
-/** Each pack's own state, so one pack's download, failure or removal never touches the other's. */
-type State = { packs: Record<PackId, PackState>; outdated: Record<PackId, boolean>; chain: Set<PackId> };
+/**
+ * Each pack's own state, so one pack's download, failure or removal never touches the other's. `changes` counts the
+ * times a pack's state was written, so a look at the disk can tell that its result is older than what happened since.
+ */
+type State = {
+  packs: Record<PackId, PackState>;
+  outdated: Record<PackId, boolean>;
+  changes: Record<PackId, number>;
+  chain: Set<PackId>;
+};
 const states = new Map<string, State>();
 /** The download of one pack in one workspace, and the way to stop it. Keyed by `key`. */
 const installs = new Map<string, Promise<void>>();
@@ -103,11 +111,17 @@ function stateOf(workspace: string): State {
     state = {
       packs: Object.fromEntries(runtimePackIds.map((id) => [id, fresh(id)])) as Record<PackId, PackState>,
       outdated: Object.fromEntries(runtimePackIds.map((id) => [id, false])) as Record<PackId, boolean>,
+      changes: Object.fromEntries(runtimePackIds.map((id) => [id, 0])) as Record<PackId, number>,
       chain: new Set(),
     };
     states.set(workspace, state);
   }
   return state;
+}
+/** Writes a pack's state, and counts it. */
+function setPack(state: State, id: PackId, next: PackState): void {
+  state.packs[id] = next;
+  state.changes[id] += 1;
 }
 function summary(state: State): RuntimeStatus {
   const phases = Object.fromEntries(runtimePackIds.map((id) => [id, state.packs[id].phase])) as Record<PackId, PackPhase>;
@@ -237,15 +251,17 @@ export async function currentRuntimeStatus(
 ): Promise<RuntimeStatus> {
   const state = stateOf(workspace);
   const idle = runtimePackIds.filter((id) => state.packs[id].phase !== "downloading");
+  const seen = idle.map((id) => state.changes[id]);
   const onDisk = await Promise.all(idle.map((id) => packOnDisk(workspace, id)));
   const older = await Promise.all(idle.map((id, index) => (onDisk[index] ? false : hasOtherVersion(workspace, id))));
   idle.forEach((id, index) => {
     const own = state.packs[id];
-    // A download that started during the look owns the pack's phase.
-    if (own.phase === "downloading") return;
+    // What happened to the pack during the look (a download that started, or started and ended, a removal) is newer
+    // than what the look saw, and owns the pack's phase.
+    if (own.phase === "downloading" || state.changes[id] !== seen[index]) return;
     state.outdated[id] = older[index]!;
-    if (onDisk[index]) state.packs[id] = { ...fresh(id), phase: "ready", bytes: runtimePacks[id].totalBytes };
-    else if (own.phase === "ready") state.packs[id] = fresh(id);
+    if (onDisk[index]) setPack(state, id, { ...fresh(id), phase: "ready", bytes: runtimePacks[id].totalBytes });
+    else if (own.phase === "ready") setPack(state, id, fresh(id));
   });
   if (!runtimePackIds.some((id) => state.packs[id].phase === "downloading")) state.chain.clear();
   return summary(state);
@@ -266,7 +282,7 @@ export async function requireRuntime(
  */
 export function invalidatePack(workspace: string, id: PackId): void {
   const state = states.get(workspace);
-  if (state && state.packs[id].phase === "ready") state.packs[id] = fresh(id);
+  if (state && state.packs[id].phase === "ready") setPack(state, id, fresh(id));
   for (const file of runtimePacks[id].files) verified.delete(join(packRoot(workspace, id), file.name));
 }
 /** Stops the downloads of these packs (every pack when none is named). */
@@ -311,29 +327,33 @@ function downloadPack(workspace: string, id: PackId): Promise<void> {
   const promise = (async () => {
     controller.signal.throwIfAborted();
     if (await packOnDisk(workspace, id)) {
-      state.packs[id] = { ...fresh(id), phase: "ready", bytes: runtimePacks[id].totalBytes };
+      setPack(state, id, { ...fresh(id), phase: "ready", bytes: runtimePacks[id].totalBytes });
       return;
     }
     // Only now is it a download: a pack that was already there is no part of the transfer's total or its progress.
     own = { phase: "downloading", bytes: 0, totalBytes: runtimePacks[id].totalBytes };
-    state.packs[id] = own;
+    setPack(state, id, own);
     state.chain.add(id);
     await installPack(workspace, id, controller.signal, own);
-    state.packs[id] = { ...fresh(id), phase: "ready", bytes: runtimePacks[id].totalBytes };
+    setPack(state, id, { ...fresh(id), phase: "ready", bytes: runtimePacks[id].totalBytes });
     state.outdated[id] = false;
     if (runtimePacks[id].replacesOlder) await removeOlderVersions(workspace, id);
   })()
     .catch((error: unknown) => {
       const cancelled = controller.signal.aborted;
       // A stopped download keeps how far it got, so the row can say where it stopped; a cancelled one starts over.
-      state.packs[id] = cancelled
-        ? fresh(id)
-        : {
-            phase: "failed",
-            bytes: own.bytes,
-            totalBytes: runtimePacks[id].totalBytes,
-            error: error instanceof Error ? error.message : "runtime-download-failed",
-          };
+      setPack(
+        state,
+        id,
+        cancelled
+          ? fresh(id)
+          : {
+              phase: "failed",
+              bytes: own.bytes,
+              totalBytes: runtimePacks[id].totalBytes,
+              error: error instanceof Error ? error.message : "runtime-download-failed",
+            },
+      );
       throw error;
     })
     .finally(() => {
@@ -352,7 +372,7 @@ export async function removeRuntimePack(workspace: string, id: PackId): Promise<
   controllers.get(k)?.abort();
   await installs.get(k)?.catch(() => undefined);
   const state = stateOf(workspace);
-  state.packs[id] = fresh(id);
+  setPack(state, id, fresh(id));
   state.outdated[id] = false;
   const root = join(workspace, "runtimes", id);
   for (const path of [...verified.keys()]) if (path.startsWith(root + sep)) verified.delete(path);

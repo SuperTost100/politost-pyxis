@@ -65,6 +65,26 @@ describe("whenRead and readAhead", () => {
     expect(open).toHaveBeenCalledTimes(1);
   });
 
+  it("opens once for two activations while the read is pending: the last one", async () => {
+    let answer!: (value: ReturnType<typeof places>) => void;
+    reads.invoke.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    const first = vi.fn();
+    const second = vi.fn();
+    whenPlacesRead(client, first, 250);
+    await vi.advanceTimersByTimeAsync(200);
+    whenPlacesRead(client, second, 250);
+    // The first one's limit passes with the second still waiting: nothing opens, so nothing can be closed and opened again.
+    await vi.advanceTimersByTimeAsync(100);
+    expect(first).not.toHaveBeenCalled();
+    expect(second).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(second).toHaveBeenCalledTimes(1);
+    answer(places("Analisi"));
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
   it("opens when the read fails", async () => {
     reads.invoke.mockRejectedValue(new Error("no"));
     const open = vi.fn();
