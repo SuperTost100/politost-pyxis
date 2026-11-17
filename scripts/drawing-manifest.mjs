@@ -3,6 +3,7 @@
 // fetches every file the manifest names, writes its size and SHA-256 back, and puts the licence texts found inside
 // each wheel into resources/third-party-notices.json. Review the diff before committing it: the hashes it writes are
 // the ones every workspace will trust.
+// A new graphviz.js starts with the constants GRAPHVIZ, WRAPPER and EXPAT below, which no download updates, and ends with a read of the notices it writes.
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { unzipSync, strFromU8 } from "fflate";
