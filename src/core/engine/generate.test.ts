@@ -105,6 +105,23 @@ describe("generate engine failures", () => {
   });
 });
 
+describe("generate with code in the answer", () => {
+  const schema = z.object({ code: z.string(), note: z.string() });
+
+  it("reads a tab in a verbatim field as a tab, and still repairs the LaTeX in the others", async () => {
+    // As JSON: `\\t` before `plt` is a tab, and `\\theta` in the note is a model's single-backslash LaTeX.
+    const text = '{"code":"if True:\\n\\tplt.plot([1])","note":"L\'angolo $\\theta$"}';
+    const output = await generate({
+      selection,
+      prompt: "q",
+      schema,
+      verbatim: ["code"],
+      run: async () => result({ text }),
+    });
+    expect(output.data).toEqual({ code: "if True:\n\tplt.plot([1])", note: "L'angolo $\\theta$" });
+  });
+});
+
 describe("generate with LaTeX in the answer", () => {
   const schema = z.object({ stem: z.string(), note: z.string() });
   const wanted = { stem: "$m\\vec{g}\\sin\\theta$", note: "Riga uno\nriga due con $\\frac{a}{b}$" };

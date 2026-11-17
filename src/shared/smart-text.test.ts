@@ -324,6 +324,20 @@ describe("figure blocks", () => {
     ]);
   });
 
+  it("reads a tab, a form feed or a return in a figure's code as the character it is, not as a LaTeX command", () => {
+    // Written by the app, as JSON: the tab before `plt` is `\\t`, which a LaTeX repair would read as `\\tplt`.
+    const code = "if True:\n\tplt.plot([1])\n\tplt.title('tab')\r\n\fplt.show()";
+    const block = JSON.stringify({ caption: "Una linea", code });
+    expect(parseFigure(block)?.code).toBe(code);
+    expect(figureKey(parseFigure(block)!.code)).toBe(figureKey(code));
+    // The caption is prose: a single backslash before a LaTeX command in it is still repaired.
+    expect(parseFigure('{"caption": "L\'angolo $\\theta$", "code": "x = 1\\n\\tplt.plot([1])"}')).toMatchObject({
+      caption: "L'angolo $\\theta$",
+    });
+    const [segment] = parseSmartText(["```pyxis-figure", block, "```"].join("\n")).flatMap((part) => (part.type === "block" ? [part.block] : []));
+    expect(segment).toMatchObject({ kind: "figure", code });
+  });
+
   it("keeps a block without a kind a plot under the key it had before figures had kinds", () => {
     const old = parseFigure('{"caption": "Una parabola", "code": "  x = np.linspace(-2, 2)\\nplt.plot(x, x**2)\\n"}');
     expect(old).toEqual({

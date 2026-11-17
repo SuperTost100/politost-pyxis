@@ -11,7 +11,8 @@ import {
 import { MAX_DROPPED_FILES, SOURCE_EXTENSIONS } from "../shared/source-types";
 import { MAX_LINK_PATHS } from "../shared/linked-folders";
 import { fetchPlanText } from "./plan-fetch";
-import { isPlanFileName, needsWindowForPlan, planFileFromArgv, readOpenedPlan } from "./plan-open";
+import { endsWithMainWindow, firstWindowHold, needsMainWindow, windowAction } from "./main-window";
+import { isPlanFileName, planFileFromArgv, readOpenedPlan } from "./plan-open";
 import { openTerminal } from "./terminal";
 import { stageWorkspaceMove } from "./workspace-move";
 import {
@@ -452,12 +453,21 @@ let reminders: StudyReminders | null = null;
 /** Notifications stay referenced until the student acts on them or the system drops them, or they could be collected first. */
 const shownReminders = new Set<Notification>();
 
+/** The page a reminder asked for before startup had made its first window, which opens on that page. */
+let waitingAppPath: string | null = null;
+
 /** Brings the window forward and opens a page in it. After the last window closed on macOS, a new one starts there. */
 function openAppPath(path: string): void {
-  if (!mainWindow || mainWindow.isDestroyed()) {
+  const action = windowAction(mainWindow, startupWindowCreated);
+  if (action === "wait") {
+    waitingAppPath = path;
+    return;
+  }
+  if (action === "create") {
     createWindow(path);
     return;
   }
+  if (!mainWindow) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
@@ -741,9 +751,12 @@ function createWindow(route?: string): void {
     clearTimeout(boundsTimer);
     saveBounds();
   });
-  // On macOS the app outlives its window; core restart messages must not reach a destroyed one.
+  // On macOS the app outlives its window; core restart messages must not reach a destroyed one. Elsewhere the app is
+  // its main window: the hidden windows that run work for it stay open after they answer, so `window-all-closed` cannot
+  // be what ends it (see `main-window.ts`).
   mainWindow.on("closed", () => {
     mainWindow = null;
+    if (endsWithMainWindow(process.platform)) app.quit();
   });
 
   const hash = route ?? process.env["PYXIS_ROUTE"];
@@ -1892,13 +1905,22 @@ function registerProtocols(): void {
   if (!isDev) registerAppProtocol(rendererRoot);
 }
 
+/** The first window, on the page a reminder asked for meanwhile, once a test that holds startup has let it go. */
+async function makeFirstWindow(): Promise<void> {
+  const hold = firstWindowHold(process.env);
+  while (hold && existsSync(hold)) await new Promise((resolve) => setTimeout(resolve, 25));
+  const path = waitingAppPath;
+  waitingAppPath = null;
+  createWindow(path ?? undefined);
+}
+
 function openFirstWindow(): Promise<void> | void {
-  if (isDev) return createWindow();
+  if (isDev) return makeFirstWindow();
   return carryStorage(
     userFile("storage-carried.json"),
     app.getPath("userData"),
     rendererRoot,
-    createWindow,
+    makeFirstWindow,
   );
 }
 
@@ -1923,7 +1945,7 @@ function openPlanFile(path: string | null): void {
   waitingPlanPath = path;
   // The window may not exist yet (a launch from the file), or have been closed on macOS. It takes the file when it loads.
   if (!mainWindow || mainWindow.isDestroyed()) {
-    if (needsWindowForPlan(startupWindowCreated, BrowserWindow.getAllWindows().length)) createWindow();
+    if (needsMainWindow(mainWindow, startupWindowCreated)) createWindow();
     return;
   }
   showWindow();
@@ -2019,7 +2041,7 @@ app.whenReady().then(() => {
     startupWindowCreated = true;
   });
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (needsMainWindow(mainWindow, startupWindowCreated)) createWindow();
   });
 });
 

@@ -154,21 +154,41 @@ const latexAfterN = new Set([
  * Makes model JSON parseable without changing what it meant: a single backslash before a LaTeX command is doubled
  * (JSON would read \frac as a form feed and \alpha as an error), and raw line breaks inside strings become \n.
  */
-function repairJsonText(text: string): string {
+function repairJsonText(text: string, verbatim: readonly string[] = []): string {
   let out = "";
   let inString = false;
+  // The key whose value is being read, and the text of the string being read, to tell a key from a value when it ends.
+  let key = "";
+  let valueOf: string | null = null;
+  let current = "";
+  let valueString = false;
   for (let i = 0; i < text.length; i++) {
     const char = text[i]!;
     if (!inString) {
-      if (char === '"') inString = true;
+      if (char === '"') {
+        inString = true;
+        current = "";
+        valueString = valueOf !== null;
+      } else if (char === ":") valueOf = key;
+      else if (char === "," || char === "{" || char === "}") valueOf = null;
       out += char;
       continue;
     }
     if (char === '"') {
       inString = false;
+      if (!valueString) key = current;
       out += char;
       continue;
     }
+    // A value under a verbatim key is code: a valid escape in it is the character it says, never a LaTeX command.
+    const code = valueString && valueOf !== null && verbatim.includes(valueOf);
+    if (code && char === "\\" && "nrtbf".includes(text[i + 1] ?? "\n")) {
+      out += char + text[i + 1];
+      current += char + text[i + 1];
+      i++;
+      continue;
+    }
+    current += char;
     if (char === "\n") {
       out += "\\n";
       continue;
@@ -202,14 +222,18 @@ function repairJsonText(text: string): string {
   return out;
 }
 
-export function parseLooseJson(body: string): unknown {
+/**
+ * The JSON value a model's text holds, or undefined. The strings under the top-level keys named in `verbatim` are read
+ * as JSON says, since they are code and not prose: a tab before `plt` stays a tab and is not repaired into a LaTeX `\tplt`.
+ */
+export function parseLooseJson(body: string, verbatim: readonly string[] = []): unknown {
   const trimmed = body.trim();
   const start = trimmed.search(/[[{]/);
   const end = Math.max(trimmed.lastIndexOf("}"), trimmed.lastIndexOf("]"));
   const candidates = [trimmed];
   if (start >= 0 && end > start) candidates.push(trimmed.slice(start, end + 1));
   for (const candidate of candidates) {
-    const repaired = repairJsonText(candidate);
+    const repaired = repairJsonText(candidate, verbatim);
     for (const text of [repaired, repaired.replace(/,\s*([}\]])/g, "$1")]) {
       try {
         return JSON.parse(text);
@@ -288,6 +312,9 @@ function asCode(value: unknown): string | undefined {
   }
 }
 
+/** The keys a figure's code can be written under. */
+const FIGURE_CODE_KEYS = ["code", "python", "source"];
+
 function repairFigure(raw: unknown): FigureData | null {
   const value = record(raw);
   if (!value) return null;
@@ -302,7 +329,7 @@ function repairFigure(raw: unknown): FigureData | null {
 
 /** The figure in a ```pyxis-figure body, or null when it is not one. */
 export function parseFigure(body: string): FigureData | null {
-  return repairFigure(parseLooseJson(body));
+  return repairFigure(parseLooseJson(body, FIGURE_CODE_KEYS));
 }
 
 /**
@@ -365,7 +392,7 @@ function repairBlock(
   kind: SmartBlockKind,
   body: string,
 ): BlockData | null {
-  const raw = parseLooseJson(body);
+  const raw = parseLooseJson(body, kind === "figure" ? FIGURE_CODE_KEYS : []);
   const value = record(raw);
   if (kind === "check") {
     const data = repairCheck(raw);
