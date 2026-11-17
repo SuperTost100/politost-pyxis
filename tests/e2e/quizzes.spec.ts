@@ -741,6 +741,51 @@ test("open answer: braces typed in a formula group, and the reading under the fi
   }
 });
 
+test("open answer: keys typed while MathLive loads go to the formula the button opened, not to the field that had focus", async () => {
+  test.setTimeout(120000);
+  const { app, page, planId, topics, done } = await launch(openReplies());
+  try {
+    const quiz = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+      planId,
+      topicId: topics[0]!.id,
+      types: ["open"],
+    });
+    await expect
+      .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state, {
+        timeout: 20000,
+      })
+      .toBe("succeeded");
+    // MathLive is a chunk of its own. The test holds it back until it lets it through, so the moment the formula opens
+    // without MathLive is the test's and not the runner's; a slow computer has the same moment.
+    await app.evaluate(({ session }) => {
+      const held = globalThis as unknown as { releaseMathLive?: () => void };
+      const release = new Promise<void>((resolve) => {
+        held.releaseMathLive = resolve;
+      });
+      session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+        if (/\/assets\/mathlive[\w.-]*\.js$/.test(details.url)) void release.then(() => callback({}));
+        else callback({});
+      });
+    });
+    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
+    const answer = page.getByRole("textbox", { name: "La tua risposta" });
+    const steps = page.getByRole("textbox", { name: "Passaggi (facoltativi, aiutano la correzione)" });
+    await answer.fill("Ciao");
+    await expect(answer).toBeFocused();
+    await page.getByRole("button", { name: "Inserisci formula nei passaggi" }).click();
+    // The formula of the steps is open and waiting for MathLive. The keys belong to it, so the answer stays as it was.
+    await page.keyboard.type("x");
+    await expect(answer).toHaveText("Ciao");
+    await expect(steps).not.toContainText("x");
+    await app.evaluate(() => (globalThis as unknown as { releaseMathLive: () => void }).releaseMathLive());
+    await expect(steps.locator("math-field")).toHaveJSProperty("value", "x");
+    await expect(answer).toHaveText("Ciao");
+  } finally {
+    await app.evaluate(({ session }) => session.defaultSession.webRequest.onBeforeRequest(null));
+    await done();
+  }
+});
+
 test("open answer: the formula button under each field says what it does, in both languages", async () => {
   test.setTimeout(120000);
   const { page, planId, topics, done } = await launch(openReplies());
