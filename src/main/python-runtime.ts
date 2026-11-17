@@ -10,7 +10,7 @@ import {
   requireRuntime,
   runtimePacks,
 } from "./runtime-pack";
-import { disposeDrawRuntime, handleDrawRequest } from "./draw-runtime";
+import { disposeDrawRuntime, handleDrawRequest, LOAD_CEILING_MS } from "./draw-runtime";
 import { registerRuntimeProtocol, runtimeOrigin, runtimeResourceName } from "./runtime-protocol";
 import { lockSession, lockWindow, rendererGone } from "./runtime-window";
 
@@ -45,16 +45,24 @@ function pythonSession(): Promise<Session> {
 }
 
 /**
- * Wipes what the session kept. The clearings run one after the other, and the next window waits for the last one. Failing
- * to wipe is not a reason to fail the request that ran.
+ * Wipes what the session kept, and says whether it did. The clearings run one after the other, and the next window waits
+ * for the last one. Failing to wipe is not a reason to fail the request that ran, but the session is `stale` from then
+ * on: no run starts on it until a clearing has worked.
  */
-function clearSession(): Promise<void> {
+function clearSession(): Promise<boolean> {
   const before = clearing;
-  clearing = (async () => {
+  const done = (async () => {
     await before;
-    await partition?.then((owned) => owned.clearStorageData()).catch(() => undefined);
+    try {
+      await partition?.then((owned) => owned.clearStorageData());
+      return true;
+    } catch {
+      stale = true;
+      return false;
+    }
   })();
-  return clearing;
+  clearing = done.then(() => undefined);
+  return done;
 }
 
 /**
@@ -74,18 +82,23 @@ const idle: Array<() => void> = [];
 function drain(): Promise<void> {
   draining ??= (async () => {
     while (users > 0) await new Promise<void>((resolve) => idle.push(resolve));
-    await clearSession();
-    stale = false;
+    if (await clearSession()) stale = false;
   })().finally(() => {
     draining = null;
   });
   return draining;
 }
 
-/** A request starts using the session. A run never starts on what an earlier request left: it waits for the clearing. */
+/**
+ * A request starts using the session. A run never starts on what an earlier request left: it waits for the clearing, and
+ * where the clearing fails again it is refused as the runtime that cannot be used, which the pages already say.
+ */
 async function enter(operation: "run" | "check"): Promise<void> {
   while (draining) await draining;
-  if (operation === "run" && stale) await drain();
+  if (operation === "run" && stale) {
+    await drain();
+    if (stale) throw new Error("runtime-unavailable");
+  }
   users++;
 }
 
@@ -238,7 +251,7 @@ function execute(
       endRecord(record, error);
       throw error;
     }
-    return dispatch(record, operation, payload, timeoutMs, method);
+    return dispatch(record, operation, payload, timeoutMs, method, epoch);
   });
   tails[operation] = turn.catch(() => undefined);
   return turn;
@@ -263,11 +276,20 @@ async function dispatch(
   payload: unknown,
   timeoutMs: number | undefined,
   method: "run" | "check" | "grade",
+  epoch: number,
 ): Promise<unknown> {
-  await enter(operation);
-  record.entered = Date.now();
+  let entered = false;
+  let used: BrowserWindow | undefined;
+  // The stop sent to a run that timed out, which resolves once the page has answered it.
+  let stopping = null as Promise<void> | null;
   try {
+    await enter(operation);
+    entered = true;
+    record.entered = Date.now();
+    // The runtime may have been reconfigured while this waited to be admitted: its payload is for the workspace it was made in.
+    if (epoch !== generation) throw new Error("runtime-disposed");
     const target = await sandbox();
+    used = target;
     record.opened = Date.now();
     if (target.isDestroyed()) throw new Error("runtime-crashed");
     const extra =
@@ -290,11 +312,11 @@ async function dispatch(
           }),
         new Promise((_, reject) => {
           timer = setTimeout(() => {
-            void target.webContents
+            stopping = target.webContents
               .executeJavaScript(
                 `window.pyxisRuntime.stop(${JSON.stringify(operation === "run" ? "python" : "check")})`,
               )
-              .catch(() => undefined);
+              .then(() => undefined, () => undefined);
             reject(new Error("runtime-timeout"));
           }, RUN_CEILING_MS);
         }),
@@ -312,10 +334,28 @@ async function dispatch(
     throw error;
   } finally {
     endRecord(record);
+    if (stopping && used) await stopped(used, stopping);
     // Cleared when this was the last request using the session, and not under one that is still running.
-    await leave();
+    if (entered) await leave();
     record.left = Date.now();
   }
+}
+
+/**
+ * Waits until the page has answered the stop of a run that timed out, which ends its worker, so that nothing the worker
+ * issued can still write when the session is cleared. A page that does not answer within the wait a window has to load is
+ * not answering at all, and is ended, which stops everything in it.
+ */
+async function stopped(target: BrowserWindow, stopping: Promise<void>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const answered = await Promise.race([
+    stopping.then(() => true),
+    new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), LOAD_CEILING_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+  if (!answered) retire(target);
 }
 /**
  * Takes a pack off the disk and shuts the window that was using it, so what it drew is unavailable at once. A window
