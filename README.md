@@ -13,6 +13,7 @@
 <p align="center">
   <a href="https://github.com/SuperTost100/politost-pyxis/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/SuperTost100/politost-pyxis?label=release&color=3262db"></a>
   <a href="https://github.com/SuperTost100/politost-pyxis/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/SuperTost100/politost-pyxis/ci.yml?branch=main&label=checks"></a>
+  <img alt="CodeRabbit Pull Request Reviews" src="https://img.shields.io/coderabbit/prs/github/SuperTost100/politost-pyxis?link=https%3A%2F%2Fcoderabbit.link%2Ftost">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3262db"></a>
 </p>
 
