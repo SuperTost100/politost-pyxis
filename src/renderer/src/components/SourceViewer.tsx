@@ -19,6 +19,7 @@ import { SelectionMenu } from "./SelectionMenu";
 import { clampPage, messageText, pageKey, planPanel, type PanelPlan, type PanelReason, type PanelSource } from "./sourcePanel";
 import type { PdfOutcome } from "./PdfSourcePage";
 import "./SourceViewer.css";
+import { outbound } from "../lib/queryClient";
 
 const PdfSourcePage = lazy(() => import("./PdfSourcePage"));
 // Markdown and math load only when the panel first shows text.
@@ -91,6 +92,7 @@ export function useSourceView(
     retry: false,
     staleTime: Number.POSITIVE_INFINITY,
     queryFn: () => invoke("sources.bookPreview", { id: bookId ?? "" }),
+    ...outbound,
   });
   const read = bookId ? book : source;
   const sources = useSources(location != null);

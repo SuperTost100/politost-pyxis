@@ -12,6 +12,7 @@ import { useConfirm } from "../../components/Dialog";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { formatBytes } from "@shared/format-bytes";
+import { outbound } from "../../lib/queryClient";
 
 /** The next fetch comes from the student pressing a button, so it skips the cache. Automatic fetches keep it. */
 let forceNext = false;
@@ -32,6 +33,7 @@ function useUpdates() {
       forceNext = false;
       return window.pyxis.checkUpdates(force);
     },
+    ...outbound,
     retry: false,
     staleTime: 24 * 60 * 60 * 1000,
   });
