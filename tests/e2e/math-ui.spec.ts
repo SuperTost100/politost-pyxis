@@ -18,12 +18,12 @@ import { fromChiediToExams } from "./doors";
 import { attachPythonRecording } from "./python-recording";
 
 /**
- * How long the app lets a run take: the ceiling of `RUN_CEILING_MS` in `src/main/python-runtime.ts`, which covers the load of
- * Pyodide (`LOAD_TIMEOUT_MS` in `src/sandbox/host.js` is 60 s) and the run. A wait for a run's first output that gives up
- * sooner fails where the app would still succeed: on the hosted Intel Mac a run was recorded working, with Python still
- * loading 29 s after it started (`python-start` mark, run 44200146183). Keep it equal to that constant.
+ * How long the app lets a request take, a run and a check alike: `RUN_CEILING_MS` in `src/main/python-runtime.ts`, which covers
+ * the load of the worker (`LOAD_TIMEOUT_MS` in `src/sandbox/host.js` is 60 s) and the work itself. A wait that gives up sooner
+ * fails where the app would still succeed: on the hosted Intel Mac a run was recorded working, with Python still loading 29 s
+ * after it started (`python-start` mark, run 44200146183). Keep it equal to that constant.
  */
-const APP_RUN_CEILING_MS = 90_000;
+const APP_REQUEST_CEILING_MS = 90_000;
 
 /**
  * Waits for the first output of a run for as long as the app allows it, and ends at once, with what the page says, when the
@@ -42,9 +42,29 @@ async function expectFirstOutput(page: Page, expected: string) {
         if (text !== "" && text !== expected) throw new Error(`unexpected output: ${text}`);
         return text;
       },
-      { timeout: APP_RUN_CEILING_MS, intervals: [250, 500, 1000] },
+      { timeout: APP_REQUEST_CEILING_MS, intervals: [250, 500, 1000] },
     )
     .toBe(expected);
+}
+
+/**
+ * Waits for the failed badge of a check, for as long as the app lets a check take, and ends at once when the page shows a
+ * badge of another kind (the check was verified, or could not be made) instead of the one the test is about.
+ */
+async function expectFailedBadge(page: Page) {
+  const failed = page.locator(".px-check-badge.is-failed");
+  const other = page.locator(".px-check-badge:not(.is-failed)");
+  await expect
+    .poll(
+      async () => {
+        if ((await failed.count()) > 0) return "failed";
+        if ((await other.count()) > 0) throw new Error(`the page shows another badge: ${await other.first().innerText()}`);
+        return "waiting";
+      },
+      { timeout: APP_REQUEST_CEILING_MS, intervals: [250, 500, 1000] },
+    )
+    .toBe("failed");
+  await expect(failed.first()).toBeVisible();
 }
 
 async function launch(reply?: string, extra: Record<string, string> = {}) {
@@ -70,8 +90,10 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
     !existsSync(".tmp/pyodide/pyodide.js"),
     "Requires the pinned Pyodide runtime fixture in .tmp/pyodide.",
   );
-  // Four Python runs, one per language and theme, passed 90 s on the hosted Intel Mac.
-  test.setTimeout(180000);
+  // Four runs, each with its own cold load of Python, and the check behind the badge, which loads its own worker. Each is
+  // allowed twice the 30 s measured on the hosted Intel Mac (the 60 s the app gives a load): 5 x 60 s, with 60 s for the launch,
+  // the page changes and the screenshots. A slow run that works finishes or reports the page's reason before this ends.
+  test.setTimeout(360000);
   const step = "La derivata è $x$.";
   const reply = `${step}\n\n\`\`\`check\n${JSON.stringify({ kind: "derivative", expr: "x**2*sin(x)", claimed: "x", step })}\n\`\`\``;
   const { app, page, userData } = await launch(reply);
@@ -122,9 +144,7 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
     await page.evaluate((chatId) => {
       window.location.hash = `/ask/${chatId}`;
     }, result.chatId);
-    await expect(page.locator(".px-check-badge.is-failed")).toBeVisible({
-      timeout: 30000,
-    });
+    await expectFailedBadge(page);
     await page.locator(".px-check-badge.is-failed").focus();
     await expect(page.locator(".px-check-badge.is-failed")).toBeFocused();
     await expectNoAxeViolations(page);
@@ -143,7 +163,8 @@ test("Ctrl+Enter pressed before the Python page knows Python is there runs the c
     !existsSync(".tmp/pyodide/pyodide.js"),
     "Requires the pinned Pyodide runtime fixture in .tmp/pyodide.",
   );
-  test.setTimeout(120000);
+  // The launch (30 s), one cold load and run at twice the 30 s measured on the hosted Intel Mac (60 s), and room (60 s).
+  test.setTimeout(150000);
   // The page reads which packs are there, and the answer to that read is held until the test has sent the key.
   const hold = mkdtempSync(join(tmpdir(), "pyxis-python-hold-"));
   const release = join(hold, "release");
