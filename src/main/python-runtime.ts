@@ -90,12 +90,15 @@ function drain(): Promise<void> {
 }
 
 /**
- * A request starts using the session. A run never starts on what an earlier request left: it waits for the clearing, and
- * where the clearing fails again it is refused as the runtime that cannot be used, which the pages already say.
+ * A request starts using the session. A run never starts on what an earlier request left: it waits for a clearing of its
+ * own, and where the clearing fails it is refused as the runtime that cannot be used, which the pages already say. The
+ * clearing after the last request is not enough for that: a worker that was ended wrote to the storage a moment before,
+ * and a write that was already on its way can reach it after that clearing. A check runs the app's own code, which does
+ * not write there, so it enters without one.
  */
 async function enter(operation: "run" | "check"): Promise<void> {
   while (draining) await draining;
-  if (operation === "run" && stale) {
+  if (operation === "run") {
     await drain();
     if (stale) throw new Error("runtime-unavailable");
   }
@@ -164,6 +167,8 @@ export function pythonTestHandle() {
   return {
     requests: () => records.map((record) => ({ ...record })),
     windows: () => (window && !window.isDestroyed() ? [window.id] : []),
+    /** Whether a window is being opened, which a request that comes meanwhile waits for. */
+    loading: () => opening !== null,
     /** Runs a script in the Python window's page, as code in that page would. */
     evaluate: (script: string) => {
       if (!window || window.isDestroyed()) throw new Error("no Python window is open");
@@ -186,7 +191,8 @@ async function sandbox(): Promise<BrowserWindow> {
   if (epoch !== generation) throw new Error("runtime-disposed");
   if (opening) return opening;
   if (window && !window.isDestroyed()) return window;
-  opening = (async () => {
+  let mine!: Promise<BrowserWindow>;
+  mine = (async () => {
     const owned = await pythonSession();
     // The storage of the window that ended is cleared before the next one opens in the same session.
     await clearing;
@@ -209,19 +215,32 @@ async function sandbox(): Promise<BrowserWindow> {
     created.on("closed", () => retire(created));
     // A crashed renderer is replaced by a fresh window on the next request.
     created.webContents.on("render-process-gone", () => retire(created));
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await created.loadURL(ORIGIN + "index.html");
+      // A page that never finishes loading would hold the session for good: the request has entered it, and the ceiling of
+      // the run starts only once there is a window.
+      await Promise.race([
+        created.loadURL(ORIGIN + "index.html"),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("runtime-load-timeout")), LOAD_CEILING_MS);
+        }),
+      ]);
       if (epoch !== generation || created.isDestroyed())
         throw new Error("runtime-disposed");
       window = created;
       return created;
     } catch (error) {
       retire(created);
-      if (epoch === generation) opening = null;
+      // Only this call's own opening: a window that crashed while loading was retired, and another request may have begun
+      // opening the next one by the time this load fails.
+      if (opening === mine) opening = null;
       throw error;
+    } finally {
+      clearTimeout(timer);
     }
   })();
-  return opening;
+  opening = mine;
+  return mine;
 }
 const tails: Record<"run" | "check", Promise<unknown>> = {
   run: Promise.resolve(),
