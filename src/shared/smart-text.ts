@@ -150,6 +150,16 @@ const latexAfterN = new Set([
   "nonumber",
 ]);
 
+/** The name a JSON key stands for, with its escapes decoded; a key that is not valid JSON on its own stays as written. */
+function decodedKey(written: string): string {
+  try {
+    const name: unknown = JSON.parse(`"${written}"`);
+    return typeof name === "string" ? name : written;
+  } catch {
+    return written;
+  }
+}
+
 /**
  * Makes model JSON parseable without changing what it meant: a single backslash before a LaTeX command is doubled
  * (JSON would read \frac as a form feed and \alpha as an error), and raw line breaks inside strings become \n.
@@ -176,7 +186,8 @@ function repairJsonText(text: string, verbatim: readonly string[] = []): string 
     }
     if (char === '"') {
       inString = false;
-      if (!valueString) key = current;
+      // A key is compared as JSON reads it: "c\u006fde" is `code`. The text keeps the spelling it was written with.
+      if (!valueString) key = decodedKey(current);
       out += char;
       continue;
     }

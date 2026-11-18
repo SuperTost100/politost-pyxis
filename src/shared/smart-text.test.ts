@@ -338,6 +338,15 @@ describe("figure blocks", () => {
     expect(segment).toMatchObject({ kind: "figure", code });
   });
 
+  it("reads a figure's code as code when its key is written with an escape, as JSON reads the key", () => {
+    // JSON decodes "c\u006fde" to `code`, so the value under it is the code, and its tab is a tab.
+    const code = "if True:\n\tplt.plot([1])";
+    for (const key of ["c\\u006fde", "\\u0063ode", "p\\u0079thon", "so\\u0075rce"])
+      expect(parseFigure(`{"caption":"x","${key}":"if True:\\n\\tplt.plot([1])"}`)?.code, key).toBe(code);
+    // The key keeps the spelling it was written with in the repaired text, which is still the same JSON.
+    expect(parseLooseJson('{"c\\u006fde":"a\\tb"}', ["code"])).toEqual({ code: "a\tb" });
+  });
+
   it("keeps a block without a kind a plot under the key it had before figures had kinds", () => {
     const old = parseFigure('{"caption": "Una parabola", "code": "  x = np.linspace(-2, 2)\\nplt.plot(x, x**2)\\n"}');
     expect(old).toEqual({
