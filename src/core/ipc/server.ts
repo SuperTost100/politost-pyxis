@@ -64,19 +64,26 @@ export function setJobHandlers(next: HandlerMap): void {
   handlers = next;
 }
 
-/** Milliseconds a request waits before it is answered, by request name. Set only by the end-to-end seam. */
-const readDelays = new Map<string, number>();
+/** How a request is held before it is answered, by request name: for some milliseconds, or until a file exists. Set only by the end-to-end seam. */
+const readDelays = new Map<string, number | { until: string }>();
 
 /**
  * End-to-end seam (PYXIS_E2E_READ_DELAY, `study.attemptOutcome=1500,study.quizGrading=600`): holds those requests back
  * so a spec can look at a screen while the data it waits for is still on its way. Each wait is capped at 15 seconds.
+ * `tools.runtime=until:/tmp/go` holds the request until that file exists, so a spec decides when it is answered; a minute at most.
  */
 export function holdReads(spec: string): void {
   readDelays.clear();
   for (const entry of spec.split(",")) {
-    const [name, ms] = entry.split("=");
-    const delay = Math.min(Number(ms) || 0, 15_000);
-    if (name && delay > 0) readDelays.set(name.trim(), delay);
+    const at = entry.indexOf("=");
+    if (at <= 0) continue;
+    const name = entry.slice(0, at).trim();
+    const value = entry.slice(at + 1).trim();
+    if (value.startsWith("until:")) readDelays.set(name, { until: value.slice("until:".length) });
+    else {
+      const delay = Math.min(Number(value) || 0, 15_000);
+      if (delay > 0) readDelays.set(name, delay);
+    }
   }
 }
 
@@ -139,7 +146,10 @@ async function onRendererMessage(from: CorePort, data: unknown): Promise<void> {
   inflight.set(message.id, controller);
   try {
     const hold = readDelays.get(message.name);
-    if (hold) await new Promise((resolve) => setTimeout(resolve, hold));
+    if (typeof hold === "number") await new Promise((resolve) => setTimeout(resolve, hold));
+    else if (hold)
+      for (let waited = 0; !existsSync(hold.until) && waited < 60_000; waited += 20)
+        await new Promise((resolve) => setTimeout(resolve, 20));
     const finished = (message.input as { finished?: unknown } | null)?.finished === true;
     const lose = (finished ? readFailures.get(`${message.name}?finished`) : undefined) ?? readFailures.get(message.name);
     if (lose && existsSync(lose)) {

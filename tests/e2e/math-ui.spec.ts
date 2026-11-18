@@ -116,22 +116,25 @@ test("Ctrl+Enter pressed before the Python page knows Python is there runs the c
     "Requires the pinned Pyodide runtime fixture in .tmp/pyodide.",
   );
   test.setTimeout(120000);
-  // The page reads which packs are there, and the key is pressed while that read is held back.
-  const { app, page, userData } = await launch(undefined, { PYXIS_E2E_READ_DELAY: "tools.runtime=3000" });
+  // The page reads which packs are there, and the answer to that read is held until the test has sent the key.
+  const hold = mkdtempSync(join(tmpdir(), "pyxis-python-hold-"));
+  const release = join(hold, "release");
+  const { app, page, userData } = await launch(undefined, { PYXIS_E2E_READ_DELAY: `tools.runtime=until:${release}` });
   try {
     await page.evaluate(() => {
       window.location.hash = "/tools/python";
     });
     const code = page.getByRole("textbox", { name: /Codice Python|Python code/ });
     await code.fill("print('42')");
-    // The key is sent in the same task that checks Run is still disabled, which it is until the read has returned, so the
-    // test cannot pass because the read came back first on a slow runner.
+    // Run is disabled until the read has returned, and the read does not return before the file below exists, so the key
+    // is sent to a page that does not know yet whether Python is there, however slow the runner is.
     await page.evaluate(() => {
       const run = [...document.querySelectorAll("button")].find((button) => /^(Esegui|Run)$/.test(button.getAttribute("aria-label") ?? button.textContent?.trim() ?? ""));
       if (!run) throw new Error("no Run button");
       if (!run.disabled) throw new Error("the read of the Python pack had already returned");
       document.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }));
     });
+    writeFileSync(release, "");
     await expect(page.locator(".px-python pre").first()).toHaveText("42\n", { timeout: 60000 });
   } catch (error) {
     await attachPythonRecording(app);
@@ -139,6 +142,7 @@ test("Ctrl+Enter pressed before the Python page knows Python is there runs the c
   } finally {
     await app.close();
     removeTestFolder(userData);
+    removeTestFolder(hold);
   }
 });
 
