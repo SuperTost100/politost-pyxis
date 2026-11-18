@@ -502,6 +502,34 @@ describe("python runtime session", () => {
     await check;
   });
 
+  it("does not send a run whose requester gave up while it waited for a check to leave the session", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const check = python.handleRuntimeRequest("check", claim, Date.now() + 120000);
+      await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+      // The run is turned away only when the check leaves: it waits in the clearing that comes with its entry.
+      const run = python.handleRuntimeRequest("python", { code: "late" }, Date.now() + 1000);
+      const outcome = run.then(
+        () => "resolved",
+        (error: Error) => error.message,
+      );
+      await tick();
+      vi.setSystemTime(Date.now() + 2000);
+      fake.held[0]!.settle({ state: "verified" });
+      await expect(check).resolves.toEqual({ state: "verified" });
+      expect(await outcome).toBe("runtime-expired");
+      // Nothing was sent to the page for it, its record says why, and the session was left as the next request finds it.
+      expect(fake.scripts.filter((script) => script.includes(".run("))).toHaveLength(0);
+      expect(python.pythonTestHandle().requests().at(-1)).toMatchObject({ operation: "run", outcome: "runtime-expired" });
+    } finally {
+      vi.useRealTimers();
+    }
+    const next = python.handleRuntimeRequest("python", { code: "1" });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(2));
+    fake.held[1]!.settle({ stdout: "" });
+    await expect(next).resolves.toEqual({ stdout: "" });
+  });
+
   it("ends a window that never finishes loading, and leaves the session free for the next request", async () => {
     const { LOAD_CEILING_MS } = await import("./draw-runtime");
     fake.holdLoads = true;

@@ -270,7 +270,7 @@ function execute(
       endRecord(record, error);
       throw error;
     }
-    return dispatch(record, operation, payload, timeoutMs, method, epoch);
+    return dispatch(record, operation, payload, timeoutMs, method, epoch, deadline);
   });
   tails[operation] = turn.catch(() => undefined);
   return turn;
@@ -296,6 +296,7 @@ async function dispatch(
   timeoutMs: number | undefined,
   method: "run" | "check" | "grade",
   epoch: number,
+  deadline?: number,
 ): Promise<unknown> {
   let entered = false;
   let used: BrowserWindow | undefined;
@@ -307,6 +308,9 @@ async function dispatch(
     record.entered = Date.now();
     // The runtime may have been reconfigured while this waited to be admitted: its payload is for the workspace it was made in.
     if (epoch !== generation) throw new Error("runtime-disposed");
+    // A run waits for the session to be cleared, behind a check that is still using it, and its requester may have given up
+    // by then. The request has entered the session, so this ends it as any other does, and `leave` below runs once.
+    if (deadline !== undefined && Date.now() >= deadline) throw new Error("runtime-expired");
     const target = await sandbox();
     used = target;
     record.opened = Date.now();
