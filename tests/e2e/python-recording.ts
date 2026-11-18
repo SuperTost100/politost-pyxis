@@ -10,9 +10,18 @@ type Handle = { requests: () => unknown[]; evaluate: (script: string) => Promise
  * `requests` are the main process's records of the last requests (epoch milliseconds). `queued` is when a request was made,
  * before any wait behind earlier ones, and one dropped before its turn has an `outcome` and no `entered`. `marks` are the
  * moments of the sandbox page's lanes (`python-start`, `-ready`, `-run`, `-done`, and `check-` ones) on the same clock, and
- * `now` is the time of the reading. The reading itself never fails the test: a window that is gone is recorded as such.
+ * `now` is the time of the reading. The helper never rejects, and says on one line when it could not record: it runs in the
+ * `catch` of a test that has failed, and that test's own error is the one to report, not a full disk or a refused attachment.
  */
 export async function attachPythonRecording(app: ElectronApplication, name = "python-recording") {
+  try {
+    await record(app, name);
+  } catch (error) {
+    console.warn(`The python recording "${name}" could not be saved: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function record(app: ElectronApplication, name: string) {
   const recording = await app
     .evaluate(async () => {
       const handle = (globalThis as unknown as { pyxisE2ePython: Handle }).pyxisE2ePython;
