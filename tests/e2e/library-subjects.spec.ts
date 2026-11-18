@@ -873,7 +873,7 @@ test("A menu stays open when the page gets shorter under a student who has scrol
 });
 
 /**
- * Waits until no file of the library is still being read. A file being read sorts before the ones that are ready, so its
+ * Waits until no file of the library is still being read, in the backend and on the shelf. A file being read sorts before the ones that are ready, so its
  * cover changes places when its read ends, and a pointer, a menu's owner or the page under a menu is left over another
  * cover. A spec that points at covers waits for this first; one that needs a file to arrive while a menu is open waits for
  * the files before it only.
@@ -882,6 +882,9 @@ async function allRead(page: Page) {
   await expect
     .poll(() => page.evaluate(async () => (await window.pyxis.invoke("sources.list", {})).filter((source) => source.status !== "ready").length))
     .toBe(0);
+  // The shelf draws from a list it refreshes after the read, so the covers move to their places only once none carries the
+  // mark of a file being read; until then a pointer put on one is left over another.
+  await expect(page.locator('.px-cover-badge[data-mark="reading"]')).toHaveCount(0);
 }
 
 /**
