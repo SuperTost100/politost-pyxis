@@ -362,6 +362,67 @@ async function openMenu(page: Page, pack: "pyodide" | "drawing", how: "dots" | "
   return menu;
 }
 
+test("a download that waits in the queue shows as waiting with its Annulla, on the Python page and in Settings, and cancelling it ends it", async () => {
+  test.skip(!pinned(), "Requires the pinned Pyodide and drawing fixtures in .tmp/pyodide and .tmp/drawing.");
+  test.setTimeout(120000);
+  // No local job may run, so what is asked for waits in the queue and nothing is fetched.
+  const setup = await start({ env: { PYXIS_E2E_LOCAL_JOBS: "0" } });
+  const { page, server } = setup;
+  try {
+    const python = row(page, "pyodide");
+    const drawings = row(page, "drawing");
+    const jobStates = () =>
+      page.evaluate(async () => {
+        const jobs = (await window.pyxis.invoke("jobs.list", {})) as Array<{ kind: string; state: string }>;
+        return jobs.filter((job) => job.kind.endsWith("-download")).map((job) => job.state);
+      });
+    const all = new Intl.NumberFormat("it", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(
+      (bytes("pyodide") + bytes("drawing")) / 1e6,
+    );
+    const openPython = () =>
+      page.evaluate(() => {
+        location.hash = "/tools/python";
+      });
+    // The Python page asks for every pack, and the job waits. The page shows it as on its way, with Annulla, and offers
+    // no second download.
+    await openPython();
+    await page.getByRole("button", { name: `Scarica Python (${all} MB)` }).click();
+    await expect.poll(jobStates).toEqual(["queued"]);
+    await expect(page.getByRole("button", { name: "Annulla", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Scarica/ })).toHaveCount(0);
+    await saveShot(page, "settings/it-light-queued-python.png");
+    // Settings shows both rows as waiting, each with its Annulla, and offers no download either.
+    await openPacks(page);
+    await expect(python).toHaveAttribute("data-phase", "downloading");
+    await expect(drawings).toHaveAttribute("data-phase", "downloading");
+    await expect(python.getByRole("button", { name: /^Scarica/ })).toHaveCount(0);
+    await expect(drawings.getByRole("button", { name: "Annulla", exact: true })).toBeVisible();
+    await saveShot(page, "settings/it-light-queued.png");
+    // Annulla on a row ends the queued job, and both rows offer their downloads again.
+    await python.getByRole("button", { name: "Annulla", exact: true }).click();
+    await expect.poll(jobStates).toEqual(["cancelled"]);
+    await expect(python).toHaveAttribute("data-phase", "idle");
+    await expect(drawings).toHaveAttribute("data-phase", "idle");
+    // The Python page ends one the same way.
+    await openPython();
+    await page.getByRole("button", { name: `Scarica Python (${all} MB)` }).click();
+    await expect.poll(jobStates).toEqual(["queued"]);
+    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+    await expect.poll(jobStates).toEqual(["cancelled"]);
+    await expect(page.getByRole("button", { name: `Scarica Python (${all} MB)` })).toBeVisible();
+    // A row's own download waits and is stopped the same way.
+    await openPacks(page);
+    await drawings.getByRole("button", { name: /^Scarica i disegni/ }).click();
+    await expect(drawings).toHaveAttribute("data-phase", "downloading");
+    await drawings.getByRole("button", { name: "Annulla", exact: true }).click();
+    await expect(drawings).toHaveAttribute("data-phase", "idle");
+    expect(server.requests).toEqual([]);
+    expect((await runtimeStatus(page)).packs).toEqual({ pyodide: "idle", drawing: "idle" });
+  } finally {
+    await finish(setup);
+  }
+});
+
 test("each row's menu opens on the dots, on a right-click and from the keyboard, holds only its removal, and removal asks first", async () => {
   test.skip(!pinned(), "Requires the pinned Pyodide and drawing fixtures in .tmp/pyodide and .tmp/drawing.");
   test.setTimeout(120000);
