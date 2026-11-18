@@ -227,8 +227,11 @@ export function PartPage({
   if (data.position !== firstPosition.current) turned.current = true;
 
   // The part on screen, read when an answer that was saving comes back.
+  // Written once the page has committed, so a render that React drops never says which part is on screen.
   const shown = useRef("");
-  shown.current = `${topicId}:${data.position}`;
+  useEffect(() => {
+    shown.current = `${topicId}:${data.position}`;
+  }, [topicId, data.position]);
 
   // Saving an answer to the part's text. The answer that finishes the part moves the focus to Continua, unless the
   // student moved it on meanwhile.
@@ -246,10 +249,12 @@ export function PartPage({
       void query.refetch();
     }
     // Only while the part answered is still the one on screen: the student may have opened another meanwhile.
-    if (result.partDone && shown.current === answered) moveToContinue(before);
+    if (result.partDone && shown.current === answered) moveToContinue(before, answered);
   }
-  function moveToContinue(before: Element | null) {
+  /** `part` is the part that was answered: a frame later it must still be the one on screen, or Continua is not its. */
+  function moveToContinue(before: Element | null, part?: string) {
     requestAnimationFrame(() => {
+      if (part !== undefined && shown.current !== part) return;
       if (focusFollowsAnswer(before, document.activeElement, document.body, pageFocus.current))
         continueRef.current?.querySelector<HTMLElement>("button")?.focus();
     });
