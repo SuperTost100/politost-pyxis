@@ -159,7 +159,15 @@ jobs:
           for combo in ${{ matrix.language }}-dark-1280 ${{ matrix.language }}-dark-960 ${{ matrix.language }}-light-1280 ${{ matrix.language }}-light-960; do
             export PYXIS_UI_COMBO="$combo"
             export PYXIS_UI_RECORD="ci-audit/audit-$combo$suffix.json"
-            bash .github/actions/e2e/run.sh tests/e2e/ui-audit.spec.ts || failed=1
+            if ! bash .github/actions/e2e/run.sh tests/e2e/ui-audit.spec.ts; then
+              failed=1
+              # Playwright empties test-results/ when the next combination starts, so a failed one's output is copied out
+              # first. The next step uploads ci-audit/, and the report step after it uploads the last combination's own.
+              if [ -d test-results ]; then
+                mkdir -p "ci-audit/test-results-$combo$suffix"
+                cp -R test-results/. "ci-audit/test-results-$combo$suffix/"
+              fi
+            fi
           done
           exit $failed
       - name: Preserve route audit records
