@@ -53,7 +53,12 @@ function PackRow({ pack, status }: { pack: Pack; status: Status }) {
         ? item.kind === "local-drawings-download"
         : item.kind === "local-runtime-download" && item.ref === "pyodide"),
   );
-  const downloading = info.phase === "downloading" || starting || (Boolean(job) && info.phase !== "ready");
+  // The job the Python page started for every missing pack, while it waits for its turn: this pack waits in it too, and
+  // the row does not offer a second download beside it. Stopping it ends the job, which has fetched nothing yet.
+  const shared = jobs.find((item) => item.state === "queued" && item.kind === "local-runtime-download" && item.ref === "missing");
+  const waiting = job ?? shared;
+  const other: Pack = pack === "pyodide" ? "drawing" : "pyodide";
+  const downloading = info.phase === "downloading" || starting || (Boolean(waiting) && info.phase !== "ready");
   const ready = info.phase === "ready";
   const percent = info.totalBytes ? Math.min(100, Math.round((info.bytes / info.totalBytes) * 100)) : 0;
   const sized = (bytes: number) => formatBytes(bytes, i18n.language);
@@ -74,8 +79,16 @@ function PackRow({ pack, status }: { pack: Pack; status: Status }) {
   }
   /** Stops this pack's download and no other, whoever started it. */
   async function cancel() {
-    // Its own job, still waiting for a place, is stopped with it; a job that holds the other pack as well goes on for that pack.
+    // Every job that waits for a place and holds this pack ends: its own, and the one the Python page queued for every pack.
+    // A job that is running for the other pack as well goes on for that pack, and only this pack's transfer is stopped.
     if (job) await invoke("jobs.cancel", { jobId: job.id }).catch(() => undefined);
+    if (shared) {
+      await invoke("jobs.cancel", { jobId: shared.id }).catch(() => undefined);
+      // The shared job held the other pack too, which the student asked for on the Python page, and a job cannot be narrowed:
+      // that pack is queued again on its own, unless it is there already or on its way.
+      const left = status.info[other];
+      if (left.phase === "idle" && !left.outdated) await invoke("tools.runtimeDownload", { pack: other }).catch(() => undefined);
+    }
     await invoke("tools.runtimeCancel", { pack }).catch(() => undefined);
     void client.invalidateQueries({ queryKey: packStatusKey });
     void client.invalidateQueries({ queryKey: ["jobs"] });
@@ -163,7 +176,7 @@ function PackRow({ pack, status }: { pack: Pack; status: Status }) {
               <span className="visually-hidden" role="status" aria-live="polite">
                 {t(`settings.packs.${name}.progress`, { percent: announced })}
               </span>
-              {info.phase === "downloading" || job ? (
+              {info.phase === "downloading" || waiting ? (
                 <Button size="small" type="text" onClick={() => void cancel()}>
                   {t("settings.packs.cancel")}
                 </Button>

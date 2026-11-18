@@ -252,6 +252,8 @@ export async function drawFigures(
     let code = figure.code;
     let drawn = await drawOne(figure, python);
     if (!("image" in drawn) && drawn.error !== null && options.fix) {
+      // Stopped while it was drawn: a correction is a call to the AI tool, and nobody is waiting for it.
+      if (closed || options.signal?.aborted) return;
       const fixed = await options.fix(figure, drawn.error);
       // Stopped while the fix was out: the corrected code is not drawn.
       if (closed || options.signal?.aborted) return;
