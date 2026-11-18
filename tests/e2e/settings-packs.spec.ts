@@ -42,19 +42,29 @@ async function start(
   options: { stage?: Array<"pyodide" | "drawing">; env?: Record<string, string>; before?: (userData: string) => void } = {},
 ): Promise<Setup> {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-packs-"));
-  options.before?.(userData);
-  if (options.stage?.length) stagePacks(userData, options.stage);
-  const server = await packServer();
-  const app = await launchPyxis({
-    userData,
-    env: { HOME: userData, PYXIS_E2E_PACK_BASE: server.base, ...options.env },
-  });
-  const page = await app.firstWindow();
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  await openPacks(page);
-  return { userData, app, page, server };
+  let server: Awaited<ReturnType<typeof packServer>> | undefined;
+  let app: ElectronApplication | undefined;
+  // A setup that fails leaves nothing behind: the caller has not got `finish` yet to clean up with.
+  try {
+    options.before?.(userData);
+    if (options.stage?.length) stagePacks(userData, options.stage);
+    server = await packServer();
+    app = await launchPyxis({
+      userData,
+      env: { HOME: userData, PYXIS_E2E_PACK_BASE: server.base, ...options.env },
+    });
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await openPacks(page);
+    return { userData, app, page, server };
+  } catch (error) {
+    await app?.close().catch(() => undefined);
+    server?.close();
+    removeTestFolder(userData);
+    throw error;
+  }
 }
 async function openPacks(page: Page) {
   await page.evaluate(() => {

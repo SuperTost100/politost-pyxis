@@ -113,7 +113,7 @@ const GIVEN_UP = 2;
 
 export const trackedJob: JobSpec = { jobClass: "local", steps: [], about: (params) => params as JobAbout };
 
-const defaultLimits = (): Limits => ({
+export const defaultLimits = (): Limits => ({
   "model-cli": 2,
   "model-api": 4,
   local: Math.max(1, availableParallelism() - 1),

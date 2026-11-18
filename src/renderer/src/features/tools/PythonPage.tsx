@@ -48,11 +48,12 @@ export function PythonPage() {
   const [starting, setStarting] = useState(false);
   const { data: jobs = [] } = useJobs();
   // A download of either kind that is waiting or running, whichever page started it: Settings starts one pack on its own.
-  const active = jobs.some(
+  const waiting = jobs.filter(
     (item) =>
       (item.kind === "local-runtime-download" || item.kind === "local-drawings-download") &&
       (item.state === "queued" || item.state === "running"),
   );
+  const active = waiting.length > 0;
   const runtime = useQuery({
     queryKey: ["python-runtime"],
     queryFn: () => invoke("tools.runtime", {}),
@@ -95,11 +96,23 @@ export function PythonPage() {
   // What the page offers is what is missing and not on its way already: with only the drawings downloading, Python can
   // still be asked for, for its own size. What is on its way has its progress and its Annulla here too.
   const info = runtime.data?.info;
-  const downloading = (["pyodide", "drawing"] as const).filter((pack) => info?.[pack].phase === "downloading");
-  const missing = (["pyodide", "drawing"] as const).filter((pack) => info && info[pack].phase !== "ready" && info[pack].phase !== "downloading");
+  // A job that waits for its turn has not begun to fetch, and is on its way all the same: it holds the pack it asks for, or
+  // every pack for the one this page starts (its `ref` is "pyodide" when it asks for Python alone).
+  const asked = (pack: "pyodide" | "drawing") =>
+    waiting.some((item) => (item.kind === "local-drawings-download" ? pack === "drawing" : item.ref !== "pyodide" || pack === "pyodide"));
+  const downloading = (["pyodide", "drawing"] as const).filter(
+    (pack) => info && info[pack].phase !== "ready" && (info[pack].phase === "downloading" || asked(pack)),
+  );
+  const missing = (["pyodide", "drawing"] as const).filter((pack) => info && info[pack].phase !== "ready" && !downloading.includes(pack));
   const megabytes = mb(missing.reduce((sum, pack) => sum + (info?.[pack].size ?? 0), 0));
   const running = downloading.length > 0 || starting;
   const failed = (["pyodide", "drawing"] as const).some((pack) => info?.[pack].phase === "failed");
+  /** Stops what is on its way, and the jobs that wait: stopping the downloads does not reach a job that has not started. */
+  async function cancel() {
+    for (const item of waiting) await invoke("jobs.cancel", { jobId: item.id }).catch(() => undefined);
+    await invoke("tools.runtimeCancel", {}).catch(() => undefined);
+    void runtime.refetch();
+  }
   async function download() {
     setStarting(true);
     setNotice("");
@@ -184,7 +197,7 @@ export function PythonPage() {
                     total: mb(runtime.data.totalBytes),
                   })}
                 </span>
-                <Button shape="round" onClick={() => void invoke("tools.runtimeCancel", {}).then(() => runtime.refetch())}>
+                <Button shape="round" onClick={() => void cancel()}>
                   {t("python.cancelDownload")}
                 </Button>
               </div>
