@@ -86,6 +86,9 @@ jobs:
         run: npm run test:scripts
       - name: Unit checks
         if: matrix.shard == 1
+        # The suite takes 2 minutes on Linux, 3.6 on Windows and 6 to 7 on the Intel Mac (run 44200146183). A hang here once
+        # ended only when the runner was lost after 50 minutes, with no log; this ends it in 15 with the files finished so far.
+        timeout-minutes: 15
         run: npm test -- --maxWorkers=2
       - name: Recorded Electron end-to-end checks
         env:
