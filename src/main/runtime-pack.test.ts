@@ -588,3 +588,43 @@ it("a look at the disk that begins while a pack is being deleted does not bring 
   expect((await looking).packs.drawing).toBe("idle");
   await expect(requireRuntime(path, "drawing")).rejects.toThrow("runtime-missing");
 });
+
+it("does not offer an update for a pack whose folders were deleted, when a look that saw an older folder ends after the deletion", async () => {
+  const path = workspace();
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => published(url)));
+  await downloadRuntime(path, ["pyodide"]);
+  // A first look verifies Python's file, so the next ones only have to `stat` it, which a test can hold.
+  await currentRuntimeStatus(path);
+  mkdirSync(join(path, "runtimes/drawing/older"), { recursive: true });
+  writeFileSync(join(path, "runtimes/drawing/older/circuits.whl"), "old");
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  const gate = () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return { held, release };
+  };
+  const deletion = gate();
+  const check = gate();
+  vi.mocked(rm).mockImplementationOnce((async (...args: Parameters<typeof actual.rm>) => {
+    await deletion.held;
+    return actual.rm(...args);
+  }) as typeof rm);
+  const removing = removeRuntimePack(path, "drawing");
+  await vi.waitFor(() => expect(vi.mocked(rm)).toHaveBeenCalled());
+  // A first look, during the deletion, finds the older folder and says the pack is outdated.
+  expect((await currentRuntimeStatus(path)).info.drawing.outdated).toBe(true);
+  // A second one sees it too and waits on Python's check.
+  vi.mocked(stat).mockImplementationOnce((async (...args: Parameters<typeof actual.stat>) => {
+    await check.held;
+    return actual.stat(...args);
+  }) as typeof stat);
+  const looking = currentRuntimeStatus(path);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  deletion.release();
+  await removing;
+  check.release();
+  // The second look is dropped, since the deletion came after it began, and the folders are gone: nothing to update.
+  expect((await looking).info.drawing).toMatchObject({ phase: "idle", outdated: false });
+});

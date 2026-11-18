@@ -379,7 +379,9 @@ export async function removeRuntimePack(workspace: string, id: PackId): Promise<
   await rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   // A look at the disk that began while the folders were being deleted may have read files that were still there: counted
   // again now that they are gone, so that look, which saw the count before this, is dropped as the one before the deletion was.
+  // A look in the meantime may also have found an older folder that is gone now, and said the pack is outdated.
   setPack(state, id, fresh(id));
+  state.outdated[id] = false;
 }
 /** Stop writes before a restore or wipe replaces this workspace. */
 export async function invalidateRuntime(workspace: string): Promise<void> {
