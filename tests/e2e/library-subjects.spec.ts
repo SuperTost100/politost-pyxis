@@ -882,8 +882,17 @@ async function allRead(page: Page) {
   await expect
     .poll(() => page.evaluate(async () => (await window.pyxis.invoke("sources.list", {})).filter((source) => source.status !== "ready").length))
     .toBe(0);
-  // The shelf draws from a list it refreshes after the read, so the covers move to their places only once none carries the
-  // mark of a file being read; until then a pointer put on one is left over another.
+  // The shelf draws from a list it refreshes after the read, so a file that was just added may not be on it yet, and the
+  // cover that appears later moves the others. Every ready file has its cover, and none carries the mark of a file being
+  // read, before a pointer is put on one. A count of zero marks is not enough: with no cover drawn there is none to carry it.
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const drawn = new Set([...document.querySelectorAll("[data-source-id]")].map((node) => node.getAttribute("data-source-id")));
+        return (await window.pyxis.invoke("sources.list", {})).filter((source) => source.status === "ready" && !drawn.has(source.id)).map((source) => source.title);
+      }),
+    )
+    .toEqual([]);
   await expect(page.locator('.px-cover-badge[data-mark="reading"]')).toHaveCount(0);
 }
 
