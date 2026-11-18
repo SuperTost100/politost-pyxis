@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import {
   cpSync,
   existsSync,
@@ -16,6 +16,36 @@ import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { attachPythonRecording } from "./python-recording";
+
+/**
+ * How long the app lets a run take: the ceiling of `RUN_CEILING_MS` in `src/main/python-runtime.ts`, which covers the load of
+ * Pyodide (`LOAD_TIMEOUT_MS` in `src/sandbox/host.js` is 60 s) and the run. A wait for a run's first output that gives up
+ * sooner fails where the app would still succeed: on the hosted Intel Mac a run was recorded working, with Python still
+ * loading 29 s after it started (`python-start` mark, run 44200146183). Keep it equal to that constant.
+ */
+const APP_RUN_CEILING_MS = 90_000;
+
+/**
+ * Waits for the first output of a run for as long as the app allows it, and ends at once, with what the page says, when the
+ * run failed in the app's own way (a notice such as the load timeout, or an output that is not the expected one).
+ */
+async function expectFirstOutput(page: Page, expected: string) {
+  const output = page.locator(".px-python pre").first();
+  const notice = page.locator(".px-python p[role=status]");
+  await expect
+    .poll(
+      async () => {
+        // A throw ends the wait at once, which a value that is not the expected one would not.
+        if ((await notice.count()) > 0) throw new Error(`the page says: ${await notice.first().innerText()}`);
+        if ((await output.count()) === 0) return "waiting";
+        const text = await output.innerText();
+        if (text !== "" && text !== expected) throw new Error(`unexpected output: ${text}`);
+        return text;
+      },
+      { timeout: APP_RUN_CEILING_MS, intervals: [250, 500, 1000] },
+    )
+    .toBe(expected);
+}
 
 async function launch(reply?: string, extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-ui-"));
@@ -76,9 +106,7 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
       if (language === "it")
         await page.getByRole("button", { name: /Esegui|Run/ }).click();
       else await code.press("ControlOrMeta+Enter");
-      await expect(page.locator(".px-python pre").first()).toHaveText("42\n", {
-        timeout: 30000,
-      });
+      await expectFirstOutput(page, "42\n");
       await expect(page.locator(".px-python pre").last()).toContainText(
         "example error",
       );
@@ -135,7 +163,7 @@ test("Ctrl+Enter pressed before the Python page knows Python is there runs the c
       document.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }));
     });
     writeFileSync(release, "");
-    await expect(page.locator(".px-python pre").first()).toHaveText("42\n", { timeout: 60000 });
+    await expectFirstOutput(page, "42\n");
   } catch (error) {
     await attachPythonRecording(app);
     throw error;
