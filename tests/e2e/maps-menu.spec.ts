@@ -534,21 +534,14 @@ test("a delete that fails says so on the tile, which stays", async () => {
 test("deleting a map still being written stops its build, and the build never brings it back", async () => {
   test.setTimeout(120_000);
   const asked = "solo le definizioni";
-  const reply = {
-    result: {
-      kind: "map",
-      nodes: ["Numeri reali", "Campo ordinato", "Estremo superiore"].map((label, i) => ({
-        id: `n${i}`,
-        label,
-        parent: i ? "n0" : null,
-        sources: "{{allPassages}}",
-      })),
-      edges: [],
-    },
-  };
+  const holdFolder = mkdtempSync(join(tmpdir(), "pyxis-maps-hold-"));
+  const release = join(holdFolder, "go");
+  // The map's reply waits for the test, so the map is still being written for as long as the test needs: a fixed delay
+  // would end on a slow runner while the menu is open, and the dialog would then be the one of a finished map.
   const { app, page, userData, errors } = await startApp({
-    PYXIS_E2E_MAP_REPLIES: JSON.stringify({ result: [reply] }),
-    PYXIS_E2E_MAP_DELAY: "3000",
+    PYXIS_E2E_MAP_REPLIES: JSON.stringify({
+      result: [held(["Numeri reali", "Campo ordinato", "Estremo superiore"], release)],
+    }),
   });
   try {
     await page.evaluate(
@@ -569,7 +562,8 @@ test("deleting a map still being written stops its build, and the build never br
     await expect(dialog).toContainText("Pyxis smette di scriverla");
     await dialog.getByRole("button", { name: "Elimina la mappa" }).click();
     await expect(page).toHaveURL(/#\/maps\?subject=an$/);
-    // The recorded reply comes after the delete; no map appears, and Attività has nothing to resume.
+    // The recorded reply is let go after the delete; no map appears, and Attività has nothing to resume.
+    writeFileSync(release, "");
     await page.waitForTimeout(4000);
     expect(await page.evaluate(() => window.pyxis.invoke("maps.list", { planId: "p-an", topicId: "t-real" }))).toEqual([]);
     const jobs = await page.evaluate(() => window.pyxis.invoke("jobs.list", {}));
@@ -579,6 +573,7 @@ test("deleting a map still being written stops its build, and the build never br
   } finally {
     await app.close();
     removeTestFolder(userData);
+    removeTestFolder(holdFolder);
   }
 });
 
@@ -1094,9 +1089,10 @@ test("a map page's menu stays open when a build of the map starts elsewhere, wit
     }],
   ];
   for (const [how, open] of ways) {
+    // The build waits for the test and is never let go, so it is running for as long as the page takes to notice it.
+    const holdFolder = mkdtempSync(join(tmpdir(), "pyxis-maps-hold-"));
     const { app, page, userData } = await startApp({
-      PYXIS_E2E_MAP_REPLIES: recorded([reply(["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"])]),
-      PYXIS_E2E_MAP_DELAY: "8000",
+      PYXIS_E2E_MAP_REPLIES: recorded([held(["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"], join(holdFolder, "go"))]),
     });
     try {
       await page.evaluate(() => {
@@ -1120,6 +1116,7 @@ test("a map page's menu stays open when a build of the map starts elsewhere, wit
     } finally {
       await app.close();
       removeTestFolder(userData);
+      removeTestFolder(holdFolder);
     }
   }
 });
