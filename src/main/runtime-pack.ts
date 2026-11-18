@@ -377,6 +377,9 @@ export async function removeRuntimePack(workspace: string, id: PackId): Promise<
   const root = join(workspace, "runtimes", id);
   for (const path of [...verified.keys()]) if (path.startsWith(root + sep)) verified.delete(path);
   await rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  // A look at the disk that began while the folders were being deleted may have read files that were still there: counted
+  // again now that they are gone, so that look, which saw the count before this, is dropped as the one before the deletion was.
+  setPack(state, id, fresh(id));
 }
 /** Stop writes before a restore or wipe replaces this workspace. */
 export async function invalidateRuntime(workspace: string): Promise<void> {
