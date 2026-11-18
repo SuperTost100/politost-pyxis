@@ -315,6 +315,22 @@ export function sourceHandlers(
   };
   // The book being read before it is added, in memory only.
   const reading = createBookReading();
+  /**
+   * Where a reader gets a free book from, in one order for the list of its chapters and for their text, so a reader always
+   * has the text of the book whose chapters it lists: the copy in the Library; else the package held in memory, whatever
+   * the catalog lists by now; else the catalog's book, from a stored copy of that exact package or from a download.
+   */
+  const resolveBook = async (id: string, signal?: AbortSignal) => {
+    const added = addedBook(id);
+    if (added) return { from: "library" as const, sourceId: added.id, title: added.title, version: added.version ?? "" };
+    const held = reading.heldFor(id);
+    if (held) return { from: "held" as const, parsed: held };
+    const book = await catalogBook(id, signal);
+    const stored = storedBook(book);
+    if (stored) return { from: "stored" as const, sourceId: stored, book };
+    const { parsed } = await reading.open(book, booksTransport, maxSourceBytes(".ptsb"), signal);
+    return { from: "downloaded" as const, parsed, book };
+  };
   const requireOcrData = async () => {
     const { state } = await ocrDataStatus(tess);
     if (state !== "ready") throw new Error(`ocr-data-${state}`);
@@ -402,19 +418,27 @@ export function sourceHandlers(
      */
     async bookPreview(input: { id: string }, signal?: AbortSignal) {
       try {
-        const added = addedBook(input.id);
-        if (added)
-          return { title: added.title, subject: "", version: added.version ?? "", chapters: smartbookChapters(db, added.id) };
-        const book = await catalogBook(input.id, signal);
-        const stored = storedBook(book);
-        if (stored)
-          return { title: book.title, subject: book.subject, version: book.version, chapters: smartbookChapters(db, stored) };
-        const { parsed } = await reading.open(book, booksTransport, maxSourceBytes(".ptsb"), signal);
+        const found = await resolveBook(input.id, signal);
+        if (found.from === "library")
+          return { title: found.title, subject: "", version: found.version, chapters: smartbookChapters(db, found.sourceId) };
+        if (found.from === "held") {
+          const { config } = found.parsed;
+          return {
+            title: config.title,
+            subject: config.subject ?? "",
+            version: typeof config.version === "string" ? config.version : "",
+            chapters: config.chapters.map((chapter) => ({ number: chapter.number, title: chapter.title })),
+          };
+        }
+        const { book } = found;
         return {
           title: book.title,
           subject: book.subject,
           version: book.version,
-          chapters: parsed.config.chapters.map((chapter) => ({ number: chapter.number, title: chapter.title })),
+          chapters:
+            found.from === "stored"
+              ? smartbookChapters(db, found.sourceId)
+              : found.parsed.config.chapters.map((chapter) => ({ number: chapter.number, title: chapter.title })),
         };
       } catch (err) {
         sourceError(err);
@@ -422,15 +446,10 @@ export function sourceHandlers(
     },
     async bookChapter(input: { id: string; chapter: number }, signal?: AbortSignal) {
       try {
-        const added = addedBook(input.id);
-        if (added) return chapterPassages(db, added.id, input.chapter).map(({ id, text }) => ({ id, text }));
-        const held = reading.heldFor(input.id);
-        if (held) return parsedChapter(held, input.chapter);
-        const book = await catalogBook(input.id, signal);
-        const stored = storedBook(book);
-        if (stored) return chapterPassages(db, stored, input.chapter).map(({ id, text }) => ({ id, text }));
-        const { parsed } = await reading.open(book, booksTransport, maxSourceBytes(".ptsb"), signal);
-        return parsedChapter(parsed, input.chapter);
+        const found = await resolveBook(input.id, signal);
+        return found.from === "library" || found.from === "stored"
+          ? chapterPassages(db, found.sourceId, input.chapter).map(({ id, text }) => ({ id, text }))
+          : parsedChapter(found.parsed, input.chapter);
       } catch (err) {
         sourceError(err);
       }

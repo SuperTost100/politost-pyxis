@@ -193,6 +193,49 @@ describe("reading a free book before it is added", () => {
     ctx.db.close();
   });
 
+  it("lists the chapters of the package it reads from, so a held version 1 is not listed from a hidden copy of version 2", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const ctx = setup();
+    // Version 1 is opened and held.
+    expect((await ctx.handlers.bookPreview({ id: "fisica-demo" })).chapters.map((chapter) => chapter.title)).toEqual(["Moti", "Forze"]);
+    // The catalog now lists version 2, with other chapters, and it is in the workspace as a copy no Library shelf shows, the
+    // way an exam that was made from it keeps it.
+    const next = zipSync({
+      "smartbook.json": strToU8(
+        JSON.stringify({
+          id: "fisica-demo",
+          title: "Fisica di prova",
+          version: "2.0.0",
+          access: "public",
+          chapters: [{ id: "cinematica", number: 1, title: "Cinematica", file: "01.md" }],
+        }),
+      ),
+      "chapters/01.md": strToU8("## p1 | Moto\nVERSIONE DUE del testo.\n"),
+    });
+    writeFileSync(join(ctx.siteDir, "books", "fisica-demo@2.0.0.ptsb"), next);
+    const catalog = JSON.parse(readFileSync(join(ctx.siteDir, "catalog.json"), "utf8"));
+    Object.assign(catalog.books[0], {
+      version: "2.0.0",
+      chapters: 1,
+      package: "books/fisica-demo@2.0.0.ptsb",
+      bytes: next.byteLength,
+      sha256: createHash("sha256").update(next).digest("hex"),
+    });
+    writeFileSync(join(ctx.siteDir, "catalog.json"), JSON.stringify(catalog));
+    vi.setSystemTime(Date.now() + 6 * 60_000);
+    const added = await ctx.handlers.importBook({ id: "fisica-demo" });
+    await expect.poll(() => (ctx.db.prepare("SELECT state FROM jobs WHERE id = ?").get(added.jobId!) as { state: string }).state, { timeout: 15_000 }).toBe("succeeded");
+    ctx.db.prepare("UPDATE sources SET library = 0 WHERE id = ?").run(added.sourceId);
+    // The reader opens again on the book it has held: the chapters it lists and the text it reads are the same package's.
+    const preview = await ctx.handlers.bookPreview({ id: "fisica-demo" });
+    const text = await ctx.handlers.bookChapter({ id: "fisica-demo", chapter: 1 });
+    expect({ chapters: preview.chapters.map((chapter) => chapter.title), first: text[0]?.text }).toEqual({
+      chapters: ["Moti", "Forze"],
+      first: SPEED,
+    });
+    ctx.db.close();
+  });
+
   it("adds a book that was never read with one download, and refuses an unknown shelf before downloading anything", async () => {
     const ctx = setup();
     await expect(ctx.handlers.importBook({ id: "fisica-demo", subjectId: "gone" })).rejects.toMatchObject({ messageKey: "sources.sort.subjectMissing" });
