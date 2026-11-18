@@ -756,23 +756,43 @@ test("open answer: keys typed while MathLive loads go to the formula the button 
       })
       .toBe("succeeded");
     // MathLive is a chunk of its own. The test holds it back until it lets it through, so the moment the formula opens
-    // without MathLive is the test's and not the runner's; a slow computer has the same moment.
+    // without MathLive is the test's and not the runner's; a slow computer has the same moment. The urls it holds are kept,
+    // so the test can see that the hold took before it types.
     await app.evaluate(({ session }) => {
-      const held = globalThis as unknown as { releaseMathLive?: () => void };
+      const held = globalThis as unknown as { releaseMathLive?: () => void; heldMathLive?: string[] };
+      held.heldMathLive = [];
       const release = new Promise<void>((resolve) => {
         held.releaseMathLive = resolve;
       });
       session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
-        if (/\/assets\/mathlive[\w.-]*\.js$/.test(details.url)) void release.then(() => callback({}));
-        else callback({});
+        if (/\/assets\/mathlive[\w.-]*\.js$/.test(details.url)) {
+          held.heldMathLive!.push(details.url);
+          void release.then(() => callback({}));
+        } else callback({});
       });
     });
+    // A page of its own: a step before this one that had loaded MathLive would leave it loaded, and nothing would be held.
     await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
+    await page.reload();
     const answer = page.getByRole("textbox", { name: "La tua risposta" });
     const steps = page.getByRole("textbox", { name: "Passaggi (facoltativi, aiutano la correzione)" });
     await answer.fill("Ciao");
     await expect(answer).toBeFocused();
     await page.getByRole("button", { name: "Inserisci formula nei passaggi" }).click();
+    // Before the key: the chunk's request is pending and the page has no MathLive, and when not, what the page knows says why.
+    const requested = () => app.evaluate(() => (globalThis as unknown as { heldMathLive: string[] }).heldMathLive.length);
+    const pageState = () =>
+      page.evaluate(() => ({
+        elementDefined: customElements.get("math-field") !== undefined,
+        fieldsInPage: document.querySelectorAll("math-field").length,
+        chunk: performance
+          .getEntriesByType("resource")
+          .filter((entry) => entry.name.includes("mathlive"))
+          .map((entry) => `${Math.round(entry.startTime)} to ${Math.round((entry as PerformanceResourceTiming).responseEnd)} ms`),
+      }));
+    await expect
+      .poll(async () => `${await requested()} held; ${JSON.stringify(await pageState())}`, { message: "the chunk's request should be pending" })
+      .toMatch(/^[1-9]\d* held; .*"elementDefined":false,"fieldsInPage":0/);
     // The formula of the steps is open and waiting for MathLive. The keys belong to it, so the answer stays as it was.
     await page.keyboard.type("x");
     await expect(answer).toHaveText("Ciao");
