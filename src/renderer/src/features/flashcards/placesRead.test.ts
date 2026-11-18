@@ -10,8 +10,8 @@ const newCardsQuery: AheadQuery<ReturnType<typeof places>> = {
   staleTime: 5_000,
 };
 const readPlacesAhead = (client: QueryClient, staleTime?: number) => readAhead(client, newCardsQuery, staleTime);
-const whenPlacesRead = (client: QueryClient, open: () => void, limit?: number) =>
-  whenRead(client, newCardsQuery, open, limit);
+const whenPlacesRead = (client: QueryClient, open: () => void, limit?: number, after?: () => void) =>
+  whenRead(client, newCardsQuery, open, limit, after);
 
 const places = (...names: string[]) => ({
   subjects: names.map((name) => ({ id: name, name, exams: [], topics: [], sources: 0 })),
@@ -83,6 +83,32 @@ describe("whenRead and readAhead", () => {
     await vi.advanceTimersByTimeAsync(1_000);
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs what must happen whichever activation opens, once for each activation, and opens only for the last", async () => {
+    let answer!: (value: ReturnType<typeof places>) => void;
+    reads.invoke.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    const [first, second] = [vi.fn(), vi.fn()];
+    const [firstAfter, secondAfter] = [vi.fn(), vi.fn()];
+    whenPlacesRead(client, first, 250, firstAfter);
+    // The button is pressed while the address-driven activation still waits, and replaces it.
+    whenPlacesRead(client, second, 250, secondAfter);
+    answer(places("Analisi"));
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+    // What the replaced activation owed the address is still done, after the dialog it did not open.
+    expect(firstAfter).toHaveBeenCalledTimes(1);
+    expect(secondAfter).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs it in the same step as the opening when the places were read already", async () => {
+    reads.invoke.mockResolvedValue(places("Analisi"));
+    readPlacesAhead(client);
+    await vi.advanceTimersByTimeAsync(0);
+    const calls: string[] = [];
+    whenPlacesRead(client, () => calls.push("open"), 250, () => calls.push("after"));
+    expect(calls).toEqual(["open", "after"]);
   });
 
   it("opens when the read fails", async () => {
