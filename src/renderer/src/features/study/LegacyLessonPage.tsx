@@ -131,6 +131,9 @@ export function LegacyLessonPage({
           ...(reopened && reading.current ? { itemId: reopened } : {}),
         },
         (event) => {
+          // A message that was already on its way when this lesson was replaced or left belongs to the lesson that is
+          // gone: it must not write over what the new one has just emptied, whose figures can use the same keys.
+          if (signal.aborted) return;
           const data = event as { type?: string; text?: string; passageIds?: string[]; citations?: string[]; key?: string; image?: string | null };
           // A figure of the lesson, drawn while the others are: shown in its place at once.
           if (data.type === "figure" && typeof data.key === "string") {
