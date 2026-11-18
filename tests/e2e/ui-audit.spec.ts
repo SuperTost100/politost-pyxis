@@ -2404,6 +2404,24 @@ function preparePacks(name: string) {
   if (name === "settings-study-pack-failed") auditPacks?.fail.add("graphviz.js");
 }
 
+/**
+ * A quiz page that is still open saves its draft when it goes, as it does for a student, and that save lands over the draft
+ * the next state seeds if the page is only left by the reload that follows the seeding. The page is left first, and the
+ * save has been answered before anything is written under it: core answers requests in the order they arrive.
+ */
+async function leaveQuiz(page: Page) {
+  if (!(await page.evaluate(() => location.hash.includes("/quiz/")))) return;
+  const heading = page.locator("h1:visible").first();
+  const before = await heading.textContent();
+  await page.evaluate(() => {
+    location.hash = "/";
+  });
+  await expect(heading).not.toHaveText(before ?? "");
+  // The page's effects have run once the frames after the change have.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+}
+
 function prepareState(name: string) {
   preparePacks(name);
   // First, so the exams the empty states hid are back before any step below writes a row that belongs to one: the lesson
@@ -5744,6 +5762,7 @@ async function walk(slice: typeof auditRoutes) {
             auditNow = key;
             try {
               await resetPacks(page, name);
+              await leaveQuiz(page);
               prepareState(name);
               await page.evaluate((route) => {
                 location.hash = route;
