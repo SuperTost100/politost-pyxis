@@ -32,7 +32,7 @@ import {
   onLibraryChange,
 } from "./ipc/server";
 import { demoJob } from "./jobs/demo";
-import { createRunner } from "./jobs/runner";
+import { createRunner, defaultLimits } from "./jobs/runner";
 import { readDebugSetting } from "./jobs/handlers";
 import { pruneJobLogs, setDebugLogRoot, setDebugOn } from "./debug/log";
 
@@ -162,13 +162,16 @@ if (!parent) {
       db,
       dev && unpackaged ? process.env["PYXIS_E2E_INSTALLER"] : undefined,
     );
+    // End-to-end seam (PYXIS_E2E_LOCAL_JOBS=0): how many local jobs may run at once, so a spec can keep one waiting in the queue.
+    const localJobsEnv = dev && process.env["PYXIS_E2E"] === "1" ? process.env["PYXIS_E2E_LOCAL_JOBS"] : undefined;
+    const localJobs = localJobsEnv ? Number(localJobsEnv) : Number.NaN;
     const runner = createRunner(
       db,
       (job) => {
         markStoppedImport(db, job);
         broadcast("job.updated", job);
       },
-      undefined,
+      Number.isInteger(localJobs) && localJobs >= 0 ? { ...defaultLimits(), local: localJobs } : undefined,
       true,
     );
     jobRunner = runner;

@@ -533,6 +533,26 @@ it("keeps the figures already drawn when it is stopped, drops the one being fixe
   expect(seen).toHaveLength(2);
 });
 
+it("asks for no fix when the stop came while the figure was still being drawn", async () => {
+  const controller = new AbortController();
+  const started = gate();
+  const release = gate();
+  const python: FigureRunner = async (code, timeout) => {
+    started.release();
+    await release.promise;
+    return raises(code, timeout);
+  };
+  const none = noFix();
+  const drawing = drawFigures(block("raise ValueError('late')", "A"), { python, fix: none.fix, signal: controller.signal });
+  await started.promise;
+  controller.abort();
+  expect((await drawing).stopped).toBe(true);
+  // The drawing fails after the stop: a correction is a call to the AI tool, and nobody is waiting for it.
+  release.release();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(none.calls).toEqual([]);
+});
+
 it("returns at once with what it has when the stop comes while a figure is still being drawn", async () => {
   const controller = new AbortController();
   const started = gate();
