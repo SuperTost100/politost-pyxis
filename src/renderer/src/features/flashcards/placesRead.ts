@@ -20,9 +20,11 @@ const latest = new WeakMap<QueryClient, Map<string, object>>();
  * making again is there already: `open` runs in the same step, with the click. Otherwise the read is made and `open` waits for it, up to `limit`
  * milliseconds (and for good if it fails), so a slow read never holds the dialog back; the dialog copes with opening
  * before it arrives. Only the last activation for a read opens: one that comes while another still waits takes its
- * place, so a dialog the first one opened and the student closed is not opened again by the second.
+ * place, so a dialog the first one opened and the student closed is not opened again by the second. `after` is not
+ * replaceable: it runs once for every activation, right after its `open` or where `open` would have been, for what the
+ * activation owes beyond the dialog (taking its parameters out of the address).
  */
-export function whenRead<T>(client: QueryClient, query: AheadQuery<T>, open: () => void, limit = 250): void {
+export function whenRead<T>(client: QueryClient, query: AheadQuery<T>, open: () => void, limit = 250, after?: () => void): void {
   const calls = latest.get(client) ?? new Map<string, object>();
   latest.set(client, calls);
   const key = JSON.stringify(query.queryKey);
@@ -30,13 +32,18 @@ export function whenRead<T>(client: QueryClient, query: AheadQuery<T>, open: () 
   calls.set(key, mine);
   const read = client.getQueryCache().find({ queryKey: query.queryKey });
   // A read that is fresh but being made again (a page asked for it afresh) is not the state of the workspace yet.
-  if (read && !read.isStaleByTime(query.staleTime) && !client.isFetching({ queryKey: query.queryKey })) return open();
+  if (read && !read.isStaleByTime(query.staleTime) && !client.isFetching({ queryKey: query.queryKey })) {
+    open();
+    after?.();
+    return;
+  }
   let opened = false;
   const go = () => {
     if (opened) return;
     opened = true;
     clearTimeout(timer);
     if (calls.get(key) === mine) open();
+    after?.();
   };
   const timer = setTimeout(go, limit);
   // A stale time of 0 makes this join the read on its way instead of answering with the cached one.

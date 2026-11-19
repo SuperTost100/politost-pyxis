@@ -31,6 +31,7 @@ import { EngineUsage } from "./EngineUsage";
 import { ToolList, type Tool, type ToolMenu } from "./ToolList";
 import { useEngineSetup } from "./useEngineSetup";
 import "./EnginesPanel.css";
+import { outbound } from "../../lib/queryClient";
 
 const advancedKey = "pyxis.engines.advanced";
 type Engine = RequestOutput<"engines.overview">[number];
@@ -177,6 +178,7 @@ export function EnginesPanel() {
       retry: false,
       enabled: !provider.endsWith("-api") || !!keys.data?.configured.includes(vendorOf(provider)),
       queryFn: () => invoke("engines.models", { provider }),
+      ...outbound,
     })),
   });
   const modelsByProvider = Object.fromEntries(

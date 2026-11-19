@@ -150,7 +150,7 @@ class Walker {
   private readonly ordered = new Set<string>();
   /** The first `layout` a subgraph set, for the end of the walk: it is refused only when the root graph set none. */
   private subgraphLayout: string | null = null;
-  /** A `key` attribute was written somewhere: in a strict graph it makes an edge of a pair that is already there. */
+  /** A `key` was written on an edge statement: in a strict graph it makes an edge of a pair that is already there. */
   private keyed = false;
   private empties = 0;
   /** Where the graph's body starts: just after its opening brace. */
@@ -253,14 +253,16 @@ class Walker {
       this.at = start;
     }
     let previous = this.operand(named);
+    let edges = false;
     while (this.peek()?.kind === "edgeop") {
+      edges = true;
       this.at++;
       const following = this.operand(named);
       this.join(previous, following);
       if (this.limits && this.edges > DOT_EDGES_MAX) this.tooMany("edges", this.edges, DOT_EDGES_MAX);
       previous = following;
     }
-    while (this.isPunct("[")) this.attributes("other");
+    while (this.isPunct("[")) this.attributes("other", edges);
   }
 
   /**
@@ -369,7 +371,8 @@ class Walker {
   }
 
   /** `[a=b, c=d; e]`, read from the opening bracket. `owner`: whose attributes they are, as `attribute` reads it. */
-  private attributes(owner: Owner): void {
+  /** `edgeStatement`: the list follows an edge statement, where a `key` is an edge's (and not a node's, a graph's or a default). */
+  private attributes(owner: Owner, edgeStatement = false): void {
     this.expect("[");
     for (;;) {
       const token = this.peek();
@@ -386,8 +389,8 @@ class Walker {
       const name = this.atom();
       if (this.isPunct("=")) {
         this.at++;
-        this.attribute(name, this.value(), owner);
-      } else this.attribute(name, "true", owner);
+        this.attribute(name, this.value(), owner, edgeStatement);
+      } else this.attribute(name, "true", owner, edgeStatement);
     }
   }
 
@@ -395,9 +398,11 @@ class Walker {
    * `owner` says whose the attribute is: the root graph's, another graph's (a subgraph or a cluster), or anything else
    * (a node, an edge, or a default for them).
    */
-  private attribute(name: string, value: string, owner: Owner): void {
+  private attribute(name: string, value: string, owner: Owner, edgeStatement = false): void {
     const key = name.toLowerCase();
-    if (key === "key") this.keyed = true;
+    // Graphviz reads an edge's key from `key`, in exactly that case, on an edge statement. In a default (`edge [key=k]`), on a
+    // node or a graph, or as `KEY`, it names no edge (measured on the pack's Graphviz, see figure-kinds.test.ts).
+    if (name === "key" && edgeStatement) this.keyed = true;
     if (REFUSED.has(key) || key.endsWith("url") || key.endsWith("href"))
       this.fail(
         `the attribute ${name} is not allowed: it reaches for a file, a link or an element name, so remove it`,

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { MenuProps } from "antd";
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -19,6 +19,7 @@ import { SelectionMenu } from "./SelectionMenu";
 import { clampPage, messageText, pageKey, planPanel, type PanelPlan, type PanelReason, type PanelSource } from "./sourcePanel";
 import type { PdfOutcome } from "./PdfSourcePage";
 import "./SourceViewer.css";
+import { outbound } from "../lib/queryClient";
 
 const PdfSourcePage = lazy(() => import("./PdfSourcePage"));
 // Markdown and math load only when the panel first shows text.
@@ -91,6 +92,7 @@ export function useSourceView(
     retry: false,
     staleTime: Number.POSITIVE_INFINITY,
     queryFn: () => invoke("sources.bookPreview", { id: bookId ?? "" }),
+    ...outbound,
   });
   const read = bookId ? book : source;
   const sources = useSources(location != null);
@@ -529,11 +531,16 @@ function TextView({ location, source, plan, page, onClose }: { location: SourceL
   }, [markdownReady]);
   const passageId = location.passageId;
   const bookId = location.bookId;
+  const client = useQueryClient();
   const rows = useQuery({
     queryKey: ["source-panel-text", source.sourceId, plan.unit, page, passageId, location.chapter, location.paragraph],
     queryFn: async () => {
-      // A book not in the Library has no stored text: its chapter is read from the package core holds in memory.
-      if (bookId) return (await invoke("sources.bookChapter", { id: bookId, chapter: page })).map((row) => ({ ...row, current: false }));
+      // A book not in the Library has no stored text: its chapter is read from the package core holds in memory, the one the
+      // chapters were listed from (the preview names it), so a list and the text under it are of the same version.
+      if (bookId) {
+        const listed = client.getQueryData<{ package: string | null }>(["book-preview", bookId])?.package;
+        return (await invoke("sources.bookChapter", { id: bookId, chapter: page, package: listed })).map((row) => ({ ...row, current: false }));
+      }
       if (plan.unit === "page" || plan.unit === "slide") {
         const lines = await invoke("sources.panelPage", { sourceId: passageId ? undefined : source.sourceId, passageId, unit: plan.unit, n: page });
         return lines.map((line) => ({ id: line.id, text: line.text, current: line.current }));
@@ -549,6 +556,13 @@ function TextView({ location, source, plan, page, onClose }: { location: SourceL
       return all.map((row) => ({ id: row.id, text: row.text, current: row.current || row.id === passageId }));
     },
   });
+  // The book was updated while it was open and its old version can no longer be read: the chapters are listed again from the
+  // version there is, and the page is read again from it.
+  const changed = Boolean(bookId) && rows.isError && bookErrorKey(rows.error) === "sources.books.changed";
+  useEffect(() => {
+    if (!changed) return;
+    void client.invalidateQueries({ queryKey: ["book-preview", bookId] }).then(() => rows.refetch());
+  }, [changed]);
   const list = rows.data ?? [];
   useEffect(() => {
     holder.current?.querySelector(".is-current")?.scrollIntoView({ block: "center" });
@@ -571,7 +585,7 @@ function TextView({ location, source, plan, page, onClose }: { location: SourceL
   return (
     <>
       {own ? <p className="source-view-note">{t(own === "slides" ? "sources.viewer.ownAppSlides" : "sources.viewer.ownApp")}</p> : null}
-      {rows.isError ? <LoadError onRetry={() => void rows.refetch()}>{t("sources.viewerFailed")}</LoadError> : null}
+      {rows.isError ? <LoadError onRetry={() => void rows.refetch()}>{t(changed ? "sources.books.changed" : "sources.viewerFailed")}</LoadError> : null}
       {rows.isPending || !markdownReady ? (
         <PagePlaceholder />
       ) : bookId ? (

@@ -109,18 +109,25 @@ export function FlashcardsHome() {
     if (!claimOnce(sessionOf(), "new-card", location.key)) return;
     const subjectId = params.get("subject") ?? undefined;
     // The dialog opens once its subjects are read, so it starts in its first field; the address is cleaned then too.
-    whenPlacesRead(client, () => {
-      if (!stillHere()) return;
-      setDialog({ side, subjectId });
-      setParams(
-        (next) => {
-          next.delete("new");
-          next.delete("subject");
-          return next;
-        },
-        { replace: true },
-      );
-    });
+    // The address is cleaned whichever activation opens: a click on the button that replaces this one must not leave the
+    // two parameters behind.
+    whenPlacesRead(
+      client,
+      () => {
+        if (stillHere()) setDialog({ side, subjectId });
+      },
+      () => {
+        if (!stillHere()) return;
+        setParams(
+          (next) => {
+            next.delete("new");
+            next.delete("subject");
+            return next;
+          },
+          { replace: true },
+        );
+      },
+    );
   }, [params]);
   // The subjects are read as the page opens, and again when the pointer or the focus reaches a button that opens the
   // dialog, so the dialog finds them when it opens.
