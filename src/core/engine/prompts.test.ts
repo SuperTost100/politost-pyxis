@@ -45,7 +45,7 @@ describe("prompt templates", () => {
     // be drawn come in the context block of each message. The lesson templates take the figure instruction from the
     // partial too and keep their versions: a part's cache key holds the version of lesson.part, so a new one would mark
     // every written part as older.
-    expect(loadTemplate("chat.tutor").version).toBe("1");
+    expect(loadTemplate("chat.tutor").version).toBe("2");
     expect(loadTemplate("lesson.part").version).toBe("part-1");
     for (const id of ["lesson.write", "lesson.part", "chat.tutor"] as const) {
       // The instruction is the partial on a line of its own, so its tagged lines can be left out one by one.

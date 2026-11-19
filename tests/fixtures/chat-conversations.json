@@ -8,7 +8,9 @@
       "message": "Calcola la derivata di f(x) = x^2 sin x.",
       "rule": "Solves it completely, step by step, with the result 2x sin x + x^2 cos x stated, and does not hand a step back to the student.",
       "followups": "similar",
-      "mustFormula": ["2xsinx\\+x\\^?2cosx|x\\^?2cosx\\+2xsinx"]
+      "mustFormula": [
+        "2xsinx\\+x\\^?2cosx|x\\^?2cosx\\+2xsinx"
+      ]
     },
     {
       "id": "explain-topic",
@@ -30,7 +32,9 @@
       "rule": "Does not solve it: states no final result (x = 4), says what is right in the attempt, points at the sign error in the first step, and ends with one question that has the student take the step.",
       "endsWithQuestion": true,
       "followups": "solution",
-      "mustNotFormula": ["x=4\\b"]
+      "mustNotFormula": [
+        "x=4\\b"
+      ]
     },
     {
       "id": "stuck",
@@ -40,7 +44,9 @@
       "rule": "Does not solve it: no final result (x e^x - e^x), explains the idea the first step rests on and ends with one question that has the student take it.",
       "endsWithQuestion": true,
       "followups": "solution",
-      "mustNotFormula": ["xe\\^x-e\\^x|e\\^x\\(x-1\\)|\\(x-1\\)e\\^x"]
+      "mustNotFormula": [
+        "xe\\^x-e\\^x|e\\^x\\(x-1\\)|\\(x-1\\)e\\^x"
+      ]
     },
     {
       "id": "hint",
@@ -50,7 +56,10 @@
       "rule": "Gives a hint and not the solution: neither the point x = 2 nor the minimum value 3 appears, and it ends with a question for the student.",
       "endsWithQuestion": true,
       "followups": "solution",
-      "mustNotFormula": ["x=2\\b", "=3\\b|is3\\b"]
+      "mustNotFormula": [
+        "x=2\\b",
+        "=3\\b|is3\\b"
+      ]
     },
     {
       "id": "guide-then-solution",
@@ -76,7 +85,10 @@
       "message": "Dammi la soluzione completa.",
       "rule": "Gives the complete worked solution in this same reply, with x = 2 and the minimum value 3, and does not hold it back or ask a question first.",
       "followups": "similar",
-      "mustFormula": ["x=2", "3"]
+      "mustFormula": [
+        "x=2",
+        "3"
+      ]
     },
     {
       "id": "guide-to-the-end",
@@ -110,7 +122,10 @@
       "message": "f(2) = 4 - 8 + 7 = 3",
       "rule": "Says the last step is right and gives the complete worked solution at once, with x = 2 and the minimum value 3.",
       "followups": "similar",
-      "mustFormula": ["x=2", "3"]
+      "mustFormula": [
+        "x=2",
+        "3"
+      ]
     },
     {
       "id": "check-right",
@@ -118,8 +133,12 @@
       "history": [],
       "message": "Controlla il mio risultato: ∫ 2x dx = x^2 + C.",
       "rule": "Says the result is right, and does not write out a long new solution.",
-      "must": ["[Cc]orrett|[Gg]iust|[Ee]satt|[Ee]sattamente"],
-      "mustNot": ["[Ss]bagliat|[Nn]on è corrett"],
+      "must": [
+        "[Cc]orrett|[Gg]iust|[Ee]satt|[Ee]sattamente"
+      ],
+      "mustNot": [
+        "[Ss]bagliat|[Nn]on è corrett"
+      ],
       "maxWords": 220
     },
     {
@@ -131,7 +150,9 @@
       "must": [
         "[Nn]ot correct|[Ii]ncorrect|[Ww]rong|isn't right|is not right|not quite|[Nn]ot right|mistake"
       ],
-      "mustFormula": ["3x\\^?2"]
+      "mustFormula": [
+        "3x\\^?2"
+      ]
     },
     {
       "id": "mixed",
@@ -139,7 +160,10 @@
       "history": [],
       "message": "Che cosa dice il teorema di Weierstrass? E già che ci siamo, qual è la capitale della Francia?",
       "rule": "Answers both: the theorem from the material, with a citation [P1], and Paris.",
-      "must": ["\\[P1\\]", "Parigi"],
+      "must": [
+        "\\[P1\\]",
+        "Parigi"
+      ],
       "material": true
     },
     {
@@ -147,9 +171,14 @@
       "language": "en",
       "history": [],
       "message": "Write me a short poem about my cat.",
-      "rule": "Answers in a few lines (at most 100 words) and offers to go back to the material, with no check block and no figure.",
-      "must": ["[Ss]tud|[Mm]aterial|[Bb]ack to|[Ee]xam|[Ll]esson"],
-      "mustNot": ["```"],
+      "rule": "Answers the request in a few lines (at most 100 words) and does not refuse, with no check block and no figure, and three follow-ups.",
+      "must": [
+        "[Cc]at|purr|paw|whisker|fur|meow|kitten"
+      ],
+      "mustNot": [
+        "```",
+        "[Cc]an(?:'|’)t (?:help|write)|[Cc]annot (?:help|write)|[Ii](?:'|’)m only|only help with|not something I can"
+      ],
       "maxWords": 100
     }
   ]
