@@ -123,17 +123,17 @@ A PDF is drawn by pdf.js in the window from bytes core reads on request (`source
 
 Core checks a file's size before it allocates a buffer for it. An import job reads its file in the extract worker, two at a time across all jobs; the next step stores the passages under the hash the file was queued with, without reading the file into core again.
 
-| Input                     | Limit                                                     |
-| ------------------------- | --------------------------------------------------------- |
-| Document import           | 256 MB                                                    |
-| Photo import              | 40 MB                                                     |
+| Input                     | Limit                                                          |
+| ------------------------- | -------------------------------------------------------------- |
+| Document import           | 256 MB                                                         |
+| Photo import              | 40 MB                                                          |
 | Chat attachment           | The Library's: 256 MB a document, 40 MB a photo, no time limit |
-| One ZIP entry             | 64 MiB inflated                                           |
-| `.docx` or `.pptx`, total | 128 MiB inflated                                          |
-| Smartbook, total          | 256 MiB inflated                                          |
-| Folder import (a copy)    | 2,000 files, 12 levels deep, 20,000 entries read          |
-| Linked folder             | No file cap, 32 levels deep                               |
-| Extract worker heap       | 2 GiB of V8 heap                                          |
+| One ZIP entry             | 64 MiB inflated                                                |
+| `.docx` or `.pptx`, total | 128 MiB inflated                                               |
+| Smartbook, total          | 256 MiB inflated                                               |
+| Folder import (a copy)    | 2,000 files, 12 levels deep, 20,000 entries read               |
+| Linked folder             | No file cap, 32 levels deep                                    |
+| Extract worker heap       | 2 GiB of V8 heap                                               |
 
 The IPC server reads the size from `fstat` and refuses a file that grows past its cap during the read.
 
