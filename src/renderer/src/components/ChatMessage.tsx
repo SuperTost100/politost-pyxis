@@ -55,7 +55,7 @@ export function ChatMessage({
   onReact?: (reaction: "up" | "down") => void;
   /** The student stopped this reply before it finished. */
   stopped?: boolean;
-  /** Why the engine cut the reply short. Such a reply is kept and can be continued. */
+  /** Why the engine cut the reply short. Such a reply is kept and can be continued, as one the student stopped is. */
   failure?: string;
   /** What fixes the failure, such as signing in to the engine again. */
   failureAction?: { label: string; onClick: () => void };
@@ -98,9 +98,9 @@ export function ChatMessage({
         <div className="px-msg-text">
           <RunnablePython.Provider value>{children}</RunnablePython.Provider>
         </div>
-        {failure ? (
+        {failure || (stopped && onContinue) ? (
           <div className="px-msg-cut">
-            <p className="px-msg-status">{failure}</p>
+            {failure ? <p className="px-msg-status">{failure}</p> : null}
             {failureAction ? (
               <AntButton
                 shape="round"

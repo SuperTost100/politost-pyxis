@@ -105,15 +105,19 @@ const {
   setApiKeys,
   setScratch,
   CONVERSATION_IDLE_MS,
+  cursorSessionLost,
+  setCursorChatsRoot,
 } = await import("./funnel");
 
 const { readJobLog, setDebugLogRoot, setDebugOn } = await import("../debug/log");
 const { withUsageScope } = await import("./usage");
-const { mkdtempSync, rmSync } = await import("node:fs");
+const { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = await import("node:fs");
 const { tmpdir } = await import("node:os");
 const { join } = await import("node:path");
 
 beforeEach(() => {
+  // No Cursor folder on this machine decides a test; the tests of the check give it one.
+  setCursorChatsRoot(null);
   run.mockReset();
   closeSession.mockReset();
   setScratch("/scratch");
@@ -233,79 +237,179 @@ describe("runTurn", () => {
 });
 
 describe("chat conversations", () => {
-  const chat = (followUp: string, provider = "claude" as const, system = "tutor") => ({
-    selection: { provider, model: "m" },
+  type Provider = "claude" | "codex" | "agent" | "antigravity";
+  const chat = (
+    followUp: string,
+    options: { provider?: Provider; session?: { provider: string; id: string; cwd: string }; system?: string } = {},
+  ) => ({
+    selection: { provider: options.provider ?? "claude", model: "m" },
     prompt: `whole context, then ${followUp}`,
-    system,
-    conversation: { key: "chat-1", followUp },
+    system: options.system ?? "tutor",
+    conversation: { key: "chat-1", followUp, session: options.session ?? null },
+  });
+  const stored = (provider: string, id = "s-1") => ({ provider, id, cwd: "/scratch" });
+
+  it("sends the whole context for a chat with no session, and reports the session id to store", async () => {
+    run.mockResolvedValue({ text: "answer" });
+    const first = await runTurn(chat("first"));
+    const one = run.mock.calls[0]![0];
+    expect(one.prompt).toBe("whole context, then first");
+    expect(one.sessionId).toBeUndefined();
+    expect(first).toMatchObject({ sessionId: "s-1", cwd: "/scratch", continued: false });
   });
 
-  it("sends the whole context once, then only the new question in the same session", async () => {
+  it.each(["claude", "codex", "agent", "antigravity"] as const)(
+    "continues the stored %s session by id, in the same folder, with only the new message",
+    async (provider) => {
+      run.mockResolvedValue({ text: "answer" });
+      const result = await runTurn(chat("second", { provider, session: stored(provider) }));
+      const two = run.mock.calls[0]![0];
+      expect(two.prompt).toBe("second");
+      expect(two.sessionId).toBe("s-1");
+      expect(result).toMatchObject({ sessionId: "s-1", continued: true });
+      // The chat's process stays up between questions.
+      expect(closeSession).not.toHaveBeenCalled();
+    },
+  );
+
+  it("leaves the system prompt out of a turn in a session Cursor Agent or Antigravity holds, which got it in the first prompt", async () => {
     run.mockResolvedValue({ text: "answer" });
-    await runTurn(chat("first"));
-    await runTurn(chat("second"));
-    const [one, two] = run.mock.calls.map(([request]) => request);
-    expect(one?.prompt).toBe("whole context, then first");
-    expect(one?.sessionId).toBeUndefined();
-    expect(two?.prompt).toBe("second");
-    expect(two?.sessionId).toBe("s-1");
-    // The chat's process stays up between questions.
-    expect(closeSession).not.toHaveBeenCalled();
+    for (const provider of ["agent", "antigravity", "claude", "codex"] as const) {
+      await runTurn(chat("next", { provider, session: stored(provider) }));
+      await runTurn(chat("first", { provider }));
+    }
+    const systems = run.mock.calls.map(([request]) => (request as { system?: string }).system);
+    // Continued, then new, for each provider in turn.
+    expect(systems).toEqual([undefined, "tutor", undefined, "tutor", "tutor", "tutor", "tutor", "tutor"]);
+  });
+
+  it("goes on in the session it tracked for a caller that stores none, such as a lesson's tool rounds", async () => {
+    run.mockResolvedValue({ text: "answer" });
+    for (const provider of ["claude", "agent"] as const) {
+      run.mockClear();
+      const round = (followUp: string) => ({
+        selection: { provider, model: "m" },
+        prompt: `whole transcript, then ${followUp}`,
+        system: "tutor",
+        conversation: { key: `lesson-${provider}`, followUp },
+      });
+      await runTurn(round("first"));
+      await runTurn(round("second"));
+      expect(run.mock.calls[1]![0], provider).toMatchObject({ prompt: "second", sessionId: "s-1" });
+    }
+  });
+
+  it("builds the whole prompt only when it is sent: not for a turn that resumes, once for a fresh start or a lost session", async () => {
+    let reads = 0;
+    const lazy = (session: { provider: string; id: string; cwd: string } | null) => ({
+      selection: { provider: "claude" as const, model: "m" },
+      get prompt() {
+        reads += 1;
+        return "whole context";
+      },
+      conversation: { key: "chat-1", followUp: "second", session },
+    });
+    run.mockResolvedValue({ text: "answer" });
+    await runTurn(lazy(stored("claude")));
+    expect(reads).toBe(0);
+    await runTurn(lazy(null));
+    expect(reads).toBe(1);
+    run.mockReset();
+    run
+      .mockResolvedValueOnce({ error: new Error("No conversation found with session ID: s-1") })
+      .mockResolvedValueOnce({ text: "answer" });
+    await runTurn(lazy(stored("claude")));
+    expect(reads).toBe(2);
+  });
+
+  it("starts a new session when the tool answers a resume under another session id", async () => {
+    run.mockResolvedValueOnce({ text: "no history", sessionId: "s-other" }).mockResolvedValueOnce({ text: "answer", sessionId: "s-new" });
+    const result = await runTurn(chat("second", { session: stored("claude") }));
+    expect(run.mock.calls.map(([request]) => request.sessionId)).toEqual(["s-1", undefined]);
+    expect(run.mock.calls[1]![0].prompt).toBe("whole context, then second");
+    expect(result).toMatchObject({ text: "answer", sessionId: "s-new", continued: false });
   });
 
   it("keeps an API conversation as history, so the cached start stays the same", async () => {
     run.mockResolvedValue({ text: "answer" });
-    await runTurn({ ...chat("first", "anthropic-api" as never), cache: true });
-    await runTurn({ ...chat("second", "anthropic-api" as never), cache: true });
+    await runTurn({ ...chat("first", { provider: "anthropic-api" as never }), cache: true });
+    await runTurn({ ...chat("second", { provider: "anthropic-api" as never }), cache: true });
     const two = run.mock.calls[1]?.[0];
     expect(two).toMatchObject({ prompt: "second", sessionId: "s-1", cache: true });
   });
 
-  it("gives Cursor Agent and Antigravity the whole prompt every time", async () => {
+  it("starts a new session, with the whole prompt, on another tool or in another folder", async () => {
     run.mockResolvedValue({ text: "answer" });
-    await runTurn(chat("first", "agent" as never));
-    await runTurn(chat("second", "agent" as never));
-    const two = run.mock.calls[1]?.[0];
-    expect(two?.prompt).toBe("whole context, then second");
-    expect(two?.sessionId).toBeUndefined();
+    const moved = await runTurn(chat("second", { provider: "codex", session: stored("claude") }));
+    expect(run.mock.calls[0]![0]).toMatchObject({ prompt: "whole context, then second" });
+    expect(run.mock.calls[0]![0].sessionId).toBeUndefined();
+    expect(moved.continued).toBe(false);
+    setScratch("/other");
+    await runTurn(chat("third", { session: stored("claude") }));
+    expect(run.mock.calls[1]![0].sessionId).toBeUndefined();
+    expect(run.mock.calls[1]![0].prompt).toBe("whole context, then third");
   });
 
-  it("starts over on another engine or system prompt, and stops the old process", async () => {
+  it("continues the session when the model or the effort changes", async () => {
     run.mockResolvedValue({ text: "answer" });
-    await runTurn(chat("first"));
-    await runTurn(chat("second", "codex" as never));
-    expect(closeSession).toHaveBeenCalledWith("s-1", "claude");
-    expect(run.mock.calls[1]?.[0]).toMatchObject({
-      prompt: "whole context, then second",
+    await runTurn({
+      ...chat("second", { session: stored("claude") }),
+      selection: { provider: "claude", model: "other-model", effort: "high" },
     });
-    await runTurn(chat("third", "codex" as never, "socratic tutor"));
-    expect(closeSession).toHaveBeenCalledWith("s-2", "codex");
-    expect(run.mock.calls[2]?.[0].sessionId).toBeUndefined();
+    expect(run.mock.calls[0]![0]).toMatchObject({ prompt: "second", sessionId: "s-1" });
   });
 
-  it("starts over after ten idle minutes", async () => {
-    vi.useFakeTimers();
-    run.mockResolvedValue({ text: "answer" });
-    await runTurn(chat("first"));
-    vi.setSystemTime(Date.now() + CONVERSATION_IDLE_MS + 1);
-    await runTurn(chat("second"));
-    expect(run.mock.calls[1]?.[0].prompt).toBe("whole context, then second");
-    expect(closeSession).toHaveBeenCalledWith("s-1", "claude");
+  it("starts over with the whole prompt when the tool no longer holds the session", async () => {
+    run
+      .mockResolvedValueOnce({ error: new Error("Claude Code failed (error_during_execution). No conversation found with session ID: s-1") })
+      .mockResolvedValueOnce({ text: "answer", sessionId: "s-new" });
+    const result = await runTurn(chat("second", { session: stored("claude") }));
+    expect(run.mock.calls.map(([request]) => request.sessionId)).toEqual(["s-1", undefined]);
+    expect(run.mock.calls[1]![0].prompt).toBe("whole context, then second");
+    expect(result).toMatchObject({ text: "answer", sessionId: "s-new", continued: false });
+    // A failure that says nothing about the session is not retried.
+    run.mockReset();
+    run.mockResolvedValueOnce({ error: new Error("usage limit") });
+    await expect(runTurn(chat("third", { session: stored("claude") }))).rejects.toThrow("usage limit");
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
-  it("ends after a stopped or failed turn", async () => {
+  it("reports the session as soon as the tool names it, so a turn the student stops can be continued", async () => {
+    const heard: string[] = [];
+    run.mockResolvedValueOnce({ text: "part", finishReason: "cancelled" });
+    await runTurn({
+      ...chat("first"),
+      conversation: { key: "chat-1", followUp: "first", onSession: (id, provider, cwd) => heard.push(`${provider} ${id} ${cwd}`) },
+    }).catch(() => undefined);
+    expect(heard).toEqual(["claude s-1 /scratch"]);
+  });
+
+  it("keeps the stored session after a stopped or failed turn, and stops no process for it", async () => {
     run.mockResolvedValueOnce({ text: "part", finishReason: "cancelled" });
     await runTurn(chat("first")).catch(() => undefined);
-    expect(closeSession).toHaveBeenCalledWith("s-1", "claude");
-    run.mockResolvedValueOnce({ text: "answer" });
-    await runTurn(chat("second"));
-    expect(run.mock.calls[1]?.[0].sessionId).toBeUndefined();
     run.mockResolvedValueOnce({ error: new Error("boom") });
-    await runTurn(chat("third")).catch(() => undefined);
-    expect(closeSession).toHaveBeenCalledWith("s-2", "claude");
+    await runTurn(chat("second", { session: stored("claude") })).catch(() => undefined);
+    expect(closeSession).not.toHaveBeenCalled();
+    run.mockResolvedValueOnce({ text: "answer" });
+    await runTurn(chat("third", { session: stored("claude") }));
+    expect(run.mock.calls[2]?.[0]).toMatchObject({ prompt: "third", sessionId: "s-1" });
   });
 
-  it("stops the process when the chat is left, after a turn still running", async () => {
+  it("starts an API conversation over after ten idle minutes and after a failed turn", async () => {
+    vi.useFakeTimers();
+    run.mockResolvedValue({ text: "answer" });
+    await runTurn(chat("first", { provider: "anthropic-api" as never }));
+    vi.setSystemTime(Date.now() + CONVERSATION_IDLE_MS + 1);
+    await runTurn(chat("second", { provider: "anthropic-api" as never }));
+    expect(run.mock.calls[1]?.[0].prompt).toBe("whole context, then second");
+    run.mockResolvedValueOnce({ error: new Error("boom") });
+    await runTurn(chat("third", { provider: "anthropic-api" as never })).catch(() => undefined);
+    run.mockResolvedValueOnce({ text: "answer" });
+    await runTurn(chat("fourth", { provider: "anthropic-api" as never }));
+    expect(run.mock.calls[3]?.[0].sessionId).toBeUndefined();
+  });
+
+  it("stops the live process when the chat is left, after a turn still running, and keeps the stored session", async () => {
     run.mockResolvedValueOnce({ text: "answer" });
     await runTurn(chat("first"));
     endConversation("chat-1");
@@ -318,13 +422,34 @@ describe("chat conversations", () => {
           release = () => resolve({ text: "answer" });
         }),
     );
-    const running = runTurn(chat("second"));
+    const running = runTurn(chat("second", { session: stored("claude") }));
     await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2));
     endConversation("chat-1");
     expect(closeSession).not.toHaveBeenCalled();
     release();
     await running;
-    expect(closeSession).toHaveBeenCalledWith("s-2", "claude");
+    expect(closeSession).toHaveBeenCalledWith("s-1", "claude");
+    // The next turn resumes the session in a new process.
+    run.mockResolvedValueOnce({ text: "answer" });
+    await runTurn(chat("third", { session: stored("claude") }));
+    expect(run.mock.calls[2]![0]).toMatchObject({ prompt: "third", sessionId: "s-1" });
+  });
+
+  it("records the tokens of a stopped turn when the tool reports them", async () => {
+    const recorded: Array<{ provider: string; inputTokens: number; outputTokens?: number }> = [];
+    const { setUsageRecorder } = await import("./usage");
+    setUsageRecorder((usage) => recorded.push(usage));
+    try {
+      run.mockResolvedValueOnce({ text: "part", finishReason: "cancelled", usage: { inputTokens: 42_836, outputTokens: 20, cachedInputTokens: 0 } });
+      await runTurn(chat("first", { provider: "codex" })).catch(() => undefined);
+      // Claude Code reports no usage for a cancelled turn, so no row is made.
+      run.mockResolvedValueOnce({ text: "part", finishReason: "cancelled" });
+      await runTurn(chat("second", { provider: "claude" })).catch(() => undefined);
+    } finally {
+      setUsageRecorder(undefined);
+    }
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ provider: "codex", inputTokens: 42_836, outputTokens: 20 });
   });
 
   it("reports a cancelled result as an abort, like a thrown cancellation", async () => {
@@ -353,30 +478,6 @@ describe("chat conversations", () => {
       signal: stop.signal,
     }).catch((err: unknown) => err);
     expect(isAbort(error)).toBe(true);
-  });
-
-  it("starts over after a turn ran beside the chat's session, so the next question sees that exchange", async () => {
-    run.mockResolvedValueOnce({ text: "answer" });
-    await runTurn(chat("first"));
-    let release!: () => void;
-    run.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          release = () => resolve({ text: "slow answer" });
-        }),
-    );
-    const slow = runTurn(chat("second"));
-    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2));
-    // A second question while the first still runs goes outside the session.
-    run.mockResolvedValueOnce({ text: "beside" });
-    await runTurn(chat("overlap"));
-    release();
-    await slow;
-    run.mockResolvedValueOnce({ text: "answer" });
-    await runTurn(chat("next"));
-    const next = run.mock.calls[3]![0];
-    expect(next.sessionId).toBeUndefined();
-    expect(next.prompt).toBe("whole context, then next");
   });
 
   it("stops every live process when the app quits", () => {
@@ -468,6 +569,124 @@ describe("schema repairs", () => {
         expect(repair.sessionId).toBeUndefined();
         expect(repair.prompt).toContain("name a colour");
       }
+    }
+  });
+});
+
+describe("a Cursor Agent chat that Cursor no longer holds", () => {
+  const recorded = JSON.parse(readFileSync("tests/fixtures/cursor-resume-unknown-id.json", "utf8")) as {
+    requested: string;
+    events: Array<{ session_id?: string }>;
+  };
+  const folder = () => mkdtempSync(join(tmpdir(), "pyxis-cursor-chats-"));
+  const chatTurn = (id: string) => ({
+    selection: { provider: "agent" as const, model: "m" },
+    prompt: "whole context, then second",
+    system: "tutor",
+    conversation: { key: "chat-1", followUp: "second", session: { provider: "agent", id, cwd: "/scratch" } },
+  });
+
+  it("gives no sign in the stream: Cursor answers an unknown id as a new chat under the same id", () => {
+    expect(new Set(recorded.events.map((event) => event.session_id))).toEqual(new Set([recorded.requested]));
+  });
+
+  it("is told from Cursor's chat folders: lost only when they hold other chats and not this one", () => {
+    const root = folder();
+    try {
+      setCursorChatsRoot(root);
+      // Nothing there, as with another layout: the chat counts as held.
+      expect(cursorSessionLost("chat-a")).toBe(false);
+      mkdirSync(join(root, "workspace-1", "chat-a"), { recursive: true });
+      expect(cursorSessionLost("chat-a")).toBe(false);
+      expect(cursorSessionLost("chat-b")).toBe(true);
+      expect(cursorSessionLost("../chat-a")).toBe(false);
+      setCursorChatsRoot(join(root, "missing"));
+      expect(cursorSessionLost("chat-b")).toBe(false);
+    } finally {
+      setCursorChatsRoot(null);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not call a chat lost when the folder holds only files or empty workspaces", () => {
+    const root = folder();
+    try {
+      setCursorChatsRoot(root);
+      writeFileSync(join(root, "README"), "not a chat");
+      expect(cursorSessionLost("chat-a")).toBe(false);
+      mkdirSync(join(root, "workspace-1"), { recursive: true });
+      expect(cursorSessionLost("chat-a")).toBe(false);
+      mkdirSync(join(root, "workspace-1", "chat-b"));
+      expect(cursorSessionLost("chat-a")).toBe(true);
+    } finally {
+      setCursorChatsRoot(null);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("sends the whole prompt, with no session id, when Cursor lost the chat, and goes on in the chat it held", async () => {
+    const root = folder();
+    try {
+      setCursorChatsRoot(root);
+      mkdirSync(join(root, "workspace-1", "held-chat"), { recursive: true });
+      run.mockResolvedValue({ text: "answer" });
+      const lost = await runTurn(chatTurn("lost-chat"));
+      expect(run.mock.calls[0]![0]).toMatchObject({ prompt: "whole context, then second" });
+      expect(run.mock.calls[0]![0].sessionId).toBeUndefined();
+      expect(lost.continued).toBe(false);
+      const held = await runTurn(chatTurn("held-chat"));
+      expect(run.mock.calls[1]![0]).toMatchObject({ prompt: "second", sessionId: "held-chat" });
+      expect(held.continued).toBe(true);
+    } finally {
+      setCursorChatsRoot(null);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a Cursor Agent chat once seen in Cursor's folder", () => {
+  const folder = () => mkdtempSync(join(tmpdir(), "pyxis-cursor-seen-"));
+  const turn = (id: string, seen: boolean) => ({
+    selection: { provider: "agent" as const, model: "m" },
+    prompt: "whole context",
+    conversation: { key: "chat-1", followUp: "second", session: { provider: "agent", id, cwd: "/scratch", seen } },
+  });
+
+  it("is lost when the folder is empty or gone and the chat was seen there, held when it never was", () => {
+    const root = folder();
+    try {
+      setCursorChatsRoot(root);
+      expect(cursorSessionLost("chat-a", false)).toBe(false);
+      expect(cursorSessionLost("chat-a", true)).toBe(true);
+      setCursorChatsRoot(join(root, "missing"));
+      expect(cursorSessionLost("chat-a", true)).toBe(true);
+      expect(cursorSessionLost("chat-a", false)).toBe(false);
+      setCursorChatsRoot(root);
+      mkdirSync(join(root, "workspace-1", "chat-a"), { recursive: true });
+      expect(cursorSessionLost("chat-a", true)).toBe(false);
+    } finally {
+      setCursorChatsRoot(null);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reports that the chat was seen after a turn that left it in the folder, and sends the whole prompt once it is gone", async () => {
+    const root = folder();
+    try {
+      setCursorChatsRoot(root);
+      mkdirSync(join(root, "workspace-1", "s-1"), { recursive: true });
+      run.mockResolvedValue({ text: "answer" });
+      const first = await runTurn({ ...turn("s-1", false), conversation: { key: "chat-1", followUp: "first", session: null } });
+      expect(first).toMatchObject({ sessionId: "s-1", seen: true });
+      // The student clears Cursor's history: nothing is left in its folder.
+      rmSync(join(root, "workspace-1"), { recursive: true, force: true });
+      const gone = await runTurn(turn("s-1", true));
+      expect(run.mock.calls[1]![0]).toMatchObject({ prompt: "whole context" });
+      expect(run.mock.calls[1]![0].sessionId).toBeUndefined();
+      expect(gone.continued).toBe(false);
+    } finally {
+      setCursorChatsRoot(null);
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

@@ -44,11 +44,12 @@ async function systemFor(
   db: ReturnType<typeof setup>["db"],
   input: Parameters<typeof askTurn>[1],
 ) {
+  // Everything the model is sent: the chat's constant system prompt, then the context block that opens the message.
   let system = "";
   const result = await askTurn(db, {
     ...input,
     run: async (call) => {
-      system = call.system ?? "";
+      system = `${call.system ?? ""}\n${call.prompt}`;
       return reply;
     },
   });
@@ -150,8 +151,8 @@ describe("the way of answering and follow-ups", () => {
     const answer = await systemFor(db, { chatId: first.result.chatId, text: "Il punto rispetto all'origine" });
     expect(answer.system).toContain(guided);
     let again = "";
-    const run = async (call: { system?: string }) => {
-      again = call.system ?? "";
+    const run = async (call: { system?: string; prompt: string }) => {
+      again = `${call.system ?? ""}\n${call.prompt}`;
       return reply;
     };
     await regenerateTurn(db, { chatId: first.result.chatId, run });
@@ -177,12 +178,13 @@ describe("the way of answering and follow-ups", () => {
   it("ASK-03: with the switch off the instruction, the stored chips and the chat view carry no follow-ups", async () => {
     const { db, sourceId } = setup();
     const on = await systemFor(db, { text: question, sourceIds: [sourceId] });
-    expect(on.system).toContain("<followups>");
+    expect(on.system).toContain("Follow-ups: end with the <followups> block.");
     expect(on.result.message?.followups).toHaveLength(3);
     saveProfile(db, { followups: false });
     expect(readChat(db, on.result.chatId).at(-1)?.followups).toEqual([]);
     const off = await systemFor(db, { text: question, sourceIds: [sourceId] });
-    expect(off.system).not.toContain("<followups>");
+    expect(off.system).toContain("Follow-ups: leave the <followups> block out.");
+    expect(off.system).not.toContain("Follow-ups: end with");
     expect(off.result.message?.followups).toEqual([]);
     expect(off.result.message?.body).not.toContain("<followups>");
     saveProfile(db, { followups: true });
@@ -215,7 +217,7 @@ describe("plan-scoped chat", () => {
     const next = await systemFor(db, { chatId: seeded.chatId, text: question });
     expect(next.result.covered).toBe(true);
     expect(next.system).toContain("Plan: Physics.");
-    expect(next.system).toContain("Write all output in English.");
+    expect(next.system).toContain("Language: English.");
     const count = db.prepare("SELECT COUNT(*) AS n FROM chats").get();
     expect(() => seedChat(db, {
       planId: "missing", kind: "passage", title: "Position", body: "Quote",
@@ -229,7 +231,7 @@ describe("plan-scoped chat", () => {
     plan(db, sourceId);
     const first = await systemFor(db, { text: question, planId: "plan" });
     expect(first.result.covered).toBe(true);
-    expect(first.system).toContain("Write all output in English.");
+    expect(first.system).toContain("Language: English.");
     expect(first.system).toContain("Plan: Physics.");
     expect(chatPlan(db, first.result.chatId)).toBe("plan");
     expect(chatScope(db, first.result.chatId)).toEqual([sourceId]);

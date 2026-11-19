@@ -158,14 +158,15 @@ describe("the earlier turns sent to the model", () => {
 
   it("keep whole turns and drop the oldest ones that do not fit", async () => {
     const { db } = setup();
-    const long = `${"a".repeat(4000)}FINE-A`;
+    // The budget for the earlier conversation is 200,000 characters: the older answer is too long to fit beside the newer one.
+    const long = `${"a".repeat(150_000)}FINE-A`;
     const first = await askTurn(db, { text: "prima", allowGeneral: true, run: async () => ({ ...reply, text: long }) });
     await tick();
     await askTurn(db, {
       chatId: first.chatId,
       text: "seconda",
       allowGeneral: true,
-      run: async () => ({ ...reply, text: `INIZIO-B${"b".repeat(3000)}` }),
+      run: async () => ({ ...reply, text: `INIZIO-B${"b".repeat(60_000)}` }),
     });
     await tick();
     let prompt = "";
@@ -180,9 +181,11 @@ describe("the earlier turns sent to the model", () => {
     });
     const history = earlier(prompt);
     expect(history).toContain("INIZIO-B");
-    // The 4,000-character answer no longer fits, so none of it is sent, rather than its tail.
+    // The 150,000-character answer no longer fits, so none of it is sent, rather than its tail, and the history says
+    // that two older messages are left out.
     expect(history).not.toContain("FINE-A");
     expect(history).not.toContain("aaaa");
+    expect(history).toContain("(2 earlier messages left out)");
     db.close();
   });
 });

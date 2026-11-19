@@ -20,7 +20,6 @@ import {
 } from "../math/figures";
 import { isAbort, IpcError, toIpcError } from "../../shared/ipc";
 import { generate, type GenerateInput } from "../engine/generate";
-import { endConversation } from "../engine/funnel";
 import { engineSeesImages } from "../engine/capabilities";
 import { selectionFor, strongestSelection } from "../engine/selection";
 import { withUsageScope } from "../engine/usage";
@@ -38,11 +37,22 @@ import { readProfile } from "../profile/profile";
 import {
   type ChatTemplateId,
   chatSystemPrompt,
+  contextBlock,
   chatTemplateId,
   dataBlock,
 } from "./prompts";
 import { liveSubject, pickSubject, sourceSubjects, subjectSourceIds, type SubjectBy } from "./subject";
 import { answerWay, wayOfTemplate, type AnswerWay } from "./way";
+import {
+  addSessionChars,
+  contextHash,
+  currentSession,
+  markOutOfStep,
+  recordSession,
+  keepSession,
+  rewindSession,
+  sessionTooLong,
+} from "./sessions";
 
 export type ChatContext = {
   kind: "answer" | "passage";
@@ -179,8 +189,16 @@ const CHAT_PASSAGES = 12;
 const ATTACHED_PASSAGES = 4;
 /** At most this many passages are added for this turn's documents, on top of the ones retrieval found. */
 const ATTACHED_TOTAL = 12;
-/** Characters of earlier turns sent with a question. Whole messages are kept, newest first. */
-const HISTORY_CHARS = 6000;
+/**
+ * Characters of the earlier conversation handed to a new tool session, whole messages newest first. The smallest window
+ * among the tools' models today is 200,000 tokens (Claude Haiku), and 200,000 characters are about 55,000 tokens: a
+ * quarter of it, which leaves room for the system prompt, twelve passages, the question and a long answer, and for the
+ * session to grow before the tool compacts it. A local model runs with a 16,384-token window (about 50,000 characters),
+ * of which the system prompt, the passages and the answer take most, so it gets 12,000.
+ */
+const HANDOVER_CHARS = 200_000;
+const HANDOVER_CHARS_LOCAL = 12_000;
+const handoverChars = (provider: string) => (provider === "ollama" ? HANDOVER_CHARS_LOCAL : HANDOVER_CHARS);
 
 /** Math checks still running after their reply was saved, by the message they are for. */
 const runningChecks = new Map<
@@ -290,24 +308,27 @@ export function splitFollowups(text: string): { body: string; followups: string[
 
 /**
  * The chat so far, as the model reads it: the question being answered and the reply being replaced are left out, and an
- * answer loses its check blocks and suggestions. Messages are kept whole, newest first, while they fit; only a newest
- * message longer than the whole budget is cut, at its end.
+ * answer loses its check blocks and suggestions. A reply the student stopped is marked as what the student saw. Messages
+ * are kept whole, newest first, while they fit in `budget` characters, and no older body is read once it is met; only a
+ * newest message longer than the whole budget is cut, at its end. Older messages that do not fit are named in one line,
+ * so the model knows the conversation began earlier. With `after`, only the messages after that one (null: all).
  */
 function historyText(
   db: Database.Database,
   chatId: string,
   exclude: string[],
+  budget: number,
+  after?: string | null,
 ): string {
   const ids = exclude.filter(Boolean);
+  const floor = after ? ((db.prepare(`SELECT rowid FROM messages WHERE id = ?`).pluck().get(after) as number | undefined) ?? 0) : 0;
+  const filter = `chat_id = ? AND rowid > ?${ids.length ? ` AND id NOT IN (${ids.map(() => "?").join(", ")})` : ""}`;
   const rows = db
-    .prepare(
-      `SELECT role, body FROM messages WHERE chat_id = ?${
-        ids.length ? ` AND id NOT IN (${ids.map(() => "?").join(", ")})` : ""
-      } ORDER BY created_at DESC LIMIT 8`,
-    )
-    .all(chatId, ...ids) as Array<{ role: string; body: string }>;
+    .prepare(`SELECT role, body, stopped FROM messages WHERE ${filter} ORDER BY created_at DESC, rowid DESC`)
+    .iterate(chatId, floor, ...ids) as Iterable<{ role: string; body: string; stopped: number }>;
   const lines: string[] = [];
   let used = 0;
+  let cut = false;
   for (const row of rows) {
     const body =
       row.role === "assistant"
@@ -316,15 +337,22 @@ function historyText(
             "Figure",
           ).trim()
         : row.body;
-    const line = `${row.role}: ${body}`;
-    if (used + line.length > HISTORY_CHARS) {
-      if (lines.length === 0) lines.push(`${line.slice(0, HISTORY_CHARS - 1)}…`);
+    const line = `${row.role === "assistant" && row.stopped ? "assistant (stopped, the student saw only this)" : row.role}: ${body}`;
+    if (used + line.length > budget) {
+      if (lines.length === 0) lines.push(`${line.slice(0, budget - 1)}…`);
+      cut = true;
       break;
     }
     lines.push(line);
     used += line.length + 1;
   }
-  return lines.reverse().join("\n");
+  const kept = lines.reverse();
+  if (cut) {
+    const total = db.prepare(`SELECT COUNT(*) FROM messages WHERE ${filter}`).pluck().get(chatId, floor, ...ids) as number;
+    const left = total - kept.length;
+    if (left > 0) kept.unshift(`(${left} earlier ${left === 1 ? "message" : "messages"} left out)`);
+  }
+  return kept.join("\n");
 }
 
 /**
@@ -590,7 +618,7 @@ async function gather(
   const earlier = db
     .prepare(
       `SELECT body FROM messages WHERE chat_id = ? AND role = 'user' AND body != ?
-       ORDER BY created_at DESC LIMIT 1`,
+       ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
     .get(chatId, text) as { body: string } | undefined;
   if (earlier) {
@@ -741,6 +769,23 @@ function describeCitations(db: Database.Database, citations: ChatCitation[]): Ch
   });
 }
 
+/** A regenerated reply: the session holds the old answer, which the student no longer sees once the new one is kept. */
+const ASKED_AGAIN =
+  "The student asked for this question to be answered again. Your earlier answer to it is discarded and the student sees only the new one.\n\n";
+
+/** The message just before `messageId` in its chat, or null: what the first prompt of a session started at it held. */
+function messageBefore(db: Database.Database, chatId: string, messageId: string): string | null {
+  return (
+    (db
+      .prepare(
+        `SELECT id FROM messages WHERE chat_id = ? AND rowid < (SELECT rowid FROM messages WHERE id = ?)
+         ORDER BY rowid DESC LIMIT 1`,
+      )
+      .pluck()
+      .get(chatId, messageId) as string | undefined) ?? null
+  );
+}
+
 export async function askTurn(
   db: Database.Database,
   input: AskInput,
@@ -749,7 +794,13 @@ export async function askTurn(
   requireTutorAvailable(db);
   if (input.signal?.aborted) throw new DOMException("aborted", "AbortError");
   requireIdle(input.chatId);
-  const now = Date.now();
+  // A message is stored at the turn's start and its reply one millisecond later. A turn that starts in the same
+  // millisecond as the reply before it, or after the clock stepped back, would sort before it, so a turn never starts
+  // earlier than the last message of its chat.
+  const last = input.chatId
+    ? (db.prepare(`SELECT MAX(created_at) FROM messages WHERE chat_id = ?`).pluck().get(input.chatId) as number | null)
+    : null;
+  const now = Math.max(Date.now(), (last ?? 0) + 1);
   const chat = ensureChat(db, input.chatId, input.text, now);
   // Stop also stops a math check still running for an earlier reply in this chat.
   const stopChecks = () => cancelChecks(chat.id);
@@ -846,7 +897,7 @@ async function answer(
       notes.length > 0 ? `${input.text}\n\n${notes.join("\n")}` : input.text;
     const pending = db
       .prepare(
-        `SELECT id, role, body FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
+        `SELECT id, role, body FROM messages WHERE chat_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
       )
       .get(chatId) as { id: string; role: string; body: string } | undefined;
     let userMessageId =
@@ -1010,8 +1061,8 @@ async function answer(
   const subjectLine = subject ? `Subject: ${oneLine(subject)}.` : "";
   const pinned = chatContext(db, chatId);
   const pinnedBlock = pinned
-    ? `Pinned context: ${oneLine(pinned.title)}\n${dataBlock("pinned", pinned.body)}\n\n`
-    : "";
+    ? `Pinned context: ${oneLine(pinned.title)}\n${dataBlock("pinned", pinned.body)}`
+    : "Pinned context: none.";
   const attachedBlock =
     notes.length > 0
       ? `Attached text:\n${dataBlock("attached", notes.join("\n"))}\n\n`
@@ -1023,37 +1074,55 @@ async function answer(
   const where = chatPrompt(db, planId);
   // A guided step asks the student to do the next part, so only solved answers offer figures.
   const drawer = way === "guided" ? null : await figureRunner(input.python);
-  const system = [
-    chatSystemPrompt(
-      template,
-      where.language,
-      profile?.followups !== false,
-      drawer?.kinds ?? [],
-    ),
-    profileContext(db, planId, profile),
-    where.planLine,
-    subjectLine,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  // The system prompt is the same for the whole chat. What changes from turn to turn is in the context block that opens
+  // the message, which a tool's session gets only when it differs from the one it last received.
+  const system = chatSystemPrompt();
+  const header = `${contextBlock({
+    template,
+    language: where.language,
+    planLine: where.planLine,
+    subject: subjectLine,
+    profile: profileContext(db, planId, profile),
+    followups: profile?.followups !== false,
+    figures: drawer?.kinds ?? [],
+  })}\n${pinnedBlock}`;
+  const told = contextHash(header);
   const noPassages =
     selected && !input.allowGeneral && !thisTurnFile && citations.length === 0
       ? "No passage matches this question.\n\n"
       : "";
-  // What is new for this question goes last, after the parts that stay the same from turn to turn, so a provider's
-  // prompt cache keeps the start of the prompt. A conversation the engine still holds gets only the new part.
-  // Continue sends the reply that was cut short with the question, so the model writes only what is missing.
+  // What is new for this question goes last, after the parts that stay the same from turn to turn. Continue sends the
+  // reply that was cut short with the question, so the model writes only what is missing.
   const resume = input.resumeFrom?.text ?? "";
   const resumeBlock = resume
     ? `\n\nYour earlier answer to this question was cut off. It ends here:\n${resume}\n\nContinue from exactly where it stops. Do not repeat any of it.`
     : "";
   const question = `${attachedBlock}${passageBlock}${noPassages}\n\nQuestion:\n${input.text}${resumeBlock}`;
-  const prompt = `${pinnedBlock}Earlier turns:\n${historyText(db, chatId, [userMessageId, replacing?.assistantId ?? ""])}\n\n${question}`;
-  const followUp = citations.length
+  const exclude = [userMessageId, replacing?.assistantId ?? ""];
+  // The tool session the chat stored, when this turn can continue it. A session in step already holds the conversation,
+  // so the message is the new question, with the context block when it changed. A session out of step (a turn on it
+  // stopped, failed, was not kept, or another engine answered it) gets the full context block and what the student sees
+  // since the last turn that was in step, and is in step again once this turn completes. A new session gets the context
+  // block and the whole conversation instead.
+  const stored = currentSession(db, chatId);
+  const long = Boolean(stored && sessionTooLong(stored));
+  const session = stored && !long ? stored : undefined;
+  const outOfStep = Boolean(session && !session.inStep);
+  const replay = outOfStep ? historyText(db, chatId, exclude, handoverChars(selection.provider), session!.syncedTo) : "";
+  const replayBlock = replay
+    ? `The conversation as the student sees it, since the last turn you completed. This, not anything you remember differently, is the conversation. A reply marked stopped was cut off, and the student saw only the text shown.\n${replay}\n\n`
+    : "";
+  const newQuestion = citations.length
     ? `New question. Its passages are numbered from P1 again; cite only these.\n\n${question.trimStart()}`
     : question.trimStart();
-  // A regenerated reply replaces one the engine's conversation already holds, so the conversation starts over.
-  if (replacing) endConversation(chatId);
+  const followUp = `${outOfStep || session?.told !== told ? `${header}\n\n` : ""}${replayBlock}${replacing && !resume ? ASKED_AGAIN : ""}${newQuestion}`;
+  // The conversation handed to a new session is sized to the window of the engine that answers, which an automatic choice
+  // can change inside `generate()`. It is built only when a prompt is sent: a fresh start or a retry after a lost session.
+  const promptFor = (provider: string) => {
+    const earlier = historyText(db, chatId, exclude, handoverChars(provider));
+    return `${header}\n\n${earlier ? `Earlier turns:\n${earlier}\n\n` : ""}${question}`;
+  };
+  const beforeQuestion = messageBefore(db, chatId, userMessageId);
   const messageId = uuidv7(now + 2);
   // The engine answering, which differs from the selection when an automatic one was out and another took over.
   let answering: { provider: string; model: string } = selection;
@@ -1070,7 +1139,10 @@ async function answer(
     text: string,
     error: string | null,
     drawn?: { markdown: string; figures: Record<string, string> },
-  ) => ({
+    /** The model finished the reply before it was stopped (while its figures were drawn). */
+    completed = false,
+  ) => {
+    const reply = {
     ...finishReply(
       db,
       chatId,
@@ -1094,10 +1166,20 @@ async function answer(
       input.resumeFrom?.figures,
     ),
     ...skippedImages,
-  });
+    };
+    // A stopped reply that the model completed and that stays on screen (not a regenerated replacement, which is
+    // dropped) is what the student sees, and its session holds it whole.
+    if (completed && !(replacing && !input.resumeFrom)) keepSession(db, chatId, answering.provider, messageId);
+    return reply;
+  };
+  // From here no open session of the chat can be trusted to hold the conversation until one completes this turn.
+  markOutOfStep(db, chatId);
+  // A session the tool opened during this turn received the whole prompt, not the follow-up.
+  let startedSession = false;
   try {
     result = await generate({
-      prompt,
+      prompt: "",
+      promptFor,
       system,
       selection,
       attachments: saved
@@ -1111,7 +1193,20 @@ async function answer(
               })),
       signal: input.signal,
       run: input.run,
-      conversation: { key: chatId, followUp },
+      conversation: {
+        key: chatId,
+        followUp,
+        session: session ? { provider: session.provider, id: session.sessionId, cwd: session.cwd, seen: session.seen } : null,
+        // A tool that keeps what it was sent keeps a turn the student stops, so the session is stored when it begins.
+        // Cursor Agent loses such a turn, so its session is stored when the turn ends.
+        onSession: (sessionId, provider, cwd) => {
+          if (provider === "agent") return;
+          const open = currentSession(db, chatId);
+          if (open?.provider === provider && open.sessionId === sessionId) return;
+          startedSession = true;
+          recordSession(db, chatId, open, { provider, sessionId, cwd, model: selection.model, effort: selection.effort ?? null, told: "", chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion }, long ? "long" : "gone");
+        },
+      },
       cache: true,
       usage: { chatId, messageId, kind: "chat" },
       onEngine: (engine) => (answering = engine),
@@ -1121,6 +1216,30 @@ async function answer(
         input.onDelta?.(streamed.replace(/<followups>[\s\S]*$/, "").trim());
       },
     });
+    // The turn's session is stored for the next one. A turn that did not continue it (another tool answered, or the
+    // tool started a new session) ends it and opens the new one.
+    if (result.sessionId && result.cwd) {
+      const open = currentSession(db, chatId);
+      recordSession(
+        db,
+        chatId,
+        open,
+        {
+          provider: result.provider,
+          sessionId: result.sessionId,
+          cwd: result.cwd,
+          model: result.model,
+          effort: selection.effort ?? null,
+          told,
+          chars: (result.continued ? followUp : promptFor(result.provider)).length + result.text.length,
+          now: Date.now(),
+          finished: true,
+          syncedTo: beforeQuestion,
+          seen: result.seen,
+        },
+        long ? "long" : "gone",
+      );
+    }
     // The engine ended the stream without finishing the answer: out of room, or no final event. That is a failure
     // mid-answer like a dropped connection, so the catch below keeps what arrived marked cut off with Continue, saves
     // nothing when nothing arrived, and leaves the earlier reply in place when an answer is regenerated.
@@ -1135,6 +1254,15 @@ async function answer(
     // What arrived is kept when the student stops, and when the engine fails mid-answer (a dropped connection, a usage
     // limit), as a reply marked with the failure that offers Continue. A regenerated reply that fails keeps the earlier
     // one instead, and a Continue that added nothing leaves the reply as it was.
+    // The tool kept what it was sent, and with Antigravity the start of the reply too, which counts toward the size at
+    // which a session starts over. Cursor Agent loses a turn that did not finish.
+    const sent = !startedSession && session && answering.provider === session.provider ? followUp : promptFor(answering.provider);
+    addSessionChars(
+      db,
+      chatId,
+      answering.provider,
+      answering.provider === "antigravity" ? sent.length + streamed.length : answering.provider === "agent" ? 0 : sent.length,
+    );
     const kept = streamed.trim() !== "" && streamed !== resume;
     if (kept && (aborted || !replacing || resume))
       return stopReply(streamed, aborted ? null : toIpcError(err).messageKey);
@@ -1165,12 +1293,12 @@ async function answer(
   } catch (err) {
     requireTutorAvailable(db);
     if (isAbort(err) || (err instanceof Error && err.name === "AbortError"))
-      return stopReply(resume + result.text, null);
+      return stopReply(resume + result.text, null, undefined, true);
     throw err;
   }
   if (drawn.stopped) {
     requireTutorAvailable(db);
-    return stopReply(resume + result.text, null, drawn);
+    return stopReply(resume + result.text, null, drawn, true);
   }
   parsed.body = drawn.markdown;
   const figures = Object.keys(drawn.figures).length ? drawn.figures : undefined;
@@ -1193,6 +1321,7 @@ async function answer(
     figures,
     now,
   });
+  keepSession(db, chatId, result.provider, messageId);
   // The subject Pyxis picked is kept only with a whole reply, and only if nobody set one while it was written: a failed
   // or stopped turn leaves the chat as it was.
   if (picked) {
@@ -1373,7 +1502,7 @@ export async function regenerateTurn(
   const last = db
     .prepare(
       `SELECT id, role, body, stopped, passages_json, figures_json, grounding, prompt_template FROM messages
-       WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
+       WHERE chat_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
     .get(input.chatId) as
     | {
@@ -1389,7 +1518,7 @@ export async function regenerateTurn(
     | undefined;
   const user = db
     .prepare(
-      `SELECT id, body FROM messages WHERE chat_id = ? AND role = 'user' ORDER BY created_at DESC LIMIT 1`,
+      `SELECT id, body FROM messages WHERE chat_id = ? AND role = 'user' ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
     .get(input.chatId) as { id: string; body: string } | undefined;
   if (!user) throw new Error("chat-missing");
@@ -1408,16 +1537,26 @@ export async function regenerateTurn(
       : undefined;
   // Regenerate and Continue answer the same way as the reply they replace, unless the student asked for the other way.
   const way = input.way ?? (last?.role === "assistant" ? wayOfTemplate(last.prompt_template) : undefined);
+  // The tool's session was told this question is answered again and the earlier answer discarded. When the new answer
+  // fails or is stopped, the earlier one stays on screen: the session holds the conversation only up to the message before
+  // that question's earlier replies, so the next message replays the question and the answer the student sees.
+  const keepsEarlier = () => {
+    if (last?.role === "assistant" && !resumeFrom) rewindSession(db, input.chatId, user.id);
+  };
   const result = await askTurn(
     db,
     { ...rest, way, text: user.body, resumeFrom },
     last?.role === "assistant"
       ? { assistantId: last.id, userId: user.id }
       : undefined,
-  );
+  ).catch((err: unknown) => {
+    keepsEarlier();
+    throw err;
+  });
   // A continued reply stopped again is still longer than before, so it replaces the earlier one like a finished reply.
   if (result.message?.stopped && last?.role === "assistant" && !resumeFrom) {
     db.prepare("DELETE FROM messages WHERE id = ? AND chat_id = ?").run(result.message.id, input.chatId);
+    keepsEarlier();
     throw new DOMException("Aborted", "AbortError");
   }
   if (result.message && last?.role === "assistant") {
@@ -1551,7 +1690,7 @@ export function readChat(
     .prepare(
       `SELECT id, role, body, model_id, engine_provider, grounding, prompt_template, reaction, stopped, figures_json, error,
               passages_json
-       FROM messages WHERE chat_id = ? ORDER BY created_at`,
+       FROM messages WHERE chat_id = ? ORDER BY created_at, rowid`,
     )
     .all(chatId) as Array<{
     id: string;
