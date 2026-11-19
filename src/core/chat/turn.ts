@@ -18,17 +18,17 @@ import {
   noSandbox,
   type FigureRunner,
 } from "../math/figures";
-import { isAbort, IpcError, toIpcError } from "../../shared/ipc";
+import { isAbort, IpcError, toIpcError, type AttachmentError, type MessageFile } from "../../shared/ipc";
 import { generate, type GenerateInput } from "../engine/generate";
 import { endConversation } from "../engine/funnel";
 import { engineSeesImages } from "../engine/capabilities";
-import { selectionFor, strongestSelection } from "../engine/selection";
+import { selectionFor, selectionOn, strongestSelection, type StoredSelection } from "../engine/selection";
 import { withUsageScope } from "../engine/usage";
 import type { Embedder, PassageHit } from "../sources/retrieve";
 import { contentWords, hitOf, queryEmbedder, retrieveWithModel, type PassageRow } from "../sources/retrieve";
-import { sha256 } from "../sources/quality";
 import { readingOrder } from "../sources/smartbook";
-import { commitStaged, savedImages, stageFiles, type PreparedFiles, type SkippedImage, type StagedFiles } from "./attach";
+import { commitStaged, recognisePhoto, savedImages, stagePhoto, type PreparedFiles, type SkippedImage, type StagedBlob } from "./attach";
+import type { HeldFiles, TakenFiles } from "./held-files";
 import { chatListedSources, deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
 import { latestDocument } from "../sources/documents";
 import { contentLanguage, planLanguage, promptProvenance } from "../engine/prompts";
@@ -76,6 +76,8 @@ export type ChatMessageView = {
   id: string;
   role: "user" | "assistant";
   body: string;
+  /** The files the question carried, in the order they were attached. */
+  files?: MessageFile[];
   modelId: string | null;
   provider: string | null;
   grounding: Grounding | null;
@@ -108,6 +110,8 @@ export type AskResult = {
   message: ChatMessageView | null;
   /** Saved images this turn could not send, with why. The student is told, since the reply did not see them. */
   skippedImages?: SkippedImage[];
+  /** Attached files that could not be read and went without, each with its reason. */
+  leftOut?: Array<{ name: string; error: AttachmentError }>;
 };
 
 type AskInput = {
@@ -121,7 +125,10 @@ type AskInput = {
   allowGeneral?: boolean;
   /** A subject the student chose for the chat, null for the whole Library. Undefined keeps the chat's own. */
   subject?: string | null;
-  files?: string[];
+  /** The files attached in the composer, by id. The turn waits until each is read (`held`). */
+  attachments?: string[];
+  /** The files the composer holds, which `attachments` names. */
+  held?: HeldFiles | null;
   workspace?: string;
   recognize?: (bytes: Uint8Array, cachePath: string) => Promise<string>;
   embed?: Embedder | null;
@@ -293,6 +300,44 @@ export function splitFollowups(text: string): { body: string; followups: string[
  * answer loses its check blocks and suggestions. Messages are kept whole, newest first, while they fit; only a newest
  * message longer than the whole budget is cut, at its end.
  */
+/** The text OCR read from the photos of one question, kept beside the files and never shown as the question's own text. */
+function storedNotes(db: Database.Database, messageId: string): string[] {
+  return db
+    .prepare(`SELECT recognised FROM attachments WHERE message_id = ? AND recognised IS NOT NULL AND recognised <> '' ORDER BY created_at, rowid`)
+    .pluck()
+    .all(messageId) as string[];
+}
+
+/** Whether the chat holds a photo that a model reading images could be sent. */
+function chatHoldsPhotos(db: Database.Database, chatId: string): boolean {
+  return (
+    db
+      .prepare(
+        `SELECT 1 FROM attachments a JOIN messages m ON m.id = a.message_id
+         WHERE m.chat_id = ? AND a.mime IN ('image/png', 'image/jpeg', 'image/webp') LIMIT 1`,
+      )
+      .get(chatId) !== undefined
+  );
+}
+
+/**
+ * The engine for a turn that has a photo. The chat's own when it reads images. Otherwise the model of the same tool that
+ * does (the one its automatic choice makes for photos), then the model of another available tool. Only when no tool
+ * has one does the chat keep its engine and read the photo with local OCR.
+ */
+function selectionForPhotos(db: Database.Database, chat: StoredSelection): StoredSelection {
+  if (engineSeesImages(chat)) return chat;
+  const sameTool = selectionOn(chat.provider, "vision");
+  if (sameTool && engineSeesImages(sameTool)) return sameTool;
+  try {
+    const vision = selectionFor(db, "vision");
+    if (engineSeesImages(vision)) return vision;
+  } catch {
+    // No engine is chosen for photos: the chat's own engine answers with the text OCR read.
+  }
+  return chat;
+}
+
 function historyText(
   db: Database.Database,
   chatId: string,
@@ -301,11 +346,11 @@ function historyText(
   const ids = exclude.filter(Boolean);
   const rows = db
     .prepare(
-      `SELECT role, body FROM messages WHERE chat_id = ?${
+      `SELECT id, role, body FROM messages WHERE chat_id = ?${
         ids.length ? ` AND id NOT IN (${ids.map(() => "?").join(", ")})` : ""
       } ORDER BY created_at DESC LIMIT 8`,
     )
-    .all(chatId, ...ids) as Array<{ role: string; body: string }>;
+    .all(chatId, ...ids) as Array<{ id: string; role: string; body: string }>;
   const lines: string[] = [];
   let used = 0;
   for (const row of rows) {
@@ -315,7 +360,7 @@ function historyText(
             stripCheckFences(splitFollowups(splitChecks(row.body).body).body),
             "Figure",
           ).trim()
-        : row.body;
+        : [row.body, ...storedNotes(db, row.id)].join("\n\n");
     const line = `${row.role}: ${body}`;
     if (used + line.length > HISTORY_CHARS) {
       if (lines.length === 0) lines.push(`${line.slice(0, HISTORY_CHARS - 1)}…`);
@@ -756,7 +801,11 @@ export async function askTurn(
   input.signal?.addEventListener("abort", stopChecks, { once: true });
   generating.add(chat.id);
   try {
-    return await answer(db, input, replacing, chat.id, now);
+    const report: { leftOut?: TakenFiles["leftOut"] } = {};
+    const result = await answer(db, input, replacing, chat.id, now, report);
+    // The files went with the question: the chat holds them now.
+    input.held?.release(input.attachments ?? []);
+    return report.leftOut?.length ? { ...result, leftOut: report.leftOut } : result;
   } catch (err) {
     // A chat this turn created and could not answer is removed with its question and attachments. The student's
     // message goes back to the composer, so a retry starts one new chat instead of leaving an empty one behind.
@@ -765,7 +814,8 @@ export async function askTurn(
       db.prepare(`SELECT 1 FROM chats WHERE id = ?`).get(chat.id) &&
       !db.prepare(`SELECT 1 FROM messages WHERE chat_id = ? AND role = 'assistant'`).get(chat.id)
     )
-      deleteChat(db, input.workspace ?? "", chat.id);
+      // The files still held in the composer stay, with the copies they made, for the retry.
+      deleteChat(db, input.workspace ?? "", chat.id, input.held?.holding(input.attachments ?? []));
     throw err;
   } finally {
     input.signal?.removeEventListener("abort", stopChecks);
@@ -779,6 +829,7 @@ async function answer(
   replacing: { assistantId: string; userId: string } | undefined,
   chatId: string,
   now: number,
+  report: { leftOut?: TakenFiles["leftOut"] },
 ): Promise<AskResult> {
   const prior = readScope(db, chatId);
   const planId = input.planId === undefined ? prior.planId : input.planId;
@@ -789,29 +840,50 @@ async function answer(
     throw new IpcError("plan-missing", "errors.internal");
   const picked0 =
     input.sourceIds ?? (planId === prior.planId ? prior.ids : []);
-  let staged: StagedFiles | undefined;
-  if (input.files && input.files.length > 0 && input.workspace) {
-    try {
-      staged = await stageFiles(
-        db,
-        input.workspace,
-        input.files,
-        selectionFor(db, "chat"),
-        input.recognize,
-        input.signal,
-      );
-    } catch (err) {
-      if (
-        err instanceof Error &&
-        (err.message === "attach-too-big" || err.message === "attach-too-many")
-      ) {
-        throw new IpcError("attach-too-big", "errors.attachTooBig");
-      }
-      throw err;
-    }
+  // The files were read when they were attached. The turn waits for any still being read and goes on without the ones that
+  // failed, which the reply names.
+  let taken: TakenFiles | undefined;
+  if (input.attachments && input.attachments.length > 0 && input.held) {
+    await input.held.settle(input.attachments, input.signal);
+    taken = input.held.take(input.attachments);
+    report.leftOut = taken.leftOut;
   }
-  const notes: string[] = staged?.notes ?? [];
-  const images: PreparedFiles["images"] = staged?.images ?? [];
+  // A turn with a photo runs on a model that reads it when the chat's tool has one (or another available tool does), and
+  // so does every later turn of a chat that holds a photo, so its model does not change from question to question.
+  const chatSelection: StoredSelection =
+    input.engine === "strong" ? strongestSelection(db) : selectionFor(db, "chat");
+  const photosHere = (taken?.photos.length ?? 0) > 0 || chatHoldsPhotos(db, chatId);
+  const selection = photosHere ? selectionForPhotos(db, chatSelection) : chatSelection;
+  const reads = Boolean(input.workspace) && engineSeesImages(selection);
+  // The text local OCR read from photos is sent with the question and stored apart from it. A regenerated turn reads the
+  // text stored with its question.
+  const notes: string[] = replacing ? storedNotes(db, replacing.userId) : [];
+  const images: PreparedFiles["images"] = [];
+  const blobs: StagedBlob[] = [];
+  const photoRows: Array<{ id: string; name: string; size: number; image: PreparedFiles["images"][number]; text: string }> = [];
+  for (const photo of taken?.photos ?? []) {
+    const one = await stagePhoto(photo, reads, input.signal);
+    // Only a photo no model reads goes to local OCR: it is the last resort, when no available tool has a model for images.
+    const text = reads || !input.workspace ? "" : await recognisePhoto(photo, input.workspace, input.recognize, input.signal);
+    input.signal?.throwIfAborted();
+    if (text) notes.push(text);
+    blobs.push(...one.blobs);
+    images.push(one.image);
+    photoRows.push({ id: photo.id, name: photo.name, size: photo.size, image: one.image, text });
+  }
+  // A document this chat already holds (the same file attached again, or a retry) is used from there, and the copy made
+  // for this message is dropped after the commit. Nothing awaits between this lookup and the commit.
+  const sameDocument = db.prepare(
+    `SELECT id FROM sources WHERE blob_sha = (SELECT blob_sha FROM sources WHERE id = ?) AND id <> ? AND library = 0
+     AND status = 'ready' AND id IN (SELECT value FROM json_each(?))`,
+  );
+  const scopeNow = JSON.stringify(readScope(db, chatId).ids);
+  const documents = (taken?.documents ?? []).map((doc) => {
+    const held = sameDocument.get(doc.sourceId, doc.sourceId, scopeNow) as { id: string } | undefined;
+    return { ...doc, use: held?.id ?? doc.sourceId, duplicate: held != null };
+  });
+  const reused = documents.map((doc) => doc.use);
+
   // The files were read while the chat could be deleted, so it is checked again here, in the one transaction that stores
   // the attached sources with the turn's scope, message and photos. A failure anywhere in it leaves none of them.
   const persist = (attachedIds: string[]) => {
@@ -842,8 +914,8 @@ async function answer(
       subject || null,
       chatId,
     );
-    const userBody =
-      notes.length > 0 ? `${input.text}\n\n${notes.join("\n")}` : input.text;
+    // The text of the question is what the student typed. What OCR read from a photo is kept beside the file.
+    const userBody = input.text;
     const pending = db
       .prepare(
         `SELECT id, role, body FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
@@ -871,42 +943,46 @@ async function answer(
           insertAttachment.run(id, messageId, sha, mime, at);
       },
     };
-    for (const image of images) {
-      attach.run(uuidv7(now + 3), userMessageId, image.sha, image.mediaType, now);
-      if (image.original)
-        attach.run(uuidv7(now + 4), userMessageId, image.original.sha, image.original.mime, now);
+    // Each file is recorded with its name, so the question shows it. A photo's fitted copy carries the name and the text OCR
+    // read, and its original (a HEIC, or a photo cut down to fit) is a plain row that a resend skips.
+    const named = db.prepare(
+      `UPDATE attachments SET name = ?, kind = ?, size = ?, source_id = ?, recognised = ? WHERE message_id = ? AND blob_sha = ? AND mime = ?`,
+    );
+    const sourceRow = db.prepare(`SELECT blob_sha AS sha, mime FROM sources WHERE id = ?`);
+    const hasDocument = db.prepare(`SELECT 1 FROM attachments WHERE message_id = ? AND source_id = ?`);
+    const order = taken?.order ?? [];
+    const listed = [
+      ...photoRows.map((row) => ({ id: row.id, photo: row })),
+      ...documents.map((doc) => ({ id: doc.id, doc })),
+    ].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    for (const item of listed) {
+      if ("photo" in item) {
+        const { image } = item.photo;
+        attach.run(uuidv7(now + 3), userMessageId, image.sha, image.mediaType, now);
+        named.run(item.photo.name, "photo", item.photo.size, null, item.photo.text || null, userMessageId, image.sha, image.mediaType);
+        if (image.original)
+          attach.run(uuidv7(now + 4), userMessageId, image.original.sha, image.original.mime, now);
+        continue;
+      }
+      const doc = item.doc;
+      const source = sourceRow.get(doc.use) as { sha: string | null; mime: string | null } | undefined;
+      if (!source?.sha || !source.mime || hasDocument.get(userMessageId, doc.use)) continue;
+      db.prepare(
+        `INSERT INTO attachments (id, message_id, blob_sha, mime, created_at, name, kind, size, source_id)
+         VALUES (?, ?, ?, ?, ?, ?, 'document', ?, ?)`,
+      ).run(uuidv7(now + 5), userMessageId, source.sha, source.mime, now, doc.name, doc.size, doc.use);
     }
     db.prepare(`UPDATE chats SET updated_at = ? WHERE id = ?`).run(now, chatId);
     return { sourceIds, subject, subjectBy, userMessageId, attachedIds };
   };
-  // A document this chat already holds (a retry after a failed turn sends the same file again) is reused, not stored twice.
-  // Nothing awaits between this lookup and the commit, so the source cannot be removed in between.
-  const reused: string[] = [];
-  if (staged) {
-    const held = db.prepare(
-      `SELECT id FROM sources WHERE blob_sha = ? AND library = 0 AND status = 'ready' AND id IN (SELECT value FROM json_each(?))`,
-    );
-    const scope = JSON.stringify(readScope(db, chatId).ids);
-    staged = {
-      ...staged,
-      documents: staged.documents.filter((doc) => {
-        const row = held.get(sha256(doc.bytes), scope) as { id: string } | undefined;
-        if (row) reused.push(row.id);
-        return !row;
-      }),
-    };
-  }
-  const { sourceIds, subject, subjectBy, userMessageId, attachedIds } = staged
-    ? commitStaged(db, input.workspace!, staged, (ids) => persist([...new Set([...reused, ...ids])])).value
-    : db.transaction(() => persist([]))();
+  const { sourceIds, subject, subjectBy, userMessageId, attachedIds } = commitStaged(db, input.workspace ?? "", blobs, () =>
+    persist(reused),
+  );
+  // The copy of a document the chat already held is not needed any more.
+  for (const doc of documents) if (doc.duplicate) input.held?.detach(doc.id);
   input.onQuestion?.(userMessageId, chatId);
 
-  const selection =
-    input.engine === "strong" ? strongestSelection(db) : selectionFor(db, "chat");
-  const seesImage =
-    Boolean(input.workspace) &&
-    engineSeesImages(selection) &&
-    images.some((image) => image.data);
+  const seesImage = reads && images.some((image) => image.data);
   const thisTurnFile = notes.length > 0 || seesImage;
   // The passages are the main reference, not a gate: a question they do not cover is still answered from the model's own
   // knowledge, and the reply shows it by citing nothing (see replyGrounding).
@@ -1465,7 +1541,13 @@ export function renameChat(
  * anything built from them still uses one, or the student promoted it to the library), and the photo and document
  * files nothing else names. The rows go in one transaction; the files are removed after it commits.
  */
-export function deleteChat(db: Database.Database, workspace: string, chatId: string) {
+export function deleteChat(
+  db: Database.Database,
+  workspace: string,
+  chatId: string,
+  /** Hidden copies and stored files a composer still holds for a retry: they stay when the chat goes. */
+  keep: { sources: string[]; blobs: string[] } = { sources: [], blobs: [] },
+) {
   cancelChecks(chatId);
   const hashes = db.transaction(() => {
     const mine = readScope(db, chatId).ids;
@@ -1492,11 +1574,11 @@ export function deleteChat(db: Database.Database, workspace: string, chatId: str
       ...photos.map((row) => row.sha),
       ...deleteHiddenSources(
         db,
-        [...new Set([...mine, ...cited])].filter((id) => !shared.has(id)),
+        [...new Set([...mine, ...cited])].filter((id) => !shared.has(id) && !keep.sources.includes(id)),
       ),
     ];
   })();
-  removeUnreferencedBlobs(db, workspace, hashes);
+  removeUnreferencedBlobs(db, workspace, hashes.filter((sha) => !keep.blobs.includes(sha)));
 }
 
 export function listChats(db: Database.Database) {
@@ -1599,6 +1681,40 @@ export function readChat(
     });
     links.set(link.message_id, list);
   }
+  // The files each question carried, in one read. A photo sent before names were kept has a row with the image type and
+  // nothing else; the plain image rows and the originals kept beside a fitted copy are not files of their own.
+  const files = new Map<string, MessageFile[]>();
+  for (const row of db
+    .prepare(
+      `SELECT a.message_id, a.id, a.name, a.kind, a.size, a.source_id, a.blob_sha, a.mime,
+              EXISTS (SELECT 1 FROM sources s WHERE s.id = a.source_id AND s.status <> 'removed') AS open
+       FROM attachments a WHERE a.message_id IN (SELECT id FROM messages WHERE chat_id = ?)
+       AND (a.kind IS NOT NULL OR a.mime IN ('image/png', 'image/jpeg', 'image/webp'))
+       ORDER BY a.created_at, a.rowid`,
+    )
+    .all(chatId) as Array<{
+    message_id: string;
+    id: string;
+    name: string | null;
+    kind: "photo" | "document" | null;
+    size: number | null;
+    source_id: string | null;
+    blob_sha: string;
+    mime: string;
+    open: number;
+  }>) {
+    const list = files.get(row.message_id) ?? [];
+    list.push({
+      id: row.id,
+      name: row.name,
+      kind: row.kind ?? "photo",
+      size: row.size,
+      sourceId: row.open ? row.source_id : null,
+      sha: row.kind === "document" ? null : row.blob_sha,
+      mime: row.mime,
+    });
+    files.set(row.message_id, list);
+  }
   // The files behind every citation, read once for the whole chat.
   const all = describeCitations(db, [...links.values()].flat());
   const described = new Map<string, ChatCitation[]>();
@@ -1621,6 +1737,7 @@ export function readChat(
       id: row.id,
       role: row.role,
       body: parsed.body,
+      ...(files.has(row.id) ? { files: files.get(row.id) } : {}),
       modelId: row.model_id,
       provider: row.engine_provider,
       grounding: row.role === "assistant" ? readGrounding(row.grounding) : null,

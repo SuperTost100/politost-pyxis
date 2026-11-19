@@ -425,6 +425,18 @@ CREATE INDEX lesson_parts_item ON lesson_parts(item_id) WHERE item_id IS NOT NUL
     sql: `ALTER TABLE card_reviews ADD COLUMN seconds INTEGER CHECK (seconds IS NULL OR seconds >= 0);
 CREATE INDEX card_reviews_day ON card_reviews(reviewed_at);`,
   },
+  // The files a message carried, shown with it. A row with a `kind` is one file: its name and size as picked, and for a
+  // document the id of the hidden source that holds its text (no foreign key: a source that is gone reads as a file that can no longer be opened). `recognised` is the text local OCR read from a photo for a model
+  // that cannot see images, kept apart from the message body. Rows made before this step have none of these and stay as
+  // they are.
+  {
+    version: 34,
+    sql: `ALTER TABLE attachments ADD COLUMN name TEXT;
+ALTER TABLE attachments ADD COLUMN kind TEXT CHECK (kind IS NULL OR kind IN ('photo', 'document'));
+ALTER TABLE attachments ADD COLUMN size INTEGER;
+ALTER TABLE attachments ADD COLUMN source_id TEXT;
+ALTER TABLE attachments ADD COLUMN recognised TEXT;`,
+  },
 ] satisfies Array<{ version: number; sql: string; foreignKeysOff?: { check: string[] } }>;
 
 /** The newest schema version this build knows. */

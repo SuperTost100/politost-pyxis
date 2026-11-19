@@ -25,12 +25,19 @@ const linkFolders = vi.hoisted(() =>
 const relocateFolder = vi.hoisted(() =>
   vi.fn(({ path }: { folderId: string; path: string }) => ({ same: true, matched: 0, total: 0, path })),
 );
+const attach = vi.hoisted(() =>
+  vi.fn(async ({ path }: { path: string }) => ({ name: basename(path), bytes: readFileSync(path).length, snapshot: path })),
+);
+vi.mock("../chat/handlers", () => ({
+  chatHandlers: () => ({ attach }),
+}));
 vi.mock("../sources/handlers", () => ({
   sourceHandlers: () => ({ importFile, linkFolders, relocateFolder }),
 }));
 import {
   addFileGrants,
   attachRendererPort,
+  bindChat,
   bindSources,
   setJobHandlers,
 } from "./server";
@@ -49,6 +56,7 @@ it("renderer requests cannot mint grants and authorized imports use private temp
   const path = join(root, "lesson.txt");
   writeFileSync(path, "selected lesson");
   bindSources(null as never, root, null as never);
+  bindChat(null as never, root);
   setJobHandlers({} as never);
   let receive: (event: { data: unknown }) => void = () => {};
   let settle: (response: any) => void = () => {};
@@ -83,27 +91,22 @@ it("renderer requests cannot mint grants and authorized imports use private temp
   expect(allowed.value.snapshot).not.toBe(path);
   expect(existsSync(allowed.value.snapshot)).toBe(false);
   expect(readFileSync(path).toString()).toBe("selected lesson");
-  const tooMany = await request("chats.ask", {
-    text: "Read these",
-    files: Array(9).fill(path),
-  });
-  expect(tooMany.ok).toBe(false);
-  expect(tooMany.error).toMatchObject({
-    code: "attach-too-big",
-    messageKey: "errors.attachTooBig",
-  });
+  // A chat attachment is read behind the same grant as a Library import, and has the Library's limits and no limit of
+  // its own: a file past the old 15 MB cap is snapshotted and handed over.
+  attach.mockClear();
+  const unknown = join(root, "unknown.txt");
+  writeFileSync(unknown, "never picked");
+  const denied2 = await request("chats.attach", { path: unknown });
+  expect(denied2.ok).toBe(false);
+  expect(denied2.error.code).toBe("file-access-denied");
   const large = join(root, "large.txt");
-  writeFileSync(large, Buffer.alloc(15 * 1024 * 1024 + 1));
+  writeFileSync(large, Buffer.alloc(20 * 1024 * 1024));
   addFileGrants([pickedFileGrant(large)]);
-  const tooLarge = await request("chats.ask", {
-    text: "Read this",
-    files: [large],
-  });
-  expect(tooLarge.ok).toBe(false);
-  expect(tooLarge.error).toMatchObject({
-    code: "attach-too-big",
-    messageKey: "errors.attachTooBig",
-  });
+  const attached = await request("chats.attach", { path: large });
+  expect(attached.ok).toBe(true);
+  expect(attached.value).toMatchObject({ name: "large.txt", bytes: 20 * 1024 * 1024 });
+  expect(attached.value.snapshot).not.toBe(large);
+  expect(existsSync(attached.value.snapshot)).toBe(false);
   // Imports are capped by size before any buffer exists. A sparse file costs nothing to make.
   const photo = join(root, "huge.png");
   writeFileSync(photo, "");
@@ -116,6 +119,11 @@ it("renderer requests cannot mint grants and authorized imports use private temp
     expect(refused.error).toMatchObject({ code: "source-too-big", messageKey: "sources.tooBig" });
   }
   expect(importFile).not.toHaveBeenCalled();
+  attach.mockClear();
+  const refusedPhoto = await request("chats.attach", { path: photo });
+  expect(refusedPhoto.ok).toBe(false);
+  expect(refusedPhoto.error).toMatchObject({ code: "source-too-big", messageKey: "sources.tooBig" });
+  expect(attach).not.toHaveBeenCalled();
 });
 
 it("links only folders a picker or a drop granted, by their real path", async () => {

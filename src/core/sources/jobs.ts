@@ -100,6 +100,15 @@ export type Extraction = {
   document?: ExtractedDocument;
 };
 
+/**
+ * Whether the job's source is a hidden copy (`library = 0`), such as a file attached to a chat. Its reading belongs to
+ * that chat's chip, so the jobs list leaves it out (`JobSpec.unlisted`).
+ */
+export function worksOnHiddenSource(db: Database.Database, params: unknown): boolean {
+  const { sourceId } = (params ?? {}) as { sourceId?: string };
+  return sourceId ? db.prepare(`SELECT library FROM sources WHERE id = ?`).pluck().get(sourceId) === 0 : false;
+}
+
 /** The source a job works on, as the library names it now (after a rename, or a link's page title), or as queued. */
 export function sourceTitle(db: Database.Database, params: unknown): string | null {
   const { sourceId, title } = params as { sourceId?: string; title?: string };
@@ -199,6 +208,7 @@ export function registerSourceJobs(
     jobClass: "local",
     title: (params) => sourceTitle(db, params),
     group: (params) => importGroup(db, params),
+    unlisted: (params) => worksOnHiddenSource(db, params),
     steps: [
       {
         name: "extract",
@@ -762,6 +772,8 @@ export async function enqueueSourceFile(
   existingId?: string,
   /** The Library request this file came with, when it brought several files. */
   batch?: ImportBatch,
+  /** A copy for one chat, kept out of the Library (see `enqueueSourceData`). */
+  hidden?: boolean,
 ) {
   const ext = extname(path).toLowerCase();
   // The size is read before the file, so a huge one never gets a buffer.
@@ -783,6 +795,7 @@ export async function enqueueSourceFile(
     existingId,
     undefined,
     batch,
+    hidden,
   );
 }
 
@@ -811,6 +824,8 @@ export function enqueueSourceData(
   /** The free book these bytes are, from the catalog. A new source records it; an update records it once published. */
   catalog?: { id: string; version: string },
   batch?: ImportBatch,
+  /** A copy for one chat, kept out of the Library and of its duplicate check (`library = 0`). */
+  hidden = false,
 ) {
   if (!IMPORT_EXTENSIONS.has(ext)) {
     throw new Error("unsupported-file");
@@ -819,7 +834,7 @@ export function enqueueSourceData(
   if (isHeicExt(ext) && !isHeicBytes(bytes)) throw new Error("heic-invalid");
   if (isHeicExt(ext) && bytes.length > MAX_HEIC_BYTES)
     throw new Error("heic-too-large");
-  if (!existingId) {
+  if (!existingId && !hidden) {
     // The same material is one library source, whatever the way in (a picked file, a drop, pasted text, a link): no
     // second copy and no second job. A copy a chat or a plan file keeps out of the library does not count, because it
     // lives and dies with that chat or plan. Nothing awaits between this lookup and the insert below, so two imports
@@ -865,8 +880,8 @@ export function enqueueSourceData(
       ).run(Date.now(), existingId);
     } else {
       db.prepare(
-        `INSERT INTO sources (id, kind, title, blob_sha, mime, status, catalog_id, catalog_version, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)`,
+        `INSERT INTO sources (id, kind, title, blob_sha, mime, status, catalog_id, catalog_version, library, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`,
       ).run(
         sourceId,
         kind,
@@ -875,6 +890,7 @@ export function enqueueSourceData(
         mime,
         catalog?.id ?? null,
         catalog?.version ?? null,
+        hidden ? 0 : 1,
         Date.now(),
         Date.now(),
       );

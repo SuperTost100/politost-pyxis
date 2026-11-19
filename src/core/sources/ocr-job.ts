@@ -2,7 +2,7 @@ import { linkedFile, readableLinkedPath } from "./linked-file";
 import type Database from "better-sqlite3";
 import type { Runner } from "../jobs/runner";
 import { hasBlob, readBlob } from "../blobs";
-import { sourceTitle } from "./jobs";
+import { sourceTitle, worksOnHiddenSource } from "./jobs";
 import {
   applyOcrPage,
   canStartOcr,
@@ -31,7 +31,8 @@ export type ScanDeps = {
   onReady: (sourceId: string) => void;
 };
 
-type ScanParams = { sourceId: string; autoResumedAt?: string };
+/** `pages` is the number of pages the file has, known after the first batch, for a window that shows "page N of M". */
+type ScanParams = { sourceId: string; autoResumedAt?: string; pages?: number };
 
 const ACTIVE = ["queued", "running", "interrupted"];
 
@@ -49,6 +50,7 @@ export function registerOcrJob(
   runner.register("source-ocr", {
     jobClass: "local",
     title: (params) => sourceTitle(db, params),
+    unlisted: (params) => worksOnHiddenSource(db, params),
     // A scan stopped before its step ran, while it waited for a slot, or dismissed while paused must not keep showing
     // as reading. Another run the student started for the same source keeps it.
     onCancelled: (params) => {
@@ -60,7 +62,7 @@ export function registerOcrJob(
         name: "read",
         label: "sources.jobs.ocr",
         async run(ctx) {
-          const params = ctx.params as ScanParams;
+          let params = ctx.params as ScanParams;
           const { sourceId } = params;
           const row = db
             .prepare(`SELECT status, kind, blob_sha FROM sources WHERE id = ?`)
@@ -92,6 +94,10 @@ export function registerOcrJob(
               const batch = await deps.readPages(file, pages, ctx.signal);
               ctx.signal.throwIfAborted();
               count = batch.count;
+              if (params.pages !== count) {
+                params = { ...params, pages: count };
+                ctx.setParams(params);
+              }
               // A new file or a new run took the source over while this batch was read: its pages are not ours to store.
               if (!ownsOcrRun(db, sourceId, mine)) throw new Error("ocr-stale");
               let stored = 0;
@@ -101,7 +107,8 @@ export function registerOcrJob(
               // A run that stores text is making headway, so a later quit may resume it again by itself. Blank pages are
               // read again on every run, so they are not headway.
               if (!progressed && stored > 0 && params.autoResumedAt) {
-                ctx.setParams({ ...params, autoResumedAt: undefined });
+                params = { ...params, autoResumedAt: undefined };
+                ctx.setParams(params);
                 progressed = true;
               }
             }

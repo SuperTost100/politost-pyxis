@@ -1,25 +1,11 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
-import * as attach from "./attach";
-import { extractPlain } from "../sources/documents";
+import { heldFilesFor } from "./test-attach";
 import { askTurn, deleteChat, readChat, regenerateTurn } from "./turn";
-
-// The real staging, with the document read done in-process instead of in the extract worker.
-vi.mock("./attach", async (original) => {
-  const actual = await original<typeof import("./attach")>();
-  return {
-    ...actual,
-    stageFiles: (...args: Parameters<typeof actual.stageFiles>) =>
-      actual.stageFiles(args[0], args[1], args[2], args[3], args[4], args[5], undefined, undefined, async (_path, _ext, bytes) =>
-        extractPlain(new TextDecoder().decode(bytes), false),
-      ),
-  };
-});
-void attach;
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -46,20 +32,24 @@ function setup() {
     return path;
   };
   const count = (sql: string) => (db.prepare(`SELECT COUNT(*) AS n FROM ${sql}`).get() as { n: number }).n;
-  return { workspace, db, file, count };
+  const files = heldFilesFor(db, workspace);
+  /** Attaches a file as the composer does, so a turn can send it and a retry can send the same one. */
+  const attached = async (path: string) => ({ attachments: (await files.attach(path)).ids, held: files.held });
+  return { workspace, db, file, count, attached };
 }
 
 describe("a failed or stopped first turn leaves no chat behind", () => {
-  it("removes the chat, its message and its attached document when the model call fails, so a retry makes one chat", async () => {
-    const { workspace, db, file, count } = setup();
-    const note = file("appunti.txt", "Il calore si trasmette per conduzione.");
+  it("removes the chat and its message when the model call fails, keeps the attached file held, so a retry makes one chat and one source", async () => {
+    const { workspace, db, file, count, attached } = setup();
+    const sent = await attached(file("appunti.txt", "Il calore si trasmette per conduzione."));
     const turn = (run: typeof down) =>
-      askTurn(db, { text: "spiega", allowGeneral: true, files: [note], workspace, run });
+      askTurn(db, { text: "spiega", allowGeneral: true, ...sent, workspace, run });
     await expect(turn(down)).rejects.toThrow("engine-down");
+    // The file was read when it was attached and stays in the composer for the retry, so its source is kept.
     expect({ chats: count("chats"), messages: count("messages"), sources: count("sources") }).toEqual({
       chats: 0,
       messages: 0,
-      sources: 0,
+      sources: 1,
     });
     const result = await turn(async () => reply);
     expect(count("chats")).toBe(1);
@@ -87,12 +77,12 @@ describe("a failed or stopped first turn leaves no chat behind", () => {
   });
 
   it("keeps an existing chat and stores the retried document once", async () => {
-    const { workspace, db, file, count } = setup();
+    const { workspace, db, file, count, attached } = setup();
     const first = await askTurn(db, { text: "ciao", allowGeneral: true, run: async () => reply });
     await tick();
-    const note = file("appunti.txt", "Il calore si trasmette per conduzione.");
+    const sent = await attached(file("appunti.txt", "Il calore si trasmette per conduzione."));
     const turn = (run: typeof down) =>
-      askTurn(db, { chatId: first.chatId, text: "spiega", allowGeneral: true, files: [note], workspace, run });
+      askTurn(db, { chatId: first.chatId, text: "spiega", allowGeneral: true, ...sent, workspace, run });
     await expect(turn(down)).rejects.toThrow("engine-down");
     await tick();
     // The question and its document stay with the chat, so it can be answered later.
@@ -261,11 +251,11 @@ describe("a chat deleted while its reply is written", () => {
 
 describe("a document attached to this turn", () => {
   it("is in the prompt even when the question shares no words with it", async () => {
-    const { workspace, db, file } = setup();
+    const { workspace, db, file, attached } = setup();
     let prompt = "";
     await askTurn(db, {
       text: "riassumi questo file",
-      files: [file("appunti.txt", "Il calore si trasmette per conduzione.")],
+      ...(await attached(file("appunti.txt", "Il calore si trasmette per conduzione."))),
       workspace,
       run: async (input) => {
         prompt = input.prompt;

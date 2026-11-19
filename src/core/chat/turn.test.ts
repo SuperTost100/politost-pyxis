@@ -25,6 +25,7 @@ import {
   splitFollowups,
 } from "./turn";
 import { setRetrievalModel } from "../sources/retrieve";
+import { heldFilesFor } from "./test-attach";
 import { tempDir } from "../test-temp";
 
 describe("replyGrounding", () => {
@@ -90,6 +91,19 @@ const reply: EngineResult = {
   provider: "codex",
   inputTokens: 12,
 };
+
+/** Attaches files the way the composer does, so the turn can send them. */
+async function sendable(db: ReturnType<typeof openDatabase>, workspace: string, paths: string[]) {
+  const files = heldFilesFor(db, workspace);
+  return { attachments: (await files.attach(...paths)).ids, held: files.held };
+}
+
+/** No tool of this test has a model that reads photos, so a photo can only be read with local OCR. */
+function noImageEngine(db: ReturnType<typeof openDatabase>) {
+  db.prepare(`INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('vision', ?, 1)`).run(
+    JSON.stringify({ provider: "claude", model: "text-only-small" }),
+  );
+}
 
 describe("askTurn", () => {
   it("keeps a grounded Socratic question without requiring a factual citation", async () => {
@@ -711,7 +725,7 @@ describe("askTurn", () => {
     let prompt = "";
     const result = await askTurn(db, {
       text: "velocita",
-      files: [file],
+      ...(await sendable(db, dir, [file])),
       workspace: dir,
       run: async (input) => {
         prompt = input.prompt;
@@ -755,7 +769,7 @@ describe("askTurn", () => {
       return new Float32Array(384).fill(0.05);
     });
     try {
-      await askTurn(db, { text: "velocita", files, workspace: dir, run: async () => reply });
+      await askTurn(db, { text: "velocita", ...(await sendable(db, dir, files)), workspace: dir, run: async () => reply });
     } finally {
       setRetrievalModel(undefined);
     }
@@ -773,11 +787,12 @@ describe("askTurn", () => {
     db.prepare(
       `INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)`,
     ).run(JSON.stringify({ provider: "claude", model: "text-only-small" }));
+    noImageEngine(db);
     let prompt = "";
     await askTurn(db, {
       text: "cosa c'è scritto",
       allowGeneral: true,
-      files: [file],
+      ...(await sendable(db, dir, [file])),
       workspace: dir,
       recognize: async () => "F uguale m a",
       run: async (input) => {
@@ -812,9 +827,10 @@ describe("askTurn", () => {
     db.prepare(
       `INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)`,
     ).run(JSON.stringify({ provider: "claude", model: "text-only-small" }));
+    noImageEngine(db);
     const result = await askTurn(db, {
       text: "cosa c'è scritto",
-      files: [file],
+      ...(await sendable(db, dir, [file])),
       workspace: dir,
       recognize: async () => "F uguale m a",
       run: async () => reply,
@@ -834,9 +850,10 @@ describe("askTurn", () => {
     db.prepare(
       `INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)`,
     ).run(JSON.stringify({ provider: "claude", model: "text-only-small" }));
+    noImageEngine(db);
     const result = await askTurn(db, {
       text: "cosa c'è scritto",
-      files: [file],
+      ...(await sendable(db, dir, [file])),
       workspace: dir,
       recognize: async () => "",
       run: async () => reply,
@@ -844,29 +861,6 @@ describe("askTurn", () => {
     // Nothing was selected and the photo gave no text, so it is an ordinary general answer with no badge.
     expect(result.covered).toBe(true);
     expect(result.message?.grounding).toBeNull();
-  });
-
-  it("refuses an attachment over 15 MB", async () => {
-    const dir = tempDir("pyxis-big-");
-    const file = join(dir, "huge.txt");
-    writeFileSync(file, "x");
-    const { openSync, ftruncateSync, closeSync } = await import("node:fs");
-    const fd = openSync(file, "r+");
-    ftruncateSync(fd, 16 * 1024 * 1024);
-    closeSync(fd);
-    const db = openDatabase(":memory:");
-    db.prepare(
-      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
-    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
-    await expect(
-      askTurn(db, {
-        text: "leggi",
-        files: [file],
-        workspace: dir,
-        allowGeneral: true,
-        run: async () => reply,
-      }),
-    ).rejects.toMatchObject({ messageKey: "errors.attachTooBig" });
   });
 });
 

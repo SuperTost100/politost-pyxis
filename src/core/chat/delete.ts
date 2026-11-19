@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { namedBlobs, removeBlob } from "../blobs";
+import { GIVEN_UP } from "../jobs/runner";
 
 /**
  * What deleting a chat or a plan takes with it besides its own rows: the hidden documents it brought and their files.
@@ -12,11 +13,12 @@ import { namedBlobs, removeBlob } from "../blobs";
 
 /**
  * Jobs that may still read what their params or finished steps name: unfinished ones, and failed or cancelled ones a
- * Retry starts again from the steps that succeeded. Only a succeeded job is done with its files.
+ * Retry starts again from the steps that succeeded. Only a succeeded job is done with its files, and so is one given up
+ * for good (`Runner.discard`), which no retry or resume can start again.
  */
-const OPEN_JOBS = `SELECT params_json AS text FROM jobs WHERE state != 'succeeded'
+const OPEN_JOBS = `SELECT params_json AS text FROM jobs WHERE state != 'succeeded' AND dismissed < ${GIVEN_UP}
   UNION ALL SELECT s.output_json FROM job_steps s JOIN jobs j ON j.id = s.job_id
-  WHERE j.state != 'succeeded' AND s.output_json IS NOT NULL`;
+  WHERE j.state != 'succeeded' AND j.dismissed < ${GIVEN_UP} AND s.output_json IS NOT NULL`;
 
 /**
  * Whether JSON without a foreign key names an ID: a lesson's citation order, a question's `sourceId`, an exercise

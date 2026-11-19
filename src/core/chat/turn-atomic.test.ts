@@ -1,25 +1,17 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { hasBlob, putBlob } from "../blobs";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
 import { sha256 } from "../sources/quality";
-import * as attach from "./attach";
-import { extractPlain, storeExtracted } from "../sources/documents";
+import { extractPlain, storeExtracted, type ExtractedDocument } from "../sources/documents";
+import { heldFilesFor } from "./test-attach";
 import { askTurn, chatPickedSources, chatScope, deleteChat, heldSources, regenerateTurn } from "./turn";
 
-// The real staging, with the document read swapped for a stub a test can hold open.
-let extract: Parameters<typeof attach.stageFiles>[8];
-vi.mock("./attach", async (original) => {
-  const actual = await original<typeof import("./attach")>();
-  return {
-    ...actual,
-    stageFiles: (...args: Parameters<typeof actual.stageFiles>) =>
-      actual.stageFiles(args[0], args[1], args[2], args[3], args[4], args[5], undefined, undefined, extract),
-  };
-});
+// The Library's import job reads each attached file, with the read swapped for a stub a test can set.
+let extract: (path: string, ext: string, bytes: Uint8Array) => Promise<ExtractedDocument>;
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -49,72 +41,101 @@ function setup() {
     messages: count("messages"),
     attachments: count("attachments"),
   });
-  const ask = (files: string[]) =>
-    askTurn(db, { chatId: "c", text: "spiega", allowGeneral: true, files, workspace, run: async () => reply });
-  return { workspace, db, file, rows, ask, count };
+  const files = heldFilesFor(db, workspace, {
+    extract: async (input) => ({ document: await extract(input.path, input.ext, new Uint8Array(readFileSync(input.path))) }),
+  });
+  /** Attaches the files, as the composer does, and sends the question with them. */
+  const ask = async (paths: string[]) => askTurn(db, { chatId: "c", text: "spiega", allowGeneral: true, ...(await withFiles(paths)), workspace, run: async () => reply });
+  const withFiles = async (paths: string[]) => ({ attachments: (await files.attach(...paths)).ids, held: files.held });
+  return { workspace, db, file, rows, ask, count, files, withFiles };
 }
 
 const nothing = { sources: 0, documents: 0, passages: 0, messages: 0, attachments: 0 };
 
 describe("an attached file and its turn are stored together or not at all", () => {
-  it("a chat deleted while the files are read leaves no hidden source, passage or new blob, and never a shared one", async () => {
-    const { workspace, db, file, rows, ask } = setup();
+  it("a chat deleted after the files were read stores no message, and taking the files off leaves no source, passage or new blob, and never a shared one", async () => {
+    const { workspace, db, file, rows, withFiles, files } = setup();
     const fresh = file("nuovo.txt", "Il calore si trasmette per conduzione.");
     const shared = file("condiviso.txt", "Questo testo e gia in una fonte della libreria.");
-    // The second file's bytes are already a blob, as when a library source holds the same file.
-    const sharedSha = putBlob(workspace, new TextEncoder().encode("Questo testo e gia in una fonte della libreria."), "text/plain", "txt");
-    let deleted = false;
-    extract = async (_path, _ext, bytes) => {
-      if (!deleted) deleteChat(db, workspace, "c");
-      deleted = true;
-      return extractPlain(new TextDecoder().decode(bytes), false);
+    // The second file's bytes are already a blob, because a library source holds the same file.
+    const sharedText = "Questo testo e gia in una fonte della libreria.";
+    storeExtracted(db, workspace, {
+      title: "libreria",
+      kind: "text",
+      mime: "text/plain",
+      ext: ".txt",
+      bytes: new TextEncoder().encode(sharedText),
+      extracted: extractPlain(sharedText, false),
+    });
+    const sharedSha = sha256(new TextEncoder().encode(sharedText));
+    extract = async (_path, _ext, bytes) => extractPlain(new TextDecoder().decode(bytes), false);
+    const sent = await withFiles([fresh, shared]);
+    // The chat is deleted while the turn waits for its files.
+    const held = {
+      ...files.held,
+      settle: async (ids: string[], signal?: AbortSignal) => {
+        deleteChat(db, workspace, "c");
+        return files.held.settle(ids, signal);
+      },
     };
-    await expect(ask([fresh, shared])).rejects.toThrow("chat-missing");
-    expect(rows()).toEqual(nothing);
+    await expect(
+      askTurn(db, { chatId: "c", text: "spiega", allowGeneral: true, attachments: sent.attachments, held, workspace, run: async () => reply }),
+    ).rejects.toThrow("chat-missing");
+    expect(rows()).toMatchObject({ messages: 0, attachments: 0 });
+    // The copies wait in the composer for the student to send or remove them. Removing them leaves nothing behind.
+    for (const id of sent.attachments) files.held.detach(id);
+    expect(rows()).toEqual({ ...nothing, sources: 1, documents: 1, passages: 1 });
     expect(hasBlob(workspace, sha256(new TextEncoder().encode("Il calore si trasmette per conduzione.")))).toBe(false);
     expect(hasBlob(workspace, sharedSha)).toBe(true);
     db.close();
   });
 
-  it("a failure after the sources are stored rolls them back with the scope and message, keeps a shared blob, and a retry then succeeds", async () => {
-    const { workspace, db, file, rows, ask } = setup();
+  it("a failure while the message is stored rolls back the scope and the message, and a retry with the same files then succeeds", async () => {
+    const { workspace, db, file, rows, withFiles } = setup();
     const fresh = file("nuovo.txt", "Il calore si trasmette per conduzione.");
     const shared = file("condiviso.txt", "Questo testo e gia in una fonte della libreria.");
-    const sharedSha = putBlob(workspace, new TextEncoder().encode("Questo testo e gia in una fonte della libreria."), "text/plain", "txt");
+    putBlob(workspace, new TextEncoder().encode("Questo testo e gia in una fonte della libreria."), "text/plain", "txt");
     extract = async (_path, _ext, bytes) => extractPlain(new TextDecoder().decode(bytes), false);
+    const sent = await withFiles([fresh, shared]);
+    const send = () => askTurn(db, { chatId: "c", text: "spiega", allowGeneral: true, ...sent, workspace, run: async () => reply });
     db.exec(`CREATE TRIGGER late BEFORE INSERT ON messages WHEN NEW.role = 'user' BEGIN SELECT RAISE(ABORT, 'late-failure'); END`);
-    await expect(ask([fresh, shared])).rejects.toThrow("late-failure");
-    expect(rows()).toEqual(nothing);
+    await expect(send()).rejects.toThrow("late-failure");
+    // The files were read when they were attached, so their sources exist; the scope, message and rows are not stored.
+    expect(rows()).toMatchObject({ sources: 2, messages: 0, attachments: 0 });
     expect(db.prepare(`SELECT scope_json FROM chats WHERE id = 'c'`).get()).toEqual({ scope_json: "[]" });
-    expect(hasBlob(workspace, sha256(new TextEncoder().encode("Il calore si trasmette per conduzione.")))).toBe(false);
-    expect(hasBlob(workspace, sharedSha)).toBe(true);
 
     db.exec(`DROP TRIGGER late`);
-    const result = await ask([fresh, shared]);
+    const result = await send();
     expect(result.message?.body).toBe("Ecco la risposta.");
-    expect(rows()).toMatchObject({ sources: 2, messages: 2 });
+    expect(rows()).toMatchObject({ sources: 2, messages: 2, attachments: 2 });
     expect(db.prepare(`SELECT COUNT(*) AS n FROM sources WHERE library = 0`).get()).toEqual({ n: 2 });
     expect(JSON.parse((db.prepare(`SELECT scope_json FROM chats WHERE id = 'c'`).get() as { scope_json: string }).scope_json)).toHaveLength(2);
     db.close();
   });
 
-  it("a stored turn keeps the sources even when the model call then fails", async () => {
-    const { workspace, db, file, rows } = setup();
+  it("a stored turn keeps the sources even when the model call then fails, and the files stay held for the retry", async () => {
+    const { workspace, db, file, rows, withFiles, files } = setup();
     extract = async (_path, _ext, bytes) => extractPlain(new TextDecoder().decode(bytes), false);
+    const sent = await withFiles([file("nuovo.txt", "Il calore si trasmette per conduzione.")]);
     await expect(
       askTurn(db, {
         chatId: "c",
         text: "spiega",
         allowGeneral: true,
-        files: [file("nuovo.txt", "Il calore si trasmette per conduzione.")],
+        ...sent,
         workspace,
         run: async () => {
           throw new Error("engine-down");
         },
       }),
     ).rejects.toThrow("engine-down");
-    // The user's message and its source are saved, so the student can retry the turn without attaching the file again.
+    // The user's message and its source are saved, and the composer still holds the file, so the retry attaches nothing again.
     expect(rows()).toMatchObject({ sources: 1, messages: 1 });
+    expect(files.held.list(sent.attachments)).toHaveLength(1);
+    const again = await askTurn(db, { chatId: "c", text: "spiega", allowGeneral: true, ...sent, workspace, run: async () => reply });
+    expect(again.message?.body).toBe("Ecco la risposta.");
+    expect(rows()).toMatchObject({ sources: 1, messages: 2, attachments: 1 });
+    expect(files.held.list(sent.attachments)).toHaveLength(0);
     db.close();
   });
 
@@ -145,7 +166,7 @@ describe("an attached file and its turn are stored together or not at all", () =
         text: "spiega",
         allowGeneral: true,
         sourceIds: sourceIds(lib),
-        files: [t.file("appunti.txt", NOTE)],
+        ...(await t.withFiles([t.file("appunti.txt", NOTE)])),
         workspace: t.workspace,
         run: async () => reply,
       });

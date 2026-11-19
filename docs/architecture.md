@@ -127,7 +127,7 @@ Core checks a file's size before it allocates a buffer for it. An import job rea
 | ------------------------- | --------------------------------------------------------- |
 | Document import           | 256 MB                                                    |
 | Photo import              | 40 MB                                                     |
-| Chat attachment           | 15 MB, read in the extract worker with a two-minute limit |
+| Chat attachment           | The Library's: 256 MB a document, 40 MB a photo, no time limit |
 | One ZIP entry             | 64 MiB inflated                                           |
 | `.docx` or `.pptx`, total | 128 MiB inflated                                          |
 | Smartbook, total          | 256 MiB inflated                                          |
@@ -135,7 +135,17 @@ Core checks a file's size before it allocates a buffer for it. An import job rea
 | Linked folder             | No file cap, 32 levels deep                               |
 | Extract worker heap       | 2 GiB of V8 heap                                          |
 
-The IPC server reads the size from `fstat` and refuses a file that grows past its cap during the read. A chat document is read in the extract worker (`mode: "extract"`, behind the same two-at-a-time gate as photo decodes, and cancellable) from the bytes core already read, and core stores it in one transaction as a chat-only source.
+The IPC server reads the size from `fstat` and refuses a file that grows past its cap during the read.
+
+### Files attached to a chat
+
+A file is read when it is attached, not when the question is sent (`src/core/chat/held-files.ts`). `chats.attach` takes a path the picker or a drop granted, behind the same file boundary and size caps as a Library import, and answers at once with the file's chip (`AttachmentView`: name, kind, size, state, how far the reading is and why it failed). The reading goes on in core and every change arrives as `chats.attachment`. A document is queued as the Library queues one (`enqueueSourceFile` with `hidden`, a source with `library = 0`), so it uses the same extract worker, the same limits and the same `source-import` job; a scan that comes out of it starts the Library's `source-ocr` job, page by page, when the student agreed to local OCR and its data is on this computer, and the chip says "page N of M" (`pages` is kept in the scan job's parameters). Without the data the chip is `needs-data` and the page shows the OCR download card, and `chats.attachScan` starts the scan once it is here. Both jobs are `unlisted` (`JobSpec.unlisted`), so Attività never shows them. A photo is stored and fitted for a model in the extract worker; its chip is ready when that ends.
+
+Removing a chip (`chats.detach`) cancels its jobs and gives them up (`Runner.discard`), deletes the hidden source with its passages and the stored photo unless something else uses them. Core holds the files in memory until the question that carries them is stored, so leaving the chat and coming back, reloading the window or a failed turn keeps them (`chats.attachments` asks which ids core still holds); one core does not survive a restart, and a hidden copy nothing lists is removed by Free up space.
+
+`chats.ask` takes the ids (`attachments`, at most eight, the one cap a message keeps because of the providers' own limits on images). The turn waits until none is still being read, goes on without the ones that failed and names them in `leftOut`. The question's own text is stored as typed. Each file goes in one row of `attachments` with its name, kind, size and, for a document, the hidden source's id (`chats.read` returns them as `files`); a photo's fitted copy carries the name, and its original is a plain row that a resend skips. The text local OCR reads from a photo goes in `attachments.recognised` and is sent with the question and with later turns, and never shown as message text. Chats saved before this keep the text in the body of the question.
+
+A turn that has a photo, or a chat that holds one, runs on a model that reads images: the chat's own when it does, then the model the same tool chooses for photos (`selectionOn(provider, "vision")`), then the one chosen for the vision task on another available tool. Only when no tool has one does the photo go to local OCR.
 
 Office files and smartbooks open through `src/core/sources/zip-bounded.ts`. It reads the central directory only for locations, inflates just the entries it needs in small pushes, and counts the real output, so a lying header or overlapping entries cannot exceed the caps. mammoth only ever sees a stored archive that the reader rebuilt from the XML parts.
 
