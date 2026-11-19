@@ -148,6 +148,30 @@ describe("a chat's stored tool session", () => {
     db.close();
   });
 
+  it("delivers the current instructions to a session opened under another system prompt, on the tools that carry them in the prompt", async () => {
+    for (const [provider, model, carries] of [
+      ["agent", "cursor-grok-4.5", true],
+      ["antigravity", "gemini-3.8-flash", true],
+      ["claude", "claude-sonnet-5", false],
+    ] as const) {
+      const { db } = setup();
+      db.prepare("UPDATE feature_engines SET selection_json = ?").run(JSON.stringify({ provider, model }));
+      const first = await ask(db, "prima", { provider, sessionId: "s1" });
+      // The template was edited since the session was opened.
+      db.prepare("UPDATE chat_sessions SET instructions = 'older' WHERE chat_id = ?").run(first.chatId);
+      const next = await ask(db, "seconda", { chatId: first.chatId, provider, sessionId: "s1" });
+      const sent = next.seen.conversation!.followUp;
+      expect(sent.startsWith("<instructions>\nYou are Pyxis, a study tutor"), provider).toBe(carries);
+      // Every tool gets the full context block again, since the session is out of step.
+      expect(sent, provider).toContain("<context>");
+      // The session has the current instructions now, so the turn after it sends neither.
+      const after = await ask(db, "terza", { chatId: first.chatId, provider, sessionId: "s1" });
+      expect(after.seen.conversation!.followUp, provider).not.toContain("<instructions>");
+      expect(after.seen.conversation!.followUp, provider).not.toContain("<context>");
+      db.close();
+    }
+  });
+
   it("counts a turn once when the tool names its session before the turn ends", async () => {
     const { db } = setup();
     const first = await askTurn(db, {

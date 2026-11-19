@@ -6,7 +6,7 @@ import type { GenerateInput } from "../engine/generate";
 import { systemPrompt } from "../engine/prompts";
 
 const selection = { provider: "claude" as const, model: "fixture" };
-const step = "The derivative is $2*x*sin(x) + x**2*cos(x)$.";
+const step = "The derivative is $f'(x) = 2*x*sin(x) + x**2*cos(x)$.";
 const claim = {
   kind: "derivative" as const,
   expr: "x**2*sin(x)",

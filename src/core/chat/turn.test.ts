@@ -28,23 +28,21 @@ import { setRetrievalModel } from "../sources/retrieve";
 import { tempDir } from "../test-temp";
 
 describe("replyGrounding", () => {
-  const turn = { selected: true, cited: 0, attached: false, question: false, passages: 3 };
+  const turn = { selected: true, cited: 0, attached: false };
   it("badges only a turn with sources selected whose answer cites none of them", () => {
     expect(replyGrounding(turn)).toBe("general");
-    expect(replyGrounding({ ...turn, passages: 0 })).toBe("general");
     expect(replyGrounding({ ...turn, cited: 2 })).toBe("sources");
   });
   it("never badges a turn with nothing selected", () => {
     expect(replyGrounding({ ...turn, selected: false })).toBeNull();
-    expect(replyGrounding({ ...turn, selected: false, passages: 0 })).toBeNull();
   });
   it("counts the turn's own attachment as its source", () => {
     expect(replyGrounding({ ...turn, attached: true })).toBe("sources");
     expect(replyGrounding({ ...turn, selected: false, attached: true })).toBe("sources");
   });
-  it("does not expect a Socratic question to cite, unless nothing was found", () => {
-    expect(replyGrounding({ ...turn, question: true })).toBe("sources");
-    expect(replyGrounding({ ...turn, question: true, passages: 0 })).toBe("general");
+  it("asks whether the reply cites and says nothing of its kind, so a widened citation is told from a plain one", () => {
+    expect(replyGrounding({ ...turn, cited: 1, widened: true })).toBe("wider");
+    expect(replyGrounding({ ...turn, widened: true })).toBe("general");
   });
 });
 
@@ -92,7 +90,7 @@ const reply: EngineResult = {
 };
 
 describe("askTurn", () => {
-  it("keeps a grounded Socratic question without requiring a factual citation", async () => {
+  it("keeps a reply that ends with a question and cites nothing, marked as not from the sources", async () => {
     const db = openDatabase(":memory:");
     db.prepare(
       "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
@@ -137,7 +135,8 @@ describe("askTurn", () => {
     expect(factual.covered).toBe(true);
     expect(factual.message?.citations).toEqual([]);
     expect(factual.message?.grounding).toBe("general");
-    expect(question.message?.grounding).toBe("sources");
+    // What it ends with does not make it grounded: it cites nothing.
+    expect(question.message?.grounding).toBe("general");
     db.close();
   });
 

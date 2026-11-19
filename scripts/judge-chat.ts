@@ -1,28 +1,12 @@
 // Runs the fixed conversations of tests/fixtures/chat-conversations.json through a real tool and says which replies do
 // what each conversation's rule asks. It makes real model calls on the student's subscriptions, so it is run by hand and
 // is not part of the tests or CI. Usage: node scripts/judge-chat.mjs <claude|codex|agent|antigravity> [fast|mid] [id,id,...]
-// `print <id>` shows what would be sent for one conversation without calling a model, and `rejudge <file>` judges saved replies again. Replies are written to .tmp/judge-chat-<tool>-<tier>.json, which is not committed.
+// `print <id>` shows what would be sent for one conversation without calling a model, and `rejudge <file> [--no-followups]` judges saved replies again, for replies saved without their follow-up chips. Replies are written to .tmp/judge-chat-<tool>-<tier>.json, which is not committed.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createFunnel } from "cli-funnel";
 import { chatSystemPrompt, contextBlock } from "../src/core/chat/prompts";
 import { figureKinds } from "../src/shared/figure-kinds";
-
-type Conversation = {
-  id: string;
-  language: "it" | "en";
-  history: Array<{ role: "user" | "assistant"; text: string }>;
-  message: string;
-  rule: string;
-  must?: string[];
-  mustNot?: string[];
-  mustFormula?: string[];
-  mustNotFormula?: string[];
-  minWords?: number;
-  maxWords?: number;
-  endsWithQuestion?: boolean;
-  followups?: "solution" | "similar";
-  material?: boolean;
-};
+import { judge, type Conversation } from "./judge-chat-rules";
 
 /** The fast and the middle model of each tool, which a Gemini and a Cursor run take from the Gemini and Grok families. */
 const MODELS: Record<string, { fast: [string, string]; mid: [string, string] }> = {
@@ -52,31 +36,6 @@ function messageFor(conv: Conversation): string {
   return `${header}\n\n${earlier}${passages}\n\nQuestion:\n${conv.message}`;
 }
 
-const squash = (text: string) => text.replace(/[\s\\{}$*`]/g, "");
-function judge(conv: Conversation, reply: string) {
-  const body = reply.replace(/<followups>[\s\S]*$/i, "").trim();
-  const followups = (/<followups>([\s\S]*?)(?:<\/followups>|$)/i.exec(reply)?.[1] ?? "")
-    .split("\n")
-    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").trim())
-    .filter(Boolean);
-  const squashed = squash(body);
-  const fails: string[] = [];
-  for (const pattern of conv.must ?? []) if (!new RegExp(pattern).test(body)) fails.push(`missing ${pattern}`);
-  for (const pattern of conv.mustNot ?? []) if (new RegExp(pattern).test(body)) fails.push(`has ${pattern}`);
-  for (const pattern of conv.mustFormula ?? []) if (!new RegExp(pattern).test(squashed)) fails.push(`missing ${pattern}`);
-  for (const pattern of conv.mustNotFormula ?? []) if (new RegExp(pattern).test(squashed)) fails.push(`has ${pattern}`);
-  const words = body.split(/\s+/).filter(Boolean).length;
-  if (conv.minWords && words < conv.minWords) fails.push(`only ${words} words`);
-  if (conv.maxWords && words > conv.maxWords) fails.push(`${words} words, over ${conv.maxWords}`);
-  if (conv.endsWithQuestion && !/\?\s*$/.test(body)) fails.push("does not end with a question");
-  if (followups.length !== 3) fails.push(`${followups.length} follow-ups`);
-  if (conv.followups === "solution" && !followups.some((line) => /soluzion|solution|complet|full|answer/i.test(line)))
-    fails.push("no follow-up asks for the solution");
-  if (conv.followups === "similar" && !followups.some((line) => /simil|altr[oa]|another|analog|esercizi|exercise|practice|prova/i.test(line)))
-    fails.push("no follow-up asks for a similar exercise");
-  return { fails, words };
-}
-
 const [tool = "", tier = "fast", only] = process.argv.slice(2);
 if (tool === "print") {
   // Prints what would be sent for one conversation, with no model call.
@@ -92,7 +51,7 @@ if (tool === "rejudge") {
   for (const item of Array.isArray(saved) ? saved : saved.results) {
     const conv = all.find((candidate) => candidate.id === item.id);
     if (!conv || !item.reply) continue;
-    const { fails } = judge(conv, item.reply);
+    const { fails } = judge(conv, item.reply, { followups: process.argv[4] !== "--no-followups" });
     console.log(item.id.padEnd(22), fails.length ? `FAIL ${fails.join("; ")}` : "PASS");
   }
   process.exit(0);

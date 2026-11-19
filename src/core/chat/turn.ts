@@ -1,5 +1,5 @@
 import { activeSimulation } from "../study/simulation";
-import { needsSolverChecks, splitChecks, solverChecks } from "./checks";
+import { needsSolverChecks, NO_SEPARATE_CHECK, splitChecks, solverChecks } from "./checks";
 import { stripCheckFences, type AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
@@ -21,6 +21,7 @@ import {
 import { isAbort, IpcError, toIpcError } from "../../shared/ipc";
 import { generate, type GenerateInput } from "../engine/generate";
 import { engineSeesImages } from "../engine/capabilities";
+import { systemInPrompt } from "../engine/funnel";
 import { selectionFor, strongestSelection } from "../engine/selection";
 import { withUsageScope } from "../engine/usage";
 import type { Embedder, PassageHit } from "../sources/retrieve";
@@ -261,22 +262,19 @@ export async function settleChecks(): Promise<void> {
  * What the reply message records, and so whether the "general knowledge" badge shows. The badge is only for a turn where
  * the student had sources or a subject selected and the answer cites none of them: that is "general". A cited answer is
  * "sources", and a turn with nothing selected carries no claim (null) and no badge. A turn's own attachment counts as
- * its source. A Socratic question needs no citation, so it stays "sources" whenever passages were found.
+ * its source. What counts is whether the reply cites, not what kind of reply it is.
  */
 export function replyGrounding(turn: {
   selected: boolean;
   cited: number;
   attached: boolean;
-  /** The reply is a Socratic question, which is not expected to cite. */
-  question: boolean;
-  passages: number;
   /** The passages came from outside the chat's subject, which had nothing on the question. */
   widened?: boolean;
 }): Grounding | null {
   if (turn.cited > 0) return turn.widened ? "wider" : "sources";
   if (turn.attached) return "sources";
   if (!turn.selected) return null;
-  return turn.question && turn.passages > 0 ? (turn.widened ? "wider" : "sources") : "general";
+  return "general";
 }
 
 /** `wider` is stored as `mixed`, a value the column has allowed from the start. */
@@ -1086,7 +1084,16 @@ async function answer(
   const stored = currentSession(db, chatId);
   const long = Boolean(stored && sessionTooLong(stored));
   const session = stored && !long ? stored : undefined;
-  const outOfStep = Boolean(session && !session.inStep);
+  // A session keeps the instructions it was opened under. Cursor Agent and Antigravity carry them inside the first prompt,
+  // so when the chat's system prompt is not the one the session has (an edit of the template since), it is out of step and
+  // this turn delivers the current one. The tools that take a system prompt on every call need nothing more.
+  const instructions = contextHash(system);
+  const instructionsChanged = Boolean(session && session.instructions !== instructions);
+  const outOfStep = Boolean(session && (!session.inStep || instructionsChanged));
+  const newInstructions =
+    instructionsChanged && systemInPrompt(selection.provider)
+      ? `<instructions>\n${system}\n</instructions>\nThese instructions replace any you were given before.\n\n`
+      : "";
   const replay = outOfStep ? historyText(db, chatId, exclude, handoverChars(selection.provider), session!.syncedTo) : "";
   const replayBlock = replay
     ? `The conversation as the student sees it, since the last turn you completed. This, not anything you remember differently, is the conversation. A reply marked stopped was cut off, and the student saw only the text shown.\n${replay}\n\n`
@@ -1094,7 +1101,7 @@ async function answer(
   const newQuestion = citations.length
     ? `New question. Its passages are numbered from P1 again; cite only these.\n\n${question.trimStart()}`
     : question.trimStart();
-  const followUp = `${outOfStep || session?.told !== told ? `${header}\n\n` : ""}${replayBlock}${replacing && !resume ? ASKED_AGAIN : ""}${newQuestion}`;
+  const followUp = `${newInstructions}${outOfStep || session?.told !== told ? `${header}\n\n` : ""}${replayBlock}${replacing && !resume ? ASKED_AGAIN : ""}${newQuestion}`;
   // The conversation handed to a new session is sized to the window of the engine that answers, which an automatic choice
   // can change inside `generate()`. It is built only when a prompt is sent: a fresh start or a retry after a lost session.
   const promptFor = (provider: string) => {
@@ -1183,7 +1190,7 @@ async function answer(
           const open = currentSession(db, chatId);
           if (open?.provider === provider && open.sessionId === sessionId) return;
           startedSession = true;
-          recordSession(db, chatId, open, { provider, sessionId, cwd, model: selection.model, effort: selection.effort ?? null, told: "", chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion }, long ? "long" : "gone");
+          recordSession(db, chatId, open, { provider, sessionId, cwd, model: selection.model, effort: selection.effort ?? null, told: "", instructions, chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion }, long ? "long" : "gone");
         },
       },
       cache: true,
@@ -1210,6 +1217,7 @@ async function answer(
           model: result.model,
           effort: selection.effort ?? null,
           told,
+          instructions,
           chars: (result.continued ? followUp : promptFor(result.provider)).length + result.text.length,
           now: Date.now(),
           finished: true,
@@ -1313,16 +1321,21 @@ async function answer(
       );
   }
   // The check stays on the chat's own engine: it is a short extraction, not part of a stronger answer. It is a model call
-  // of its own, a new session in the tool's history, so it runs only for an answer that has math and no check blocks
-  // of its own (the template asks for them inline), and not for a reply that ends with a question: a guiding step
-  // states nothing to check. Cursor Agent takes 11 to 40 s before its first text, longer than the 20 s a check may
-  // take, so its checks were cancelled every time and spent tokens no row recorded.
-  // shortcut: no separate check on Cursor Agent; lift it when its first text comes within the check's time.
-  const checkSelection = selectionFor(db, "chat");
-  const checking =
-    needsSolverChecks(parsed.body) && !parsed.body.trim().endsWith("?") && checkSelection.provider !== "agent";
-  if (checking)
-    startChecks(db, { chatId, messageId, body: parsed.body }, { selection: checkSelection, run: input.run });
+  // of its own, a new session in the tool's history, so it runs only for an answer that states maths and has no check
+  // blocks of its own (the template asks for them inline), and never on a tool in `NO_SEPARATE_CHECK` (see there), which
+  // `solverChecks` also applies to the tool that runs each attempt. The engine is looked up only when a check is needed:
+  // with none assigned at this moment the saved reply is returned as it is.
+  let checking = false;
+  if (needsSolverChecks(parsed.body)) {
+    try {
+      const checkSelection = selectionFor(db, "chat");
+      checking = !NO_SEPARATE_CHECK.has(checkSelection.provider);
+      if (checking)
+        startChecks(db, { chatId, messageId, body: parsed.body }, { selection: checkSelection, run: input.run });
+    } catch (err) {
+      if (!(err instanceof IpcError && err.code === "engine-missing")) throw err;
+    }
+  }
   return { ...reply, message: { ...reply.message!, checking }, ...skippedImages };
 }
 
@@ -1409,9 +1422,6 @@ function saveReply(
     selected: meta.selected,
     cited: linked.length,
     attached: meta.attached,
-    // A reply that ends with a question is a guiding step, which is not expected to cite.
-    question: parsed.body.trim().endsWith("?"),
-    passages: meta.citations.length,
     widened: meta.widened || (within != null && linked.some((cite) => !within.has(cite.sourceId))),
   });
   // A finished reply from general knowledge records what the search did, in the column a stopped reply keeps its passages in.
