@@ -126,6 +126,38 @@ describe("keeping the newest valid copy", () => {
     expect(fastClaude()).toBe("claude-haiku-5-5");
   });
 
+  it("keeps the newer stored copy on disk when a later download is older, so an offline restart still has it", async () => {
+    const dir = folder();
+    let now = 1_000_000_000_000;
+    await syncModelFile({ ...base, dir, fetch: answer(newer("claude-haiku-9")) as typeof fetch, now: () => now });
+    // A day later the repository answers with an older file (a branch that was behind, a cached response).
+    const older = newer("claude-haiku-1");
+    older.updatedAt = "2050-01-01T00:00:00Z";
+    now += 2 * 24 * 60 * 60 * 1000;
+    const adopted = vi.fn();
+    await syncModelFile({ ...base, dir, fetch: answer(older) as typeof fetch, now: () => now, onAdopted: adopted });
+    expect(adopted).not.toHaveBeenCalled();
+    expect(fastClaude()).toBe("claude-haiku-9");
+    const stored = JSON.parse(readFileSync(join(dir, MODEL_FILE_NAME), "utf8")) as { checkedAt: number; file: ModelFile };
+    expect(stored.file.tools.claude!.roles.fast.models[0]).toBe("claude-haiku-9");
+    // The ask still counts: the next start does not ask again within the day.
+    expect(stored.checkedAt).toBe(now);
+    // The restart, offline: the newer rules are still there.
+    resetModelFile();
+    await syncModelFile({ ...base, dir, fetch: null, now: () => now });
+    expect(fastClaude()).toBe("claude-haiku-9");
+  });
+
+  it("stores a download only when it is taken, and still records the ask", async () => {
+    const dir = folder();
+    const older = newer("claude-haiku-1");
+    older.updatedAt = "2020-01-01T00:00:00Z";
+    await syncModelFile({ ...base, dir, fetch: answer(older) as typeof fetch });
+    const stored = JSON.parse(readFileSync(join(dir, MODEL_FILE_NAME), "utf8")) as { checkedAt: number; file?: ModelFile };
+    expect(stored.file).toBeUndefined();
+    expect(Number.isFinite(stored.checkedAt)).toBe(true);
+  });
+
   it("reads a stored file that is damaged as no file", async () => {
     const dir = folder();
     writeFileSync(join(dir, MODEL_FILE_NAME), "{not json");

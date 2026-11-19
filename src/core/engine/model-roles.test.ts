@@ -8,6 +8,7 @@ import { getFunnel } from "./funnel";
 import { engineHandlers } from "./handlers";
 import {
   adoptModelFile,
+  automaticEffortOn,
   capabilityOf,
   isForeignModel,
   isOwnModel,
@@ -251,6 +252,49 @@ describe("a tool only runs its maker's models", () => {
     // A model the new file names first but the account does not report is skipped for the next one.
     const without: AutoProvider = { ...provider, models: [model("gemini-4-hydrogen"), model("gemini-3.8-flash")] };
     expect(planAuto([without]).lesson?.model).toBe("gemini-4-hydrogen");
+  });
+
+  describe("a task's role on one tool, as data", () => {
+    const claude: AutoProvider = { id: "claude", kind: "cli", effort: true, models: ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"].map(model) };
+    const codex: AutoProvider = { id: "codex", kind: "cli", effort: true, models: ["gpt-6-luna", "gpt-6.1-terra", "gpt-6.2-sol"].map(model) };
+    function chatOnMid(...tools: string[]) {
+      const file = copy();
+      file.updatedAt = "2099-01-01T00:00:00Z";
+      for (const tool of tools) file.tools[tool]!.featureRoles = { chat: "mid" };
+      expect(adoptModelFile(file)).toBe(true);
+    }
+
+    it("keeps every task in the tier model-tiers.json gives it while no tool says otherwise", () => {
+      expect(planAuto([claude]).chat).toEqual({ provider: "claude", model: "claude-haiku-5-5", effort: "low" });
+      expect(planAuto([codex]).chat).toEqual({ provider: "codex", model: "gpt-6-luna", effort: "low" });
+    });
+
+    it("runs the chat on the mid role of the tools that say so and on the fast role of the others", () => {
+      chatOnMid("claude");
+      expect(planAuto([claude]).chat).toEqual({ provider: "claude", model: "claude-sonnet-5-5", effort: "medium" });
+      expect(planAuto([codex]).chat).toEqual({ provider: "codex", model: "gpt-6-luna", effort: "low" });
+      // Only the chat moves: maps and flashcards stay fast, and the other tasks are as they were.
+      const plan = planAuto([claude]);
+      expect(plan.map?.model).toBe("claude-haiku-5-5");
+      expect(plan.cards?.model).toBe("claude-haiku-5-5");
+      expect(plan.lesson?.model).toBe("claude-sonnet-5-5");
+      expect(plan.plan?.model).toBe("claude-opus-5-5");
+    });
+
+    it("moves the effort of a task already stored with the role, not only the model", () => {
+      chatOnMid("claude", "codex");
+      expect(automaticEffortOn("claude", "chat", ["low", "medium", "high"])).toBe("medium");
+      expect(automaticEffortOn("codex", "chat", ["low", "medium", "high"])).toBe("medium");
+      expect(automaticEffortOn("claude", "map", ["low", "medium", "high"])).toBe("low");
+      expect(planAuto([codex]).chat).toEqual({ provider: "codex", model: "gpt-6.1-terra", effort: "medium" });
+    });
+
+    it("refuses a role that is not fast, mid or strong", () => {
+      const file = copy();
+      file.updatedAt = "2099-01-01T00:00:00Z";
+      (file.tools.claude as unknown as { featureRoles: unknown }).featureRoles = { chat: "medium" };
+      expect(adoptModelFile(file)).toBe(false);
+    });
   });
 
   it("uses the effort the file gives the role, and the nearest level the model lists", () => {

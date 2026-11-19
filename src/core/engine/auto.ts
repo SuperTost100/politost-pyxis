@@ -5,6 +5,7 @@ import {
   hasRoles,
   roleEffort,
   roleModels,
+  roleOn,
 } from "./model-roles";
 import { tierData as data, type Tier } from "./tiers";
 
@@ -85,7 +86,8 @@ function choiceFor(
   provider: AutoProvider,
   feature: string,
 ): AutoChoice | undefined {
-  const tier = featureTier(feature);
+  // The tool's own role for the task, when the model file gives it one; the task's tier otherwise.
+  const tier = roleOn(provider.id, feature);
   const models = usableModels(provider, feature);
   const model = pickModel(provider, tier, models.length ? models : undefined);
   if (!model) return undefined;

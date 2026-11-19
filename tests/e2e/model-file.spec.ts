@@ -37,7 +37,11 @@ const modelsOfTasks = (page: Page) =>
     return [...new Set(Object.values(features).map((selection) => `${selection.provider}/${selection.model}`))];
   });
 
-async function run(env: Record<string, string>, expected: string[], checks?: (page: Page) => Promise<void>) {
+async function run(
+  env: Record<string, string>,
+  expected: string[],
+  checks?: (page: Page, userData: string) => Promise<void>,
+) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-model-file-"));
   const tools = standInTools(["agent"]);
   // This spec adds one test seam: PYXIS_E2E_MODEL_FILE_URL names where the model file is read from. Without it the
@@ -49,7 +53,7 @@ async function run(env: Record<string, string>, expected: string[], checks?: (pa
     await expect(page).toHaveURL(/#\/ask$/);
     await useTools(page, ["agent"]);
     await expect.poll(() => modelsOfTasks(page), { timeout: 30_000 }).toEqual(expected);
-    await checks?.(page);
+    await checks?.(page, userData);
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -89,8 +93,22 @@ test.describe("the model file", () => {
   test("a file that does not validate leaves the copy shipped with the app in use", async () => {
     const { server, url, asked } = await serve(JSON.stringify({ version: 1, updatedAt: "2099-01-01T00:00:00Z", tools: {} }));
     try {
-      await run({ PYXIS_E2E_MODEL_FILE_URL: url }, ["agent/grok-4.7"]);
-      expect(asked.length).toBeLessThanOrEqual(1);
+      await run({ PYXIS_E2E_MODEL_FILE_URL: url }, ["agent/grok-4.7"], async (page, userData) => {
+        // The shipped selection is there before the download is read, so it proves nothing by itself. The sync writes
+        // `checkedAt` once it has asked and judged the answer, rejected or not.
+        const stored = () => {
+          try {
+            return JSON.parse(readFileSync(join(userData, "model-roles.json"), "utf8")) as { checkedAt?: number; file?: unknown };
+          } catch {
+            return undefined;
+          }
+        };
+        await expect.poll(() => typeof stored()?.checkedAt, { timeout: 30_000 }).toBe("number");
+        // A file that was rejected is not kept.
+        expect(stored()!.file).toBeUndefined();
+        await expect.poll(() => modelsOfTasks(page)).toEqual(["agent/grok-4.7"]);
+      });
+      expect(asked).toHaveLength(1);
     } finally {
       server.close();
     }

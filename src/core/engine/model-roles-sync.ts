@@ -77,9 +77,10 @@ export async function syncModelFile(options: ModelFileSync): Promise<void> {
   try {
     const raw = await download(options.url ?? modelFileUrl(options.repository, options.version), options.fetch);
     const parsed = modelFileSchema.safeParse(raw);
-    if (parsed.success) {
+    // Only a copy that is taken is kept: an older or incomplete one must not replace a newer copy already on disk.
+    if (parsed.success && adoptModelFile(parsed.data)) {
       keep = parsed.data;
-      if (adoptModelFile(parsed.data)) options.onAdopted?.();
+      options.onAdopted?.();
     }
   } catch {
     // Offline or refused: the copy in use stays, and the next try is a day away.

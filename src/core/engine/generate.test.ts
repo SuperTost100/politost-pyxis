@@ -860,6 +860,51 @@ describe("a chosen engine whose subscription refuses the model", () => {
       ]);
     });
 
+    it("keeps the job on its own tool, whatever order the student put their tools in", async () => {
+      const db = cursorOnly();
+      const codex: AutoProvider = {
+        id: "codex",
+        kind: "cli",
+        effort: true,
+        models: [{ id: "gpt-6.2-sol", efforts: [{ id: "low" }, { id: "high" }] }, { id: "gpt-6-luna", efforts: [{ id: "low" }] }],
+      };
+      rememberReady([cursor, codex]);
+      // ChatGPT first: the plan for a new task would give it to ChatGPT, but this job ran on Cursor.
+      rememberOrder(["codex", "agent"]);
+      try {
+        for (const saved of [
+          { provider: "agent", model: "claude-opus-5-5", effort: "high", chosenFor: "plan" },
+          { provider: "agent", model: "claude-sonnet-5-5" },
+        ]) {
+          const asked: string[] = [];
+          await generate({
+            selection: JSON.parse(JSON.stringify(saved)) as ReturnType<typeof selectionFor>,
+            prompt: "hi",
+            run: async (input) => {
+              asked.push(`${input.selection.provider}/${input.selection.model}`);
+              return result({ text: "ciao", provider: input.selection.provider, model: input.selection.model });
+            },
+          });
+          expect(asked, JSON.stringify(saved)).toEqual(["agent/grok-4.7"]);
+        }
+        // When Cursor cannot take the task, the plan for the ready tools gives it to the next one.
+        rememberReady([codex]);
+        const moved: string[] = [];
+        await generate({
+          selection: { provider: "agent", model: "claude-opus-5-5", chosenFor: "plan" },
+          prompt: "hi",
+          run: async (input) => {
+            moved.push(`${input.selection.provider}/${input.selection.model}`);
+            return result({ text: "ciao", provider: input.selection.provider, model: input.selection.model });
+          },
+        });
+        expect(moved).toEqual(["codex/gpt-6.2-sol"]);
+      } finally {
+        rememberOrder(null);
+      }
+      db.close();
+    });
+
     it("still moves on afterwards like any automatic call, because the new selection is automatic", async () => {
       const db = cursorOnly();
       const asked: string[] = [];

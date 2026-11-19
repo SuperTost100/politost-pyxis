@@ -54,6 +54,12 @@ const tool = z.object({
   own: pattern,
   /** Ids the automatic choice never uses, though they are the maker's own. A student can still pin them. */
   never: pattern.optional(),
+  /**
+   * Where a task runs on this tool in a different role than `resources/model-tiers.json` gives it, by task:
+   * `{ "chat": "mid" }` runs the chat on this tool's mid models at the mid effort, while the other tools keep the fast
+   * ones. Only the model and the effort follow; which tool does the task is still decided by the tier's own order.
+   */
+  featureRoles: z.record(z.string().min(1).max(40), z.enum(["fast", "mid", "strong"])).optional(),
   roles: z.object({ fast: role, mid: role, strong: role }),
 });
 
@@ -187,6 +193,11 @@ export function tierOf(feature: string): Tier {
   return (tierData.features[feature] ?? tierData.unknownFeature).tier;
 }
 
+/** The role a task runs in on this tool: the tool's own say in the file, else the task's tier. */
+export function roleOn(provider: string, feature: string): Tier {
+  return active.tools[provider]?.featureRoles?.[feature] ?? tierOf(feature);
+}
+
 /**
  * The effort a task gets on a model of this tool that lists these efforts, when the student chose none: the file's
  * effort for the task's role, else the tier's.
@@ -196,6 +207,6 @@ export function automaticEffortOn(
   feature: string,
   listed: readonly string[],
 ): string | undefined {
-  const wanted = active.tools[provider] ? roleEffort(provider, tierOf(feature)) : taskEffort(feature);
+  const wanted = active.tools[provider] ? roleEffort(provider, roleOn(provider, feature)) : taskEffort(feature);
   return nearestEffort(wanted, listed);
 }

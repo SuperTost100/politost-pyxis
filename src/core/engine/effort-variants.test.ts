@@ -4,10 +4,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import { collapseEffortVariants, offeredModels } from "./effort-variants";
-import { forgetModels } from "./efforts";
+import { forgetModels, rememberModels } from "./efforts";
 import { getFunnel } from "./funnel";
 import { engineHandlers } from "./handlers";
-import { selectionFor } from "./selection";
+import { adoptModelFile, modelFile, resetModelFile, type ModelFile } from "./model-roles";
+import { clearBench } from "./bench";
+import type { AutoProvider } from "./auto";
+import { currentSelection, fallbackSelection, rememberReady, selectionFor, selectionOn } from "./selection";
 
 vi.mock("./funnel", async (original) => {
   const actual = await original<typeof import("./funnel")>();
@@ -28,6 +31,9 @@ const listing = () => [
 
 const dirs: string[] = [];
 afterEach(() => {
+  resetModelFile();
+  rememberReady([]);
+  clearBench();
   forgetModels();
   vi.mocked(getFunnel).mockReset();
   delete process.env.CLI_FUNNEL_AGY_BIN;
@@ -138,5 +144,50 @@ describe("a pinned effort reaches the tool", () => {
     expect(args[args.indexOf("--model") + 1]).toBe("gemini-4-neon-xhigh");
     expect(args).not.toContain("--effort");
     real.closeFunnel();
+  });
+});
+
+describe("a recovery path runs the variant too", () => {
+  /** A model file whose strong role asks Neon at xhigh, and Antigravity and Claude ready with what the tools list. */
+  function xhighStrong() {
+    const file = JSON.parse(JSON.stringify(modelFile())) as ModelFile;
+    file.updatedAt = "2099-01-01T00:00:00Z";
+    file.tools.antigravity!.roles.strong = { effort: "xhigh", models: ["gemini-4-neon", "gemini-4-argon"] };
+    expect(adoptModelFile(file)).toBe(true);
+    const offered = offeredModels("antigravity", listing());
+    rememberModels("antigravity", offered, listing());
+    const claude: AutoProvider = {
+      id: "claude",
+      kind: "cli",
+      effort: true,
+      models: [{ id: "claude-opus-5-5", efforts: levels("low", "high") }, { id: "claude-sonnet-5-5", efforts: levels("low", "high") }],
+    };
+    rememberReady([claude, { id: "antigravity", kind: "cli", effort: true, images: false, models: offered }]);
+  }
+
+  it("gives the tool's recovery choice the variant's id and no effort flag, as selectionFor does", () => {
+    xhighStrong();
+    expect(selectionOn("antigravity", "plan")).toEqual({ provider: "antigravity", model: "gemini-4-neon-xhigh" });
+  });
+
+  it("does the same when a task moves to the tool from another one", () => {
+    xhighStrong();
+    for (const reason of ["limit", "signed-out", "not-installed"] as const)
+      expect(fallbackSelection({ provider: "claude", chosenFor: "plan" }, reason), reason).toEqual({
+        provider: "antigravity",
+        model: "gemini-4-neon-xhigh",
+      });
+  });
+
+  it("and for a saved job selection that is replaced", () => {
+    xhighStrong();
+    const saved = { provider: "antigravity", model: "claude-opus-5-5", effort: "high", chosenFor: "plan" };
+    expect(currentSelection(saved)).toEqual({ provider: "antigravity", model: "gemini-4-neon-xhigh", chosenFor: "plan" });
+  });
+
+  it("keeps the base model and the effort flag for a level the tool does not list as a model", () => {
+    xhighStrong();
+    expect(selectionOn("antigravity", "chat")).toEqual({ provider: "antigravity", model: "gemini-4-hydrogen", effort: "low" });
+    expect(selectionOn("claude", "plan")).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "high" });
   });
 });
