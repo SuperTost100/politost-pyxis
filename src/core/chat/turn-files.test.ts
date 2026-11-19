@@ -111,7 +111,7 @@ describe("the files a message carried belong to it", () => {
         return reply;
       },
     });
-    expect(result.leftOut).toEqual([{ name: "chiuso.pdf", error: "password" }]);
+    expect(result.leftOut).toEqual([{ name: "chiuso.pdf", kind: "document", error: "password" }]);
     expect(result.message?.body).toBe("Ecco la risposta.");
     expect(prompt).toContain("leggi");
     expect(readChat(db, result.chatId)[0]!.files).toBeUndefined();
@@ -372,6 +372,45 @@ describe("a photo never leaves the computer, or the model the student chose, aga
       engine(db, "chat", { provider: "claude", model: "text-only-small", auto: true });
     }, [{ ...cloud, models: [{ id: "text-only-small", efforts: [] }, { id: "claude-sonnet-5-5", efforts: [] }] }]);
     expect(moves).toEqual([expect.objectContaining({ provider: "claude", model: "claude-sonnet-5-5", images: 1 })]);
+  });
+});
+
+describe("a photo whose local OCR fails goes out as left out", () => {
+  it("names it and sends the question, and keeps the refusal to download the OCR data as it is", async () => {
+    const { db, workspace, photo, attached } = setup({ visionAvailable: false });
+    const sent = await attached(photo);
+    let ran = 0;
+    const result = await askTurn(db, {
+      text: "cosa c'è scritto",
+      allowGeneral: true,
+      ...sent,
+      workspace,
+      recognize: async () => {
+        throw new Error("tesseract crashed");
+      },
+      run: async () => (ran++, reply),
+    });
+    expect(ran).toBe(1);
+    expect(result.leftOut).toEqual([{ name: "foto.png", kind: "photo", error: "unreadable" }]);
+    expect(readChat(db, result.chatId)[0]!.files).toBeUndefined();
+    // The failed photo is not held for the next send: its copy goes with the answer.
+    expect(sent.held.list(sent.attachments)).toEqual([]);
+    expect(db.prepare(`SELECT COUNT(*) FROM held_files`).pluck().get()).toBe(0);
+    // A missing OCR data file is still a refusal with its own message, which the student answers.
+    const again = await attached(photo);
+    await expect(
+      askTurn(db, {
+        text: "ancora",
+        allowGeneral: true,
+        ...again,
+        workspace,
+        recognize: async () => {
+          throw new Error("ocr-data-missing");
+        },
+        run: async () => reply,
+      }),
+    ).rejects.toMatchObject({ messageKey: "sources.ocrDataMissing" });
+    db.close();
   });
 });
 

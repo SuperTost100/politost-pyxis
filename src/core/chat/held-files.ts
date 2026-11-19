@@ -80,7 +80,7 @@ export type TakenFiles = {
    * Files that could not be read, sent without. They stay held, failed, until the send goes through (the turn then takes
    * them off by `id`), so a send that fails leaves the composer as it was.
    */
-  leftOut: Array<{ id: string; name: string; error: AttachmentError }>;
+  leftOut: Array<{ id: string; name: string; kind: "document" | "photo"; error: AttachmentError }>;
 };
 
 /** The reason a failed reading gives, from the code its job stopped with. */
@@ -190,6 +190,8 @@ export function createHeldFiles(deps: HeldDeps) {
             ? { ...base, state: "needs-data", phase: "scan" }
             : { ...base, state: "failed", error: stopped.state === "cancelled" ? "cancelled" : reason };
         }
+        // The student cancelled the import after its passages were stored: that is where it ends, and no scan is started.
+        if (!scanned && imported?.state === "cancelled") return { ...base, state: "failed", error: "cancelled" };
         // The import just ended and the scan has not been started yet, or it waits for the language data.
         return entry.needsData
           ? { ...base, state: "needs-data", phase: "scan" }
@@ -324,6 +326,11 @@ export function createHeldFiles(deps: HeldDeps) {
         record(entry);
         try {
           const queued = await enqueueSourceFile(db, workspace, runner, path, undefined, undefined, true);
+          // The draft went while the file was being registered: what it made belongs to nobody, so it goes now.
+          if (!entries.has(id)) {
+            discardRecord({ id, source_id: queued.sourceId, blob_sha: null, extracted_sha: null });
+            return { id, name, kind: base.kind, size, state: "failed", error: "cancelled" };
+          }
           entry.sourceId = queued.sourceId;
           bySource.set(queued.sourceId, id);
         } catch (error) {
@@ -420,6 +427,7 @@ export function createHeldFiles(deps: HeldDeps) {
           taken.leftOut.push({
             id,
             name: entry.name,
+            kind: entry.kind,
             error: view.state === "ready" ? "too-many" : view.state === "needs-data" ? "data" : (view.error ?? "unreadable"),
           });
           continue;

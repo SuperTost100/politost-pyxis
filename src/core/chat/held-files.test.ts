@@ -179,7 +179,7 @@ describe("a scanned PDF is read page by page when it is attached", () => {
     const view = await t.files.held.attach(t.write("scansione.pdf", "%PDF"));
     await until(() => t.last(view.id)?.state === "needs-data");
     expect(t.last(view.id)).toMatchObject({ phase: "scan" });
-    expect((await t.files.held.settle([view.id]), t.files.held.take([view.id]).leftOut)).toEqual([{ id: view.id, name: "scansione.pdf", error: "data" }]);
+    expect((await t.files.held.settle([view.id]), t.files.held.take([view.id]).leftOut)).toEqual([{ id: view.id, name: "scansione.pdf", kind: "document", error: "data" }]);
   });
 
   it("reads the scan after the data download, without attaching the file again", async () => {
@@ -290,7 +290,7 @@ describe("what a message takes", () => {
     await files.held.settle([good.id, bad.id]);
     const taken = files.held.take([good.id, bad.id]);
     expect(taken.documents.map((doc) => doc.name)).toEqual(["buono.txt"]);
-    expect(taken.leftOut).toEqual([{ id: bad.id, name: "rotto.txt", error: "unreadable" }]);
+    expect(taken.leftOut).toEqual([{ id: bad.id, name: "rotto.txt", kind: "document", error: "unreadable" }]);
     // The one left out stays held, failed, until the send goes through, so a send that fails keeps the composer as it was.
     expect(files.held.list([bad.id])).toEqual([expect.objectContaining({ state: "failed", error: "unreadable" })]);
     files.held.detach(bad.id);
@@ -330,7 +330,7 @@ describe("what a message takes", () => {
     await files.held.settle(ids);
     const taken = files.held.take(ids);
     expect(taken.documents).toHaveLength(8);
-    expect(taken.leftOut).toEqual([{ id: ids[8], name: "f8.txt", error: "too-many" }]);
+    expect(taken.leftOut).toEqual([{ id: ids[8], name: "f8.txt", kind: "document", error: "too-many" }]);
   });
 
   it("fits a photo for the model when it is attached and hands over the copy with the stored original", async () => {
@@ -562,5 +562,63 @@ describe("the index job of a held scan belongs to its chip too", () => {
     await until(() => sources().length === 0);
     expect(db.prepare(`SELECT dismissed FROM jobs WHERE id = ?`).pluck().get(job)).toBeGreaterThan(0);
     expect(workspace).toBeTruthy();
+  });
+});
+
+describe("a held document that the student cancelled is a terminal state", () => {
+  it("shows it was stopped, leaves it out of the send and names it, and starts no scan", async () => {
+    let scans = 0;
+    const t = setup({
+      extract: scanned(2),
+      jobDeps: {
+        // The student cancels the import while it is on its last step: its passages are stored and it is back at `needs-ocr`.
+        onScan: (id: string) => {
+          const job = t.db.prepare(`SELECT id FROM jobs WHERE kind = 'source-import'`).pluck().get() as string;
+          t.files.runner.cancel(job);
+          void id;
+        },
+      },
+      scan: async () => {
+        scans += 1;
+        return "started";
+      },
+    });
+    const view = await t.files.held.attach(t.write("scansione.pdf", "%PDF"));
+    await until(() => t.last(view.id)?.state === "failed");
+    expect(t.last(view.id)).toMatchObject({ state: "failed", error: "cancelled" });
+    await t.files.held.settle([view.id]);
+    expect(t.files.held.take([view.id]).leftOut).toEqual([expect.objectContaining({ name: "scansione.pdf", error: "cancelled" })]);
+    expect(scans).toBe(0);
+  });
+});
+
+describe("an import that finishes after its draft was removed", () => {
+  it("leaves no source, stored file or job behind", async () => {
+    const { files, db, workspace, sources } = setup();
+    // A file big enough that its registration is still reading it when the draft goes.
+    const big = join(workspace, "grande.txt");
+    writeFileSync(big, "Il calore si trasmette per conduzione. ".repeat(1_500_000));
+    const picked = files.held.attach(big, "chat-a");
+    await until(() => db.prepare(`SELECT COUNT(*) FROM held_files`).pluck().get() === 1);
+    files.held.discardDraft("chat-a");
+    const view = await picked;
+    expect(view).toMatchObject({ state: "failed", error: "cancelled" });
+    await until(() => sources().length === 0);
+    expect(db.prepare(`SELECT COUNT(*) FROM held_files`).pluck().get()).toBe(0);
+    expect(db.prepare(`SELECT COUNT(*) FROM jobs WHERE dismissed = 0 AND state IN ('queued', 'running')`).pluck().get()).toBe(0);
+    expect(hasBlob(workspace, sha256(readFileSync(big)))).toBe(false);
+  });
+});
+
+describe("a file left out says what kind of file it was", () => {
+  it("carries the kind, so an oversized photo gets the photo's limit", async () => {
+    const { files, workspace } = setup();
+    const huge = join(workspace, "enorme.jpg");
+    writeFileSync(huge, "x");
+    const fd = openSync(huge, "r+");
+    ftruncateSync(fd, 41 * 1024 * 1024);
+    closeSync(fd);
+    const view = await files.held.attach(huge);
+    expect(files.held.take([view.id]).leftOut).toEqual([{ id: view.id, name: "enorme.jpg", kind: "photo", error: "too-large" }]);
   });
 });

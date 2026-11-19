@@ -122,7 +122,7 @@ export type AskResult = {
   /** Saved images this turn could not send, with why. The student is told, since the reply did not see them. */
   skippedImages?: SkippedImage[];
   /** Attached files that could not be read and went without, each with its reason. */
-  leftOut?: Array<{ name: string; error: AttachmentError }>;
+  leftOut?: Array<{ name: string; kind: "document" | "photo"; error: AttachmentError }>;
 };
 
 type AskInput = {
@@ -868,7 +868,7 @@ export async function askTurn(
     // A new chat takes the composer the draft was in: the files left in it belong to the chat now.
     if (chat.created) input.held?.rehome(input.chatId ?? "", chat.id);
     return report.leftOut?.length
-      ? { ...result, leftOut: report.leftOut.map(({ name, error }) => ({ name, error })) }
+      ? { ...result, leftOut: report.leftOut.map(({ name, kind, error }) => ({ name, kind, error })) }
       : result;
   } catch (err) {
     // A chat this turn created and could not answer is removed with its question and attachments. The student's
@@ -937,7 +937,18 @@ async function answer(
     const one = await stagePhoto(photo, reads, input.signal);
     // Local OCR is the last resort: no model of the chat reads images, or the photo has no copy a model can take (a valid
     // photo past the provider's size limit), so the model would get neither pixels nor text.
-    const text = (reads && one.image.data) || !input.workspace ? "" : await recognisePhoto(photo, input.workspace, input.recognize, input.signal);
+    let text = "";
+    if (!((reads && one.image.data) || !input.workspace)) {
+      try {
+        text = await recognisePhoto(photo, input.workspace, input.recognize, input.signal);
+      } catch (error) {
+        // A stop, and the refusals about the OCR data (which the student answers), end the turn as they did. Any other
+        // failure of local OCR leaves this photo out, named, so the question goes out and a retry does not fail again.
+        if (input.signal?.aborted || isAbort(error) || error instanceof IpcError) throw error;
+        report.leftOut = [...(report.leftOut ?? []), { id: photo.id, name: photo.name, kind: "photo", error: "unreadable" }];
+        continue;
+      }
+    }
     input.signal?.throwIfAborted();
     if (text && !notes.includes(text)) notes.push(text);
     blobs.push(...one.blobs);

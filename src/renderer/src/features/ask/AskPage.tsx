@@ -42,7 +42,7 @@ import {
   writePendingSubject,
 } from "./attachments";
 import { attachQueue, drafts, syncDraftFiles, useDraftFiles, useFilePreviews, useFileViews } from "./draftSession";
-import type { Preview } from "./draftFiles";
+import { mergeFiles, type Preview } from "./draftFiles";
 import { ChatHeader } from "./ChatHeader";
 import { pastedPng } from "./paste";
 import { replyPlainText } from "./replyText";
@@ -85,7 +85,7 @@ type Held = { draft: string; files: PickedFile[] };
 type Skipped = Array<"too-large" | "unreadable" | "over-limit">;
 /** The files a sent message carried, as the chat reads them, or as the composer held them before the reply arrived. */
 type SentFile = { id: string; name: string | null; kind: "document" | "photo"; sourceId?: string | null };
-type LeftOut = Array<{ name: string; error: AttachmentView["error"] & string }>;
+type LeftOut = Array<{ name: string; kind: "document" | "photo"; error: AttachmentView["error"] & string }>;
 
 /** Whether each chat's latest question was asked with "Answer generally", which Try again and Regenerate keep. */
 const askedGeneral = new Map<string, boolean>();
@@ -581,7 +581,7 @@ export function AskPage() {
       if (options.textOnly || turn.dropped) return;
       const from = startedIn || undefined;
       // The files go back to the draft the question was sent from, whatever is on screen now.
-      drafts.files.set(startedIn, (current) => (current.length > 0 ? current : held.files));
+      drafts.files.set(startedIn, (current) => mergeFiles(held.files, current));
       const page = screen?.current;
       if (page && page.composer() === startedIn) page.restore(held);
       if (held.draft && !sessionStorage.getItem(draftKey(from)))
@@ -1078,10 +1078,10 @@ export function AskPage() {
             {t("ask.skippedOverLimit")}
           </Notice>
         ) : null}
-        {leftOut.map((file) => (
-          <Notice key={file.name} tone="warning" onClose={() => setLeftOut((now) => now.filter((item) => item !== file))}>
+        {leftOut.map((file, at) => (
+          <Notice key={`${at}-${file.name}`} tone="warning" onClose={() => setLeftOut((now) => now.filter((item) => item !== file))}>
             {t("ask.attach.leftOut", { name: file.name })}{" "}
-            {t(attachmentLine({ id: "", name: file.name, kind: "document", size: 0, state: "failed", error: file.error })!.key, { max: MAX_ATTACHED_FILES })}
+            {t(attachmentLine({ id: "", name: file.name, kind: file.kind, size: 0, state: "failed", error: file.error })!.key, { max: MAX_ATTACHED_FILES })}
           </Notice>
         ))}
         {uncovered && !busy ? (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AttachmentView } from "../../../../shared/ipc";
-import { createAttachQueue, createDraftFiles } from "./draftFiles";
+import { createAttachQueue, createDraftFiles, mergeFiles, syncFiles } from "./draftFiles";
 
 function store(entries: Record<string, string> = {}) {
   const data = new Map(Object.entries(entries));
@@ -183,5 +183,70 @@ describe("a fresh pick replaces a refused chip", () => {
     const files = drafts.files.get("");
     expect(files.filter((file) => file.name === "f9.pdf").map((file) => file.id.startsWith("local-"))).toEqual([false]);
     expect(files.filter((file) => !file.id.startsWith("local-"))).toHaveLength(8);
+  });
+});
+
+describe("a batch queued before a cancel is cancelled with it", () => {
+  it("does not attach a file whose batch was waiting behind another when its draft's picks were cancelled", async () => {
+    const drafts = createDraftFiles(store());
+    const { attachInCore, waiting } = core();
+    const detached: string[] = [];
+    const queue = createAttachQueue(drafts, attachInCore, (id) => detached.push(id));
+    void queue.attach("chat-a", ["/x/uno.pdf"]);
+    void queue.attach("chat-a", ["/x/due.pdf"]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(waiting).toHaveLength(1);
+    // The chat is deleted while the first file is being registered and the second batch waits behind it.
+    queue.cancel("chat-a");
+    waiting.shift()!.done();
+    await queue.idle("chat-a");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(waiting).toEqual([]);
+    expect(detached).toEqual(["f1"]);
+    expect(drafts.files.get("chat-a")).toEqual([]);
+    // A pick made after the cancel is a new one and goes through.
+    const later = queue.attach("chat-a", ["/x/tre.pdf"]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    waiting.shift()!.done();
+    await later;
+    expect(drafts.files.get("chat-a").map((file) => file.name)).toEqual(["tre.pdf"]);
+  });
+});
+
+describe("asking core which files it holds", () => {
+  it("drops only the files it was asked about, and keeps one attached while the question was in flight", async () => {
+    const drafts = createDraftFiles(store());
+    drafts.files.set("", [
+      { id: "a", name: "a.pdf" },
+      { id: "gone", name: "gone.pdf" },
+      { id: "local-1", name: "refused.pdf" },
+    ]);
+    let answer!: (views: AttachmentView[]) => void;
+    const sync = syncFiles(drafts, (ids) => {
+      expect(ids).toEqual(["a", "gone"]);
+      return new Promise<AttachmentView[]>((resolve) => (answer = resolve));
+    });
+    const done = sync("");
+    // A file is attached while the question is on its way: core was not asked about it.
+    drafts.files.set("", (now) => [...now, { id: "b", name: "b.pdf" }]);
+    answer([{ id: "a", name: "a.pdf", kind: "document", size: 1, state: "ready" }]);
+    await done;
+    expect(drafts.files.get("").map((file) => file.id)).toEqual(["a", "local-1", "b"]);
+    expect(drafts.views.get().a).toMatchObject({ state: "ready" });
+  });
+});
+
+describe("putting a question's files back", () => {
+  it("keeps the files that went with it and the ones dropped meanwhile, once each", () => {
+    const sent = [
+      { id: "a", name: "a.pdf" },
+      { id: "b", name: "b.pdf" },
+    ];
+    const dropped = [
+      { id: "c", name: "c.pdf" },
+      { id: "b", name: "b.pdf" },
+    ];
+    expect(mergeFiles(sent, dropped).map((file) => file.id)).toEqual(["a", "b", "c"]);
+    expect(mergeFiles([], sent)).toEqual(sent);
   });
 });

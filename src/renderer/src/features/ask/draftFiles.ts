@@ -89,6 +89,27 @@ export function createDraftFiles(storage: Pick<Storage, "getItem" | "setItem" | 
 
 export type DraftFiles = ReturnType<typeof createDraftFiles>;
 
+/** Two lists of a draft's files in one, each file once: a question's files put back beside the ones dropped meanwhile. */
+export function mergeFiles(first: PickedFile[], second: PickedFile[]): PickedFile[] {
+  return [...first, ...second.filter((file) => !first.some((item) => item.id === file.id))];
+}
+
+/**
+ * Asks core which of a draft's files it still holds and drops the ones it no longer does: files kept for a chat that was
+ * left, and the ones a question's answer (a Try again) let go. Only the files the question named can be dropped, so one
+ * attached while it was on its way stays.
+ */
+export function syncFiles(drafts: DraftFiles, ask: (ids: string[]) => Promise<AttachmentView[]>) {
+  return async (draft: string): Promise<void> => {
+    const ids = drafts.files.get(draft).map((file) => file.id).filter((id) => !id.startsWith(LOCAL_PREFIX));
+    if (ids.length === 0) return;
+    const list = await ask(ids);
+    drafts.views.put(...list);
+    const known = new Set(list.map((view) => view.id));
+    drafts.files.set(draft, (now) => now.filter((file) => !ids.includes(file.id) || known.has(file.id)));
+  };
+}
+
 /**
  * Attaches files to a draft. Each draft has its own queue: its batches run one after the other, so the count against the
  * most a message carries is always the draft's own, and a file picked past it is marked as over the limit when it is
@@ -110,8 +131,7 @@ export function createAttachQueue(
     drafts.views.put(refusedFile(id, path, error));
     drafts.files.set(draft, (now) => [...now, { id, name: fileName(path), path }]);
   };
-  async function run(draft: string, paths: string[], preview?: Preview) {
-    const generation = cancelled.get(draft) ?? 0;
+  async function run(draft: string, generation: number, paths: string[], preview?: Preview) {
     for (const path of paths) {
       if ((cancelled.get(draft) ?? 0) !== generation) return;
       const now = drafts.files.get(draft);
@@ -143,7 +163,9 @@ export function createAttachQueue(
   return {
     /** Queues the files for the draft. Resolves when they have all been attached or refused. */
     attach(draft: string, paths: string[], preview?: Preview): Promise<void> {
-      const tail = (tails.get(draft) ?? Promise.resolve()).then(() => run(draft, paths, preview));
+      // The batch is of the generation the draft is in when it is queued: a cancel after that cancels it, started or not.
+      const generation = cancelled.get(draft) ?? 0;
+      const tail = (tails.get(draft) ?? Promise.resolve()).then(() => run(draft, generation, paths, preview));
       const next = tail.catch(() => undefined);
       tails.set(draft, next);
       void next.then(() => {

@@ -140,7 +140,7 @@ describe("a failed send keeps its files held, ready, for the retry", () => {
       ["chiuso.pdf", "failed"],
     ]);
     const result = await askTurn(db, { text: "spiega", allowGeneral: true, ...sent, workspace, run: async () => reply });
-    expect(result.leftOut).toEqual([{ name: "chiuso.pdf", error: "password" }]);
+    expect(result.leftOut).toEqual([{ name: "chiuso.pdf", kind: "document", error: "password" }]);
     expect(files.held.list([ok.id, bad.id])).toEqual([]);
     db.close();
   });

@@ -3264,7 +3264,7 @@ export const requests = {
       chatId: z.string(),
       covered: z.boolean(),
       /** Attached files that could not be read and were sent without. */
-      leftOut: z.array(z.object({ name: z.string(), error: z.enum(ATTACHMENT_ERRORS) })).optional(),
+      leftOut: z.array(z.object({ name: z.string(), kind: z.enum(["document", "photo"]), error: z.enum(ATTACHMENT_ERRORS) })).optional(),
       message: z
         .object({
           id: z.string(),
