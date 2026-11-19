@@ -318,19 +318,28 @@ export function sourceHandlers(
   /**
    * Where a reader gets a free book from, in one order for the list of its chapters and for their text, so a reader always
    * has the text of the book whose chapters it lists: the copy in the Library; else the package held in memory, whatever
-   * the catalog lists by now; else the catalog's book, from a stored copy of that exact package or from a download.
+   * the catalog lists by now; else the catalog's book, from a stored copy of that exact package or from a download. A
+   * chapter read that names the package its list came from (`listed`) never gets another one: when the catalog has moved on
+   * and that package is neither held nor stored, the book changed.
    */
-  const resolveBook = async (id: string, signal?: AbortSignal) => {
+  const resolveBook = async (id: string, signal?: AbortSignal, listed?: string | null) => {
     const added = addedBook(id);
     if (added) return { from: "library" as const, sourceId: added.id, title: added.title, version: added.version ?? "" };
+    // A reader that was shown the chapters of a package (`listed`) is answered from that package or not at all.
     const held = reading.heldFor(id);
-    if (held) return { from: "held" as const, parsed: held };
+    if (held && (!listed || held.sha === listed)) return { from: "held" as const, parsed: held.parsed, sha: held.sha };
     const book = await catalogBook(id, signal);
+    if (listed && book.sha256 !== listed) {
+      const kept = existingSourceFor(db, listed);
+      if (kept && db.prepare(`SELECT 1 FROM sources WHERE id = ? AND status = 'ready'`).get(kept)) return { from: "stored" as const, sourceId: kept, book };
+      throw new Error("books-changed");
+    }
     const stored = storedBook(book);
     if (stored) return { from: "stored" as const, sourceId: stored, book };
     const { parsed } = await reading.open(book, booksTransport, maxSourceBytes(".ptsb"), signal);
     return { from: "downloaded" as const, parsed, book };
   };
+
   const requireOcrData = async () => {
     const { state } = await ocrDataStatus(tess);
     if (state !== "ready") throw new Error(`ocr-data-${state}`);
@@ -420,7 +429,7 @@ export function sourceHandlers(
       try {
         const found = await resolveBook(input.id, signal);
         if (found.from === "library")
-          return { title: found.title, subject: "", version: found.version, chapters: smartbookChapters(db, found.sourceId) };
+          return { title: found.title, subject: "", version: found.version, chapters: smartbookChapters(db, found.sourceId), package: null };
         if (found.from === "held") {
           const { config } = found.parsed;
           return {
@@ -428,6 +437,7 @@ export function sourceHandlers(
             subject: config.subject ?? "",
             version: typeof config.version === "string" ? config.version : "",
             chapters: config.chapters.map((chapter) => ({ number: chapter.number, title: chapter.title })),
+            package: found.sha,
           };
         }
         const { book } = found;
@@ -439,14 +449,15 @@ export function sourceHandlers(
             found.from === "stored"
               ? smartbookChapters(db, found.sourceId)
               : found.parsed.config.chapters.map((chapter) => ({ number: chapter.number, title: chapter.title })),
+          package: book.sha256,
         };
       } catch (err) {
         sourceError(err);
       }
     },
-    async bookChapter(input: { id: string; chapter: number }, signal?: AbortSignal) {
+    async bookChapter(input: { id: string; chapter: number; package?: string | null }, signal?: AbortSignal) {
       try {
-        const found = await resolveBook(input.id, signal);
+        const found = await resolveBook(input.id, signal, input.package);
         return found.from === "library" || found.from === "stored"
           ? chapterPassages(db, found.sourceId, input.chapter).map(({ id, text }) => ({ id, text }))
           : parsedChapter(found.parsed, input.chapter);

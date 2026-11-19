@@ -236,6 +236,39 @@ describe("reading a free book before it is added", () => {
     ctx.db.close();
   });
 
+  it("reads a chapter from the package the preview listed, or says the book changed, and never reads the catalog's other version as if it were that one", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const ctx = setup();
+    const preview = await ctx.handlers.bookPreview({ id: "fisica-demo" });
+    expect(preview.package).toBe(JSON.parse(readFileSync(join(ctx.siteDir, "catalog.json"), "utf8")).books[0].sha256);
+    // The catalog now lists version 2, which has one chapter, and the five minutes it is kept have passed.
+    const next = zipSync({
+      "smartbook.json": strToU8(
+        JSON.stringify({ id: "fisica-demo", title: "Fisica di prova", version: "2.0.0", access: "public", chapters: [{ id: "cinematica", number: 1, title: "Cinematica", file: "01.md" }] }),
+      ),
+      "chapters/01.md": strToU8("## p1 | Moto\nVERSIONE DUE del testo.\n"),
+    });
+    writeFileSync(join(ctx.siteDir, "books", "fisica-demo@2.0.0.ptsb"), next);
+    const catalog = JSON.parse(readFileSync(join(ctx.siteDir, "catalog.json"), "utf8"));
+    Object.assign(catalog.books[0], { version: "2.0.0", chapters: 1, package: "books/fisica-demo@2.0.0.ptsb", bytes: next.byteLength, sha256: createHash("sha256").update(next).digest("hex") });
+    writeFileSync(join(ctx.siteDir, "catalog.json"), JSON.stringify(catalog));
+    vi.setSystemTime(Date.now() + 6 * 60_000);
+    // The held package is gone, by its time or because the book was read from another window.
+    const later = sourceHandlers(ctx.db, ctx.workspace, ctx.runner, undefined, undefined, ctx.transport);
+    // Chapter 2 exists only in the version the reader was shown: asked without the package it gets the catalog's version, which
+    // has none, and asked with it, it gets an answer that says so and not the other version's text or nothing.
+    expect(await later.bookChapter({ id: "fisica-demo", chapter: 2 })).toEqual([]);
+    await expect(later.bookChapter({ id: "fisica-demo", chapter: 2, package: preview.package })).rejects.toMatchObject({ messageKey: "sources.books.changed" });
+    // A reader opened again lists the version the catalog has, and reads it.
+    const again = await later.bookPreview({ id: "fisica-demo" });
+    expect(again.chapters.map((chapter) => chapter.title)).toEqual(["Cinematica"]);
+    expect(again.package).not.toBe(preview.package);
+    expect((await later.bookChapter({ id: "fisica-demo", chapter: 1, package: again.package }))[0]?.text).toContain("VERSIONE DUE");
+    // The package it was listed from still answers while it is held.
+    expect((await ctx.handlers.bookChapter({ id: "fisica-demo", chapter: 2, package: preview.package }))[0]?.text).toContain("massa per accelerazione");
+    ctx.db.close();
+  });
+
   it("adds a book that was never read with one download, and refuses an unknown shelf before downloading anything", async () => {
     const ctx = setup();
     await expect(ctx.handlers.importBook({ id: "fisica-demo", subjectId: "gone" })).rejects.toMatchObject({ messageKey: "sources.sort.subjectMissing" });
