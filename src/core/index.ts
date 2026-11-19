@@ -12,6 +12,7 @@ import {
   setScratch,
 } from "./engine/funnel";
 import { addInstallDirsToPath } from "./engine/install";
+import { syncModelFile } from "./engine/model-roles-sync";
 import {
   attachRendererPort,
   addFileGrants,
@@ -63,6 +64,9 @@ type ParentEvent = {
     type?: string;
     workspacePath?: string;
     userDataPath?: string;
+    /** The app's version and its GitHub repository, to find the model file's branch. */
+    version?: string;
+    repository?: string;
     grants?: FileGrant[];
     dev?: boolean;
     unpackaged?: boolean;
@@ -117,6 +121,7 @@ if (!parent) {
     dev: boolean,
     unpackaged: boolean,
     userDataPath?: string,
+    app: { version?: string; repository?: string } = {},
   ): void {
     setRuntimeSender((message) => port.postMessage(message));
     const db = openDatabase(join(workspacePath, "pyxis.db"));
@@ -162,6 +167,20 @@ if (!parent) {
       db,
       dev && unpackaged ? process.env["PYXIS_E2E_INSTALLER"] : undefined,
     );
+    // The model file: the copy kept from an earlier download is read now, and a newer one is asked for in the
+    // background. A run with the test seams on never reaches GitHub: it reads the file from PYXIS_E2E_MODEL_FILE_URL
+    // (a local server) or has no network at all.
+    const seamsOn = dev && process.env["PYXIS_E2E"] === "1";
+    const modelFileUrl = seamsOn ? process.env["PYXIS_E2E_MODEL_FILE_URL"] : undefined;
+    if (app.version && app.repository)
+      void syncModelFile({
+        dir: userDataPath,
+        repository: app.repository,
+        version: app.version,
+        fetch: seamsOn && !modelFileUrl ? null : fetch,
+        ...(modelFileUrl ? { url: modelFileUrl } : {}),
+        onAdopted: refreshAutoEngines,
+      });
     // End-to-end seam (PYXIS_E2E_LOCAL_JOBS=0): how many local jobs may run at once, so a spec can keep one waiting in the queue.
     const localJobsEnv = dev && process.env["PYXIS_E2E"] === "1" ? process.env["PYXIS_E2E_LOCAL_JOBS"] : undefined;
     const localJobs = localJobsEnv ? Number(localJobsEnv) : Number.NaN;
@@ -333,7 +352,10 @@ if (!parent) {
       void (async () => {
         if (delay > 0) await new Promise((r) => setTimeout(r, delay));
         try {
-          bootstrap(workspacePath, dev, data.unpackaged === true, data.userDataPath);
+          bootstrap(workspacePath, dev, data.unpackaged === true, data.userDataPath, {
+            version: data.version,
+            repository: data.repository,
+          });
         } catch (err) {
           failBootstrap(err);
         }

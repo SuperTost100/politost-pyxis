@@ -971,6 +971,9 @@ function startCore(strict = false): Promise<void> {
     workspacePath,
     // A linked study folder may not lie inside the app's own data.
     userDataPath: app.getPath("userData"),
+    // The model file is fetched from the branch of this build: `next` for a pre-release, `main` for a release.
+    version: app.isPackaged ? app.getVersion() : packageMetadata.version,
+    repository: githubRepository(packageMetadata.repository),
     grants: [...pickedGrants.values()],
     dev: e2eSeam(),
     // Seams that run code, such as the installer stand-in, stay off in a packaged app even with PYXIS_E2E=1.

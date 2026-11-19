@@ -1,9 +1,10 @@
 import { IpcError } from "../../shared/ipc";
 import type Database from "better-sqlite3";
-import { automaticEffort, nearestEffort, studentEffort } from "../../shared/effort";
+import { nearestEffort, studentEffort } from "../../shared/effort";
 import { planAuto, type AutoFeature, type AutoProvider } from "./auto";
 import { isBenched, isModelBenched, pointedModels } from "./bench";
-import { effortsOf } from "./efforts";
+import { effortsOf, runsAs, wasReported } from "./efforts";
+import { automaticEffortOn, isForeignModel, isOwnModel } from "./model-roles";
 import type { ProviderId } from "./funnel";
 import { LOCAL_PROVIDER, localData, readLocal } from "./local";
 
@@ -73,10 +74,13 @@ export function selectionFor(
       : (picked ?? inherited)
     : picked && listed.includes(picked)
       ? picked
-      : automaticEffort(feature, listed);
+      : automaticEffortOn(selection.provider, feature, listed);
+  // A level the tool lists as a model of its own (`gemini-4-neon-xhigh`) runs as that model, with no effort flag.
+  const model = runsAs(selection.provider, selection.model, effort);
   return {
     ...selection,
-    ...(effort ? { effort } : {}),
+    model,
+    ...(effort && model === selection.model ? { effort } : {}),
     ...(auto ? { chosenFor: feature } : {}),
   };
 }
@@ -117,6 +121,17 @@ export function jobEngine(jobId: string | undefined): string | undefined {
 }
 
 /**
+ * A planner's choice as the tool runs it: a level the tool lists as a model of its own (`gemini-4-neon-xhigh`) runs as
+ * that model with no effort flag, the same switch `selectionFor` makes for a stored row.
+ */
+function runnable<T extends { provider: string; model: string; effort?: string }>(choice: T): T {
+  const model = runsAs(choice.provider, choice.model, choice.effort);
+  if (model === choice.model) return choice;
+  const { effort: _effort, ...rest } = choice;
+  return { ...rest, model } as unknown as T;
+}
+
+/**
  * The model of `provider` for a task, or undefined when that tool is not one the last automatic choice could use (not
  * signed in, turned off, out of requests). `feature` names the task whose tier picks the model; a task the student
  * pinned has none, so it takes the model of the default one.
@@ -129,7 +144,35 @@ export function selectionOn(
   const there = ready.find((candidate) => candidate.id === provider);
   if (!there || isBenched(provider)) return undefined;
   const choice = planAuto(withoutRefusedModels([there]), undefined, null)[feature as AutoFeature];
-  return choice ? { ...choice, provider: choice.provider as ProviderId } : undefined;
+  return choice ? runnable({ ...choice, provider: choice.provider as ProviderId }) : undefined;
+}
+
+/**
+ * A model that this tool must not run: one the tool reported that is not its maker's (Composer on Cursor), or one that
+ * belongs to another tool's maker (a Claude model on Cursor). An id nobody knows is not ruled out here.
+ */
+export function offLimits(provider: string, model: string): boolean {
+  return (
+    !isOwnModel(provider, model) &&
+    (wasReported(provider, model) || isForeignModel(provider, model))
+  );
+}
+
+/**
+ * The selection a call runs with. One that names a model its tool may not run, as a job saved by an earlier build can,
+ * becomes the automatic choice for its task (the default task for a pinned one), on the same tool when it is ready and
+ * on the next one otherwise. With no tool ready to take it the call stops, so the tool is never asked for that model.
+ */
+export function currentSelection<T extends { provider: string; model: string; chosenFor?: string }>(selection: T): T {
+  if (!offLimits(selection.provider, selection.model)) return selection;
+  const feature = selection.chosenFor ?? "default";
+  // The same tool first, so a job keeps its tool whatever order the student put their tools in; the plan for all the
+  // ready tools only when that one cannot serve the task.
+  const choice =
+    selectionOn(selection.provider, feature) ??
+    fallbackSelection({ provider: selection.provider, chosenFor: feature }, "model");
+  if (!choice) throw new IpcError("engine-missing", "engines.errors.engine-missing");
+  return { ...choice, chosenFor: feature } as unknown as T;
 }
 
 /** The student's order, for the tool a failing task moves to. Set at launch and at once when the student changes it. */
@@ -177,7 +220,7 @@ export function fallbackSelection(
     order,
   )[feature as AutoFeature];
   return choice
-    ? { ...choice, provider: choice.provider as ProviderId }
+    ? runnable({ ...choice, provider: choice.provider as ProviderId })
     : undefined;
 }
 

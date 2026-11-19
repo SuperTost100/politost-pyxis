@@ -12,6 +12,7 @@ import {
   isSignedOut,
   MODEL_REFUSED_MS,
 } from "./bench";
+import { forgetModels, rememberModels } from "./efforts";
 import { generate, setFallbackListener, type GenerateInput } from "./generate";
 import { FunnelError, type EngineResult } from "./funnel";
 import { chooseJobEngine, rememberOrder, rememberReady, selectionFor } from "./selection";
@@ -688,7 +689,7 @@ describe("switching engines on a usage limit or sign-out", () => {
     const db = automaticChat();
     rememberReady([
       ready[0]!,
-      { id: "agent", kind: "cli", effort: true, models: [{ id: "gemini-3.8-flash", efforts: [] }] },
+      { id: "agent", kind: "cli", effort: true, models: [{ id: "grok-4.7", efforts: [] }] },
     ]);
     const asked: string[] = [];
     const call = (jobId: string, attachments?: GenerateInput["attachments"]) =>
@@ -718,7 +719,7 @@ describe("switching engines on a usage limit or sign-out", () => {
     const db = automaticChat();
     rememberReady([
       ready[0]!,
-      { id: "agent", kind: "cli", effort: true, models: [{ id: "gemini-3.8-flash", efforts: [] }] },
+      { id: "agent", kind: "cli", effort: true, models: [{ id: "grok-4.7", efforts: [] }] },
     ]);
     let calls = 0;
     await expect(
@@ -748,6 +749,7 @@ describe("a chosen engine whose subscription refuses the model", () => {
       "composer-2.5",
       "claude-opus-5-thinking",
       "gpt-5.6-sol",
+      "cursor-grok-4.4",
       "cursor-grok-4.5",
       "gemini-3.7-flash",
       "grok-4.7",
@@ -768,12 +770,12 @@ describe("a chosen engine whose subscription refuses the model", () => {
     );
 
   /** The plan task on Cursor Agent alone, as "Scelgo io" with only Cursor ticked leaves it. */
-  function cursorOnly() {
+  function cursorOnly(model = "grok-4.7") {
     const db = openDatabase(":memory:");
     db.prepare(
       "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('plan', ?, 1)",
     ).run(
-      JSON.stringify({ provider: "agent", model: "claude-opus-5-5", effort: "high", auto: true }),
+      JSON.stringify({ provider: "agent", model, effort: "high", auto: true }),
     );
     rememberReady([cursor]);
     return db;
@@ -783,6 +785,7 @@ describe("a chosen engine whose subscription refuses the model", () => {
     rememberReady([]);
     setFallbackListener(undefined);
     clearBench();
+    forgetModels();
   });
 
   it("moves a job's saved selection to the model the refusal points to", async () => {
@@ -797,18 +800,126 @@ describe("a chosen engine whose subscription refuses the model", () => {
       prompt: "hi",
       run: async (input) => {
         asked.push(input.selection.model);
-        if (!input.selection.model.includes("grok")) throw refusal("Claude Opus 5.5");
+        if (input.selection.model === "grok-4.7") throw refusal("Grok 4.7");
         return result({ text: "ciao", provider: "agent", model: input.selection.model });
       },
     });
-    expect(asked).toEqual(["claude-opus-5-5", "grok-4.7"]);
+    expect(asked).toEqual(["grok-4.7", "cursor-grok-4.6"]);
     expect(output.text).toBe("ciao");
     expect(output.fallback).toEqual({
       from: "Cursor",
-      to: "Cursor (Grok 4.7)",
+      to: "Cursor (Grok 4.6)",
       reason: "model",
     });
     db.close();
+  });
+
+  describe("a job saved by an earlier build", () => {
+    /** Runs one call with a saved selection and returns the models the engine was asked for. */
+    async function asking(selection: object): Promise<{ asked: string[]; fallback: unknown }> {
+      const db = cursorOnly();
+      // What Cursor reported when the app last listed its models: Composer and the others are not Grok.
+      rememberModels("agent", cursor.models.filter((model) => /grok/.test(model.id)), cursor.models);
+      const asked: string[] = [];
+      const output = await generate({
+        selection: JSON.parse(JSON.stringify(selection)) as ReturnType<typeof selectionFor>,
+        prompt: "hi",
+        run: async (input) => {
+          asked.push(`${input.selection.provider}/${input.selection.model}`);
+          return result({ text: "ciao", provider: input.selection.provider, model: input.selection.model });
+        },
+      });
+      db.close();
+      return { asked, fallback: output.fallback };
+    }
+
+    it("goes back to the automatic choice when it names another maker's model on the tool, and asks the tool for no such model", async () => {
+      const { asked, fallback } = await asking({
+        provider: "agent",
+        model: "claude-opus-5-5",
+        effort: "high",
+        chosenFor: "plan",
+      });
+      expect(asked).toEqual(["agent/grok-4.7"]);
+      expect(fallback).toBeUndefined();
+    });
+
+    it("does the same for a selection the student had pinned, which names no task", async () => {
+      expect((await asking({ provider: "agent", model: "composer-2.5" })).asked).toEqual(["agent/grok-4.7"]);
+      expect((await asking({ provider: "agent", model: "claude-sonnet-5-5", effort: "high" })).asked).toEqual([
+        "agent/grok-4.7",
+      ]);
+    });
+
+    it("keeps the tool's own models and ids nobody knows as they were", async () => {
+      expect((await asking({ provider: "agent", model: "cursor-grok-4.5", chosenFor: "chat" })).asked).toEqual([
+        "agent/cursor-grok-4.5",
+      ]);
+      expect((await asking({ provider: "agent", model: "recorded-fixture" })).asked).toEqual([
+        "agent/recorded-fixture",
+      ]);
+    });
+
+    it("keeps the job on its own tool, whatever order the student put their tools in", async () => {
+      const db = cursorOnly();
+      const codex: AutoProvider = {
+        id: "codex",
+        kind: "cli",
+        effort: true,
+        models: [{ id: "gpt-6.2-sol", efforts: [{ id: "low" }, { id: "high" }] }, { id: "gpt-6-luna", efforts: [{ id: "low" }] }],
+      };
+      rememberReady([cursor, codex]);
+      // ChatGPT first: the plan for a new task would give it to ChatGPT, but this job ran on Cursor.
+      rememberOrder(["codex", "agent"]);
+      try {
+        for (const saved of [
+          { provider: "agent", model: "claude-opus-5-5", effort: "high", chosenFor: "plan" },
+          { provider: "agent", model: "claude-sonnet-5-5" },
+        ]) {
+          const asked: string[] = [];
+          await generate({
+            selection: JSON.parse(JSON.stringify(saved)) as ReturnType<typeof selectionFor>,
+            prompt: "hi",
+            run: async (input) => {
+              asked.push(`${input.selection.provider}/${input.selection.model}`);
+              return result({ text: "ciao", provider: input.selection.provider, model: input.selection.model });
+            },
+          });
+          expect(asked, JSON.stringify(saved)).toEqual(["agent/grok-4.7"]);
+        }
+        // When Cursor cannot take the task, the plan for the ready tools gives it to the next one.
+        rememberReady([codex]);
+        const moved: string[] = [];
+        await generate({
+          selection: { provider: "agent", model: "claude-opus-5-5", chosenFor: "plan" },
+          prompt: "hi",
+          run: async (input) => {
+            moved.push(`${input.selection.provider}/${input.selection.model}`);
+            return result({ text: "ciao", provider: input.selection.provider, model: input.selection.model });
+          },
+        });
+        expect(moved).toEqual(["codex/gpt-6.2-sol"]);
+      } finally {
+        rememberOrder(null);
+      }
+      db.close();
+    });
+
+    it("still moves on afterwards like any automatic call, because the new selection is automatic", async () => {
+      const db = cursorOnly();
+      const asked: string[] = [];
+      await generate({
+        selection: { provider: "agent", model: "claude-opus-5-5", chosenFor: "plan" },
+        prompt: "hi",
+        run: async (input) => {
+          asked.push(input.selection.model);
+          if (input.selection.model === "grok-4.7") throw refusal("Grok 4.7", ".");
+          return result({ text: "ciao", provider: "agent", model: input.selection.model });
+        },
+      });
+      expect(asked).toEqual(["grok-4.7", "cursor-grok-4.6"]);
+      db.close();
+    });
   });
 
   it("sends the engine only the selection, without Pyxis's own bookkeeping", async () => {
@@ -822,11 +933,11 @@ describe("a chosen engine whose subscription refuses the model", () => {
         return result({ text: "ciao", provider: "agent" });
       },
     });
-    expect(sent).toEqual([{ provider: "agent", model: "claude-opus-5-5", effort: "high" }]);
+    expect(sent).toEqual([{ provider: "agent", model: "grok-4.7", effort: "high" }]);
     db.close();
   });
 
-  it("tries a few more of the engine's models when the refusal names none", async () => {
+  it("tries a few more of the engine's own models when the refusal names none, in the file's order", async () => {
     const db = cursorOnly();
     const asked: string[] = [];
     const output = await generate({
@@ -834,11 +945,12 @@ describe("a chosen engine whose subscription refuses the model", () => {
       prompt: "hi",
       run: async (input) => {
         asked.push(input.selection.model);
-        if (input.selection.model.startsWith("claude-opus")) throw refusal("Claude Opus", ".");
+        if (["grok-4.7", "cursor-grok-4.6"].includes(input.selection.model)) throw refusal("Grok", ".");
         return result({ text: "ciao", provider: "agent", model: input.selection.model });
       },
     });
-    expect(asked).toEqual(["claude-opus-5-5", "claude-opus-5", "claude-opus-4-8", "gpt-5.6-sol"]);
+    // Never a Claude, GPT or Gemini model of the account: after Grok 4.7 and 4.6 the file's next Grok model is used.
+    expect(asked).toEqual(["grok-4.7", "cursor-grok-4.6", "cursor-grok-4.5"]);
     expect(output.text).toBe("ciao");
     db.close();
   });
@@ -860,6 +972,22 @@ describe("a chosen engine whose subscription refuses the model", () => {
       params: { provider: "agent" },
     });
     expect(calls).toBe(4);
+    db.close();
+  });
+
+  it("never walks to another company's model on its way down the refusals", async () => {
+    const db = cursorOnly();
+    const asked: string[] = [];
+    await generate({
+      selection: selectionFor(db, "plan"),
+      prompt: "hi",
+      run: async (input) => {
+        asked.push(input.selection.model);
+        if (asked.length < 4) throw refusal("This model", ".");
+        return result({ text: "ciao", provider: "agent", model: input.selection.model });
+      },
+    });
+    expect(asked.every((model) => /grok/.test(model))).toBe(true);
     db.close();
   });
 
@@ -897,7 +1025,7 @@ describe("a chosen engine whose subscription refuses the model", () => {
   it("leaves the student's pinned model alone and names the refusal", async () => {
     const db = cursorOnly();
     db.prepare("UPDATE feature_engines SET selection_json = ?").run(
-      JSON.stringify({ provider: "agent", model: "claude-opus-5-5" }),
+      JSON.stringify({ provider: "agent", model: "grok-4.7" }),
     );
     let calls = 0;
     await expect(
@@ -906,13 +1034,13 @@ describe("a chosen engine whose subscription refuses the model", () => {
         prompt: "hi",
         run: async () => {
           calls += 1;
-          throw refusal("Claude Opus 5.5");
+          throw refusal("Grok 4.7");
         },
       }),
     ).rejects.toMatchObject({ code: "model-not-included", params: { provider: "agent" } });
     expect(calls).toBe(1);
     // The refused model is still marked, so Settings can say the engine is missing it.
-    expect(isModelBenched("agent", "claude-opus-5-5")).toBe(true);
+    expect(isModelBenched("agent", "grok-4.7")).toBe(true);
     db.close();
   });
 });
