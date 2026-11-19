@@ -1,0 +1,40 @@
+/* A formula KaTeX cannot draw: its source in the text's own colour, plain, never an error colour. */
+.px-formula-source {
+  font: 400 0.92em/1.5 var(--font-mono);
+  color: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A formula still being written, until its closing delimiter arrives: a quiet bar of about its size, in its place. */
+.px-formula-pending {
+  display: inline-block;
+  height: 1.1em;
+  vertical-align: -0.2em;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ink) 11%, transparent);
+}
+.px-formula-pending.is-display {
+  display: block;
+  width: min(60%, 22em);
+  height: 2.6em;
+  margin: var(--space-4) auto;
+}
+@keyframes px-formula-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .px-formula-pending {
+    animation: px-formula-pulse 1.6s ease-in-out infinite;
+  }
+}
+.px-formula-source.is-display {
+  display: block;
+  margin: var(--space-4) 0;
+}
