@@ -265,8 +265,18 @@ describe("the model chosen for a photo is still an automatic choice", () => {
       JSON.stringify({ provider: "claude", model: "text-only-small", auto: true }),
     );
     rememberReady([
-      { id: "claude", kind: "cli", effort: false, models: [{ id: "text-only-small", efforts: [] }, { id: "claude-sonnet-5", efforts: [] }] },
-      { id: "codex", kind: "cli", effort: false, models: [{ id: "gpt-5.6-terra", efforts: [] }] },
+      {
+        id: "claude",
+        kind: "cli",
+        effort: false,
+        models: ["text-only-small", "claude-sonnet-5", "claude-sonnet-5-5", "claude-opus-5-5"].map((id) => ({ id, efforts: [] })),
+      },
+      {
+        id: "codex",
+        kind: "cli",
+        effort: false,
+        models: ["gpt-5.6-terra", "gpt-6.1-terra", "gpt-6.2-sol"].map((id) => ({ id, efforts: [] })),
+      },
     ]);
     const limited = Object.assign(new Error("You've hit your usage limit"), {
       code: "cli-failed",
@@ -281,13 +291,14 @@ describe("the model chosen for a photo is still an automatic choice", () => {
       run: async (input) => {
         asked.push({ provider: input.selection.provider, model: input.selection.model, images: input.attachments?.length ?? 0 });
         if (input.selection.provider === "claude") throw limited;
-        return { ...reply, provider: "codex", model: "gpt-5.6-terra" };
+        return { ...reply, provider: "codex", model: "gpt-6.1-terra" };
       },
     });
-    // Claude's image model was asked first and hit its limit; ChatGPT's, which reads images too, answered with the photo.
+    // Each tool's newest model for the picture work, as the model file names it, reads the photo. Claude's was asked
+    // first and hit its limit; the call moved on to ChatGPT's, which answered with the photo.
     expect(asked).toEqual([
-      { provider: "claude", model: "claude-sonnet-5", images: 1 },
-      { provider: "codex", model: "gpt-5.6-terra", images: 1 },
+      { provider: "claude", model: "claude-sonnet-5-5", images: 1 },
+      { provider: "codex", model: "gpt-6.1-terra", images: 1 },
     ]);
     expect(result.message?.provider).toBe("codex");
     db.close();
