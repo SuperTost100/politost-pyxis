@@ -13,7 +13,8 @@ import {
   type Need,
 } from "./capabilities";
 import { suggestedModel, translateEngineError } from "./errors";
-import { automaticEffortOn, isForeignModel, isOwnModel, ownModels } from "./model-roles";
+import { offeredModels } from "./effort-variants";
+import { automaticEffortOn } from "./model-roles";
 import {
   acknowledgeProviders,
   endConversations,
@@ -54,11 +55,11 @@ import {
   modelNames,
   rememberModels,
   resolveEffort,
-  wasReported,
 } from "./efforts";
 import { isInstallable, runInstaller } from "./install";
 import {
   keepAllowed,
+  offLimits,
   rememberOrder,
   rememberReady,
   withoutRefusedModels,
@@ -266,17 +267,6 @@ function isReady(row: OverviewRow): boolean {
 type StoredRow = { feature: string; selection_json: string };
 
 /**
- * A model that this tool must not run: one the tool reported that is not its maker's (Composer on Cursor), or one that
- * belongs to another tool's maker (a Claude model on Cursor). An id nobody knows is not ruled out here.
- */
-function offLimits(provider: string, model: string): boolean {
-  return (
-    !isOwnModel(provider, model) &&
-    (wasReported(provider, model) || isForeignModel(provider, model))
-  );
-}
-
-/**
  * Whether the last scan of a database found an engine to choose from. A sign-in probe that times out reads as
  * "signed out", so one scan that finds nothing after a good one is not trusted: the choices stay until a second
  * scan agrees. Signing out in Pyxis clears the flag, since that is certain.
@@ -306,7 +296,7 @@ export async function autoConfigureEngines(
     try {
       const all = await getFunnel().models(row.id as ProviderId);
       // A tool offers only its maker's models, whatever else the account reports.
-      const models = ownModels(row.id, all);
+      const models = offeredModels(row.id, all);
       rememberModels(row.id, models, all);
       listed.push({
         id: row.id,
@@ -863,7 +853,7 @@ export function engineHandlers(
     async models(input: { provider: ProviderId }) {
       await shellPathReady();
       const all = await getFunnel().models(input.provider);
-      const list = ownModels(input.provider, all);
+      const list = offeredModels(input.provider, all);
       rememberModels(input.provider, list, all);
       return list.map((model) => ({
         id: model.id,
@@ -1240,7 +1230,7 @@ async function cheapestTest(
   provider: ProviderId,
 ): Promise<{ model: string; effort?: string }> {
   const all = await getFunnel().models(provider);
-  const models = ownModels(provider, all);
+  const models = offeredModels(provider, all);
   rememberModels(provider, models, all);
   const listed: AutoProvider = {
     id: provider,

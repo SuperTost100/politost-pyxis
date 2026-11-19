@@ -29,14 +29,14 @@ Pyxis picks the engine, model and effort for each feature itself. `planAuto()` i
 
 Defaults for common mixes, as `src/core/engine/auto.test.ts` checks them against the model lists CLI Funnel 0.9 reports:
 
-| Ready CLIs                | Chat and maps                                   | Flashcards       | Lessons           | Default           | Photos             | Plans           | Grading           |
-| ------------------------- | ----------------------------------------------- | ---------------- | ----------------- | ----------------- | ------------------ | --------------- | ----------------- |
-| Claude Code + Codex       | GPT-6 Luna                                      | GPT-6 Luna       | Claude Sonnet 5.5 | Claude Sonnet 5.5 | Claude Sonnet 5.5  | Claude Opus 5.5 | GPT-6.1 Terra     |
-| Claude Code + Antigravity | Gemini 3.8 Flash                                | Gemini 3.8 Flash | Claude Sonnet 5.5 | Claude Sonnet 5.5 | Claude Sonnet 5.5  | Claude Opus 5.5 | Gemini 4 Hydrogen |
-| Claude Code + Cursor      | Cursor Grok 4.7                                 | Cursor Grok 4.7  | Claude Sonnet 5.5 | Claude Sonnet 5.5 | Claude Sonnet 5.5  | Claude Opus 5.5 | Cursor Grok 4.7   |
-| Codex + Antigravity       | Gemini 3.8 Flash                                | Gemini 3.8 Flash | GPT-6.1 Terra     | GPT-6.1 Terra     | GPT-5.6 Terra      | GPT-6.2 Sol     | Gemini 4 Hydrogen |
-| Cursor + Antigravity      | Gemini 3.8 Flash                                | Gemini 3.8 Flash | Cursor Grok 4.7   | Cursor Grok 4.7   | OCR (no image CLI) | Cursor Grok 4.7 | Gemini 4 Hydrogen |
-| All four                  | Gemini 3.8 Flash (chat), Cursor Grok 4.7 (maps) | Gemini 3.8 Flash | GPT-6.1 Terra     | Claude Sonnet 5.5 | Claude Sonnet 5.5  | Claude Opus 5.5 | Cursor Grok 4.7   |
+| Ready CLIs                | Chat and maps                                    | Flashcards        | Lessons           | Default           | Photos             | Plans           | Grading           |
+| ------------------------- | ------------------------------------------------ | ----------------- | ----------------- | ----------------- | ------------------ | --------------- | ----------------- |
+| Claude Code + Codex       | GPT-6 Luna                                       | GPT-6 Luna        | Claude Sonnet 5.5 | Claude Sonnet 5.5 | Claude Sonnet 5.5  | Claude Opus 5.5 | GPT-6.1 Terra     |
+| Claude Code + Antigravity | Gemini 4 Hydrogen                                | Gemini 4 Hydrogen | Claude Sonnet 5.5 | Claude Sonnet 5.5 | Claude Sonnet 5.5  | Claude Opus 5.5 | Gemini 4 Hydrogen |
+| Claude Code + Cursor      | Cursor Grok 4.7                                  | Cursor Grok 4.7   | Claude Sonnet 5.5 | Claude Sonnet 5.5 | Claude Sonnet 5.5  | Claude Opus 5.5 | Cursor Grok 4.7   |
+| Codex + Antigravity       | Gemini 4 Hydrogen                                | Gemini 4 Hydrogen | GPT-6.1 Terra     | GPT-6.1 Terra     | GPT-6.1 Terra      | GPT-6.2 Sol     | Gemini 4 Hydrogen |
+| Cursor + Antigravity      | Gemini 4 Hydrogen                                | Gemini 4 Hydrogen | Cursor Grok 4.7   | Cursor Grok 4.7   | OCR (no image CLI) | Cursor Grok 4.7 | Gemini 4 Hydrogen |
+| All four                  | Gemini 4 Hydrogen (chat), Cursor Grok 4.7 (maps) | Gemini 4 Hydrogen | GPT-6.1 Terra     | Claude Sonnet 5.5 | Claude Sonnet 5.5  | Claude Opus 5.5 | Cursor Grok 4.7   |
 
 ### The student's order
 
@@ -58,7 +58,7 @@ Feature keys are `default`, `chat`, `plan`, `lesson`, `grading`, `map`, `vision`
 
 ## The model file
 
-`resources/model-roles.json` says which models each tool runs for each tier. A new model needs a change to this file and nothing else. It has a format `version` (1), an `updatedAt` timestamp, and one entry per tool (`claude`, `codex`, `agent`, `antigravity`, and the two API providers). `src/core/engine/model-roles.ts` validates it with a Zod schema, and a file that does not validate is ignored.
+`resources/model-roles.json` says which models each tool runs for each tier. A new model needs a change to this file and nothing else. It has a format `version` (1), an `updatedAt` timestamp, one entry per tool (`claude`, `codex`, `agent`, `antigravity`, and the two API providers) and a list of `capabilities`. `src/core/engine/model-roles.ts` validates it with a Zod schema, and a file that does not validate is ignored.
 
 ```json
 "agent": {
@@ -73,10 +73,15 @@ Feature keys are `default`, `chat`, `plan`, `lesson`, `grading`, `map`, `vision`
 - Each of `fast`, `mid` and `strong` has an `effort` and an ordered list of concrete `models`, preferred first. The automatic choice takes the first id of the list that the tool reports for this account, whatever order the tool lists its models in. The effort is the nearest level the model lists.
 - Without a match in the tier's list, the neighbouring tiers are tried (`tierOrder` in `resources/model-tiers.json`), then the first of the maker's own models the tool reports. A tool that reports none of its maker's models gets no task.
 - The local model and unknown tools have no entry and are not restricted.
+- `capabilities` says what models can do, as rows of a regular expression `pattern` (one model or a family; the first row that matches an id wins) with `vision` (reads images), `structured` (answers in the JSON a schema asks for) and `contextTokens`. Photos need a model whose row says `vision`, and the photo work takes the first model of its tier's list that does, so the newest one. A model with no row is treated as unable to read images. A file that names a model in a role that no row speaks for is refused, so a new model never needs a second file. The context sizes are not read by any code yet.
+
+### Efforts that the tool lists as models
+
+`agy models` lists `gemini-4-neon` with the levels low to high and `gemini-4-neon-xhigh` as a model of its own. Pyxis shows each model once (`offeredModels()` in `src/core/engine/effort-variants.ts`): a variant is folded into the model it belongs to and its level joins that model's levels, which is the Ragionamento column's list. A task at that level runs on the variant's id with no effort flag, because CLI Funnel refuses `--effort xhigh` on a model that lists three levels. The stored choice keeps the model and the level, and `selectionFor` makes the switch for the call.
 
 ### Pins and old choices
 
-A task pinned to a model that its tool no longer runs under these rules, such as a Claude model or Composer on Cursor, goes back to automatic the next time the choice is worked out, without an error. Its effort pick stays, as with any task handed back. `engines.setFeature` refuses such a model with `invalid-selection`. A pin on a model nobody knows, or one the tool stopped listing, is left as it was.
+A task pinned to a model that its tool no longer runs under these rules, such as a Claude model or Composer on Cursor, goes back to automatic the next time the choice is worked out, without an error. Its effort pick stays, as with any task handed back. `engines.setFeature` refuses such a model with `invalid-selection`. A pin on a model nobody knows, or one the tool stopped listing, is left as it was. A background job saved by an earlier build keeps its selection in its parameters; `generate()` replaces one that names such a model with the automatic choice for its task (the default task for a pinned job) before the call, on the same tool when it is ready and on the next one otherwise, so the tool is never asked for it. With no tool ready the call stops with `engine-missing`.
 
 ### Download
 
@@ -291,9 +296,9 @@ Feature modules own their prompt templates, version constants and Zod output sch
 
 A model call that fails reaches the screen through `generate()`, which turns the failure into an `IpcError` with an `engines.errors.*` message key (signed out, usage limit, not available, invalid choice, CLI error) and the engine's own text as detail. Ask, lessons, quizzes, cards, grading and plans all show that message, and the notice has a Details control. A background job keeps the bare code as its error. Only failures of the engine itself are mapped: CLI Funnel's errors and a lost connection. A reply that cannot be used (`invalid-output`), a cancelled call, any other `IpcError` and a bug in Pyxis pass through unchanged, so each feature keeps its own message for those.
 
-Model capability hints come from `resources/model-capabilities.json`; unknown capabilities show a warning. Hints cannot guarantee runtime access or valid output. Authentication failures map to `engines.errors.refused`; quota, usage or spend limits map to `engines.errors.quota`. The limit CLI Funnel attaches to a failed run decides first; error text is read only for a stated HTTP status (`HTTP 401`, `OpenAI 429: ...`) or whole words, never for bare digits. Settings, Test stops after 90 seconds with `engines.errors.timeout`. The automatic choice compares model versions without the snapshot date, and keeps the current choices when the first scan after a working one finds no signed-in engine, since a sign-in probe that times out reads as signed out. Keep error detail free of credentials and source passages.
+Model capability hints come from the `capabilities` of the [model file](#the-model-file); unknown capabilities show a warning. Hints cannot guarantee runtime access or valid output. Authentication failures map to `engines.errors.refused`; quota, usage or spend limits map to `engines.errors.quota`. The limit CLI Funnel attaches to a failed run decides first; error text is read only for a stated HTTP status (`HTTP 401`, `OpenAI 429: ...`) or whole words, never for bare digits. Settings, Test stops after 90 seconds with `engines.errors.timeout`. The automatic choice compares model versions without the snapshot date, and keeps the current choices when the first scan after a working one finds no signed-in engine, since a sign-in probe that times out reads as signed out. Keep error detail free of credentials and source passages.
 
-GPT image hints use a conservative list checked against the [official vision guide](https://developers.openai.com/api/docs/guides/images-vision) on 2026-10-04, including dated snapshots. Text-only, audio and unknown model IDs do not receive photo attachments; they use local OCR. A provider whose CLI Funnel adapter reports `capabilities.images` false (Cursor Agent and Antigravity) gets no photos either, whatever its model ids look like: the automatic choice never gives it the photo task, and a chat on it reads photos as text. New supported models need an explicit catalog entry. The context-size hints are metadata and are not used to budget requests.
+The GPT rows are a conservative list checked against the [official vision guide](https://developers.openai.com/api/docs/guides/images-vision) on 2026-10-04 and extended to the 5.x and 6.x families, including dated snapshots. Text-only, audio and unknown model IDs do not receive photo attachments; they use local OCR. A provider whose CLI Funnel adapter reports `capabilities.images` false (Cursor Agent and Antigravity) gets no photos either, whatever its model ids look like: the automatic choice never gives it the photo task, and a chat on it reads photos as text. A new family needs a row in the model file's `capabilities`; a new version of a family that a row already matches needs none. The context-size hints are metadata and are not used to budget requests.
 
 To add a feature key:
 

@@ -21,6 +21,27 @@ const pattern = z
     }
   }, "not a regular expression");
 
+const capability = z.object({
+  /** Matches the ids of the models this row speaks for, a model or a family. The first row that matches an id wins. */
+  pattern: z
+    .string()
+    .max(300)
+    .refine((source) => {
+      try {
+        new RegExp(source, "i");
+        return true;
+      } catch {
+        return false;
+      }
+    }, "not a regular expression"),
+  /** Reads images. A model with no row is treated as unable to. */
+  vision: z.boolean(),
+  /** Answers in the JSON a schema asks for. */
+  structured: z.boolean(),
+  contextTokens: z.number().int().positive(),
+});
+export type Capability = z.infer<typeof capability>;
+
 const role = z.object({
   /** The reasoning effort the role runs at; the nearest level the model lists is used. */
   effort: z.string().min(1).max(20),
@@ -36,7 +57,7 @@ const tool = z.object({
   roles: z.object({ fast: role, mid: role, strong: role }),
 });
 
-export const modelFileSchema = z.object({
+const fileShape = z.object({
   /** The format. A file of a version this app does not know is ignored. */
   version: z.literal(1),
   /** When the file was last changed (ISO 8601). Of two valid copies the later one wins. */
@@ -45,11 +66,39 @@ export const modelFileSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}T/)
     .refine((value) => !Number.isNaN(Date.parse(value))),
   tools: z.record(z.string().min(1).max(40), tool),
+  /** What each model can do, so a new model needs a change to this file only. */
+  capabilities: z.array(capability).max(200),
+});
+
+/** A file where some model named in a role has no capabilities stated is refused: its tool would not know what that model reads. */
+export const modelFileSchema = fileShape.superRefine((file, context) => {
+  // A row whose pattern is not a regular expression is reported by its own check; it matches nothing here.
+  const rows = file.capabilities.flatMap((row) => {
+    try {
+      return [new RegExp(row.pattern, "i")];
+    } catch {
+      return [];
+    }
+  });
+  for (const [id, rule] of Object.entries(file.tools))
+    for (const [name, role] of Object.entries(rule.roles))
+      for (const model of role.models)
+        if (!rows.some((row) => row.test(model)))
+          context.addIssue({ code: "custom", message: `${id} ${name}: no capabilities for ${model}` });
 });
 export type ModelFile = z.infer<typeof modelFileSchema>;
 
 const shippedFile = modelFileSchema.parse(shipped);
 type Rule = { own: RegExp; never?: RegExp };
+
+function compileCapabilities(file: ModelFile): Array<{ id: RegExp; row: Capability }> {
+  return file.capabilities.map((row) => ({ id: new RegExp(row.pattern, "i"), row }));
+}
+
+/** What the file says a model can do, or null for a model no row speaks for. */
+export function capabilityOf(model: string): Capability | null {
+  return capabilityRows.find((entry) => entry.id.test(model))?.row ?? null;
+}
 
 function compile(file: ModelFile): Map<string, Rule> {
   return new Map(
@@ -64,6 +113,7 @@ function compile(file: ModelFile): Map<string, Rule> {
 }
 let active: ModelFile = shippedFile;
 let compiled = compile(active);
+let capabilityRows = compileCapabilities(active);
 
 /** The copy in use: the newer of the one shipped with the app and the last valid download. */
 export function modelFile(): ModelFile {
@@ -82,6 +132,7 @@ export function adoptModelFile(raw: unknown): boolean {
   if (Date.parse(parsed.data.updatedAt) <= Date.parse(active.updatedAt)) return false;
   active = parsed.data;
   compiled = compile(active);
+  capabilityRows = compileCapabilities(active);
   return true;
 }
 
@@ -89,6 +140,7 @@ export function adoptModelFile(raw: unknown): boolean {
 export function resetModelFile(): void {
   active = shippedFile;
   compiled = compile(active);
+  capabilityRows = compileCapabilities(active);
 }
 
 /** True when this tool has a rule in the file. The local model and unknown tools have none. */

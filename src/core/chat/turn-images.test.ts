@@ -111,9 +111,9 @@ it("records a photo once on a message whose turn is retried, so a retry cannot f
 it("sends no photo to a provider that refuses images, so the chat reads text instead of failing", async () => {
   const { workspace, db, attach, good } = chatWithPhotos();
   attach.run("good", good(), 20);
-  // Cursor Agent lists claude-* ids that match the image catalog, but its CLI takes no attachments.
+  // The model file says Grok models read images, but Cursor Agent's CLI takes no attachments.
   db.prepare("UPDATE feature_engines SET selection_json = ? WHERE feature = 'default'").run(
-    JSON.stringify({ provider: "agent", model: "claude-sonnet-5" }),
+    JSON.stringify({ provider: "agent", model: "grok-4.7" }),
   );
   let sent: unknown[] | undefined;
   await askTurn(db, {

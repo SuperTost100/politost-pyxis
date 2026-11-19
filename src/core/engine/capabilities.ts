@@ -1,19 +1,11 @@
-import catalog from "../../../resources/model-capabilities.json";
 import { getFunnel, type ProviderId } from "./funnel";
-
-type Row = {
-  pattern: string;
-  vision: boolean;
-  structured: boolean;
-  contextTokens: number;
-};
-
-const rows = catalog as Row[];
+import { capabilityOf, type Capability } from "./model-roles";
 
 export type Need = "vision" | "structured";
 
-export function modelCapability(modelId: string): Row | null {
-  return rows.find((row) => new RegExp(row.pattern).test(modelId)) ?? null;
+/** What the model file says the model can do; null for a model it does not name. */
+export function modelCapability(modelId: string): Capability | null {
+  return capabilityOf(modelId);
 }
 
 /** Returns a message key when the model cannot do the job. */

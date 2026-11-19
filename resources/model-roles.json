@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-19T12:00:00Z",
+  "updatedAt": "2026-11-19T16:00:00Z",
   "tools": {
     "claude": {
       "own": "^claude-",
@@ -66,15 +66,20 @@
       "roles": {
         "fast": {
           "effort": "low",
-          "models": ["gemini-3.8-flash"]
+          "models": ["gemini-4-hydrogen", "gemini-3.8-flash"]
         },
         "mid": {
           "effort": "medium",
-          "models": ["gemini-4-hydrogen", "gemini-4-neon", "gemini-3.8-flash"]
+          "models": ["gemini-4-hydrogen", "gemini-4-argon", "gemini-3.8-flash"]
         },
         "strong": {
           "effort": "high",
-          "models": ["gemini-4-argon", "gemini-4-neon", "gemini-4-hydrogen"]
+          "models": [
+            "gemini-4-carbon",
+            "gemini-4-argon",
+            "gemini-4-neon",
+            "gemini-4-hydrogen"
+          ]
         }
       }
     },
@@ -121,5 +126,37 @@
         }
       }
     }
-  }
+  },
+  "capabilities": [
+    {
+      "pattern": "^claude-",
+      "vision": true,
+      "structured": true,
+      "contextTokens": 200000
+    },
+    {
+      "pattern": "^gpt-(?:4o(?:-mini)?|4\\.1(?:-mini|-nano)?|5(?:-mini|-nano|\\.\\d+(?:-(?:mini|nano))?)?|(?:5\\.\\d+|6(?:\\.\\d+)?)-(?:sol|terra|luna|astra))(?:-\\d{4}-\\d{2}-\\d{2})?$",
+      "vision": true,
+      "structured": true,
+      "contextTokens": 128000
+    },
+    {
+      "pattern": "^gemini-\\d",
+      "vision": true,
+      "structured": true,
+      "contextTokens": 1000000
+    },
+    {
+      "pattern": "^(?:cursor-)?grok-\\d",
+      "vision": true,
+      "structured": true,
+      "contextTokens": 256000
+    },
+    {
+      "pattern": "^gemma3:(?:4b|12b|27b)",
+      "vision": true,
+      "structured": true,
+      "contextTokens": 128000
+    }
+  ]
 }

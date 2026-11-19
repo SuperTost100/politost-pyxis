@@ -359,15 +359,16 @@ describe("automatic choice and effort", () => {
         ["gemini-4-hydrogen", ["low", "high"]],
       ]),
     ]);
+    // Hydrogen comes first in the fast and mid lists. It lists low and high, so medium takes the lower of the two.
     expect(plan.chat).toMatchObject({
-      model: "gemini-3.8-flash",
+      model: "gemini-4-hydrogen",
       effort: "low",
     });
     expect(plan.lesson).toMatchObject({
       model: "gemini-4-hydrogen",
       effort: "low",
     });
-    // No Argon or Neon is listed, so the plan takes the next Gemini model of the file's strong list.
+    // No Carbon, Argon or Neon is listed, so the plan takes the next Gemini model of the file's strong list.
     expect(plan.plan).toMatchObject({
       model: "gemini-4-hydrogen",
       effort: "high",

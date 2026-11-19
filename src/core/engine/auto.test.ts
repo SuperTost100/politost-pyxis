@@ -133,8 +133,8 @@ describe("automatic engine policy", () => {
       map: "codex:gpt-6-luna:low",
       cards: "codex:gpt-6-luna:low",
       lesson: "codex:gpt-6.1-terra:medium",
-      // Photos need a model known to read images, and the file's first mid model is not among them, so the next one is used.
-      vision: "codex:gpt-5.6-terra:medium",
+      // Photos take the first model of the mid list that reads images: the newest one.
+      vision: "codex:gpt-6.1-terra:medium",
       default: "codex:gpt-6.1-terra:medium",
       grading: "codex:gpt-6.1-terra:medium",
       plan: "codex:gpt-6.2-sol:high",
@@ -197,13 +197,17 @@ describe("automatic engine policy", () => {
     expect(planAuto([onlyFable])).toEqual({});
   });
 
-  it("keeps photos on a model that reads images", () => {
-    // The catalog does not know gpt-6-luna as an image model, so the photo feature takes the one it does know.
-    const noImageModel: AutoProvider = {
+  it("takes the newest model that reads images for photos", () => {
+    // The mid list names gpt-6.1-terra first, and the model file says it reads images, so photos use it.
+    expect(planAuto([codex]).vision?.model).toBe("gpt-6.1-terra");
+    // A model the file says nothing about is not one that reads images, whatever its name.
+    const unknownNewest: AutoProvider = {
       ...codex,
-      models: [model("gpt-6-luna"), model("gpt-5.6-terra")],
+      models: [model("gpt-7-nova"), model("gpt-6.1-terra"), model("gpt-6-luna")],
     };
-    expect(planAuto([noImageModel]).vision?.model).toBe("gpt-5.6-terra");
+    expect(planAuto([unknownNewest]).vision?.model).toBe("gpt-6.1-terra");
+    // With no model that reads images at all, the photo task still gets the tool's first model.
+    expect(planAuto([{ ...codex, models: [model("gpt-7-nova")] }]).vision?.model).toBe("gpt-7-nova");
   });
 
   it("never plans photos on a provider that refuses images, whatever its model ids say", () => {
@@ -270,27 +274,27 @@ const combinations: Record<string, string> = {
   agent:
     "agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7",
   antigravity:
-    "antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash antigravity/gemini-4-argon antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash",
+    "antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-argon antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen",
   "claude+agent":
     "claude/claude-sonnet-5-5 agent/grok-4.7 claude/claude-opus-5-5 claude/claude-sonnet-5-5 agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 agent/grok-4.7",
   "codex+agent":
-    "agent/grok-4.7 codex/gpt-6-luna codex/gpt-6.2-sol agent/grok-4.7 agent/grok-4.7 codex/gpt-6-luna codex/gpt-5.6-terra codex/gpt-6-luna",
+    "agent/grok-4.7 codex/gpt-6-luna codex/gpt-6.2-sol agent/grok-4.7 agent/grok-4.7 codex/gpt-6-luna codex/gpt-6.1-terra codex/gpt-6-luna",
   "claude+antigravity":
-    "claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash",
+    "claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen claude/claude-opus-5-5 claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen",
   "codex+antigravity":
-    "codex/gpt-6.1-terra antigravity/gemini-3.8-flash codex/gpt-6.2-sol codex/gpt-6.1-terra antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash codex/gpt-5.6-terra antigravity/gemini-3.8-flash",
+    "codex/gpt-6.1-terra antigravity/gemini-4-hydrogen codex/gpt-6.2-sol codex/gpt-6.1-terra antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen codex/gpt-6.1-terra antigravity/gemini-4-hydrogen",
   "agent+antigravity":
-    "agent/grok-4.7 antigravity/gemini-3.8-flash agent/grok-4.7 agent/grok-4.7 antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash agent/grok-4.7 antigravity/gemini-3.8-flash",
+    "agent/grok-4.7 antigravity/gemini-4-hydrogen agent/grok-4.7 agent/grok-4.7 antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen agent/grok-4.7 antigravity/gemini-4-hydrogen",
   "claude+codex+agent":
     "claude/claude-sonnet-5-5 codex/gpt-6-luna agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 codex/gpt-6-luna claude/claude-sonnet-5-5 codex/gpt-6-luna",
   "claude+codex+antigravity":
-    "claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash codex/gpt-6.2-sol codex/gpt-6.1-terra claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash",
+    "claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen codex/gpt-6.2-sol codex/gpt-6.1-terra claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen",
   "claude+agent+antigravity":
-    "claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash",
+    "claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen",
   "codex+agent+antigravity":
-    "agent/grok-4.7 antigravity/gemini-3.8-flash codex/gpt-6.2-sol agent/grok-4.7 codex/gpt-6.1-terra antigravity/gemini-3.8-flash codex/gpt-5.6-terra antigravity/gemini-3.8-flash",
+    "agent/grok-4.7 antigravity/gemini-4-hydrogen codex/gpt-6.2-sol agent/grok-4.7 codex/gpt-6.1-terra antigravity/gemini-4-hydrogen codex/gpt-6.1-terra antigravity/gemini-4-hydrogen",
   "claude+codex+agent+antigravity":
-    "claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 codex/gpt-6.1-terra agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash",
+    "claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen claude/claude-opus-5-5 codex/gpt-6.1-terra agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen",
 };
 const order = [
   "default",
@@ -357,7 +361,7 @@ describe("the order the student put their tools in", () => {
       cards: "codex:gpt-6-luna:low",
       grading: "codex:gpt-6.1-terra:medium",
       lesson: "codex:gpt-6.1-terra:medium",
-      vision: "codex:gpt-5.6-terra:medium",
+      vision: "codex:gpt-6.1-terra:medium",
       default: "codex:gpt-6.1-terra:medium",
       plan: "codex:gpt-6.2-sol:high",
     });

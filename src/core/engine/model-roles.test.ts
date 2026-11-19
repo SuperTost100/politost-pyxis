@@ -8,6 +8,7 @@ import { getFunnel } from "./funnel";
 import { engineHandlers } from "./handlers";
 import {
   adoptModelFile,
+  capabilityOf,
   isForeignModel,
   isOwnModel,
   modelFile,
@@ -99,6 +100,42 @@ describe("the model file", () => {
       for (const role of Object.values(rule.roles)) for (const name of role.models) expect(isOwnModel(id, name)).toBe(true);
   });
 
+  it("states what every model named in a role can do", () => {
+    for (const [tool, rule] of Object.entries(modelFile().tools))
+      for (const [name, role] of Object.entries(rule.roles))
+        for (const id of role.models) {
+          const capability = capabilityOf(id);
+          expect(capability, `${tool} ${name} ${id}`).not.toBeNull();
+          expect(typeof capability!.vision).toBe("boolean");
+          expect(typeof capability!.structured).toBe("boolean");
+          expect(capability!.contextTokens).toBeGreaterThan(0);
+        }
+  });
+
+  it("reads the newest models of a tool as able to read images, with no second file to change", () => {
+    for (const id of ["gpt-6.1-terra", "gpt-6.2-sol", "gpt-6-luna", "claude-sonnet-5-5", "gemini-4-hydrogen", "grok-4.7"])
+      expect(capabilityOf(id)?.vision, id).toBe(true);
+    for (const id of ["gpt-oss-120b", "gpt-audio", "composer-2.5", "text-only-small"]) expect(capabilityOf(id)?.vision ?? false, id).toBe(false);
+  });
+
+  it("refuses a file that names a model in a role without saying what it can do, and takes one that says it", () => {
+    const withModel = (capabilities: ModelFile["capabilities"]) => {
+      const file = copy();
+      file.updatedAt = "2099-01-01T00:00:00Z";
+      file.tools.codex!.roles.mid.models = ["gpt-7-nova", ...file.tools.codex!.roles.mid.models];
+      file.capabilities = capabilities;
+      return file;
+    };
+    expect(adoptModelFile(withModel(copy().capabilities))).toBe(false);
+    expect(capabilityOf("gpt-7-nova")).toBeNull();
+    const stated = withModel([{ pattern: "^gpt-7-", vision: true, structured: true, contextTokens: 400000 }, ...copy().capabilities]);
+    expect(adoptModelFile(stated)).toBe(true);
+    expect(capabilityOf("gpt-7-nova")).toMatchObject({ vision: true, contextTokens: 400000 });
+    // The photo work then takes it, with no change anywhere else.
+    const codex: AutoProvider = { id: "codex", kind: "cli", effort: true, models: [model("gpt-7-nova"), model("gpt-6.1-terra")] };
+    expect(planAuto([codex]).vision?.model).toBe("gpt-7-nova");
+  });
+
   it("ignores a file that does not validate", () => {
     const newer = (change: (file: ModelFile) => unknown) => {
       const file = copy();
@@ -113,6 +150,8 @@ describe("the model file", () => {
     // A file that leaves a tool out would strand that tool, so it is ignored too.
     expect(adoptModelFile(newer((file) => ({ ...file, tools: {} })))).toBe(false);
     expect(adoptModelFile(newer((file) => ({ ...file, tools: { claude: file.tools.claude } })))).toBe(false);
+    expect(adoptModelFile(newer((file) => ({ ...file, capabilities: [{ pattern: "(", vision: true, structured: true, contextTokens: 1 }] })))).toBe(false);
+    expect(adoptModelFile(newer((file) => ({ ...file, capabilities: undefined })))).toBe(false);
     expect(adoptModelFile(null)).toBe(false);
     expect(adoptModelFile("model-roles")).toBe(false);
     expect(modelFile().updatedAt).toBe(shipped.updatedAt);
