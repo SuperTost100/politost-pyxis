@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { strToU8, zipSync } from "fflate";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
@@ -307,6 +307,121 @@ describe("a chat's stored tool session", () => {
     }).catch(() => undefined);
     const next = await ask(db, "riprova con altre parole", { chatId: first.chatId });
     expect(next.seen.conversation!.followUp).toContain('Your answer to the student\'s earlier question "Spiegami i vettori" failed before any text arrived');
+    db.close();
+  });
+
+  it("keeps the order of a chat's messages when two turns share a millisecond or the clock steps back", async () => {
+    vi.useFakeTimers();
+    try {
+      const { db } = setup();
+      vi.setSystemTime(1_000_000);
+      const first = await ask(db, "prima");
+      // The failed turn starts in the same millisecond as the answer before it.
+      await askTurn(db, {
+        chatId: first.chatId,
+        text: "Spiegami i vettori",
+        allowGeneral: true,
+        run: async () => {
+          throw new Error("boom");
+        },
+      }).catch(() => undefined);
+      const next = await ask(db, "riprova con altre parole", { chatId: first.chatId });
+      expect(next.seen.conversation!.followUp).toContain('failed before any text arrived');
+      // The clock steps back one minute: the turn after it still comes last.
+      vi.setSystemTime(940_000);
+      await ask(db, "dopo lo scatto indietro", { chatId: first.chatId });
+      const order = db.prepare("SELECT body FROM messages WHERE chat_id = ? AND role = 'user' ORDER BY created_at, rowid").pluck().all(first.chatId);
+      expect(order).toEqual(["prima", "Spiegami i vettori", "riprova con altre parole", "dopo lo scatto indietro"]);
+      db.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("tells the session what the student sees when a regenerated reply failed or was stopped", async () => {
+    const { db } = setup();
+    const first = await ask(db, "domanda");
+    await regenerateTurn(db, {
+      chatId: first.chatId,
+      allowGeneral: true,
+      run: async () => {
+        throw new Error("boom");
+      },
+    }).catch(() => undefined);
+    const afterFailure = await ask(db, "e poi?", { chatId: first.chatId });
+    expect(afterFailure.seen.conversation!.followUp).toContain("The student still sees your earlier answer");
+    // The notice is told once.
+    const later = await ask(db, "e ancora?", { chatId: first.chatId });
+    expect(later.seen.conversation!.followUp).not.toContain("still sees your earlier answer");
+    const controller = new AbortController();
+    await regenerateTurn(db, {
+      chatId: first.chatId,
+      allowGeneral: true,
+      signal: controller.signal,
+      run: async (input) => {
+        input.onDelta?.("Una nuova risposta a metà");
+        controller.abort();
+        throw new DOMException("stopped", "AbortError");
+      },
+    }).catch(() => undefined);
+    // The stopped replacement is not kept: the answer the student sees is the one before it.
+    expect(db.prepare("SELECT stopped FROM messages WHERE chat_id = ? AND role = 'assistant'").pluck().all(first.chatId)).not.toContain(1);
+    const afterStop = await ask(db, "e infine?", { chatId: first.chatId });
+    expect(afterStop.seen.conversation!.followUp).toContain("The student still sees your earlier answer");
+    expect(sessionsOpened(db, first.chatId)).toBe(1);
+    db.close();
+  });
+
+  it("counts what a tool keeps of a stopped or failed turn, so the size bound sees it", async () => {
+    const { db } = setup();
+    const pin = (provider: string, model: string) =>
+      db.prepare("UPDATE feature_engines SET selection_json = ?").run(JSON.stringify({ provider, model }));
+    pin("antigravity", "gemini-3.8-flash");
+    const first = await ask(db, "prima", { provider: "antigravity", sessionId: "g1" });
+    const chars = () => currentSession(db, first.chatId)!.chars;
+    const before = chars();
+    const controller = new AbortController();
+    let sent = 0;
+    await askTurn(db, {
+      chatId: first.chatId,
+      text: "Spiegami i vettori",
+      allowGeneral: true,
+      signal: controller.signal,
+      run: async (input) => {
+        sent = (input as Seen).conversation!.followUp.length;
+        input.onDelta?.("I vettori sono frecce che");
+        controller.abort();
+        throw new DOMException("stopped", "AbortError");
+      },
+    });
+    // Antigravity keeps the question and the start of the reply; Claude Code and Codex the question; Cursor nothing.
+    expect(chars() - before).toBe(sent + "I vettori sono frecce che".length);
+    pin("claude", "claude-sonnet-5");
+    const claude = await ask(db, "prima", { provider: "claude", sessionId: "c1" });
+    const claudeBefore = currentSession(db, claude.chatId)!.chars;
+    await askTurn(db, {
+      chatId: claude.chatId,
+      text: "Spiegami",
+      allowGeneral: true,
+      run: async (input) => {
+        sent = (input as Seen).conversation!.followUp.length;
+        throw new Error("boom");
+      },
+    }).catch(() => undefined);
+    expect(currentSession(db, claude.chatId)!.chars - claudeBefore).toBe(sent);
+    db.close();
+  });
+
+  it("bounds the earlier conversation by the window of the engine that answers", async () => {
+    const { db } = setup();
+    db.prepare("UPDATE feature_engines SET selection_json = ?").run(JSON.stringify({ provider: "ollama", model: "gemma3:12b" }));
+    let chatId: string | undefined;
+    for (let n = 0; n < 6; n += 1)
+      chatId = (await askTurn(db, { chatId, text: `${n} ${"y".repeat(4000)}`, allowGeneral: true, run: async () => reply })).chatId;
+    let prompt = "";
+    await askTurn(db, { chatId, text: "ora", allowGeneral: true, run: async (input) => ((prompt = input.prompt), reply) });
+    // A local model has a 16,384-token window, about 50,000 characters, and the system prompt and passages need room.
+    expect(prompt.length).toBeLessThan(16_000);
     db.close();
   });
 
