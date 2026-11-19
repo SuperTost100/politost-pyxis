@@ -425,6 +425,34 @@ CREATE INDEX lesson_parts_item ON lesson_parts(item_id) WHERE item_id IS NOT NUL
     sql: `ALTER TABLE card_reviews ADD COLUMN seconds INTEGER CHECK (seconds IS NULL OR seconds >= 0);
 CREATE INDEX card_reviews_day ON card_reviews(reviewed_at);`,
   },
+  // The tool session a chat continues, so one Pyxis chat stays one chat in the student's Claude, ChatGPT, Cursor or
+  // Gemini history. A chat has at most one open row (`ended_at` null); a row ends when the chat moves to another tool or
+  // the tool no longer knows the session, and the next turn opens a new one. `told` is the hash of the context block the
+  // session last received, `chars` what has been sent into it, and `cwd` the folder the tool keyed the session by.
+  // `in_step` is 1 after a turn that completed normally on the session and 0 from the start of any turn until one does, and `synced_to` is the last message the session holds in full, so a session out of step is told what the student sees since it. `seen` is 1 once Cursor's own folder was seen to hold the chat. The rows of a chat also count how many sessions it opened.
+  {
+    version: 34,
+    sql: `CREATE TABLE chat_sessions (
+  id TEXT PRIMARY KEY,
+  chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  model TEXT,
+  effort TEXT,
+  cwd TEXT NOT NULL,
+  told TEXT,
+  chars INTEGER NOT NULL DEFAULT 0,
+  in_step INTEGER NOT NULL DEFAULT 1,
+  synced_to TEXT,
+  seen INTEGER NOT NULL DEFAULT 0,
+  turns INTEGER NOT NULL DEFAULT 0,
+  opened_at INTEGER NOT NULL,
+  last_used_at INTEGER NOT NULL,
+  ended_at INTEGER,
+  ended_reason TEXT CHECK (ended_reason IS NULL OR ended_reason IN ('tool', 'gone', 'long'))
+);
+CREATE INDEX chat_sessions_chat ON chat_sessions(chat_id, opened_at);`,
+  },
   // The files a message carried, shown with it. A row with a `kind` is one file: its name and size as picked, and for a
   // document the id of the hidden source that holds its text (no foreign key: a source that is gone reads as a file that can no longer be opened). `recognised` is the text local OCR read from a photo for a model
   // that cannot see images, kept apart from the message body. Rows made before this step have none of these and stay as
@@ -432,7 +460,7 @@ CREATE INDEX card_reviews_day ON card_reviews(reviewed_at);`,
   // draft (a chat id, or empty for a new chat), the hidden source or the stored photo, the extracted-text file of its
   // import and its state, so every cleanup can ask the database whether a source or a file is still wanted.
   {
-    version: 34,
+    version: 35,
     sql: `ALTER TABLE attachments ADD COLUMN name TEXT;
 ALTER TABLE attachments ADD COLUMN kind TEXT CHECK (kind IS NULL OR kind IN ('photo', 'document'));
 ALTER TABLE attachments ADD COLUMN size INTEGER;

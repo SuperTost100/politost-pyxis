@@ -476,6 +476,39 @@ describe("switching engines on a usage limit or sign-out", () => {
     db.close();
   });
 
+  it("builds the prompt again for the engine that answers instead, so a smaller window gets a smaller one", async () => {
+    const db = automaticChat();
+    const prompts: string[] = [];
+    await generate({
+      selection: selectionFor(db, "chat"),
+      prompt: "built for the planned engine",
+      promptFor: (provider) => `built for ${provider}`,
+      run: async (input) => {
+        prompts.push(`${input.selection.provider}: ${input.prompt}`);
+        if (input.selection.provider === "claude") throw limited;
+        return result({ text: "ciao", provider: "codex", model: "gpt-5.6-terra" });
+      },
+    });
+    expect(prompts).toEqual(["claude: built for claude", "codex: built for codex"]);
+    db.close();
+  });
+
+  it("builds the prompt only when the engine reads it", async () => {
+    const db = automaticChat();
+    let built = 0;
+    await generate({
+      selection: selectionFor(db, "chat"),
+      prompt: "",
+      promptFor: () => {
+        built += 1;
+        return "whole prompt";
+      },
+      run: async () => result({ text: "ok" }),
+    });
+    expect(built).toBe(0);
+    db.close();
+  });
+
   it("tells the listener which job the refused call belonged to", async () => {
     const db = automaticChat();
     const heard: Array<string | undefined> = [];

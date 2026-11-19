@@ -3178,6 +3178,8 @@ export const requests = {
       held: z.array(z.object({ id: z.string(), title: z.string() })),
       /** Tokens the chat used so far, null before the first counted call. */
       usage: usageTotals.nullable(),
+      /** Tool sessions the chat opened (Claude, ChatGPT, Cursor, Gemini): one when it stayed on one tool and went on. */
+      sessions: z.number(),
       messages: z.array(
         z.object({
           id: z.string(),

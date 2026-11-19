@@ -95,7 +95,8 @@ it("draws an answer's figures, leaves out the one that fails and cannot be fixed
     run,
     python,
   });
-  expect(calls[0]!.system).toContain("pyxis-figure");
+  // The figure instruction rides in the context block of the message, which names the kinds that can be drawn.
+  expect(calls[0]!.prompt).toContain("pyxis-figure");
   const message = result.message!;
   expect(message.figures).toEqual({ [figureKey(sine)]: PNG });
   // The figure block stays as the model wrote it; the failed one is gone.

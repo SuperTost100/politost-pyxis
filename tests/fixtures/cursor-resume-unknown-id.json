@@ -1,0 +1,11 @@
+{
+  "about": "What `agent --resume` printed on agent 2026.11.13 for an id it had never seen (stream-json, trimmed to its start and end, workspace path anonymised). The id was made up. Cursor answers as a new chat under that id: every event carries the id that was asked for, so the stream cannot tell a lost chat from a held one.",
+  "requested": "22222222-3333-4444-8555-666666666666",
+  "events": [
+    { "type": "system", "subtype": "init", "apiKeySource": "login", "cwd": "/home/user/.cache/cli-funnel/workspaces/agent-none", "session_id": "22222222-3333-4444-8555-666666666666", "model": "Grok 4.5 Low", "permissionMode": "default" },
+    { "type": "user", "message": { "role": "user", "content": [{ "type": "text", "text": "<instructions>\nTerse.\n</instructions>\n\nReply OK." }] }, "session_id": "22222222-3333-4444-8555-666666666666" },
+    { "type": "assistant", "message": { "role": "assistant", "content": [{ "type": "text", "text": "OK" }] }, "session_id": "22222222-3333-4444-8555-666666666666" },
+    { "type": "result", "subtype": "success", "is_error": false, "result": "OK", "session_id": "22222222-3333-4444-8555-666666666666" }
+  ],
+  "chatFolderAfter": "~/.cursor/chats/<workspace hash>/22222222-3333-4444-8555-666666666666"
+}

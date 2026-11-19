@@ -214,7 +214,7 @@ describe("a reply to a question that came with a file", () => {
 });
 
 describe("a photo goes to a model that can read it", () => {
-  it("runs the turn on the same tool's image model, and the chat after it, instead of reading the photo with OCR", async () => {
+  it("runs the turn with a photo on the same tool's image model instead of reading it with OCR, and the next question back on the chat's own", async () => {
     const { db, workspace, photo, attached } = setup();
     // An automatic choice may move; a pinned one never does (see the tests below).
     db.prepare(`UPDATE feature_engines SET selection_json = ? WHERE feature = 'chat'`).run(
@@ -234,11 +234,11 @@ describe("a photo goes to a model that can read it", () => {
       recognize: async () => (ocr++, "non serve"),
       run: run as never,
     });
-    // The next question has no photo of its own, but the chat holds one, so it runs where the photo is seen.
+    // The next question has no photo of its own: it goes back to the chat's own model (the same tool session continues).
     await askTurn(db, { chatId: first.chatId, text: "e il secondo esercizio?", allowGeneral: true, workspace, run: run as never });
     expect(seen).toEqual([
       { model: "claude-sonnet-5", images: 1 },
-      { model: "claude-sonnet-5", images: 1 },
+      { model: "text-only-small", images: 0 },
     ]);
     expect(ocr).toBe(0);
     expect(db.prepare(`SELECT recognised FROM attachments`).pluck().all()).toEqual([null]);
