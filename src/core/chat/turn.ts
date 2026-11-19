@@ -1285,10 +1285,10 @@ async function answer(
   // A session the tool opened during this turn received the whole prompt, not the follow-up.
   let startedSession = false;
   // A photo read as text for a planned text-only tool still goes as a picture to the tool that answers, if that one reads
-  // images (an automatic choice that fell back to it). It is decided for each attempt, as the prompt is. A pinned chat has no
-  // fallback, and a chat planned on a local model never sends the picture to another tool.
+  // images (an automatic choice that fell back to it). It is decided for each attempt, as the prompt is. A pinned chat, and a
+  // photo turn on a local model, have no fallback.
   const fallbackCopies =
-    !reads && selection.provider !== LOCAL_PROVIDER
+    !reads
       ? images.flatMap((image) => (image.copy ? [{ type: "image" as const, mediaType: image.mediaType, data: image.copy }] : []))
       : [];
   try {
@@ -1297,7 +1297,10 @@ async function answer(
       promptFor,
       followUpFor,
       system,
-      selection,
+      // A turn that holds a photo on a local model stays on this computer: the photo, the text read from it and the
+      // conversation would all reach a cloud tool in a fallback. Without `chosenFor` the choice has no fallback, as a
+      // pinned one has none, and a failure of the local model ends the turn with its own error.
+      selection: photosHere && selection.provider === LOCAL_PROVIDER ? { ...selection, chosenFor: undefined } : selection,
       ...(fallbackCopies.length
         ? { attachmentsFor: (answering) => (engineSeesImages(answering) ? fallbackCopies : undefined) }
         : {}),

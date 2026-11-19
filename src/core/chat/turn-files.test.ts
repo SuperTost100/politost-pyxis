@@ -493,6 +493,65 @@ describe("whether a photo is sent is decided for the tool that answers, after a 
   });
 });
 
+describe("a chat on a local model keeps its photo, and what was read from it, on this computer", () => {
+  const limited = Object.assign(new Error("You've hit your usage limit"), {
+    code: "cli-failed",
+    limit: { kind: "rate", detail: "You've hit your usage limit" },
+  });
+  const ready = [
+    { id: LOCAL_PROVIDER, kind: "local" as const, effort: false, models: [{ id: "llama3.2:3b", efforts: [] }] },
+    { id: "anthropic-api", kind: "api" as const, effort: false, models: [{ id: "claude-sonnet-5-5", efforts: [] }] },
+  ];
+
+  /** An automatic chat on a local model whose model fails, with a cloud tool that reads images signed in. */
+  async function localFails(withPhoto: boolean) {
+    const { db, workspace, photo, attached } = setup();
+    db.prepare(`UPDATE feature_engines SET selection_json = ? WHERE feature = 'chat'`).run(
+      JSON.stringify({ provider: LOCAL_PROVIDER, model: "llama3.2:3b", auto: true }),
+    );
+    db.prepare(`INSERT OR REPLACE INTO feature_engines (feature, selection_json, updated_at) VALUES ('vision', ?, 1)`).run(
+      JSON.stringify({ provider: "anthropic-api", model: "claude-sonnet-5-5", auto: true }),
+    );
+    rememberReady(ready);
+    const asked: Array<{ provider: string; images: number; recognisedText: boolean }> = [];
+    const error = await askTurn(db, {
+      text: "cosa c'è scritto",
+      allowGeneral: true,
+      ...(withPhoto ? await attached(photo) : {}),
+      workspace,
+      recognize: async () => "Esercizio 2. Determinare il dominio",
+      run: async (input) => {
+        asked.push({
+          provider: input.selection.provider,
+          images: input.attachments?.length ?? 0,
+          recognisedText: `${input.prompt}${input.conversation?.followUp ?? ""}`.includes("Esercizio 2. Determinare il dominio"),
+        });
+        if (input.selection.provider === LOCAL_PROVIDER) throw limited;
+        return { ...reply, provider: "anthropic-api", model: "claude-sonnet-5-5" };
+      },
+    }).then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+    db.close();
+    return { asked, error };
+  }
+
+  it("does not hand a photo turn to the cloud tool when the local model fails: it gets no picture, no recognised text, and the turn ends with the local model's error", async () => {
+    const { asked, error } = await localFails(true);
+    // Only the local model was asked. It got what the chat's own tool may get: the text OCR read from the photo, and no
+    // picture (it cannot read one). The cloud tool, which reads images, got nothing at all: not the photo, not the text.
+    expect(asked).toEqual([{ provider: LOCAL_PROVIDER, images: 0, recognisedText: true }]);
+    expect(error).toBeDefined();
+  });
+
+  it("still falls back to the cloud tool for a chat with no photo, as an automatic chat does", async () => {
+    const { asked, error } = await localFails(false);
+    expect(asked.map((call) => call.provider)).toEqual([LOCAL_PROVIDER, "anthropic-api"]);
+    expect(error).toBeUndefined();
+  });
+});
+
 describe("a photo with no usable copy for the model is read locally", () => {
   it("uses OCR when a model that reads images got no copy, instead of sending it neither pixels nor text", async () => {
     const { db, workspace, write, attached } = setup();
