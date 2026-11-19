@@ -111,7 +111,7 @@ const {
 
 const { readJobLog, setDebugLogRoot, setDebugOn } = await import("../debug/log");
 const { withUsageScope } = await import("./usage");
-const { mkdirSync, mkdtempSync, readFileSync, rmSync } = await import("node:fs");
+const { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = await import("node:fs");
 const { tmpdir } = await import("node:os");
 const { join } = await import("node:path");
 
@@ -602,6 +602,22 @@ describe("a Cursor Agent chat that Cursor no longer holds", () => {
       expect(cursorSessionLost("../chat-a")).toBe(false);
       setCursorChatsRoot(join(root, "missing"));
       expect(cursorSessionLost("chat-b")).toBe(false);
+    } finally {
+      setCursorChatsRoot(null);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not call a chat lost when the folder holds only files or empty workspaces", () => {
+    const root = folder();
+    try {
+      setCursorChatsRoot(root);
+      writeFileSync(join(root, "README"), "not a chat");
+      expect(cursorSessionLost("chat-a")).toBe(false);
+      mkdirSync(join(root, "workspace-1"), { recursive: true });
+      expect(cursorSessionLost("chat-a")).toBe(false);
+      mkdirSync(join(root, "workspace-1", "chat-b"));
+      expect(cursorSessionLost("chat-a")).toBe(true);
     } finally {
       setCursorChatsRoot(null);
       rmSync(root, { recursive: true, force: true });

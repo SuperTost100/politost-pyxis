@@ -49,9 +49,9 @@ import {
   currentSession,
   markOutOfStep,
   recordSession,
+  keepSession,
   rewindSession,
   sessionTooLong,
-  syncSession,
 } from "./sessions";
 
 export type ChatContext = {
@@ -1139,6 +1139,8 @@ async function answer(
     text: string,
     error: string | null,
     drawn?: { markdown: string; figures: Record<string, string> },
+    /** The model finished the reply before it was stopped (while its figures were drawn). */
+    completed = false,
   ) => {
     const reply = {
     ...finishReply(
@@ -1165,12 +1167,15 @@ async function answer(
     ),
     ...skippedImages,
     };
-    // A stopped reply is what the student sees. When the model had finished it, its session holds it whole.
-    syncSession(db, chatId, answering.provider, messageId);
+    // A stopped reply that the model completed and that stays on screen (not a regenerated replacement, which is
+    // dropped) is what the student sees, and its session holds it whole.
+    if (completed && !(replacing && !input.resumeFrom)) keepSession(db, chatId, answering.provider, messageId);
     return reply;
   };
   // From here no open session of the chat can be trusted to hold the conversation until one completes this turn.
   markOutOfStep(db, chatId);
+  // A session the tool opened during this turn received the whole prompt, not the follow-up.
+  let startedSession = false;
   try {
     result = await generate({
       prompt: "",
@@ -1198,7 +1203,8 @@ async function answer(
           if (provider === "agent") return;
           const open = currentSession(db, chatId);
           if (open?.provider === provider && open.sessionId === sessionId) return;
-          recordSession(db, chatId, open, { provider, sessionId, cwd, model: selection.model, effort: selection.effort ?? null, told: "", chars: 0, now: Date.now(), inStep: false, syncedTo: beforeQuestion }, long ? "long" : "gone");
+          startedSession = true;
+          recordSession(db, chatId, open, { provider, sessionId, cwd, model: selection.model, effort: selection.effort ?? null, told: "", chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion }, long ? "long" : "gone");
         },
       },
       cache: true,
@@ -1227,7 +1233,7 @@ async function answer(
           told,
           chars: (result.continued ? followUp : promptFor(result.provider)).length + result.text.length,
           now: Date.now(),
-          inStep: true,
+          finished: true,
           syncedTo: beforeQuestion,
           seen: result.seen,
         },
@@ -1250,7 +1256,7 @@ async function answer(
     // one instead, and a Continue that added nothing leaves the reply as it was.
     // The tool kept what it was sent, and with Antigravity the start of the reply too, which counts toward the size at
     // which a session starts over. Cursor Agent loses a turn that did not finish.
-    const sent = session && answering.provider === session.provider ? followUp : promptFor(answering.provider);
+    const sent = !startedSession && session && answering.provider === session.provider ? followUp : promptFor(answering.provider);
     addSessionChars(
       db,
       chatId,
@@ -1287,12 +1293,12 @@ async function answer(
   } catch (err) {
     requireTutorAvailable(db);
     if (isAbort(err) || (err instanceof Error && err.name === "AbortError"))
-      return stopReply(resume + result.text, null);
+      return stopReply(resume + result.text, null, undefined, true);
     throw err;
   }
   if (drawn.stopped) {
     requireTutorAvailable(db);
-    return stopReply(resume + result.text, null, drawn);
+    return stopReply(resume + result.text, null, drawn, true);
   }
   parsed.body = drawn.markdown;
   const figures = Object.keys(drawn.figures).length ? drawn.figures : undefined;
@@ -1315,7 +1321,7 @@ async function answer(
     figures,
     now,
   });
-  syncSession(db, chatId, result.provider, messageId);
+  keepSession(db, chatId, result.provider, messageId);
   // The subject Pyxis picked is kept only with a whole reply, and only if nobody set one while it was written: a failed
   // or stopped turn leaves the chat as it was.
   if (picked) {
@@ -1533,9 +1539,9 @@ export async function regenerateTurn(
   const way = input.way ?? (last?.role === "assistant" ? wayOfTemplate(last.prompt_template) : undefined);
   // The tool's session was told this question is answered again and the earlier answer discarded. When the new answer
   // fails or is stopped, the earlier one stays on screen: the session holds the conversation only up to the message before
-  // that question, so the next message replays the question and the answer the student sees.
+  // that question's earlier replies, so the next message replays the question and the answer the student sees.
   const keepsEarlier = () => {
-    if (last?.role === "assistant" && !resumeFrom) rewindSession(db, input.chatId, messageBefore(db, input.chatId, user.id));
+    if (last?.role === "assistant" && !resumeFrom) rewindSession(db, input.chatId, user.id);
   };
   const result = await askTurn(
     db,
