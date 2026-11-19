@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { strToU8, zipSync } from "fflate";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
+import { saveProfile } from "../profile/profile";
 import { importSmartbook } from "../sources/smartbook";
 import { clearBench } from "../engine/bench";
 import { rememberReady } from "../engine/selection";
@@ -21,7 +22,7 @@ type Seen = {
   conversation?: {
     key: string;
     followUp: string;
-    session?: { provider: string; id: string; cwd: string };
+    session?: { provider: string; id: string; cwd: string; seen?: boolean } | null;
     onSession?: (sessionId: string, provider: string, cwd: string) => void;
   };
   cache?: boolean;
@@ -139,10 +140,10 @@ describe("a chat's stored tool session", () => {
   it("stores the session of the first turn and continues it, so one chat is one session", async () => {
     const { db } = setup();
     const first = await ask(db, "prima");
-    expect(first.seen.conversation?.session).toBeUndefined();
+    expect(first.seen.conversation?.session).toBeNull();
     expect(currentSession(db, first.chatId)).toMatchObject({ provider: "claude", sessionId: "s1", cwd: "/scratch" });
     const second = await ask(db, "seconda", { chatId: first.chatId });
-    expect(second.seen.conversation?.session).toEqual({ provider: "claude", id: "s1", cwd: "/scratch" });
+    expect(second.seen.conversation?.session).toEqual({ provider: "claude", id: "s1", cwd: "/scratch", seen: false });
     await ask(db, "terza", { chatId: first.chatId });
     expect(sessionsOpened(db, first.chatId)).toBe(1);
     db.close();
@@ -186,7 +187,7 @@ describe("a chat's stored tool session", () => {
     let chatId = first.chatId;
     for (let n = 0; n < 12; n += 1) chatId = (await ask(db, `${n} ${long}`, { chatId, provider: "claude" })).chatId;
     const moved = await ask(db, "e adesso?", { chatId, provider: "codex", sessionId: "c1" });
-    expect(moved.seen.conversation!.session).toEqual({ provider: "claude", id: "s1", cwd: "/scratch" });
+    expect(moved.seen.conversation!.session).toEqual({ provider: "claude", id: "s1", cwd: "/scratch", seen: false });
     // The engine moved: the funnel answers with the whole prompt, which carries every earlier message.
     expect(moved.seen.prompt).toContain("Earlier turns:");
     expect(moved.seen.prompt).toContain("domanda uno");
@@ -236,7 +237,7 @@ describe("a chat's stored tool session", () => {
     db.close();
   });
 
-  it("lets the session go on after the student stopped a turn, and says what the student saw of it", async () => {
+  it("lets the session go on after the student stopped a turn, and replays what the student sees", async () => {
     const { db } = setup();
     const first = await ask(db, "prima");
     const controller = new AbortController();
@@ -257,13 +258,17 @@ describe("a chat's stored tool session", () => {
     expect(sessionsOpened(db, first.chatId)).toBe(1);
     const next = await ask(db, "e le matrici?", { chatId: first.chatId });
     expect(next.seen.conversation!.session?.id).toBe("s1");
-    const note = next.seen.conversation!.followUp;
-    expect(note).toContain('cut off before its end, to the question "Spiegami i vettori"');
-    expect(note).toContain("I vettori sono frecce che");
-    expect(note.indexOf("cut off")).toBeLessThan(note.indexOf("Question:\ne le matrici?"));
-    // One turn later the notice is gone.
+    // The session is out of step: it gets the full context block and what the student sees since the last complete turn.
+    const replay = next.seen.conversation!.followUp;
+    expect(replay).toContain("<context>");
+    expect(replay).toContain("This, not anything you remember differently, is the conversation");
+    expect(replay).toContain("user: Spiegami i vettori\nassistant (stopped, the student saw only this): I vettori sono frecce che");
+    expect(replay.indexOf("stopped, the student saw only this")).toBeLessThan(replay.indexOf("Question:\ne le matrici?"));
+    expect(replay).not.toContain("user: prima");
+    // The turn completed, so the session is in step again: one turn later nothing is replayed.
     const after = await ask(db, "e i tensori?", { chatId: first.chatId });
-    expect(after.seen.conversation!.followUp).not.toContain("cut off");
+    expect(after.seen.conversation!.followUp).not.toContain("not anything you remember differently");
+    expect(after.seen.conversation!.followUp).not.toContain("<context>");
     db.close();
   });
 
@@ -283,13 +288,13 @@ describe("a chat's stored tool session", () => {
     });
     expect(currentSession(db, stopped.chatId)).toBeUndefined();
     const next = await ask(db, "riprova", { chatId: stopped.chatId, provider: "agent", sessionId: "a2" });
-    expect(next.seen.conversation!.session).toBeUndefined();
+    expect(next.seen.conversation!.session).toBeNull();
     expect(next.seen.prompt).toContain("Spiegami i vettori");
     expect(currentSession(db, stopped.chatId)?.sessionId).toBe("a2");
     db.close();
   });
 
-  it("names a question the engine failed on before any text arrived", async () => {
+  it("replays a question the engine failed on before any text arrived", async () => {
     const { db } = setup();
     const first = await ask(db, "prima");
     await askTurn(db, {
@@ -301,7 +306,7 @@ describe("a chat's stored tool session", () => {
       },
     }).catch(() => undefined);
     const next = await ask(db, "riprova con altre parole", { chatId: first.chatId });
-    expect(next.seen.conversation!.followUp).toContain('Your answer to the student\'s earlier question "Spiegami i vettori" failed before any text arrived');
+    expect(next.seen.conversation!.followUp).toContain("user: Spiegami i vettori\n\nQuestion:");
     db.close();
   });
 
@@ -321,7 +326,7 @@ describe("a chat's stored tool session", () => {
         },
       }).catch(() => undefined);
       const next = await ask(db, "riprova con altre parole", { chatId: first.chatId });
-      expect(next.seen.conversation!.followUp).toContain('failed before any text arrived');
+      expect(next.seen.conversation!.followUp).toContain("user: Spiegami i vettori");
       // The clock steps back one minute: the turn after it still comes last.
       vi.setSystemTime(940_000);
       await ask(db, "dopo lo scatto indietro", { chatId: first.chatId });
@@ -333,7 +338,7 @@ describe("a chat's stored tool session", () => {
     }
   });
 
-  it("tells the session what the student sees when a regenerated reply failed or was stopped", async () => {
+  it("replays the question and the answer the student sees after a regenerate that failed or was stopped", async () => {
     const { db } = setup();
     const first = await ask(db, "domanda");
     await regenerateTurn(db, {
@@ -344,10 +349,10 @@ describe("a chat's stored tool session", () => {
       },
     }).catch(() => undefined);
     const afterFailure = await ask(db, "e poi?", { chatId: first.chatId });
-    expect(afterFailure.seen.conversation!.followUp).toContain("The student still sees your earlier answer");
-    // The notice is told once.
+    expect(afterFailure.seen.conversation!.followUp).toContain("user: domanda\nassistant: Il vettore descrive il punto [P1].");
+    // The session is in step again: nothing is replayed one turn later.
     const later = await ask(db, "e ancora?", { chatId: first.chatId });
-    expect(later.seen.conversation!.followUp).not.toContain("still sees your earlier answer");
+    expect(later.seen.conversation!.followUp).not.toContain("user: domanda");
     const controller = new AbortController();
     await regenerateTurn(db, {
       chatId: first.chatId,
@@ -362,8 +367,103 @@ describe("a chat's stored tool session", () => {
     // The stopped replacement is not kept: the answer the student sees is the one before it.
     expect(db.prepare("SELECT stopped FROM messages WHERE chat_id = ? AND role = 'assistant'").pluck().all(first.chatId)).not.toContain(1);
     const afterStop = await ask(db, "e infine?", { chatId: first.chatId });
-    expect(afterStop.seen.conversation!.followUp).toContain("The student still sees your earlier answer");
+    expect(afterStop.seen.conversation!.followUp).toContain("user: e ancora?\nassistant: Il vettore descrive il punto [P1].");
+    expect(afterStop.seen.conversation!.followUp).not.toContain("a metà");
     expect(sessionsOpened(db, first.chatId)).toBe(1);
+    db.close();
+  });
+
+  it("sends the current context block after a stopped regenerate that was sent another", async () => {
+    const { db } = setup();
+    saveProfile(db, { followups: true });
+    const first = await ask(db, "domanda");
+    saveProfile(db, { followups: false });
+    const controller = new AbortController();
+    // The regenerate carries the block with follow-ups off, then is stopped.
+    await regenerateTurn(db, {
+      chatId: first.chatId,
+      allowGeneral: true,
+      signal: controller.signal,
+      run: async (input) => {
+        expect((input as Seen).conversation!.followUp).toContain("Follow-ups: leave the <followups> block out.");
+        controller.abort();
+        throw new DOMException("stopped", "AbortError");
+      },
+    }).catch(() => undefined);
+    // The profile is back as it was when the session last completed a turn, so the stored hash matches the block.
+    saveProfile(db, { followups: true });
+    const next = await ask(db, "e poi?", { chatId: first.chatId });
+    expect(next.seen.conversation!.followUp).toContain("Follow-ups: end with the <followups> block.");
+    db.close();
+  });
+
+  it("replays both exchanges after two stops in a row on Cursor Agent, which keeps neither", async () => {
+    const { db } = setup();
+    db.prepare("UPDATE feature_engines SET selection_json = ?").run(JSON.stringify({ provider: "agent", model: "cursor-grok-4.5" }));
+    const first = await ask(db, "prima", { provider: "agent", sessionId: "a1" });
+    const stop = async (text: string, partial: string) => {
+      const controller = new AbortController();
+      await askTurn(db, {
+        chatId: first.chatId,
+        text,
+        allowGeneral: true,
+        signal: controller.signal,
+        run: async (input) => {
+          input.onDelta?.(partial);
+          controller.abort();
+          throw new DOMException("stopped", "AbortError");
+        },
+      });
+    };
+    await stop("Spiegami i vettori", "I vettori sono");
+    await stop("E le matrici?", "Le matrici sono");
+    const next = await ask(db, "e i tensori?", { chatId: first.chatId, provider: "agent", sessionId: "a1" });
+    const replay = next.seen.conversation!.followUp;
+    expect(replay).toContain(
+      "user: Spiegami i vettori\nassistant (stopped, the student saw only this): I vettori sono\nuser: E le matrici?\nassistant (stopped, the student saw only this): Le matrici sono",
+    );
+    db.close();
+  });
+
+  it("replays the exchange a CLI never completed because an API provider answered in its place", async () => {
+    const { db } = setup();
+    // The CLI names its session, hits its limit, and an API provider answers the first turn.
+    const first = await askTurn(db, {
+      text: "prima domanda",
+      allowGeneral: true,
+      run: async (input) => {
+        (input as Seen).conversation?.onSession?.("c1", "claude", "/scratch");
+        return { ...reply, provider: "openai-api", model: "gpt-5.6-terra", text: "Risposta dell'API." };
+      },
+    });
+    expect(currentSession(db, first.chatId)).toMatchObject({ provider: "claude", sessionId: "c1", inStep: false });
+    const back = await ask(db, "seconda domanda", { chatId: first.chatId, provider: "claude", sessionId: "c1" });
+    expect(back.seen.conversation!.session?.id).toBe("c1");
+    expect(back.seen.conversation!.followUp).toContain("user: prima domanda\nassistant: Risposta dell'API.");
+    expect(sessionsOpened(db, first.chatId)).toBe(1);
+    expect(currentSession(db, first.chatId)).toMatchObject({ inStep: true });
+    db.close();
+  });
+
+  it("replays the reply being regenerated when the tool lost its session, the new one started and the student stopped it", async () => {
+    const { db } = setup();
+    const first = await ask(db, "domanda", { provider: "claude", sessionId: "s1" });
+    const controller = new AbortController();
+    await regenerateTurn(db, {
+      chatId: first.chatId,
+      allowGeneral: true,
+      signal: controller.signal,
+      run: async (input) => {
+        // The tool no longer held s1: it started s2, whose first prompt left out the reply being replaced.
+        (input as Seen).conversation?.onSession?.("s2", "claude", "/scratch");
+        input.onDelta?.("Una nuova risposta a metà");
+        controller.abort();
+        throw new DOMException("stopped", "AbortError");
+      },
+    }).catch(() => undefined);
+    expect(currentSession(db, first.chatId)).toMatchObject({ sessionId: "s2", inStep: false });
+    const next = await ask(db, "e poi?", { chatId: first.chatId, provider: "claude", sessionId: "s2" });
+    expect(next.seen.conversation!.followUp).toContain("user: domanda\nassistant: Il vettore descrive il punto [P1].");
     db.close();
   });
 
@@ -443,7 +543,7 @@ describe("a chat's stored tool session", () => {
     const first = await ask(db, "prima", { provider: "agent", sessionId: "a1" });
     db.prepare("UPDATE chat_sessions SET chars = ? WHERE chat_id = ?").run(UNCOMPACTED_SESSION_CHARS, first.chatId);
     const next = await ask(db, "dopo", { chatId: first.chatId, provider: "agent", sessionId: "a2" });
-    expect(next.seen.conversation!.session).toBeUndefined();
+    expect(next.seen.conversation!.session).toBeNull();
     expect(next.seen.prompt).toContain("prima");
     expect(
       db.prepare("SELECT ended_reason FROM chat_sessions WHERE chat_id = ? AND ended_at IS NOT NULL").pluck().all(first.chatId),

@@ -225,7 +225,7 @@ A resume needs the same folder the session started in, because Claude Code, Curs
 
 The chat's system prompt (`chat.system`) is the same for the whole chat. What changes from turn to turn sits in a context block that opens the message: the language, the exam and subject, the profile lines, whether to end with follow-ups, the pinned context, and how to answer with the figure kinds that can be drawn. A session is sent the block only when its hash differs from the one the session last received, so a chat that gets a subject after its first reply, or flips between solving and guiding, tells its session once and goes on. The parts of a prompt that stay the same come first, so a provider's prompt cache keeps the start.
 
-- **Continuing a session.** The message is the context block when it changed, then what the session missed, then this question's passages (numbered from P1 again) and the question.
+- **Continuing a session in step.** The message is the context block when it changed, then this question's passages (numbered from P1 again) and the question. A regenerated reply adds a line that the question is asked again and the earlier answer discarded. A session out of step gets the full block and a replay first, see [When a session is out of step](#when-a-session-is-out-of-step).
 - **A new session.** The message is the context block, the earlier conversation and the question. The earlier conversation is every message of the chat, newest first and whole, up to 200,000 characters (`HANDOVER_CHARS`). The smallest window among the tools' models today is 200,000 tokens (Claude Haiku), and 200,000 characters are about 55,000 tokens, a quarter of it, which leaves room for the system prompt, twelve passages, the question and a long answer. A local model has a 16,384-token window, of which the system prompt, the passages and the answer take most, so it gets 12,000 characters. Messages that do not fit are replaced by one line that counts them. The budget follows the engine that answers: an automatic choice that moves to another engine inside `generate()` gets the conversation built again for it (`promptFor`).
 
 Cursor Agent and Antigravity receive `system` as a block at the start of the prompt, so a turn in a session they hold leaves it out: the first prompt of the session carried it.
@@ -240,22 +240,19 @@ Only when:
 
 A change of model or effort on the same tool continues the session. This was run on all four tools in one session each (Claude Haiku 5.5 to Haiku 4.5, Codex Luna to Terra, Cursor Grok 4.5 to Grok 4.7, Gemini Flash to Gemini 4 Argon): each answered with a word it had been given before the change. The closing of a live process never ends a session. The process closes when the chat is left or deleted, after 10 minutes without a question (`CONVERSATION_IDLE_MS`), when the student changes an engine choice or the app quits, and the next turn resumes by id.
 
-### After a stop or a failure
+### When a session is out of step
 
-The session goes on after a turn the student stopped or that failed. What the tool keeps of such a turn differs, as found by stopping a long answer and asking each tool what it holds:
+One rule covers everything that can leave a tool's session and the chat on screen apart. A session is **in step** after a turn that completed normally on it. A turn marks the chat's open sessions out of step when it starts, and the session that completes the turn is in step again. So a stop, a failure, a regenerate that was not kept, a turn that another tool or an API provider answered in its place, a turn that ended with the app, and a session the tool lost all leave it out of step, with no case of their own. What each tool keeps of a stopped turn (Claude Code the question and a stub, Codex the question, Antigravity the question and the start of the reply, Cursor Agent nothing) does not matter for what is sent next.
 
-| Tool         | After a stopped turn                                                          |
-| ------------ | ----------------------------------------------------------------------------- |
-| Claude Code  | The question, and a stub in place of the reply. The text that arrived is lost |
-| Codex        | The question. The text that arrived is lost                                   |
-| Cursor Agent | Nothing: the turn is missing from the session, the question too               |
-| Antigravity  | The question and the start of the reply                                       |
+The next turn sent to a session that is out of step carries, once, the full context block (whatever hash was stored) and a replay of every message the student sees since the last message the session holds in full (`chat_sessions.synced_to`): the questions, the replies, and a stopped reply as its visible text, marked "stopped, the student saw only this", with one line saying that this, and not anything the model remembers differently, is the conversation. The replay is bounded by the same budget as a handover, newest messages first. Replaying what the tool already holds is harmless.
 
-So the next message says what the student saw: when the last reply of the chat is a stopped one, it carries the question and the text that arrived (at most 6,000 characters), and a question that got no text at all is named too. The notice appears once, with the turn after the stop. A regenerated reply tells the model the question is asked again and the earlier answer is discarded. When the new answer then fails or is stopped, the earlier one stays on screen, so the session's `note` tells it the next time that the student still sees the earlier answer. Continue sends the saved text, as before.
+- A regenerate that fails or is stopped leaves the earlier answer on screen, so the session's `synced_to` goes back to the message before that question and the next turn replays the question and the answer the student sees.
+- A new session starts with `synced_to` at the message before the question, so a first turn that is stopped replays the rest later.
+- When an API provider or Ollama answers a turn for a chat with an open CLI session, the session stays open and out of step, and when the CLI answers again it is told the exchange.
 
 A turn that ends without an answer still counts toward the session's size, by what the tool kept of it: the question for Claude Code and Codex, the question and the start of the reply for Antigravity, nothing for Cursor Agent. A message is stored at its turn's start and its reply one millisecond later, and a turn never starts earlier than the last message of its chat, so two turns in one millisecond or a clock that steps back keep their order.
 
-A session is stored the moment the tool names it, so a first turn the student stops leaves a session to continue, for Claude Code, Codex and Antigravity. Cursor Agent loses a stopped turn, so its session is stored only when a turn ends. If a stored session turns out to be lost, the gone rule above applies.
+A session is stored the moment the tool names it, so a first turn the student stops leaves a session to continue, for Claude Code, Codex and Antigravity. Cursor Agent loses a stopped turn, so its session is stored only when a turn ends. If a stored session turns out to be lost, the lost-session rule above applies. The whole prompt of a fresh session is built only when it is sent, and a turn that resumes sends the follow-up alone. A caller that stores no session, such as a lesson's tool rounds, goes on in the session this process tracked for its key.
 
 ### Other conversations
 

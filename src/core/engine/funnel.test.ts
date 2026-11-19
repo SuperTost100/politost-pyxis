@@ -245,7 +245,7 @@ describe("chat conversations", () => {
     selection: { provider: options.provider ?? "claude", model: "m" },
     prompt: `whole context, then ${followUp}`,
     system: options.system ?? "tutor",
-    conversation: { key: "chat-1", followUp, ...(options.session ? { session: options.session } : {}) },
+    conversation: { key: "chat-1", followUp, session: options.session ?? null },
   });
   const stored = (provider: string, id = "s-1") => ({ provider, id, cwd: "/scratch" });
 
@@ -281,6 +281,45 @@ describe("chat conversations", () => {
     const systems = run.mock.calls.map(([request]) => (request as { system?: string }).system);
     // Continued, then new, for each provider in turn.
     expect(systems).toEqual([undefined, "tutor", undefined, "tutor", "tutor", "tutor", "tutor", "tutor"]);
+  });
+
+  it("goes on in the session it tracked for a caller that stores none, such as a lesson's tool rounds", async () => {
+    run.mockResolvedValue({ text: "answer" });
+    for (const provider of ["claude", "agent"] as const) {
+      run.mockClear();
+      const round = (followUp: string) => ({
+        selection: { provider, model: "m" },
+        prompt: `whole transcript, then ${followUp}`,
+        system: "tutor",
+        conversation: { key: `lesson-${provider}`, followUp },
+      });
+      await runTurn(round("first"));
+      await runTurn(round("second"));
+      expect(run.mock.calls[1]![0], provider).toMatchObject({ prompt: "second", sessionId: "s-1" });
+    }
+  });
+
+  it("builds the whole prompt only when it is sent: not for a turn that resumes, once for a fresh start or a lost session", async () => {
+    let reads = 0;
+    const lazy = (session: { provider: string; id: string; cwd: string } | null) => ({
+      selection: { provider: "claude" as const, model: "m" },
+      get prompt() {
+        reads += 1;
+        return "whole context";
+      },
+      conversation: { key: "chat-1", followUp: "second", session },
+    });
+    run.mockResolvedValue({ text: "answer" });
+    await runTurn(lazy(stored("claude")));
+    expect(reads).toBe(0);
+    await runTurn(lazy(null));
+    expect(reads).toBe(1);
+    run.mockReset();
+    run
+      .mockResolvedValueOnce({ error: new Error("No conversation found with session ID: s-1") })
+      .mockResolvedValueOnce({ text: "answer" });
+    await runTurn(lazy(stored("claude")));
+    expect(reads).toBe(2);
   });
 
   it("starts a new session when the tool answers a resume under another session id", async () => {
@@ -582,6 +621,53 @@ describe("a Cursor Agent chat that Cursor no longer holds", () => {
       const held = await runTurn(chatTurn("held-chat"));
       expect(run.mock.calls[1]![0]).toMatchObject({ prompt: "second", sessionId: "held-chat" });
       expect(held.continued).toBe(true);
+    } finally {
+      setCursorChatsRoot(null);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a Cursor Agent chat once seen in Cursor's folder", () => {
+  const folder = () => mkdtempSync(join(tmpdir(), "pyxis-cursor-seen-"));
+  const turn = (id: string, seen: boolean) => ({
+    selection: { provider: "agent" as const, model: "m" },
+    prompt: "whole context",
+    conversation: { key: "chat-1", followUp: "second", session: { provider: "agent", id, cwd: "/scratch", seen } },
+  });
+
+  it("is lost when the folder is empty or gone and the chat was seen there, held when it never was", () => {
+    const root = folder();
+    try {
+      setCursorChatsRoot(root);
+      expect(cursorSessionLost("chat-a", false)).toBe(false);
+      expect(cursorSessionLost("chat-a", true)).toBe(true);
+      setCursorChatsRoot(join(root, "missing"));
+      expect(cursorSessionLost("chat-a", true)).toBe(true);
+      expect(cursorSessionLost("chat-a", false)).toBe(false);
+      setCursorChatsRoot(root);
+      mkdirSync(join(root, "workspace-1", "chat-a"), { recursive: true });
+      expect(cursorSessionLost("chat-a", true)).toBe(false);
+    } finally {
+      setCursorChatsRoot(null);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reports that the chat was seen after a turn that left it in the folder, and sends the whole prompt once it is gone", async () => {
+    const root = folder();
+    try {
+      setCursorChatsRoot(root);
+      mkdirSync(join(root, "workspace-1", "s-1"), { recursive: true });
+      run.mockResolvedValue({ text: "answer" });
+      const first = await runTurn({ ...turn("s-1", false), conversation: { key: "chat-1", followUp: "first", session: null } });
+      expect(first).toMatchObject({ sessionId: "s-1", seen: true });
+      // The student clears Cursor's history: nothing is left in its folder.
+      rmSync(join(root, "workspace-1"), { recursive: true, force: true });
+      const gone = await runTurn(turn("s-1", true));
+      expect(run.mock.calls[1]![0]).toMatchObject({ prompt: "whole context" });
+      expect(run.mock.calls[1]![0].sessionId).toBeUndefined();
+      expect(gone.continued).toBe(false);
     } finally {
       setCursorChatsRoot(null);
       rmSync(root, { recursive: true, force: true });
