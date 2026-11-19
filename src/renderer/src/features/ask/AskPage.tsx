@@ -41,7 +41,7 @@ import {
   takeBoardAttachment,
   writePendingSubject,
 } from "./attachments";
-import { attachQueue, drafts, useDraftFiles, useFilePreviews, useFileViews } from "./draftSession";
+import { attachQueue, drafts, syncDraftFiles, useDraftFiles, useFilePreviews, useFileViews } from "./draftSession";
 import type { Preview } from "./draftFiles";
 import { ChatHeader } from "./ChatHeader";
 import { pastedPng } from "./paste";
@@ -328,22 +328,7 @@ export function AskPage() {
   useEffect(() => onBroadcast("chats.attachment", (view) => drafts.views.put(view)), []);
   // Files kept for a chat that was left are asked about again, and the ones core no longer holds drop off.
   useEffect(() => {
-    const draft = chatId ?? "";
-    const ids = drafts.files.get(draft).map((file) => file.id).filter((id) => !id.startsWith("local-"));
-    if (ids.length === 0) return;
-    let current = true;
-    void invoke("chats.attachments", { ids }).then(
-      (list) => {
-        if (!current) return;
-        drafts.views.put(...list);
-        const known = new Set(list.map((view) => view.id));
-        drafts.files.set(draft, (now) => now.filter((file) => isLocalFile(file) || known.has(file.id)));
-      },
-      () => undefined,
-    );
-    return () => {
-      current = false;
-    };
+    void syncDraftFiles(chatId ?? "").catch(() => undefined);
   }, [chatId]);
   // Moving to another chat shows that chat's own draft and files.
   useLayoutEffect(() => {
@@ -398,6 +383,7 @@ export function AskPage() {
     }
     setUncovered(null);
     setSkipped([]);
+    setLeftOut([]);
     setError(null);
   }, [chatId]);
 
@@ -560,20 +546,19 @@ export function AskPage() {
     if (!trimmed || turns.get()) return;
     if (chatId && !thread.data) return;
     const startedIn = chatId ?? "";
-    // Files still being registered with core, from a pick Enter caught half way, go with this question: it waits for them.
-    if (!options.textOnly && attachQueue.busy(startedIn)) {
-      await attachQueue.idle(startedIn);
-      if (turns.get()) return;
-    }
-    const picked = drafts.files.get(startedIn);
-    // A file refused before core held it never goes with the question.
-    const attached = options.textOnly ? [] : picked.filter((file) => !isLocalFile(file));
+    // The turn starts now and belongs to the draft it was sent from: the composer shows it working (and offers Stop) while
+    // files still being registered with core, from a pick Enter caught half way, finish and go with this question.
     const turn = turns.start(
       startedIn,
       trimmed,
       false,
       messages.at(-1)?.id ?? null,
-      attached.map((file) => ({ id: file.id, name: file.name, kind: drafts.views.get()[file.id]?.kind ?? "document" })),
+      options.textOnly
+        ? []
+        : drafts.files
+            .get(startedIn)
+            .filter((file) => !isLocalFile(file))
+            .map((file) => ({ id: file.id, name: file.name, kind: drafts.views.get()[file.id]?.kind ?? "document" })),
     );
     if (!turn) return;
     setError(null);
@@ -581,11 +566,10 @@ export function AskPage() {
     setSkipped([]);
     setLeftOut([]);
     following.current = true;
-    // The message leaves the composer as it is sent; a failed or stopped turn puts it back.
-    const held: Held = { draft, files: picked };
+    // The submitted text leaves the composer, which is not editable while the turn works; a failed or stopped turn puts it back.
+    const held: Held = { draft, files: drafts.files.get(startedIn) };
     if (!options.textOnly) {
       setDraft("");
-      drafts.files.set(startedIn, []);
       sessionStorage.removeItem(draftKey(chatId));
     }
     // A new chat's first question takes the subject chosen for it, which stays kept only until the question has gone.
@@ -603,6 +587,26 @@ export function AskPage() {
       if (held.draft && !sessionStorage.getItem(draftKey(from)))
         sessionStorage.setItem(draftKey(from), held.draft);
     };
+    if (!options.textOnly && attachQueue.busy(startedIn)) {
+      let stopped = false;
+      let wake = () => {};
+      turn.stop = () => {
+        stopped = true;
+        wake();
+      };
+      await Promise.race([attachQueue.idle(startedIn), new Promise<void>((resolve) => (wake = resolve))]);
+      if (stopped) {
+        restore();
+        turns.end(turn);
+        return;
+      }
+    }
+    // Only now are the draft's files known: the ones still being registered have been applied to it.
+    const picked = drafts.files.get(startedIn);
+    // A file refused before core held it never goes with the question.
+    const attached = options.textOnly ? [] : picked.filter((file) => !isLocalFile(file));
+    held.files = picked;
+    if (!options.textOnly) drafts.files.set(startedIn, []);
     if (startedIn) askedGeneral.set(startedIn, options.allowGeneral === true);
     const handle = window.pyxis.stream(
       "chats.ask",
@@ -626,6 +630,12 @@ export function AskPage() {
         return;
       }
       askedGeneral.set(result.chatId, options.allowGeneral === true);
+      // A new chat's first question made the chat: the files picked meanwhile for its composer follow it, in core (`rehome`) and
+      // here, whether or not Chiedi is on screen.
+      if (!startedIn) {
+        drafts.files.set(result.chatId, (current) => [...current, ...drafts.files.get("")]);
+        drafts.files.set("", []);
+      }
       // The files went with the question, so their previews are not needed any more.
       drafts.previews.drop(attached.map((file) => file.id));
       // Store the new messages in the cache before the placeholder goes, so the reply replaces it without a gap.
@@ -688,8 +698,6 @@ export function AskPage() {
         const typed = sessionStorage.getItem(draftKey());
         if (typed) sessionStorage.setItem(draftKey(to), typed);
         sessionStorage.removeItem(draftKey());
-        drafts.files.set(to, drafts.files.get(""));
-        drafts.files.set("", []);
         composerFor.current = to;
       }
       // The new chat takes the place of the empty page it was written on, which starts the trail as Nuova chat does: a
@@ -742,6 +750,8 @@ export function AskPage() {
           ReturnType<typeof invoke<"chats.regenerate">>
         >;
         await client.invalidateQueries({ queryKey: ["chat", chatId] });
+        // Answering a stored question lets its files go: the chips that came back to the composer with it go too.
+        void syncDraftFiles(chatId).catch(() => undefined);
         const last = client
           .getQueryData<Awaited<ReturnType<typeof invoke<"chats.read">>>>(["chat", chatId])
           ?.messages.at(-1);

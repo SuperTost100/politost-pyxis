@@ -143,3 +143,45 @@ describe("a send waits for the draft's pending registrations", () => {
     await queue.idle("chat-a");
   });
 });
+
+describe("a draft's pending picks can be cancelled", () => {
+  it("stops the files still to come and takes off the one core registered meanwhile, as when its chat is deleted", async () => {
+    const drafts = createDraftFiles(store());
+    const { attachInCore, waiting } = core();
+    const detached: string[] = [];
+    const queue = createAttachQueue(drafts, attachInCore, (id) => detached.push(id));
+    void queue.attach("chat-a", ["/x/uno.pdf", "/x/due.pdf", "/x/tre.pdf"]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    waiting.shift()!.done();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(drafts.files.get("chat-a")).toHaveLength(1);
+    // The chat is deleted while the second file is being registered.
+    queue.cancel("chat-a");
+    waiting.shift()!.done();
+    await queue.idle("chat-a");
+    expect(waiting).toEqual([]);
+    expect(detached).toEqual(["f2"]);
+    expect(drafts.files.get("chat-a").map((file) => file.name)).toEqual(["uno.pdf"]);
+  });
+});
+
+describe("a fresh pick replaces a refused chip", () => {
+  it("attaches a file again after it was refused for the limit and a held one was removed", async () => {
+    const drafts = createDraftFiles(store());
+    const { attachInCore, flush } = core();
+    const queue = createAttachQueue(drafts, attachInCore);
+    const first = queue.attach("", Array.from({ length: 9 }, (_, at) => `/x/f${at + 1}.pdf`));
+    await flush();
+    await first;
+    const refused = drafts.files.get("").find((file) => file.id.startsWith("local-"))!;
+    expect(refused.name).toBe("f9.pdf");
+    // One held file is taken off, and the ninth is picked again: it is attached, and the refused chip is gone.
+    drafts.files.set("", (list) => list.filter((file) => file.name !== "f1.pdf"));
+    const again = queue.attach("", ["/x/f9.pdf"]);
+    await flush();
+    await again;
+    const files = drafts.files.get("");
+    expect(files.filter((file) => file.name === "f9.pdf").map((file) => file.id.startsWith("local-"))).toEqual([false]);
+    expect(files.filter((file) => !file.id.startsWith("local-"))).toHaveLength(8);
+  });
+});

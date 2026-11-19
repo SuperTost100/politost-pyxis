@@ -263,7 +263,7 @@ export function createHeldFiles(deps: HeldDeps) {
     const hashes: string[] = [];
     if (row.source_id) {
       const jobs = db
-        .prepare(`SELECT id FROM jobs WHERE kind IN (?, ?, 'source-ocr') AND json_extract(params_json, '$.sourceId') = ?`)
+        .prepare(`SELECT id FROM jobs WHERE kind IN (?, ?, 'source-ocr', 'source-index') AND json_extract(params_json, '$.sourceId') = ?`)
         .pluck()
         .all(...IMPORT_KINDS, row.source_id) as string[];
       for (const id of jobs) runner.discard(id);
@@ -307,8 +307,12 @@ export function createHeldFiles(deps: HeldDeps) {
             if (entries.has(id)) entry.photo!.fitted = image;
           },
           (error) => {
-            // A photo no model can take as it is (too big to fit, or unreadable) is read locally when it is sent.
-            if (entries.has(id) && !isAbort(error)) entry.photo!.fitted = null;
+            if (!entries.has(id) || isAbort(error)) return;
+            // A valid photo past the provider's size limit has no copy for a model and is read locally when it is sent. One
+            // that cannot be read at all fails on its chip now, so the send never decodes it again to fail there.
+            const code = error instanceof Error ? error.message : "";
+            if (code === "vision-image-too-large") entry.photo!.fitted = null;
+            else entry.refused = attachmentErrorFor(code);
           },
         );
         void entry.working.then(() => entries.has(id) && refresh(entry));
@@ -359,7 +363,8 @@ export function createHeldFiles(deps: HeldDeps) {
       const view = refresh(entry);
       // The text of a scan is read from its pages, so a document that came out as a scan starts that reading itself.
       const status = db.prepare(`SELECT status FROM sources WHERE id = ?`).pluck().get(entry.sourceId) as string | undefined;
-      if (status === "needs-ocr" && view.state === "reading" && job.state === "succeeded") void startScanning(entry);
+      // A scan whose import ended on its indexing step (the job failed after its passages were stored) is read all the same.
+      if (status === "needs-ocr" && view.state === "reading" && ["succeeded", "failed"].includes(job.state)) void startScanning(entry);
     },
 
     /** Reads a scan that waited for its OCR data. Errors: `ocr-data-*` while the data is not there. */
@@ -436,16 +441,33 @@ export function createHeldFiles(deps: HeldDeps) {
       return taken;
     },
 
-    /** The files went with a message: they are no longer held. Its rows name their copies now, so nothing is removed. */
-    release(ids: string[]): void {
-      for (const id of ids) {
-        const entry = entries.get(id);
-        if (entry) {
-          entries.delete(id);
-          if (entry.sourceId) bySource.delete(entry.sourceId);
-        }
-        db.prepare(`DELETE FROM held_files WHERE id = ?`).run(id);
+    /** The files that go with a question: they are tied to it once it is stored (`finishSend` lets them go). */
+    tie(ids: string[], messageId: string): void {
+      const mark = db.prepare(`UPDATE held_files SET message_id = ? WHERE id = ?`);
+      for (const id of ids) mark.run(messageId, id);
+    },
+
+    /**
+     * The question was answered: the files tied to it let go. A file its stored rows name is simply no longer held, and one
+     * they do not (a copy the chat already had, a file that could not be read) goes the way a file taken off does. A Try
+     * again that answers a stored question lets its files go the same way, so none goes out again with the next one.
+     */
+    finishSend(messageId: string): void {
+      const named = db.prepare(`SELECT 1 FROM attachments WHERE message_id = ? AND (source_id = ? OR blob_sha = ?)`);
+      for (const row of db
+        .prepare(`SELECT id, source_id, blob_sha, extracted_sha FROM held_files WHERE message_id = ?`)
+        .all(messageId) as Record[]) {
+        const entry = entries.get(row.id);
+        if (named.get(messageId, row.source_id, row.blob_sha)) {
+          if (entry) {
+            entries.delete(row.id);
+            if (entry.sourceId) bySource.delete(entry.sourceId);
+          }
+          db.prepare(`DELETE FROM held_files WHERE id = ?`).run(row.id);
+        } else if (entry) discard(entry);
+        else discardRecord(row);
       }
+      notify();
     },
 
     /** A new chat took the composer a draft was in, so the files left in it follow. */

@@ -14,6 +14,7 @@ import { chatHandlers } from "./handlers";
 import { createRunner } from "../jobs/runner";
 import { registerSourceJobs } from "../sources/jobs";
 import { heldFilesFor } from "./test-attach";
+import { heldMark } from "../sources/jobs";
 
 const opened: Array<{ close: () => void }> = [];
 afterEach(() => {
@@ -394,9 +395,18 @@ describe("every held file is recorded in the database", () => {
     ]);
     await files.held.settle([doc.id, pic.id]);
     expect(rows().map((row) => (row as { state: string }).state)).toEqual(["ready", "ready"]);
-    // Sent: the message's rows name the files now, and the held rows go.
-    files.held.release([doc.id, pic.id]);
+    // Sent: the question's rows name the files, and the held rows go with the question's answer.
+    db.prepare(`INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c', 't', 1, 1)`).run();
+    db.prepare(`INSERT INTO messages (id, chat_id, role, body, created_at) VALUES ('m', 'c', 'user', 'q', 1)`).run();
+    db.prepare(
+      `INSERT INTO attachments (id, message_id, blob_sha, mime, created_at, name, kind, size, source_id)
+       SELECT 'a1', 'm', blob_sha, 'text/plain', 1, 'appunti.txt', 'document', 1, id FROM sources`,
+    ).run();
+    db.prepare(`INSERT INTO attachments (id, message_id, blob_sha, mime, created_at) SELECT 'a2', 'm', blob_sha, 'image/png', 1 FROM held_files WHERE kind = 'photo'`).run();
+    files.held.tie([doc.id, pic.id], "m");
+    files.held.finishSend("m");
     expect(rows()).toEqual([]);
+    expect(sources()).toHaveLength(1);
   });
 
   it("removes the import job's extracted-text blob when a file is taken off", async () => {
@@ -463,7 +473,7 @@ describe("every held file is recorded in the database", () => {
     const runner = createRunner(db, (job) => heldFiles()?.onJob(job));
     registerSourceJobs(db, workspace, runner, async () => ({ document: extractPlain("Il calore si trasmette per conduzione.", false) }));
     const handlers = chatHandlers(db, workspace, undefined, 0, undefined, { runner, emit: () => {} });
-    db.prepare(`INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c', 't', 1, 1)`).run();
+    db.prepare(`INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c', 't', 1, 1), ('altra', 't', 1, 1)`).run();
     const path = join(workspace, "appunti.txt");
     writeFileSync(path, "Il calore si trasmette per conduzione.");
     const view = await handlers.attach({ path, draft: "c" });
@@ -474,6 +484,83 @@ describe("every held file is recorded in the database", () => {
     expect(handlers.attachments({ ids: [view.id, other.id] }).map((item) => item.id)).toEqual([other.id]);
     expect(db.prepare(`SELECT draft FROM held_files`).pluck().all()).toEqual(["altra"]);
     expect(db.prepare(`SELECT COUNT(*) FROM sources`).pluck().get()).toBe(1);
+    // A pick that was still registering when the chat went is refused: no source is made for a draft that no longer exists.
+    await expect(handlers.attach({ path, draft: "c" })).rejects.toMatchObject({ code: "chat-missing" });
+    expect(db.prepare(`SELECT COUNT(*) FROM held_files`).pluck().get()).toBe(1);
+    expect(db.prepare(`SELECT COUNT(*) FROM sources`).pluck().get()).toBe(1);
     setHeldFiles(null);
+  });
+});
+
+describe("a photo that cannot be read fails on its chip", () => {
+  it("tells a valid photo that needs OCR from one that is corrupt: the corrupt one fails when it is attached", async () => {
+    const reasons: Record<string, string> = { "grande.webp": "vision-image-too-large", "rotto.heic": "heic-invalid", "strano.png": "vision-image-unsupported" };
+    const { files, write } = setup({
+      fit: async (file) => {
+        throw new Error(reasons[readFileSync(file, "utf8")]!);
+      },
+    });
+    const views = [];
+    for (const name of Object.keys(reasons)) views.push(await files.held.attach(write(name, name)));
+    await files.held.settle(views.map((view) => view.id));
+    expect(files.held.list(views.map((view) => view.id)).map((view) => [view.name, view.state, view.error])).toEqual([
+      ["grande.webp", "ready", undefined],
+      ["rotto.heic", "failed", "unreadable"],
+      ["strano.png", "failed", "unreadable"],
+    ]);
+    // The question still goes out: the unreadable ones are named, the valid one is read locally.
+    const taken = files.held.take(views.map((view) => view.id));
+    expect(taken.photos.map((photo) => photo.name)).toEqual(["grande.webp"]);
+    expect(taken.leftOut.map((file) => [file.name, file.error])).toEqual([
+      ["rotto.heic", "unreadable"],
+      ["strano.png", "unreadable"],
+    ]);
+  });
+});
+
+describe("a scan whose indexing failed is still read", () => {
+  it("starts reading the scan when the import ended on its indexing step, and does not wait for ever", async () => {
+    const t = setup({
+      extract: scanned(2),
+      jobDeps: {
+        onScan: () => {
+          throw new Error("index failed");
+        },
+      },
+      scan: async (id) => {
+        startScan(t.db, t.files.runner, id);
+        return "started";
+      },
+    });
+    registerOcrJob(t.db, t.workspace, t.files.runner, {
+      readPages: async (_path, wanted) => ({ count: 2, pages: wanted.filter((page) => page <= 2).map((page) => ({ page, text: `Pagina ${page}` })) }),
+      requireData: async () => {},
+      onReady: () => {},
+    });
+    const view = await t.files.held.attach(t.write("scansione.pdf", "%PDF"));
+    await until(() => t.last(view.id)?.state === "ready");
+    expect(t.db.prepare(`SELECT state FROM jobs WHERE kind = 'source-import'`).pluck().get()).toBe("failed");
+  });
+});
+
+describe("the index job of a held scan belongs to its chip too", () => {
+  it("is out of the jobs list and goes with the file when it is taken off, queued or failed", async () => {
+    const { files, write, db, workspace, sources } = setup();
+    const runner = files.runner;
+    runner.register("source-index", {
+      jobClass: "local",
+      unlisted: (params: unknown) => (params as { held?: boolean }).held === true,
+      steps: [{ name: "index", label: "x", run: async (ctx: { signal: AbortSignal }) => new Promise((_resolve, reject) => ctx.signal.addEventListener("abort", () => reject(new DOMException("a", "AbortError")))) }],
+    });
+    const view = await files.held.attach(write("appunti.txt", "Il calore si trasmette per conduzione."));
+    await files.held.settle([view.id]);
+    const [source] = sources();
+    const job = runner.start("source-index", { sourceId: source!.id, ...heldMark(db, source!.id) });
+    expect(runner.list()).toEqual([]);
+    expect(db.prepare(`SELECT json_extract(params_json, '$.held') FROM jobs WHERE id = ?`).pluck().get(job)).toBe(1);
+    files.held.detach(view.id);
+    await until(() => sources().length === 0);
+    expect(db.prepare(`SELECT dismissed FROM jobs WHERE id = ?`).pluck().get(job)).toBeGreaterThan(0);
+    expect(workspace).toBeTruthy();
   });
 });

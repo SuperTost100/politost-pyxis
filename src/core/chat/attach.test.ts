@@ -215,7 +215,11 @@ describe("SRC-04 chat images fit provider limits", () => {
     try {
       const path = join(workspace, "foto.webp");
       writeFileSync(path, new Uint8Array(8));
-      const photo = await heldPhoto(db, workspace, path, fit);
+      // A valid photo past the provider's size limit: no copy for a model, so it is read locally.
+      const tooLarge = async () => {
+        throw new Error("vision-image-too-large");
+      };
+      const photo = await heldPhoto(db, workspace, path, tooLarge);
       await expect(
         recognisePhoto(photo, workspace, async () => {
           throw new Error("ocr-data-missing");

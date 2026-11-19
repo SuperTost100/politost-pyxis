@@ -1075,7 +1075,7 @@ describe("files a message carried (migration 34)", () => {
     expect(() => insert("other", "video")).toThrow(/CHECK/);
     // Every file attached in a composer and not sent yet is a row, with the draft it belongs to and what it made.
     expect(again.prepare("SELECT name FROM pragma_table_info('held_files') ORDER BY cid").pluck().all()).toEqual([
-      "id", "draft", "name", "kind", "size", "ext", "state", "error", "source_id", "blob_sha", "extracted_sha", "created_at",
+      "id", "draft", "name", "kind", "size", "ext", "state", "error", "source_id", "blob_sha", "extracted_sha", "message_id", "created_at",
     ]);
     expect(again.prepare("SELECT COUNT(*) FROM held_files").pluck().get()).toBe(0);
     const held = (id: string, kind: string, state: string) =>

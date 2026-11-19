@@ -111,6 +111,11 @@ export function isHeldReading(params: unknown): boolean {
   return (params as { held?: unknown } | null)?.held === true;
 }
 
+/** The mark a job for this source carries when the source is a file attached to a chat, or nothing for a Library source. */
+export function heldMark(db: Database.Database, sourceId: string): { held?: true } {
+  return db.prepare(`SELECT library FROM sources WHERE id = ?`).pluck().get(sourceId) === 0 ? { held: true } : {};
+}
+
 /** The source a job works on, as the library names it now (after a rename, or a link's page title), or as queued. */
 export function sourceTitle(db: Database.Database, params: unknown): string | null {
   const { sourceId, title } = params as { sourceId?: string; title?: string };

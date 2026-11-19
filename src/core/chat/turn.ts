@@ -809,12 +809,11 @@ export async function askTurn(
   input.signal?.addEventListener("abort", stopChecks, { once: true });
   generating.add(chat.id);
   try {
-    const report: { leftOut?: TakenFiles["leftOut"]; drop?: string[] } = {};
+    const report: { leftOut?: TakenFiles["leftOut"]; question?: string } = {};
     const result = await answer(db, input, replacing, chat.id, now, report);
-    // The files went with the question: the chat holds them now. A copy the chat already had, and a file that could not
-    // be read, are taken off only now, so a send that failed would have kept every chip as it was.
-    for (const id of report.drop ?? []) input.held?.detach(id);
-    input.held?.release(input.attachments ?? []);
+    // The question is answered, so the files tied to it let go: the chat holds the ones its rows name, and a copy it already
+    // had or a file that could not be read goes. Until now a send that failed kept every chip as it was.
+    if (report.question) input.held?.finishSend(report.question);
     // A new chat takes the composer the draft was in: the files left in it belong to the chat now.
     if (chat.created) input.held?.rehome(input.chatId ?? "", chat.id);
     return report.leftOut?.length
@@ -843,7 +842,7 @@ async function answer(
   replacing: { assistantId: string; userId: string } | undefined,
   chatId: string,
   now: number,
-  report: { leftOut?: TakenFiles["leftOut"]; drop?: string[] },
+  report: { leftOut?: TakenFiles["leftOut"]; question?: string },
 ): Promise<AskResult> {
   const prior = readScope(db, chatId);
   const planId = input.planId === undefined ? prior.planId : input.planId;
@@ -861,7 +860,6 @@ async function answer(
     await input.held.settle(input.attachments, input.signal);
     taken = input.held.take(input.attachments);
     report.leftOut = taken.leftOut;
-    report.drop = taken.leftOut.map((file) => file.id);
   }
   // A turn with a photo runs on a model that reads it when the chat's tool has one (or another available tool does), and
   // so does every later turn of a chat that holds a photo, so its model does not change from question to question.
@@ -1005,8 +1003,9 @@ async function answer(
   const { sourceIds, subject, subjectBy, userMessageId, attachedIds } = commitStaged(db, input.workspace ?? "", blobs, () =>
     persist(reused),
   );
-  // The copy of a document the chat already held is not needed any more, once the send has gone through.
-  report.drop = [...(report.drop ?? []), ...documents.filter((doc) => doc.duplicate).map((doc) => doc.id)];
+  // The files are tied to the question they went with, whatever the send does next.
+  report.question = userMessageId;
+  input.held?.tie([...(taken?.order ?? []), ...(taken?.leftOut.map((file) => file.id) ?? [])], userMessageId);
   input.onQuestion?.(userMessageId, chatId);
 
   const seesImage = reads && images.some((image) => image.data);

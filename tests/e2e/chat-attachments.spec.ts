@@ -336,3 +336,175 @@ test("Enter pressed while several picked files are still being attached sends th
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a send that waits for files belongs to its draft: the composer works and stops, and another chat's draft is left alone", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-files-"));
+  try {
+    const paths = ["uno.pdf", "due.pdf", "tre.pdf"].map((name) => join(dir, name));
+    for (const path of paths) sparse(path, 150);
+    const other = await page.evaluate(() =>
+      window.pyxis.invoke("chats.seed", { kind: "passage", title: "Altra chat", body: "Un passaggio." }),
+    );
+    await app.evaluate(({ dialog }, selected) => {
+      delete process.env["PYXIS_E2E_FILE"];
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: selected });
+    }, paths);
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    await box.fill("Riassumi");
+    await attach(page);
+    await expect(page.locator(".ask-attachments li")).toHaveCount(1, { timeout: 30000 });
+    await box.press("Enter");
+    // While the send waits for the pick, the composer shows it working, with a way to stop, and is not editable.
+    const stop = page.getByRole("button", { name: "Interrompi", exact: true });
+    await expect(stop).toBeVisible();
+    await expect(box).toHaveText("");
+    // The student opens another chat and types there: the send that is waiting must not touch that draft.
+    await page.evaluate((id) => {
+      location.hash = `/ask/${id}`;
+    }, other.chatId);
+    await expect(page).toHaveURL(new RegExp(`#/ask/${other.chatId}`));
+    await box.fill("Una bozza di questa chat");
+    await expect.poll(() => rows(userData, "SELECT id FROM chats").length, { timeout: 60000 }).toBe(2);
+    await expect(box).toHaveText("Una bozza di questa chat");
+    expect(await page.evaluate((id) => sessionStorage.getItem(`pyxis-draft:${id}`), other.chatId)).toBe("Una bozza di questa chat");
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Stop while a send waits for its files puts the question and the chips back", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-files-"));
+  try {
+    const paths = ["uno.pdf", "due.pdf", "tre.pdf"].map((name) => join(dir, name));
+    for (const path of paths) sparse(path, 150);
+    await app.evaluate(({ dialog }, selected) => {
+      delete process.env["PYXIS_E2E_FILE"];
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: selected });
+    }, paths);
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    await box.fill("Riassumi");
+    await attach(page);
+    await expect(page.locator(".ask-attachments li")).toHaveCount(1, { timeout: 30000 });
+    await box.press("Enter");
+    const stop = page.getByRole("button", { name: "Interrompi", exact: true });
+    await stop.click();
+    await expect(stop).toHaveCount(0);
+    await expect(box).toHaveText("Riassumi");
+    await expect(page.locator(".ask-attachments li")).toHaveCount(3, { timeout: 60000 });
+    expect(rows(userData, "SELECT id FROM chats")).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("files picked while a new chat's first reply is written follow that chat, with Chiedi on screen or not", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch({ PYXIS_E2E_REPLY_DELAY: "6000" });
+  const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-files-"));
+  try {
+    const note = join(dir, "dopo.txt");
+    writeFileSync(note, "Un file scelto mentre la risposta si scrive.");
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    await box.fill("Prima domanda");
+    await box.press("Enter");
+    await expect(page.getByRole("button", { name: "Interrompi", exact: true })).toBeVisible();
+    await pick(app, note);
+    await attach(page);
+    await expect(page.locator(".ask-attachments li").filter({ hasText: "dopo.txt" })).toBeVisible();
+    // Another page is opened while the reply is still being written.
+    await page.evaluate(() => {
+      location.hash = "/exams";
+    });
+    await expect.poll(() => rows(userData, "SELECT id FROM messages WHERE role = 'assistant'").length, { timeout: 60000 }).toBe(1);
+    const chatId = rows<{ id: string }>(userData, "SELECT id FROM chats")[0]!.id;
+    expect(rows<{ draft: string }>(userData, "SELECT draft FROM held_files")).toEqual([{ draft: chatId }]);
+    // The new chat's composer is empty, and the file is in the finished chat's.
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    await expect(page.getByRole("textbox", { name: "Messaggio" })).toBeVisible();
+    await expect(page.locator(".ask-attachments")).toHaveCount(0);
+    await page.evaluate((id) => {
+      location.hash = `/ask/${id}`;
+    }, chatId);
+    await expect(page.locator(".ask-attachments li").filter({ hasText: "dopo.txt" })).toBeVisible();
+    // Deleting that chat takes the file with it, and nothing of the New chat page is touched.
+    await page.evaluate((id) => window.pyxis.invoke("chats.delete", { chatId: id }), chatId);
+    await expect.poll(() => rows(userData, "SELECT id FROM held_files").length).toBe(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Try again answers the stored question and lets its files go, and a notice about files stays with its chat", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch({ PYXIS_E2E_REPLY_DELAY: "6000" });
+  const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-files-"));
+  try {
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    await box.fill("Ciao");
+    await box.press("Enter");
+    await expect(page).toHaveURL(/#\/ask\/.+/, { timeout: 30000 });
+    await expect(page.getByText(REPLY.slice(0, 20))).toBeVisible({ timeout: 30000 });
+    const note = join(dir, "appunti.txt");
+    writeFileSync(note, "Il calore si trasmette per conduzione.");
+    await pick(app, note);
+    await attach(page);
+    await expect(page.locator(".ask-attachments li").filter({ hasText: "appunti.txt" })).toBeVisible();
+    await expect.poll(() => rows(userData, "SELECT status FROM sources WHERE library = 0")).toEqual([{ status: "ready" }]);
+    await box.fill("Spiega gli appunti");
+    await box.press("Enter");
+    const stop = page.getByRole("button", { name: "Interrompi", exact: true });
+    await expect(stop).toBeVisible();
+    await stop.click();
+    await expect(page.locator(".ask-attachments li").filter({ hasText: "appunti.txt" })).toBeVisible();
+    // The stored question is answered again with its file, and the chip that came back goes.
+    await page.getByRole("button", { name: "Riprova" }).click();
+    await expect(page.locator(".ask-attachments")).toHaveCount(0, { timeout: 30000 });
+    expect(rows(userData, "SELECT id FROM held_files")).toEqual([]);
+    expect(rows(userData, "SELECT id FROM attachments WHERE kind = 'document'")).toHaveLength(1);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the notice of files sent without does not follow the student to another chat", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-files-"));
+  try {
+    const bad = join(dir, "rotto.pdf");
+    sparse(bad, 1);
+    const other = await page.evaluate(() =>
+      window.pyxis.invoke("chats.seed", { kind: "passage", title: "Altra chat", body: "Un passaggio." }),
+    );
+    await pick(app, bad);
+    await attach(page);
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    await box.fill("Riassumi");
+    await expect(page.locator(".ask-attachments li").filter({ hasText: "rotto.pdf" })).toContainText(/non riesce|leggere/, { timeout: 30000 });
+    await box.press("Enter");
+    await expect(page.getByText("Ho mandato la domanda senza rotto.pdf.")).toBeVisible({ timeout: 30000 });
+    await page.evaluate((id) => {
+      location.hash = `/ask/${id}`;
+    }, other.chatId);
+    await expect(page).toHaveURL(new RegExp(`#/ask/${other.chatId}`));
+    await expect(page.getByText("Ho mandato la domanda senza rotto.pdf.")).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

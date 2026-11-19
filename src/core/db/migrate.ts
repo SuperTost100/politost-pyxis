@@ -450,6 +450,8 @@ CREATE TABLE held_files (
   source_id TEXT,
   blob_sha TEXT,
   extracted_sha TEXT,
+  /** The question that carries it, once that is stored: what finishes with the question, so Try again can let it go. */
+  message_id TEXT,
   created_at INTEGER NOT NULL
 );
 CREATE INDEX held_files_draft ON held_files(draft);`,

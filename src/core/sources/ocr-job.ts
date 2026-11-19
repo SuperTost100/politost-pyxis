@@ -2,7 +2,7 @@ import { linkedFile, readableLinkedPath } from "./linked-file";
 import type Database from "better-sqlite3";
 import type { Runner } from "../jobs/runner";
 import { hasBlob, readBlob } from "../blobs";
-import { isHeldReading, sourceTitle } from "./jobs";
+import { heldMark, isHeldReading, sourceTitle } from "./jobs";
 import {
   applyOcrPage,
   canStartOcr,
@@ -151,8 +151,7 @@ export function startScan(db: Database.Database, runner: Runner, sourceId: strin
   if (!row) throw new Error("source-missing");
   if (row.status !== "ocr-queued") requestOcr(db, sourceId);
   // A file attached to a chat is read for its chip, and the jobs list does not show it (see `isHeldReading`).
-  const held = db.prepare(`SELECT library FROM sources WHERE id = ?`).pluck().get(sourceId) === 0;
-  return runner.start("source-ocr", { sourceId, ...(held ? { held: true as const } : {}) } satisfies ScanParams);
+  return runner.start("source-ocr", { sourceId, ...heldMark(db, sourceId) } satisfies ScanParams);
 }
 
 /**

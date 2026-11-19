@@ -176,6 +176,41 @@ describe("taking off a chip that came back after a failed send", () => {
   });
 });
 
+describe("Try again releases the files of the question it answers", () => {
+  it("lets go of the held files once the stored question is answered, and names none of them on the next question", async () => {
+    const { workspace, db, file, count } = setup();
+    const opened = await askTurn(db, { text: "ciao", allowGeneral: true, run: async () => reply });
+    await tick();
+    const files = heldFilesFor(db, workspace, {
+      extract: async ({ path }) => {
+        if (readFileSync(path, "utf8").includes("rotto")) throw new Error("pdf-password-required");
+        return { document: extractPlain("Il calore si trasmette per conduzione.", false) };
+      },
+    });
+    const ok = await files.held.attach(file("appunti.txt", "buono"));
+    const bad = await files.held.attach(file("chiuso.pdf", "rotto"));
+    await files.held.settle([ok.id, bad.id]);
+    const sent = { attachments: [ok.id, bad.id], held: files.held };
+    await expect(askTurn(db, { chatId: opened.chatId, text: "spiega", allowGeneral: true, ...sent, workspace, run: down })).rejects.toThrow("engine-down");
+    await tick();
+    expect(files.held.list([ok.id, bad.id])).toHaveLength(2);
+    // The student presses Try again: the stored question is answered with its file, and the composer lets both go.
+    await regenerateTurn(db, { chatId: opened.chatId, allowGeneral: true, workspace, held: files.held, run: async () => reply });
+    expect(files.held.list([ok.id, bad.id])).toEqual([]);
+    expect(count("held_files")).toBe(0);
+    // The copy that could not be read is gone; the readable one stays with the question that carries it.
+    expect(count("sources WHERE library = 0")).toBe(1);
+    expect(readChat(db, opened.chatId).filter((row) => row.role === "user").at(-1)!.files).toEqual([
+      expect.objectContaining({ name: "appunti.txt" }),
+    ]);
+    // The next question carries nothing from them.
+    await tick();
+    await askTurn(db, { chatId: opened.chatId, text: "e poi?", allowGeneral: true, attachments: [ok.id, bad.id], held: files.held, workspace, run: async () => reply });
+    expect(count("attachments WHERE kind = 'document'")).toBe(1);
+    db.close();
+  });
+});
+
 describe("the earlier turns sent to the model", () => {
   const earlier = (prompt: string) => prompt.slice(prompt.indexOf("Earlier turns:"), prompt.lastIndexOf("Question:"));
 

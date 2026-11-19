@@ -22,6 +22,8 @@ export function heldFilesFor(
     fit?: (path: string, ext: string, signal?: AbortSignal) => Promise<VisionImage>;
     scan?: (sourceId: string) => Promise<"started" | "needs-data">;
     emit?: Parameters<typeof createHeldFiles>[0]["emit"];
+    /** Hooks of the Library's import job, such as the one a scan calls when its import is over. */
+    jobDeps?: Parameters<typeof registerSourceJobs>[4];
   } = {},
 ) {
   let held!: HeldFiles;
@@ -35,6 +37,7 @@ export function heldFilesFor(
     runner,
     options.extract ??
       (async (input) => ({ document: await extractByExt(new Uint8Array(readFileSync(input.path)), input.ext, input.password) })),
+    options.jobDeps,
   );
   held = createHeldFiles({ db, workspace, runner, emit: options.emit ?? (() => {}), fit: options.fit, scan: options.scan });
   /** Attaches the files, waits until each is read, and takes them as a turn does. The ids go with `held` to `askTurn`. */

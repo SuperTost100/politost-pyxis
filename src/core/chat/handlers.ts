@@ -4,7 +4,7 @@ import { endConversation } from "../engine/funnel";
 import type { Runner } from "../jobs/runner";
 import { ocrConsent, ocrDataStatus } from "../sources/ocr-data";
 import { startScan } from "../sources/ocr-job";
-import type { AttachmentView } from "../../shared/ipc";
+import { IpcError, type AttachmentView } from "../../shared/ipc";
 import { createHeldFiles, setHeldFiles } from "./held-files";
 import { isFigureFixCall, recordedPlanRun } from "../engine/recorded-plan";
 import { exportChat, type ChatExportLanguage } from "./export";
@@ -89,7 +89,10 @@ export function chatHandlers(
     return held;
   };
   return {
-    attach(input: { path: string; draft?: string }) {
+    async attach(input: { path: string; draft?: string }) {
+      // A draft is a chat's composer or a new chat's (empty). A pick still registering when its chat was deleted is refused,
+      // so no hidden copy is made for a chat that is gone.
+      if (input.draft && !db.prepare(`SELECT 1 FROM chats WHERE id = ?`).get(input.draft)) throw new IpcError("chat-missing", "errors.internal");
       return needHeld().attach(input.path, input.draft ?? "");
     },
     detach(input: { id: string }) {
@@ -183,6 +186,7 @@ export function chatHandlers(
     }) {
       return regenerateTurn(db, {
         ...input,
+        held,
         workspace,
         run: fixtureReply ? recordedChat(fixtureReply, replyDelayMs, figureFixes) : undefined,
       });

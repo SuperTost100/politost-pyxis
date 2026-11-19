@@ -7,7 +7,7 @@ import { useConfirm } from "../../components/Dialog";
 import { invoke } from "../../lib/ipc";
 import { textBase64 } from "../share/ExportButton";
 import { draftKey } from "./attachments";
-import { drafts } from "./draftSession";
+import { attachQueue, drafts } from "./draftSession";
 import { runsIn, turns } from "./turns";
 
 export type ChatRef = { id: string; title: string | null };
@@ -107,6 +107,8 @@ export function useChatActions() {
           await invoke("chats.delete", { chatId: chat.id });
           // A reply still being written for it stops, and its saved draft and files go with it.
           sessionStorage.removeItem(draftKey(chat.id));
+          // Files still being picked for it are not attached, and the ones held go with the chat.
+          attachQueue.cancel(chat.id);
           drafts.files.set(chat.id, []);
           const running = turns.get();
           if (running && runsIn(running, chat.id)) {

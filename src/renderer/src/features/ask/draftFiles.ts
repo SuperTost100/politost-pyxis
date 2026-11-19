@@ -99,18 +99,27 @@ export function createAttachQueue(
   drafts: DraftFiles,
   /** Asks core to attach one file to a draft; rejects with the request's error when core refuses it. */
   attachInCore: (path: string, draft: string) => Promise<AttachmentView>,
+  /** Takes a file off in core: one that was registered after its draft's picks were cancelled. */
+  detachInCore: (id: string) => void = () => undefined,
 ) {
   const tails = new Map<string, Promise<void>>();
+  /** Counts the times a draft's picks were cancelled, so a batch can tell it was one of them. */
+  const cancelled = new Map<string, number>();
   const refuse = (draft: string, path: string, error: Parameters<typeof refusedFile>[2]) => {
     const id = `${LOCAL_PREFIX}${crypto.randomUUID()}`;
     drafts.views.put(refusedFile(id, path, error));
     drafts.files.set(draft, (now) => [...now, { id, name: fileName(path), path }]);
   };
   async function run(draft: string, paths: string[], preview?: Preview) {
+    const generation = cancelled.get(draft) ?? 0;
     for (const path of paths) {
+      if ((cancelled.get(draft) ?? 0) !== generation) return;
       const now = drafts.files.get(draft);
-      // Pending files survive leaving the chat, so picking a file that is already waiting must not attach it twice.
-      if (now.some((file) => file.path === path)) continue;
+      // Pending files survive leaving the chat, so picking a file that is already waiting must not attach it twice. A fresh
+      // pick takes the place of a chip that was refused before, which has nothing to wait for.
+      const same = now.find((file) => file.path === path);
+      if (same && !isLocalFile(same)) continue;
+      if (same) drafts.files.set(draft, (list) => list.filter((file) => file.id !== same.id));
       // Only files core holds count: a chip refused before core knew it is never sent.
       if (now.filter((file) => !isLocalFile(file)).length >= MAX_ATTACHED_FILES) {
         refuse(draft, path, "too-many");
@@ -118,6 +127,11 @@ export function createAttachQueue(
       }
       try {
         const view = await attachInCore(path, draft);
+        // The draft's picks were cancelled while core registered this one (its chat was deleted): it is not wanted.
+        if ((cancelled.get(draft) ?? 0) !== generation) {
+          detachInCore(view.id);
+          return;
+        }
         drafts.views.put(view);
         drafts.files.set(draft, (list) => (list.some((file) => file.id === view.id) ? list : [...list, { id: view.id, name: view.name, path }]));
         if (preview) drafts.previews.put(view.id, preview);
@@ -136,6 +150,10 @@ export function createAttachQueue(
         if (tails.get(draft) === next) tails.delete(draft);
       });
       return tail;
+    },
+    /** Stops the draft's pending picks, as when its chat is deleted: the files still to come are not attached. */
+    cancel(draft: string): void {
+      cancelled.set(draft, (cancelled.get(draft) ?? 0) + 1);
     },
     /** Whether the draft still has files being attached. */
     busy: (draft: string): boolean => tails.has(draft),
