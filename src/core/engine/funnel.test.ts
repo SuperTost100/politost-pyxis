@@ -105,15 +105,19 @@ const {
   setApiKeys,
   setScratch,
   CONVERSATION_IDLE_MS,
+  cursorSessionLost,
+  setCursorChatsRoot,
 } = await import("./funnel");
 
 const { readJobLog, setDebugLogRoot, setDebugOn } = await import("../debug/log");
 const { withUsageScope } = await import("./usage");
-const { mkdtempSync, rmSync } = await import("node:fs");
+const { mkdirSync, mkdtempSync, readFileSync, rmSync } = await import("node:fs");
 const { tmpdir } = await import("node:os");
 const { join } = await import("node:path");
 
 beforeEach(() => {
+  // No Cursor folder on this machine decides a test; the tests of the check give it one.
+  setCursorChatsRoot(null);
   run.mockReset();
   closeSession.mockReset();
   setScratch("/scratch");
@@ -277,6 +281,14 @@ describe("chat conversations", () => {
     const systems = run.mock.calls.map(([request]) => (request as { system?: string }).system);
     // Continued, then new, for each provider in turn.
     expect(systems).toEqual([undefined, "tutor", undefined, "tutor", "tutor", "tutor", "tutor", "tutor"]);
+  });
+
+  it("starts a new session when the tool answers a resume under another session id", async () => {
+    run.mockResolvedValueOnce({ text: "no history", sessionId: "s-other" }).mockResolvedValueOnce({ text: "answer", sessionId: "s-new" });
+    const result = await runTurn(chat("second", { session: stored("claude") }));
+    expect(run.mock.calls.map(([request]) => request.sessionId)).toEqual(["s-1", undefined]);
+    expect(run.mock.calls[1]![0].prompt).toBe("whole context, then second");
+    expect(result).toMatchObject({ text: "answer", sessionId: "s-new", continued: false });
   });
 
   it("keeps an API conversation as history, so the cached start stays the same", async () => {
@@ -518,6 +530,61 @@ describe("schema repairs", () => {
         expect(repair.sessionId).toBeUndefined();
         expect(repair.prompt).toContain("name a colour");
       }
+    }
+  });
+});
+
+describe("a Cursor Agent chat that Cursor no longer holds", () => {
+  const recorded = JSON.parse(readFileSync("tests/fixtures/cursor-resume-unknown-id.json", "utf8")) as {
+    requested: string;
+    events: Array<{ session_id?: string }>;
+  };
+  const folder = () => mkdtempSync(join(tmpdir(), "pyxis-cursor-chats-"));
+  const chatTurn = (id: string) => ({
+    selection: { provider: "agent" as const, model: "m" },
+    prompt: "whole context, then second",
+    system: "tutor",
+    conversation: { key: "chat-1", followUp: "second", session: { provider: "agent", id, cwd: "/scratch" } },
+  });
+
+  it("gives no sign in the stream: Cursor answers an unknown id as a new chat under the same id", () => {
+    expect(new Set(recorded.events.map((event) => event.session_id))).toEqual(new Set([recorded.requested]));
+  });
+
+  it("is told from Cursor's chat folders: lost only when they hold other chats and not this one", () => {
+    const root = folder();
+    try {
+      setCursorChatsRoot(root);
+      // Nothing there, as with another layout: the chat counts as held.
+      expect(cursorSessionLost("chat-a")).toBe(false);
+      mkdirSync(join(root, "workspace-1", "chat-a"), { recursive: true });
+      expect(cursorSessionLost("chat-a")).toBe(false);
+      expect(cursorSessionLost("chat-b")).toBe(true);
+      expect(cursorSessionLost("../chat-a")).toBe(false);
+      setCursorChatsRoot(join(root, "missing"));
+      expect(cursorSessionLost("chat-b")).toBe(false);
+    } finally {
+      setCursorChatsRoot(null);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("sends the whole prompt, with no session id, when Cursor lost the chat, and goes on in the chat it held", async () => {
+    const root = folder();
+    try {
+      setCursorChatsRoot(root);
+      mkdirSync(join(root, "workspace-1", "held-chat"), { recursive: true });
+      run.mockResolvedValue({ text: "answer" });
+      const lost = await runTurn(chatTurn("lost-chat"));
+      expect(run.mock.calls[0]![0]).toMatchObject({ prompt: "whole context, then second" });
+      expect(run.mock.calls[0]![0].sessionId).toBeUndefined();
+      expect(lost.continued).toBe(false);
+      const held = await runTurn(chatTurn("held-chat"));
+      expect(run.mock.calls[1]![0]).toMatchObject({ prompt: "second", sessionId: "held-chat" });
+      expect(held.continued).toBe(true);
+    } finally {
+      setCursorChatsRoot(null);
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });
