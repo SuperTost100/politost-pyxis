@@ -20,6 +20,6 @@ export function readPlacesAhead(client: QueryClient, staleTime?: number): void {
 }
 
 /** Opens the dialog with its places read, so the focus goes to its first field at once (`whenRead`). */
-export function whenPlacesRead(client: QueryClient, open: () => void): void {
-  whenRead(client, newCardsQuery, open);
+export function whenPlacesRead(client: QueryClient, open: () => void, after?: () => void): void {
+  whenRead(client, newCardsQuery, open, undefined, after);
 }

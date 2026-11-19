@@ -1,4 +1,5 @@
-import { _electron as electron, test, type ElectronApplication } from "@playwright/test";
+import { _electron as electron, test, type ElectronApplication, type TestInfo } from "@playwright/test";
+import { copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { withoutLaunchEnvironment } from "./trace-clean";
 import { saveTrace } from "./trace-save";
@@ -83,14 +84,21 @@ let launches = 0;
 async function traceUntilClosed(app: ElectronApplication) {
   const context = app.context();
   const number = ++launches;
+  // The test that launched the app, kept for the close that comes after the test has timed out: its `finally` then runs once
+  // Playwright has finished the test, when `test.info()` throws, and the test that timed out is the one whose trace is wanted.
+  const launchedBy = test.info();
   await context.tracing.start({ screenshots: true, snapshots: false });
   const close = app.close.bind(app);
   app.close = async () => {
     try {
-      const info = test.info();
+      const running = runningTest();
       await saveTrace({
         stop: (path) => context.tracing.stop({ path }),
-        attach: (path) => info.attach(`trace-${number}`, { path, contentType: "application/zip" }),
+        // A test that is over cannot take an attachment: its trace goes into its output folder, which the failed job uploads.
+        attach: async (path) => {
+          if (running) await running.attach(`trace-${number}`, { path, contentType: "application/zip" });
+          else copyFileSync(path, launchedBy.outputPath(`trace-${number}.zip`));
+        },
         maxBytes: TRACE_MAX_BYTES,
         clean: withoutLaunchEnvironment,
       });
@@ -101,6 +109,15 @@ async function traceUntilClosed(app: ElectronApplication) {
     }
     await close();
   };
+}
+
+/** The test that is running, or undefined once it is over (it timed out, and its code is still unwinding). */
+function runningTest(): TestInfo | undefined {
+  try {
+    return test.info();
+  } catch {
+    return undefined;
+  }
 }
 
 /**

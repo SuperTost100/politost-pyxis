@@ -13,7 +13,7 @@ vi.mock("cli-funnel", async (original) => ({
 
 const efforts = ["low", "medium", "high"].map((id) => ({ id, label: id }));
 const models = {
-  claude: ["claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5"],
+  claude: ["claude-opus-5-5", "claude-sonnet-5", "claude-haiku-5-5"],
   codex: ["gpt-6-sol", "gpt-5.6-terra", "gpt-6-luna"],
 };
 const run = vi.fn();

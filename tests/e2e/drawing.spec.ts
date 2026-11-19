@@ -762,6 +762,8 @@ test.describe("the drawing window", () => {
         ["the most that 4,000 characters make", `digraph { subgraph s { ${names("n", 150)} } ${Array.from({ length: 10 }, () => "subgraph s {}").join(" -> ")} }`, /^the graph has 202500 edges: keep it within 300$/],
         ["every pair of two groups", `digraph { {${names("a", 20)}} -> {${names("b", 20)}} }`, /^the graph has 400 edges/],
         ["an HTML-like label", 'digraph { a [label=<<TABLE HREF="http://x"><TR><TD><IMG SRC="/etc/passwd"/></TD></TR></TABLE>>] }', /HTML-like labels/],
+        // A `key` on an edge statement makes an edge of a pair that is already there: Graphviz builds 392 edges from this text.
+        ["a key on an edge statement of a strict graph", `strict graph { {${names("a", 14)}} -- {${names("b", 14)}}; {${names("b", 14)}} -- {${names("a", 14)}} [key=k] }`, /^the graph has 392 edges/],
       ];
       for (const [name, code, message] of refused) {
         const started = Date.now();
@@ -773,6 +775,10 @@ test.describe("the drawing window", () => {
         expect((result as { timedOut?: boolean }).timedOut, name).toBeUndefined();
       }
       expect(await windows(app)).toHaveLength(1);
+      // Where the key is not an edge's it makes no edge: the same 196 pairs are drawn, with the text checks as well.
+      const pairs = `{${names("a", 14)}} -- {${names("b", 14)}}; {${names("b", 14)}} -- {${names("a", 14)}}`;
+      for (const code of [`strict graph { edge [KEY=k]; ${pairs} }`, `strict graph { edge [key=k]; ${pairs} }`, `strict graph { ${pairs} [KEY=k] }`])
+        expectPicture(await draw(app, code), code.slice(0, 40));
       expectPicture(await draw(app, automaton), "after them all");
     } finally {
       await finish(app, userData);

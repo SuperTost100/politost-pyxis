@@ -25,7 +25,7 @@ import {
   type Selection,
   type TurnInput,
 } from "./funnel";
-import { fallbackSelection, jobEngine, selectionOn, type FallbackReason } from "./selection";
+import { currentSelection, fallbackSelection, jobEngine, selectionOn, type FallbackReason } from "./selection";
 import { currentUsageScope, reportUsage, withUsageScope, type UsageScope } from "./usage";
 
 export type GenerateInput = {
@@ -215,6 +215,9 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
     const { usage, ...rest } = input;
     return withUsageScope(usage, () => generate(rest));
   }
+  // A selection saved by an earlier build may name a model its tool may no longer run.
+  const current = currentSelection(input.selection);
+  if (current !== input.selection) input = { ...input, selection: current };
   // A job the student told to go on with another tool, since the one it ran on was out of requests, runs there from now on.
   const chosen = jobEngine(currentUsageScope()?.jobId);
   const chosenSelection =

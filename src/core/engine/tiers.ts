@@ -21,8 +21,6 @@ export const tierData = tiers as unknown as {
   tierOrder: Record<Tier, Tier[]>;
   effort: Record<Tier, string>;
   providerOrder: Record<Tier, string[]>;
-  family: Record<string, string>;
-  patterns: Record<string, Record<Tier, string[]>>;
   local: {
     provider: ProviderId;
     installUrl: string;

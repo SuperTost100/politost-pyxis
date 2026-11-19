@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useConfirm } from "../components/Dialog";
 import { invoke } from "./ipc";
+import { outbound } from "./queryClient";
 
 /**
  * The free books list, with each book's library source and whether a newer version can update it. Under "sources",
@@ -13,6 +14,7 @@ export function useFreeBooks(enabled: boolean) {
   return useQuery({
     queryKey: ["sources", "free-books"],
     queryFn: () => invoke("sources.books", {}),
+    ...outbound,
     enabled,
     retry: false,
     staleTime: 5 * 60_000,

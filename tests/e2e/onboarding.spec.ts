@@ -318,7 +318,7 @@ case "$1" in
   --version) echo "2026.09.28-64d2043";;
   status) echo '{"isAuthenticated":true}';;
   about) echo '{}';;
-  --list-models) printf 'gemini-3.8-flash - Gemini 3.8 Flash\\nclaude-sonnet-5-5 - Claude Sonnet 5.5\\n';;
+  --list-models) printf 'grok-4.7-low - Grok 4.7  Low\\ngemini-3.8-flash - Gemini 3.8 Flash\\nclaude-sonnet-5-5 - Claude Sonnet 5.5\\n';;
   *) echo "Error: request failed with status 401 Unauthorized" >&2; exit 1;;
 esac
 `,
