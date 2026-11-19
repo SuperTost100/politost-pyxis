@@ -771,8 +771,14 @@ test("open answer: keys typed while MathLive loads go to the formula the button 
         } else callback({});
       });
     });
-    // A page of its own: a step before this one that had loaded MathLive would leave it loaded, and nothing would be held.
+    // A page of its own, and one that asks the network for the chunk: a window that has loaded MathLive before (the home page's
+    // composer does, once it has been on screen for 300 ms, as it is on a slow runner) keeps the script in the renderer's cache,
+    // and a new page then gets it from there with no request for the hold to see. Mac run 44594896197: "0 held", the chunk
+    // loaded in 0 ms.
     await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
+    const network = await page.context().newCDPSession(page);
+    await network.send("Network.enable");
+    await network.send("Network.setCacheDisabled", { cacheDisabled: true });
     await page.reload();
     const answer = page.getByRole("textbox", { name: "La tua risposta" });
     const steps = page.getByRole("textbox", { name: "Passaggi (facoltativi, aiutano la correzione)" });
