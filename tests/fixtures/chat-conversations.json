@@ -161,10 +161,10 @@
       "rule": "Answers the request in a few lines (at most 100 words, at least three lines of it), does not refuse, with no check block and no figure, and three follow-ups.",
       "must": ["(?:^|\\n)[^\\n]+\\n[^\\n]+\\n[^\\n]+"],
       "mustNot": [
-        "```",
         "[Cc]an(?:'|’)t (?:help|write)|[Cc]annot (?:help|write)|[Ii](?:'|’)m only|only help with|not something I can"
       ],
-      "maxWords": 100
+      "maxWords": 100,
+      "rawMustNot": ["```"]
     }
   ]
 }

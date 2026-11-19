@@ -70,6 +70,16 @@ describe("the conversations a chat reply is judged on", () => {
       expect(ok(solution, `${worked}\nQuanto vale f(2)?`)).toHaveLength(1);
     });
 
+    it("judge an answer on what the student sees, so working that sits in a hidden check block does not count", () => {
+      const wrong = "check-wrong";
+      const hidden = "Not correct.\n\n```check\n{\"kind\":\"derivative\",\"expr\":\"x**3\",\"claimed\":\"3*x**2\",\"vars\":[\"x\"],\"step\":\"3x^2\"}\n```";
+      expect(ok(wrong, hidden)).toContain("missing 3x\\^?2");
+      expect(ok(wrong, "Not correct: the derivative of $x^3$ is $3x^2$.")).toEqual([]);
+      // A fence is still forbidden where the rule forbids it, whatever it holds.
+      const poem = "not-study";
+      expect(ok(poem, "Soft paws\nin the sun\nI sleep.\n```check\n{}\n```")).toContain("has ```");
+    });
+
     it("accept a confirmation with the final result and a further check, and reject handing the done step back", () => {
       const end = "guide-to-the-end";
       expect(ok(end, "Right: $x = 2$ and $f(2) = 3$, so the minimum is 3. To be sure it is a minimum, what does $f''(x)$ tell you?")).toEqual([]);

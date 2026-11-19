@@ -24,8 +24,8 @@ export function splitChecks(text: string): {
   }
 }
 
-/** What a reply states that can be checked: an equation or an integral. Maths that only names things (a variable, a power) states nothing to check. */
-const MATH = /=|∫|\\int\b/;
+/** What a reply states that can be checked: an equation or an integral. Maths that only names things (a variable, a power) states nothing to check. `\\int` ends at the first character that is not a letter, so `\\int_0^1` counts and `\\intercal` does not. */
+const MATH = /=|∫|\\int(?![A-Za-z])/;
 
 /**
  * Tools a separate check never runs on. Cursor Agent takes 11 to 40 s before its first text, longer than the 20 s a check

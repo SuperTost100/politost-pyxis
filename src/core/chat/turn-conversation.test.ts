@@ -4,9 +4,9 @@ import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
 import { saveProfile } from "../profile/profile";
 import { importSmartbook } from "../sources/smartbook";
-import { clearBench } from "../engine/bench";
+import { benchEngine, clearBench } from "../engine/bench";
 import { rememberReady } from "../engine/selection";
-import { askTurn, clearChatContext, readChat, regenerateTurn } from "./turn";
+import { askTurn, clearChatContext, readChat, regenerateTurn, settleChecks } from "./turn";
 import { currentSession, sessionsOpened, UNCOMPACTED_SESSION_CHARS } from "./sessions";
 
 const reply: EngineResult = {
@@ -129,7 +129,8 @@ describe("a chat's stored tool session", () => {
       subject: options.subject,
       allowGeneral: options.sourceIds === undefined,
       run: async (input) => {
-        seen = input as Seen;
+        // The follow-up is read while the engine runs, as the funnel does: it is built for the engine that asks.
+        seen = { ...input, conversation: input.conversation && { ...input.conversation, followUp: input.conversation.followUp } } as Seen;
         return toolReply(options.sessionId ?? "s1", seen, options.provider);
       },
     });
@@ -721,6 +722,86 @@ describe("a chat's stored tool session", () => {
     expect(cleared.seen.conversation!.followUp).toContain("Pinned context: none.");
     expect(cleared.seen.conversation!.followUp).not.toContain("Testo scelto");
     expect(sessionsOpened(db, first.chatId)).toBe(1);
+    db.close();
+  });
+});
+
+describe("a decision taken from the tool that answers, not the one that was planned", () => {
+  const ready = () =>
+    rememberReady([
+      { id: "claude", kind: "cli", effort: true, models: [{ id: "claude-haiku-5-5", efforts: [] }] },
+      { id: "agent", kind: "cli", effort: true, models: [{ id: "cursor-grok-4.5", efforts: [] }] },
+    ]);
+  const automatic = (db: ReturnType<typeof setup>["db"], provider: string, model: string) =>
+    db
+      .prepare("UPDATE feature_engines SET selection_json = ?")
+      .run(JSON.stringify({ provider, model, auto: true }));
+
+  it("delivers the new instructions to a Cursor session that a fallback resumes, and records the model that answered", async () => {
+    const { db } = setup();
+    db.prepare("UPDATE feature_engines SET feature = 'chat', selection_json = ?").run(JSON.stringify({ provider: "agent", model: "cursor-grok-4.5" }));
+    const first = await askTurn(db, {
+      text: "prima",
+      allowGeneral: true,
+      run: async (input) => toolReply("a1", input as Seen, "agent"),
+    });
+    db.prepare("UPDATE chat_sessions SET instructions = 'older' WHERE chat_id = ?").run(first.chatId);
+    // The chat's tool is Claude now and is out of requests, so the turn falls back to the Cursor session.
+    automatic(db, "claude", "claude-haiku-5-5");
+    ready();
+    const providers: string[] = [];
+    let followUp = "";
+    try {
+      await askTurn(db, {
+        chatId: first.chatId,
+        text: "seconda",
+        allowGeneral: true,
+        run: async (input) => {
+          providers.push(input.selection.provider);
+          if (input.selection.provider === "claude")
+            throw Object.assign(new Error("usage limit"), { code: "cli-failed", limit: { kind: "rate", detail: "usage limit" } });
+          followUp = (input as Seen).conversation!.followUp;
+          return { ...toolReply("a1", input as Seen, "agent"), model: "cursor-grok-4.5" };
+        },
+      });
+    } finally {
+      rememberReady([]);
+      clearBench();
+    }
+    expect(providers).toEqual(["claude", "agent"]);
+    expect(followUp.startsWith("<instructions>\nYou are Pyxis, a study tutor")).toBe(true);
+    expect(currentSession(db, first.chatId)).toMatchObject({ provider: "agent", sessionId: "a1", inStep: true });
+    expect(db.prepare("SELECT model FROM chat_sessions WHERE chat_id = ? AND ended_at IS NULL").pluck().get(first.chatId)).toBe("cursor-grok-4.5");
+    db.close();
+  });
+
+  it("runs the separate maths check on the tool that would answer it when Cursor, the chat's tool, is out of requests", async () => {
+    const { db } = setup();
+    automatic(db, "agent", "cursor-grok-4.5");
+    db.prepare("UPDATE feature_engines SET feature = 'chat'").run();
+    ready();
+    benchEngine("agent", "limit", { retryAfterMs: 60_000 });
+    const claim = { kind: "derivative", expr: "x**2", claimed: "2*x", vars: ["x"], step: "La derivata è $f'(x) = 2x$." };
+    const providers: string[] = [];
+    try {
+      const result = await askTurn(db, {
+        text: "Deriva x^2",
+        allowGeneral: true,
+        run: async (input) => {
+          providers.push(`${input.selection.provider}${input.responseSchema ? " (check)" : ""}`);
+          if (input.responseSchema)
+            return { ...reply, provider: "claude", text: JSON.stringify({ checks: [claim] }), structured: { checks: [claim] } };
+          return { ...reply, provider: "claude", model: "claude-haiku-5-5", text: claim.step };
+        },
+      });
+      expect(result.message?.checking).toBe(true);
+      await settleChecks();
+    } finally {
+      rememberReady([]);
+      clearBench();
+    }
+    // Cursor was out of requests, so Claude answered the turn and runs the check.
+    expect(providers).toEqual(["claude", "claude (check)"]);
     db.close();
   });
 });

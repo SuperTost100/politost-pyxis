@@ -180,7 +180,7 @@ function isToolProvider(provider: ProviderId): boolean {
 }
 
 /** Cursor Agent and Antigravity get `system` as a block at the start of the prompt, so a turn in a session they hold leaves it out. */
-export function systemInPrompt(provider: ProviderId): boolean {
+export function systemInPrompt(provider: string): boolean {
   return provider === "agent" || provider === "antigravity";
 }
 

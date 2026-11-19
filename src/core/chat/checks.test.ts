@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { askTurn, readChat, settleChecks } from "./turn";
-import { solverChecks, splitChecks } from "./checks";
+import { needsSolverChecks, solverChecks, splitChecks } from "./checks";
 import type { GenerateInput } from "../engine/generate";
 import { systemPrompt } from "../engine/prompts";
 
@@ -108,5 +108,15 @@ describe("Solver check metadata", () => {
     expect(
       await solverChecks(step, { selection, run, signal: AbortSignal.abort() }),
     ).toEqual([]);
+  });
+});
+
+describe("what a reply states that can be checked", () => {
+  it("counts an equation and an integral, bounded or not, and not maths that only names things", () => {
+    expect(needsSolverChecks("Vale $2x = 4$.")).toBe(true);
+    expect(needsSolverChecks("L'area è \\int_0^1 x\\,dx, cioè un mezzo.")).toBe(true);
+    expect(needsSolverChecks("Calcola \\int x\\,dx.")).toBe(true);
+    expect(needsSolverChecks("Con $\\intercal$ e $x^2$ non si dice nulla di verificabile.")).toBe(false);
+    expect(needsSolverChecks("La regola del prodotto si applica a $x^2 \\sin x$.")).toBe(false);
   });
 });

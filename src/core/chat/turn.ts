@@ -19,7 +19,7 @@ import {
   type FigureRunner,
 } from "../math/figures";
 import { isAbort, IpcError, toIpcError } from "../../shared/ipc";
-import { generate, type GenerateInput } from "../engine/generate";
+import { generate, startingMove, type GenerateInput } from "../engine/generate";
 import { engineSeesImages } from "../engine/capabilities";
 import { systemInPrompt } from "../engine/funnel";
 import { selectionFor, strongestSelection } from "../engine/selection";
@@ -1090,18 +1090,23 @@ async function answer(
   const instructions = contextHash(system);
   const instructionsChanged = Boolean(session && session.instructions !== instructions);
   const outOfStep = Boolean(session && (!session.inStep || instructionsChanged));
-  const newInstructions =
-    instructionsChanged && systemInPrompt(selection.provider)
-      ? `<instructions>\n${system}\n</instructions>\nThese instructions replace any you were given before.\n\n`
-      : "";
-  const replay = outOfStep ? historyText(db, chatId, exclude, handoverChars(selection.provider), session!.syncedTo) : "";
-  const replayBlock = replay
-    ? `The conversation as the student sees it, since the last turn you completed. This, not anything you remember differently, is the conversation. A reply marked stopped was cut off, and the student saw only the text shown.\n${replay}\n\n`
-    : "";
   const newQuestion = citations.length
     ? `New question. Its passages are numbered from P1 again; cite only these.\n\n${question.trimStart()}`
     : question.trimStart();
-  const followUp = `${newInstructions}${outOfStep || session?.told !== told ? `${header}\n\n` : ""}${replayBlock}${replacing && !resume ? ASKED_AGAIN : ""}${newQuestion}`;
+  // The follow-up depends on the tool that resumes the session, which an automatic choice can change inside
+  // `generate()`: whether the instructions travel in the prompt, and the size of the replay. So it is built for the
+  // provider of each attempt, and only when that attempt resumes.
+  const followUpFor = (provider: string) => {
+    const newInstructions =
+      instructionsChanged && systemInPrompt(provider)
+        ? `<instructions>\n${system}\n</instructions>\nThese instructions replace any you were given before.\n\n`
+        : "";
+    const replay = outOfStep ? historyText(db, chatId, exclude, handoverChars(provider), session!.syncedTo) : "";
+    const replayBlock = replay
+      ? `The conversation as the student sees it, since the last turn you completed. This, not anything you remember differently, is the conversation. A reply marked stopped was cut off, and the student saw only the text shown.\n${replay}\n\n`
+      : "";
+    return `${newInstructions}${outOfStep || session?.told !== told ? `${header}\n\n` : ""}${replayBlock}${replacing && !resume ? ASKED_AGAIN : ""}${newQuestion}`;
+  };
   // The conversation handed to a new session is sized to the window of the engine that answers, which an automatic choice
   // can change inside `generate()`. It is built only when a prompt is sent: a fresh start or a retry after a lost session.
   const promptFor = (provider: string) => {
@@ -1111,7 +1116,7 @@ async function answer(
   const beforeQuestion = messageBefore(db, chatId, userMessageId);
   const messageId = uuidv7(now + 2);
   // The engine answering, which differs from the selection when an automatic one was out and another took over.
-  let answering: { provider: string; model: string } = selection;
+  let answering: { provider: string; model: string; effort?: string } = selection;
   let streamed = resume;
   let result;
   // Fitting a saved photo can take seconds, so it runs in the extract worker. A photo left out is reported, not dropped silently.
@@ -1166,6 +1171,7 @@ async function answer(
     result = await generate({
       prompt: "",
       promptFor,
+      followUpFor,
       system,
       selection,
       attachments: saved
@@ -1181,7 +1187,7 @@ async function answer(
       run: input.run,
       conversation: {
         key: chatId,
-        followUp,
+        followUp: "",
         session: session ? { provider: session.provider, id: session.sessionId, cwd: session.cwd, seen: session.seen } : null,
         // A tool that keeps what it was sent keeps a turn the student stops, so the session is stored when it begins.
         // Cursor Agent loses such a turn, so its session is stored when the turn ends.
@@ -1190,7 +1196,7 @@ async function answer(
           const open = currentSession(db, chatId);
           if (open?.provider === provider && open.sessionId === sessionId) return;
           startedSession = true;
-          recordSession(db, chatId, open, { provider, sessionId, cwd, model: selection.model, effort: selection.effort ?? null, told: "", instructions, chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion }, long ? "long" : "gone");
+          recordSession(db, chatId, open, { provider, sessionId, cwd, model: answering.model, effort: answering.effort ?? null, told: "", instructions, chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion }, long ? "long" : "gone");
         },
       },
       cache: true,
@@ -1215,10 +1221,10 @@ async function answer(
           sessionId: result.sessionId,
           cwd: result.cwd,
           model: result.model,
-          effort: selection.effort ?? null,
+          effort: answering.effort ?? null,
           told,
           instructions,
-          chars: (result.continued ? followUp : promptFor(result.provider)).length + result.text.length,
+          chars: (result.continued ? followUpFor(result.provider) : promptFor(result.provider)).length + result.text.length,
           now: Date.now(),
           finished: true,
           syncedTo: beforeQuestion,
@@ -1243,7 +1249,7 @@ async function answer(
     // one instead, and a Continue that added nothing leaves the reply as it was.
     // The tool kept what it was sent, and with Antigravity the start of the reply too, which counts toward the size at
     // which a session starts over. Cursor Agent loses a turn that did not finish.
-    const sent = !startedSession && session && answering.provider === session.provider ? followUp : promptFor(answering.provider);
+    const sent = !startedSession && session && answering.provider === session.provider ? followUpFor(answering.provider) : promptFor(answering.provider);
     addSessionChars(
       db,
       chatId,
@@ -1329,7 +1335,10 @@ async function answer(
   if (needsSolverChecks(parsed.body)) {
     try {
       const checkSelection = selectionFor(db, "chat");
-      checking = !NO_SEPARATE_CHECK.has(checkSelection.provider);
+      // The tool that would run the check is the one `generate()` starts with, which is not the chat's own when that
+      // one is out of requests.
+      const runsOn = (startingMove({ selection: checkSelection })?.to ?? checkSelection).provider;
+      checking = !NO_SEPARATE_CHECK.has(runsOn);
       if (checking)
         startChecks(db, { chatId, messageId, body: parsed.body }, { selection: checkSelection, run: input.run });
     } catch (err) {
