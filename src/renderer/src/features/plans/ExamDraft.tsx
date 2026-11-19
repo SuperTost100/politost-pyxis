@@ -8,7 +8,7 @@ import { booksNamed } from "@shared/book-match";
 import { PLAN_TITLE_MAX } from "@shared/plan-file";
 import { useLeaveGuard } from "../../app/useLeaveGuard";
 import { openBook } from "../../components/BookReaderBar";
-import { refreshSourceViewer } from "../../components/SourceViewer";
+import { closeSourceViewer, refreshSourceViewer } from "../../components/SourceViewer";
 import { addBook, addFailure, useBookAdding } from "../../lib/bookAdding";
 import { useFreeBooks } from "../../lib/freeBooks";
 import { invoke } from "../../lib/ipc";
@@ -430,6 +430,10 @@ export function MaterialStep({ draft }: { draft: ExamDraft }) {
   latest.current = draft;
   // Once the exam is being created the choice is made: the reader shows it locked, as the page does.
   useEffect(() => refreshSourceViewer(), [draft.bookOn, draft.starting, draft.picked]);
+  // A reader opened here belongs to this step: it closes when the form leaves it, whether back to the first step (where the
+  // title or the subject can change and the book stop being the offer) or on to what follows, so it never says a book is in
+  // an exam that no longer offers it.
+  useEffect(() => closeSourceViewer, []);
   return (
     <>
       <WizardSources

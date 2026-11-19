@@ -150,6 +150,16 @@ const latexAfterN = new Set([
   "nonumber",
 ]);
 
+/** The name a JSON key stands for, with its escapes decoded; a key that is not valid JSON on its own stays as written. */
+function decodedKey(written: string): string {
+  try {
+    const name: unknown = JSON.parse(`"${written}"`);
+    return typeof name === "string" ? name : written;
+  } catch {
+    return written;
+  }
+}
+
 /**
  * Makes model JSON parseable without changing what it meant: a single backslash before a LaTeX command is doubled
  * (JSON would read \frac as a form feed and \alpha as an error), and raw line breaks inside strings become \n.
@@ -157,18 +167,18 @@ const latexAfterN = new Set([
 function repairJsonText(text: string, verbatim: readonly string[] = []): string {
   let out = "";
   let inString = false;
-  // The key whose value is being read, and the text of the string being read, to tell a key from a value when it ends.
+  // The key whose value is being read, and where in `out` the string being read starts, to tell a key from a value when it ends.
   let key = "";
   let valueOf: string | null = null;
-  let current = "";
+  let stringAt = 0;
   let valueString = false;
   for (let i = 0; i < text.length; i++) {
     const char = text[i]!;
     if (!inString) {
       if (char === '"') {
         inString = true;
-        current = "";
         valueString = valueOf !== null;
+        stringAt = out.length + 1;
       } else if (char === ":") valueOf = key;
       else if (char === "," || char === "{" || char === "}") valueOf = null;
       out += char;
@@ -176,7 +186,9 @@ function repairJsonText(text: string, verbatim: readonly string[] = []): string 
     }
     if (char === '"') {
       inString = false;
-      if (!valueString) key = current;
+      // A key is compared as JSON will read the repaired text: "c\u006fde" is `code`, and a `\nabla` the repair writes as a LaTeX
+      // command is `\nabla`. The text keeps the spelling it was written with.
+      if (!valueString) key = decodedKey(out.slice(stringAt));
       out += char;
       continue;
     }
@@ -184,11 +196,9 @@ function repairJsonText(text: string, verbatim: readonly string[] = []): string 
     const code = valueString && valueOf !== null && verbatim.includes(valueOf);
     if (code && char === "\\" && "nrtbf".includes(text[i + 1] ?? "\n")) {
       out += char + text[i + 1];
-      current += char + text[i + 1];
       i++;
       continue;
     }
-    current += char;
     if (char === "\n") {
       out += "\\n";
       continue;

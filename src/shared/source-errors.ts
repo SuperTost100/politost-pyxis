@@ -61,6 +61,7 @@ const SOURCE_ERROR_KEYS: Record<string, string> = {
   "books-too-big": "sources.books.catalog",
   "books-integrity": "sources.books.integrity",
   "books-missing": "sources.books.missing",
+  "books-changed": "sources.books.changed",
   "book-up-to-date": "sources.books.upToDate",
   "paper-empty": "pastPapers.errors.empty",
   "paper-no-text": "pastPapers.errors.noText",

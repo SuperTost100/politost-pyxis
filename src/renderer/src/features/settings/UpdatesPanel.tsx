@@ -12,6 +12,7 @@ import { useConfirm } from "../../components/Dialog";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { formatBytes } from "@shared/format-bytes";
+import { updatesQuery } from "./updatesQuery";
 
 /** The next fetch comes from the student pressing a button, so it skips the cache. Automatic fetches keep it. */
 let forceNext = false;
@@ -25,16 +26,18 @@ export function checkUpdatesNow(client: QueryClient): Promise<void> {
 }
 
 function useUpdates() {
-  return useQuery({
-    queryKey: ["updates"],
-    queryFn: () => {
-      const force = forceNext;
-      forceNext = false;
-      return window.pyxis.checkUpdates(force);
-    },
-    retry: false,
-    staleTime: 24 * 60 * 60 * 1000,
-  });
+  const client = useQueryClient();
+  return useQuery(
+    updatesQuery(
+      client,
+      (force) => window.pyxis.checkUpdates(force),
+      () => {
+        const force = forceNext;
+        forceNext = false;
+        return force;
+      },
+    ),
+  );
 }
 
 /** The download state lives in main, so the banner and Settings show the same download. */

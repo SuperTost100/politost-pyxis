@@ -317,8 +317,26 @@ describe("a graph's DOT text", () => {
     const keyed = `strict graph { {${names("a", 14)}} -- {${names("b", 14)}}; {${names("b", 14)}} -- {${names("a", 14)}} [key=k] }`;
     expect(checkDot(keyed)).toEqual({ problem: `the graph has 392 edges: keep it within ${DOT_EDGES_MAX}` });
     expect(checkDot(keyed.replace(" [key=k]", ""))).toMatchObject({ problem: null, nodes: 28, edges: 196 });
-    // Wherever the key is, whatever its case, and whichever edges it names.
-    expect(checkDot(`strict graph { edge [KEY=k]; {${names("a", 14)}} -- {${names("b", 14)}}; {${names("b", 14)}} -- {${names("a", 14)}} }`)).toEqual({
+    // Only a `key` in lower case on an edge statement is an edge's key. Measured on the pack's Graphviz (the drawing window's
+    // own count of the same text): `edge [key=k]` and `edge [KEY=k]` defaults, a `KEY` on an edge statement, a `key` on a node
+    // or a graph and `key=k` as a graph statement all leave 196 edges, and a `key` on the second of the two statements makes 392.
+    const pairs = `{${names("a", 14)}} -- {${names("b", 14)}}; {${names("b", 14)}} -- {${names("a", 14)}}`;
+    for (const text of [
+      `strict graph { edge [KEY=k]; ${pairs} }`,
+      `strict graph { edge [key=k]; ${pairs} }`,
+      `strict graph { ${pairs} [KEY=k] }`,
+      `strict graph { node [key=k]; ${pairs} }`,
+      `strict graph { graph [key=k]; ${pairs} }`,
+      `strict graph { key=k; ${pairs} }`,
+      `strict graph { a0 [key=k]; ${pairs} }`,
+    ])
+      expect(checkDot(text), text.slice(0, 40)).toMatchObject({ problem: null, nodes: 28, edges: 196 });
+    // Where it is not confirmed the count stays the higher one: a key on the first of the two statements is counted as on the second,
+    // and wherever it is on an edge statement the two orders of a pair are counted apart.
+    expect(checkDot(`strict graph { {${names("a", 14)}} -- {${names("b", 14)}} [key=k]; {${names("b", 14)}} -- {${names("a", 14)}} }`)).toEqual({
+      problem: `the graph has 392 edges: keep it within ${DOT_EDGES_MAX}`,
+    });
+    expect(checkDot(`strict graph { edge [KEY=k]; {${names("a", 14)}} -- {${names("b", 14)}}; {${names("b", 14)}} -- {${names("a", 14)}} [key=k] }`)).toEqual({
       problem: `the graph has 392 edges: keep it within ${DOT_EDGES_MAX}`,
     });
     expect(checkDot("strict graph { a -- b; b -- a [key=k] }")).toMatchObject({ problem: null, edges: 2 });
