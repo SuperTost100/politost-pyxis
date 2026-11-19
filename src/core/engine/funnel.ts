@@ -1,3 +1,6 @@
+import { existsSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { tierData } from "./tiers";
 import { createDisclosure } from "./disclosure";
@@ -190,6 +193,34 @@ export function isSessionGone(err: unknown): boolean {
   return SESSION_GONE.test(err instanceof Error ? err.message : String(err));
 }
 
+let cursorChats: string | null | undefined;
+/** Tests point the check below at a folder of their own (null: none); undefined restores Cursor's own. */
+export function setCursorChatsRoot(root: string | null | undefined): void {
+  cursorChats = root;
+}
+
+/**
+ * True when Cursor Agent no longer holds the chat. Given an id it does not know, `agent --resume` answers as a new chat
+ * under that same id, with the same `session_id` in every event, so nothing in the stream tells the loss: the reply comes
+ * back as if the conversation had been there. Cursor keeps its chats in `~/.cursor/chats/<workspace>/<id>`. When that
+ * folder holds other chats and none is this one, the chat is gone; when the folder is missing or empty, which is also
+ * what another layout looks like, the chat counts as held, so a wrong guess costs no hand-over.
+ * shortcut: reads Cursor's private folder layout, checked on agent 2026.11.13; drop it when `agent` reports a lost resume.
+ */
+export function cursorSessionLost(id: string): boolean {
+  const root = cursorChats === undefined ? join(homedir(), ".cursor", "chats") : cursorChats;
+  if (!root || !/^[\w-]+$/.test(id)) return false;
+  try {
+    const workspaces = readdirSync(root);
+    return workspaces.length > 0 && !workspaces.some((dir) => existsSync(join(root, dir, id)));
+  } catch {
+    return false;
+  }
+}
+
+/** Thrown inside a turn when the tool started another session than the one it was asked to resume. */
+class SessionReplaced extends Error {}
+
 /** Ends a chat's live process. The stored session stays, and the next turn resumes it. A turn still running finishes first. */
 export function endConversation(key: string): void {
   const talk = conversations.get(key);
@@ -361,6 +392,8 @@ async function turn(input: TurnInput): Promise<EngineResult> {
       ? stored.id
       : undefined
     : talk?.sessionId;
+  // Cursor Agent answers a resume of a chat it lost as a new chat, so its folder says whether it still holds the session.
+  if (tool && selection.provider === "agent" && resumeId && cursorSessionLost(resumeId)) resumeId = undefined;
   // agy 1.4 fills a --json-schema with a report on its own run, not with the answer: Sonnet graded its own work 1 and
   // narrated it, and Gemini returned nothing. Antigravity gets the schema in the prompt and answers in text, which
   // `generate` parses and repairs like any other reply.
@@ -409,6 +442,9 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         for await (const event of stream) {
           log?.event(event);
           if (event.type === "session") {
+            // A tool that resumes reports the id it was given. Another id means it started a new session, and this turn
+            // would answer without the conversation: stop it and send the whole prompt instead.
+            if (continuing && tool && event.sessionId !== resumeId) throw new SessionReplaced();
             sessionId = event.sessionId;
             if (tool) conversation!.onSession?.(event.sessionId, selection.provider, selection.cwd);
           }
@@ -465,7 +501,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         log?.end({ text, error: input.signal?.aborted ? "cancelled" : err instanceof Error ? err.message : String(err) });
         // The tool no longer holds the stored session (the student cleared its history, or it was moved): the chat
         // starts a new one with the whole earlier conversation, which `prompt` carries.
-        if (continuing && tool && !text && !input.signal?.aborted && isSessionGone(err)) {
+        if (continuing && tool && !text && !input.signal?.aborted && (err instanceof SessionReplaced || isSessionGone(err))) {
           resumeId = undefined;
           sessionId = undefined;
           continue;
