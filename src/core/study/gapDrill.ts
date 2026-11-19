@@ -82,7 +82,8 @@ export async function buildGapDrill(
 ): Promise<string> {
   if (params.attemptId) return params.attemptId;
   const { planId, topicId } = params;
-  const gap = openGap(db, planId, topicId, params.gapId);
+  // As in `enqueueGapDrill`: a job queued for a gap that merged before it began builds for the gap that absorbed it.
+  const gap = openGap(db, planId, topicId, params.gapId ? (successor(db, params.gapId) ?? params.gapId) : undefined);
   if (!gap) throw new Error("gap-missing");
   const input = drillInput(planId, topicId);
   const snapshot = params.snapshot ?? prepareQuiz(db, input);
