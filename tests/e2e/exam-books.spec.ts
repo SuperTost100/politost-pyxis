@@ -120,6 +120,31 @@ test("A new exam named like a PoliTost book offers it as a ticked source, readab
   }
 });
 
+test("A reader opened from the material step is closed when the form goes back a step, so it cannot show a book as in an exam it no longer offers", async () => {
+  test.setTimeout(180_000);
+  const run = await start();
+  const { page } = run;
+  try {
+    await toMaterial(page, "Fisica 1");
+    await expect(row(page)).toBeVisible({ timeout: 30_000 });
+    await row(page).getByRole("button", { name: "Apri il libro Fisica 1" }).click();
+    const panel = reader(page, "Fisica 1");
+    await expect(panel.getByText("È tra le fonti di questo esame.")).toBeVisible();
+    // Back to the first step: the reader belongs to the step that offered the book, and goes with it.
+    await page.getByRole("button", { name: "Passo precedente" }).click();
+    await expect(page.getByLabel("Nome dell'esame", { exact: true })).toBeVisible();
+    await expect(panel).toHaveCount(0);
+    // The name changes, so the book is no longer the offer; the material step does not bring a reader back.
+    await page.getByLabel("Nome dell'esame", { exact: true }).fill("Tedesco");
+    await page.getByRole("button", { name: "Continua" }).click();
+    await expect(page.getByRole("heading", { name: "Da cosa studi?" })).toBeVisible();
+    await expect(page.getByRole("complementary", { name: "Fisica 1" })).toHaveCount(0);
+    await expect(row(page)).toHaveCount(0);
+  } finally {
+    await finish(run);
+  }
+});
+
 test("Once the exam is being created the choice is locked in the reader too, and says why", async () => {
   test.setTimeout(180_000);
   const run = await start({ PYXIS_E2E_BOOKS_DELAY: "4000" });

@@ -40,7 +40,7 @@ export function standInTools(signedIn: readonly ToolId[]): { bin: string; env: R
   --version) echo "2026.09.28-64d2043";;
   status) echo '{"isAuthenticated":true}';;
   about) echo '{}';;
-  --list-models) printf 'gemini-3.8-flash - Gemini 3.8 Flash\\nclaude-sonnet-5-5 - Claude Sonnet 5.5\\nclaude-opus-5-5 - Claude Opus 5.5\\n';;
+  --list-models) printf 'grok-4.7-low - Grok 4.7  Low\\ngrok-4.7-high - Grok 4.7  High\\ncursor-grok-4.6-low - Grok 4.6 Low\\ncursor-grok-4.6-high - Grok 4.6\\ngemini-3.8-flash - Gemini 3.8 Flash\\nclaude-sonnet-5-5 - Claude Sonnet 5.5\\nclaude-opus-5-5 - Claude Opus 5.5\\n';;
   *) exit 1;;
 esac`,
     ],

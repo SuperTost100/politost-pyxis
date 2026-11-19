@@ -356,19 +356,21 @@ describe("automatic choice and effort", () => {
     const plan = planAuto([
       provider("antigravity", [
         ["gemini-3.8-flash", ["low", "medium", "high"]],
-        ["gemini-3.1-pro", ["low", "high"]],
+        ["gemini-4-hydrogen", ["low", "high"]],
       ]),
     ]);
+    // Hydrogen comes first in the fast and mid lists. It lists low and high, so medium takes the lower of the two.
     expect(plan.chat).toMatchObject({
-      model: "gemini-3.8-flash",
+      model: "gemini-4-hydrogen",
       effort: "low",
     });
     expect(plan.lesson).toMatchObject({
-      model: "gemini-3.1-pro",
+      model: "gemini-4-hydrogen",
       effort: "low",
     });
+    // No Carbon, Argon or Neon is listed, so the plan takes the next Gemini model of the file's strong list.
     expect(plan.plan).toMatchObject({
-      model: "gemini-3.1-pro",
+      model: "gemini-4-hydrogen",
       effort: "high",
     });
   });
@@ -439,7 +441,7 @@ describe("automatic choice keeps the student's effort", () => {
         name: "s",
         efforts: levels("low", "medium", "high", "max"),
       },
-      { id: "claude-haiku-4-5", name: "h", efforts: levels("low") },
+      { id: "claude-haiku-5-5", name: "h", efforts: levels("low") },
     ],
   } as unknown as ReturnType<typeof getFunnel>;
 
@@ -449,7 +451,7 @@ describe("automatic choice keeps the student's effort", () => {
     const handlers = engineHandlers(db, () => undefined);
     await handlers.autoConfigure({});
     expect(handlers.features().chat).toMatchObject({
-      model: "claude-haiku-4-5",
+      model: "claude-haiku-5-5",
       effort: "low",
       auto: true,
     });
@@ -464,7 +466,7 @@ describe("automatic choice keeps the student's effort", () => {
     handlers.setFeature({
       feature: "plan",
       provider: "claude",
-      model: "claude-haiku-4-5",
+      model: "claude-haiku-5-5",
       effort: "max",
     });
     expect(selectionFor(db, "plan").effort).toBe("low");

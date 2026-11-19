@@ -58,8 +58,8 @@ export function createBookReading(keepMs = KEEP_MS) {
      * The parsed package when the book with this id is the one held, whatever the catalog lists for it now: a reader
      * goes on from the package its chapters were listed from, so the text and the chapter count agree.
      */
-    heldFor(id: string): ParsedSmartbook | null {
-      return held?.id === id ? held.parsed : null;
+    heldFor(id: string): { parsed: ParsedSmartbook; sha: string } | null {
+      return held?.id === id ? { parsed: held.parsed, sha: held.sha } : null;
     },
     /** The package's bytes when this book is the one held, so adding it does not download it again. */
     bytesOf(book: CatalogBook): Uint8Array | null {

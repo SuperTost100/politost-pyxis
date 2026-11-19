@@ -1825,7 +1825,7 @@ function fakeEngines(): Record<string, string> {
   --version) echo "2026.09.28-64d2043";;
   status) if [ -f "${on}" ]; then echo '{"isAuthenticated":true}'; else echo '{"isAuthenticated":false}'; fi;;
   about) echo '{}';;
-  --list-models) printf 'gemini-3.8-flash - Gemini 3.8 Flash\\n';;
+  --list-models) printf 'grok-4.7-low - Grok 4.7  Low\\ngemini-3.8-flash - Gemini 3.8 Flash\\n';;
   *) if [ -f "${limit}" ]; then echo "Error: You have hit your usage limit." >&2; else echo "Error: request failed with status 401 Unauthorized" >&2; fi; exit 1;;
 esac`,
     ),

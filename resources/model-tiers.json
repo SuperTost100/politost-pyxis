@@ -81,56 +81,6 @@
       "ollama"
     ]
   },
-  "family": {
-    "claude": "claude",
-    "anthropic-api": "claude",
-    "codex": "gpt",
-    "openai-api": "gpt",
-    "agent": "cursor",
-    "antigravity": "antigravity",
-    "ollama": "local"
-  },
-  "patterns": {
-    "claude": {
-      "fast": ["^claude-haiku-"],
-      "mid": ["^claude-sonnet-"],
-      "strong": ["^claude-opus-", "^claude-fable-"]
-    },
-    "gpt": {
-      "fast": ["-luna$", "-mini$", "-nano$"],
-      "mid": ["-terra$", "^gpt-5(?:\\.\\d+)?$"],
-      "strong": ["-sol$", "-astra$"]
-    },
-    "cursor": {
-      "fast": [
-        "^gemini-\\d+(?:[.-]\\d+)*-flash$",
-        "^gpt-\\d+(?:[.-]\\d+)*-luna$",
-        "^composer-\\d+(?:[.-]\\d+)*$",
-        "^gpt-\\d+(?:[.-]\\d+)*-(?:mini|nano)$"
-      ],
-      "mid": [
-        "^claude-sonnet-\\d+(?:[.-]\\d+)*$",
-        "^gpt-\\d+(?:[.-]\\d+)*-terra$",
-        "^gemini-\\d+(?:[.-]\\d+)*-pro$",
-        "^(?:cursor-)?grok-\\d+(?:[.-]\\d+)*$"
-      ],
-      "strong": [
-        "^claude-opus-\\d+(?:[.-]\\d+)*$",
-        "^gpt-\\d+(?:[.-]\\d+)*-sol$",
-        "^(?:cursor-)?grok-\\d+(?:[.-]\\d+)*$"
-      ]
-    },
-    "antigravity": {
-      "fast": ["^gemini-\\d+(?:[.-]\\d+)*-flash$"],
-      "mid": ["^gemini-\\d+(?:[.-]\\d+)*-pro$", "^claude-sonnet-"],
-      "strong": ["^gemini-\\d+(?:[.-]\\d+)*-pro$", "^claude-opus-"]
-    },
-    "local": {
-      "fast": [],
-      "mid": [],
-      "strong": []
-    }
-  },
   "local": {
     "provider": "ollama",
     "installUrl": "https://ollama.com/download",

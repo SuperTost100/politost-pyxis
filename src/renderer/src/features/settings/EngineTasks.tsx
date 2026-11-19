@@ -73,10 +73,16 @@ export function EngineTasks({
           ).filter(() => row?.capabilities.effort);
           const picked = studentEffort(selection);
           const pickedListed = listed.some((option) => option.id === picked);
-          const taskLevel = automaticEffort(
-            feature,
-            listed.map((option) => option.id),
-          );
+          // The level Pyxis works out for an automatic task, which the model file sets per tool. With no pick of the
+          // student's it is the level stored in the row.
+          // shortcut: with a pick, the level shown is the tier's, which differs when the file sets another for this tool; upgrade by storing the automatic level in the row.
+          const taskLevel =
+            isAuto && !picked && selection?.effort && listed.some((option) => option.id === selection.effort)
+              ? selection.effort
+              : automaticEffort(
+                  feature,
+                  listed.map((option) => option.id),
+                );
           // A pinned model the lists no longer hold stays in the picker, so the row shows what the task runs on.
           const options =
             selection && !isAuto && !choices.some((choice) => choice.value === value)

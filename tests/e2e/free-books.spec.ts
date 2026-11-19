@@ -4,7 +4,7 @@ import {
   type Page,
 } from "@playwright/test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
@@ -187,6 +187,39 @@ test("Free books: a package that does not match the catalog is refused and nothi
     expect(
       await page.evaluate(() => window.pyxis.invoke("sources.list", {})),
     ).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(books, { recursive: true, force: true });
+  }
+});
+
+test("Free books: a catalog that could not be read is read again when the connection is back, without leaving the dialog", async () => {
+  test.setTimeout(120000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-books-user-"));
+  const books = booksSite();
+  // The catalog is out of reach: the site has no list, as when the connection is down.
+  const catalog = join(books, "catalog.json");
+  renameSync(catalog, `${catalog}.away`);
+  const app = await launch(userData, books);
+  try {
+    const page = await app.firstWindow();
+    await button(page, "Salta").click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => {
+      location.hash = "/exams/library";
+    });
+    await openBooksFromMenu(page);
+    const dialog = page.getByRole("dialog", { name: "Libri PoliTost gratuiti" });
+    await expect(dialog.getByText("Non riesco a raggiungere books.politost.it")).toBeVisible({ timeout: 30000 });
+    await expect(dialog.getByText("Fisica di prova")).toHaveCount(0);
+    // The connection is back: the window says it lost the network and then that it has it again, and the list comes back
+    // where the student is.
+    renameSync(`${catalog}.away`, catalog);
+    await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect(dialog.getByText("Fisica di prova")).toBeVisible({ timeout: 30000 });
+    await expect(dialog.getByText("Non riesco a raggiungere books.politost.it")).toHaveCount(0);
   } finally {
     await app.close();
     removeTestFolder(userData);

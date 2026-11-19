@@ -763,6 +763,7 @@
       "catalog": "The book list on books.politost.it can't be read right now. Try again later.",
       "integrity": "The downloaded book doesn't match the list, so I didn't import it. Try again.",
       "missing": "This book is no longer in the list.",
+      "changed": "This book was updated while it was open. Pyxis is reading the new version.",
       "upToDate": "This book already has the newest version."
     },
     "panel": {
