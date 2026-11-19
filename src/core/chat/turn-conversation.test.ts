@@ -398,21 +398,129 @@ describe("a chat's stored tool session", () => {
     const first = await ask(db, "domanda");
     saveProfile(db, { followups: false });
     const controller = new AbortController();
+    let regenerated = "";
     // The regenerate carries the block with follow-ups off, then is stopped.
-    await regenerateTurn(db, {
+    const stopped = await regenerateTurn(db, {
       chatId: first.chatId,
       allowGeneral: true,
       signal: controller.signal,
       run: async (input) => {
-        expect((input as Seen).conversation!.followUp).toContain("Follow-ups: leave the <followups> block out.");
+        regenerated = (input as Seen).conversation!.followUp;
         controller.abort();
         throw new DOMException("stopped", "AbortError");
       },
-    }).catch(() => undefined);
+    }).then(
+      () => undefined,
+      (err: unknown) => err,
+    );
+    expect(stopped).toMatchObject({ name: "AbortError" });
+    expect(regenerated).toContain("Follow-ups: leave the <followups> block out.");
     // The profile is back as it was when the session last completed a turn, so the stored hash matches the block.
     saveProfile(db, { followups: true });
     const next = await ask(db, "e poi?", { chatId: first.chatId });
     expect(next.seen.conversation!.followUp).toContain("Follow-ups: end with the <followups> block.");
+    db.close();
+  });
+
+  it("keeps the replay boundary at the last reply that completed, not at a reply the student saw cut off", async () => {
+    const { db } = setup();
+    const first = await ask(db, "prima");
+    // The second question is stopped: its reply is a cut-off one.
+    const controller = new AbortController();
+    await askTurn(db, {
+      chatId: first.chatId,
+      text: "seconda",
+      allowGeneral: true,
+      signal: controller.signal,
+      run: async (input) => {
+        input.onDelta?.("risposta a metà");
+        controller.abort();
+        throw new DOMException("stopped", "AbortError");
+      },
+    });
+    await ask(db, "terza", { chatId: first.chatId });
+    // The third is answered again and the new answer is stopped, so the old one stays.
+    const again = new AbortController();
+    await regenerateTurn(db, {
+      chatId: first.chatId,
+      allowGeneral: true,
+      signal: again.signal,
+      run: async () => {
+        again.abort();
+        throw new DOMException("stopped", "AbortError");
+      },
+    }).catch(() => undefined);
+    const next = await ask(db, "quarta", { chatId: first.chatId });
+    // The cut-off reply sits between the boundary and the regenerated question, so it is replayed too.
+    expect(next.seen.conversation!.followUp).toContain(
+      "user: seconda\nassistant (stopped, the student saw only this): risposta a metà\nuser: terza\nassistant: Il vettore descrive il punto [P1].",
+    );
+    db.close();
+  });
+
+  it("leaves the session out of step when a regenerated reply is stopped while its figures are drawn, and when nothing is stored", async () => {
+    const { db } = setup();
+    const first = await ask(db, "domanda", { provider: "claude", sessionId: "s1" });
+    const controller = new AbortController();
+    const withFigure = ["Ecco.", "", "```pyxis-figure", JSON.stringify({ caption: "Un seno.", code: "plt.plot([0, 1])" }), "```"].join("\n");
+    const stopped = await regenerateTurn(db, {
+      chatId: first.chatId,
+      allowGeneral: true,
+      signal: controller.signal,
+      // The model finishes, and the student stops while the figure is drawn.
+      python: async () => {
+        controller.abort();
+        throw new DOMException("stopped", "AbortError");
+      },
+      run: async (input) => ({ ...toolReply("s1", input as Seen), text: withFigure }),
+    }).then(
+      () => undefined,
+      (err: unknown) => err,
+    );
+    expect(stopped).toMatchObject({ name: "AbortError" });
+    // The replacement was dropped: the answer on screen is the one before it, which the session was told to discard.
+    expect(db.prepare("SELECT body FROM messages WHERE chat_id = ? AND role = 'assistant'").pluck().all(first.chatId)).toEqual([
+      expect.stringContaining("Il vettore descrive il punto"),
+    ]);
+    expect(currentSession(db, first.chatId)).toMatchObject({ inStep: false });
+    const next = await ask(db, "e poi?", { chatId: first.chatId, provider: "claude", sessionId: "s1" });
+    expect(next.seen.conversation!.followUp).toContain("user: domanda\nassistant: Il vettore descrive il punto [P1].");
+    // An answer that is not stored (NOT_COVERED) is not certified either.
+    const none = await askTurn(db, {
+      chatId: first.chatId,
+      text: "fuori tema",
+      allowGeneral: true,
+      run: async (input) => ({ ...toolReply("s1", input as Seen), text: "NOT_COVERED" }),
+    });
+    expect(none.covered).toBe(false);
+    expect(currentSession(db, first.chatId)).toMatchObject({ inStep: false });
+    const after = await ask(db, "ancora?", { chatId: first.chatId, provider: "claude", sessionId: "s1" });
+    expect(after.seen.conversation!.followUp).toContain("user: fuori tema\n\nQuestion:");
+    db.close();
+  });
+
+  it("counts a session opened during a stopped turn at the whole prompt it received", async () => {
+    const { db } = setup();
+    db.prepare("UPDATE feature_engines SET selection_json = ?").run(JSON.stringify({ provider: "antigravity", model: "gemini-3.8-flash" }));
+    const first = await ask(db, "prima", { provider: "antigravity", sessionId: "g1" });
+    const controller = new AbortController();
+    let whole = 0;
+    await askTurn(db, {
+      chatId: first.chatId,
+      text: "seconda",
+      allowGeneral: true,
+      signal: controller.signal,
+      run: async (input) => {
+        // The tool lost g1 and started g2, which received the whole prompt.
+        (input as Seen).conversation?.onSession?.("g2", "antigravity", "/scratch");
+        whole = input.prompt.length;
+        input.onDelta?.("parziale");
+        controller.abort();
+        throw new DOMException("stopped", "AbortError");
+      },
+    });
+    expect(currentSession(db, first.chatId)).toMatchObject({ sessionId: "g2" });
+    expect(currentSession(db, first.chatId)!.chars).toBe(whole + "parziale".length);
     db.close();
   });
 

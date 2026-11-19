@@ -206,9 +206,14 @@ export function cursorChatState(id: string): "held" | "absent" | "unknown" {
   const root = cursorChats === undefined ? join(homedir(), ".cursor", "chats") : cursorChats;
   if (!root || !/^[\w-]+$/.test(id)) return "unknown";
   try {
-    const workspaces = readdirSync(root);
-    if (workspaces.some((dir) => existsSync(join(root, dir, id)))) return "held";
-    return workspaces.length > 0 ? "absent" : "unknown";
+    const workspaces = readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+    if (workspaces.some((dir) => existsSync(join(root, dir.name, id)))) return "held";
+    // Other chats must be there to say this one is gone: a workspace folder that holds a chat folder. A folder with only
+    // files in it, or workspaces with nothing in them, is a layout this does not understand.
+    const knowsChats = workspaces.some((dir) =>
+      readdirSync(join(root, dir.name), { withFileTypes: true }).some((entry) => entry.isDirectory()),
+    );
+    return knowsChats ? "absent" : "unknown";
   } catch {
     return "unknown";
   }

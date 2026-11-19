@@ -63,10 +63,11 @@ export function sessionTooLong(session: StoredSession): boolean {
 /**
  * What a turn leaves in the session: the engine that answered, the context block it was told and what it sent.
  *
- * A session is in step when it holds the conversation the student sees. A turn marks the chat's open sessions out of step
- * when it starts (`markOutOfStep`), and the session that completes the turn normally is in step again (`inStep`). A stop,
- * a failure, a regenerate that was not kept, a turn that another tool or an API provider answered, and a lost session
- * all leave it out of step, and the next turn then replays what the student sees since `syncedTo`.
+ * A session is in step when it holds the conversation the student sees. A turn marks the chat's open sessions out of
+ * step when it starts (`markOutOfStep`), and only `keepSession` makes one in step again: when the turn's reply was both
+ * completed by the model and kept on screen. A stop, a failure, a regenerate that was not kept, a reply that was
+ * discarded, a turn that another tool or an API provider answered, and a lost session all leave it out of step, and the
+ * next turn then replays what the student sees since `syncedTo`.
  */
 export type SessionTurn = {
   provider: string;
@@ -77,7 +78,8 @@ export type SessionTurn = {
   told: string;
   chars: number;
   now: number;
-  inStep: boolean;
+  /** The model completed this turn: it counts as a turn of the session, which is not yet in step (see `keepSession`). */
+  finished: boolean;
   /** For a session this turn opens: the last message its first prompt held (the one before the question). */
   syncedTo: string | null;
   /** Cursor's own folder was seen to hold the chat. */
@@ -97,9 +99,9 @@ export function recordSession(
 ): void {
   if (prior && prior.provider === turn.provider && prior.sessionId === turn.sessionId) {
     db.prepare(
-      `UPDATE chat_sessions SET model = ?, effort = ?, told = ?, chars = chars + ?, in_step = ?, seen = MAX(seen, ?),
+      `UPDATE chat_sessions SET model = ?, effort = ?, told = ?, chars = chars + ?, seen = MAX(seen, ?),
          turns = turns + 1, last_used_at = ? WHERE id = ?`,
-    ).run(turn.model, turn.effort, turn.told, turn.chars, turn.inStep ? 1 : 0, turn.seen ? 1 : 0, turn.now, prior.id);
+    ).run(turn.model, turn.effort, turn.told, turn.chars, turn.seen ? 1 : 0, turn.now, prior.id);
     return;
   }
   if (prior)
@@ -111,7 +113,7 @@ export function recordSession(
   db.prepare(
     `INSERT INTO chat_sessions
       (id, chat_id, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at, last_used_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
   ).run(
     uuidv7(turn.now),
     chatId,
@@ -122,11 +124,10 @@ export function recordSession(
     turn.cwd,
     turn.told,
     turn.chars,
-    turn.inStep ? 1 : 0,
     turn.syncedTo,
     turn.seen ? 1 : 0,
     // A session opened when the tool names it has no finished turn yet.
-    turn.inStep ? 1 : 0,
+    turn.finished ? 1 : 0,
     turn.now,
     turn.now,
   );
@@ -137,18 +138,40 @@ export function markOutOfStep(db: Database.Database, chatId: string): void {
   db.prepare(`UPDATE chat_sessions SET in_step = 0 WHERE chat_id = ? AND ended_at IS NULL`).run(chatId);
 }
 
-/** A turn completed normally on the open session of `provider`: it holds everything up to `messageId`. */
-export function syncSession(db: Database.Database, chatId: string, provider: string, messageId: string): void {
-  db.prepare(`UPDATE chat_sessions SET synced_to = ? WHERE chat_id = ? AND provider = ? AND ended_at IS NULL AND in_step = 1`).run(
+/**
+ * The one place a session becomes in step: the model completed the reply on the open session of `provider`, and the reply
+ * is kept on screen as `messageId`, so the session holds the conversation up to it.
+ */
+export function keepSession(db: Database.Database, chatId: string, provider: string, messageId: string): void {
+  db.prepare(`UPDATE chat_sessions SET in_step = 1, synced_to = ? WHERE chat_id = ? AND provider = ? AND ended_at IS NULL`).run(
     messageId,
     chatId,
     provider,
   );
 }
 
-/** The open session holds the conversation only up to `messageId` (null: not even its first message), for what a regenerate left in it. */
-export function rewindSession(db: Database.Database, chatId: string, messageId: string | null): void {
-  db.prepare(`UPDATE chat_sessions SET synced_to = ? WHERE chat_id = ? AND ended_at IS NULL`).run(messageId, chatId);
+/**
+ * A regenerated reply was not kept, so the earlier answer stays on screen while the session was told to discard it: the
+ * session holds the conversation only up to the last reply that completed normally before `questionId`, and the next
+ * turn replays the question and the answer the student sees. The boundary only moves back, and never lands on a reply the
+ * student saw cut off.
+ */
+export function rewindSession(db: Database.Database, chatId: string, questionId: string): void {
+  const completed = db
+    .prepare(
+      `SELECT id, rowid FROM messages WHERE chat_id = ? AND role = 'assistant' AND stopped = 0
+         AND rowid < (SELECT rowid FROM messages WHERE id = ?) ORDER BY rowid DESC LIMIT 1`,
+    )
+    .get(chatId, questionId) as { id: string; rowid: number } | undefined;
+  const current = db
+    .prepare(`SELECT id, synced_to FROM chat_sessions WHERE chat_id = ? AND ended_at IS NULL`)
+    .all(chatId) as Array<{ id: string; synced_to: string | null }>;
+  for (const row of current) {
+    if (row.synced_to === null) continue;
+    const held = db.prepare(`SELECT rowid FROM messages WHERE id = ?`).pluck().get(row.synced_to) as number | undefined;
+    if (completed && held !== undefined && held <= completed.rowid) continue;
+    db.prepare(`UPDATE chat_sessions SET synced_to = ? WHERE id = ?`).run(completed?.id ?? null, row.id);
+  }
 }
 
 /** How many tool sessions the chat has opened, the ended ones included. */
