@@ -492,6 +492,22 @@ describe("switching engines on a usage limit or sign-out", () => {
     db.close();
   });
 
+  it("builds the prompt only when the engine reads it", async () => {
+    const db = automaticChat();
+    let built = 0;
+    await generate({
+      selection: selectionFor(db, "chat"),
+      prompt: "",
+      promptFor: () => {
+        built += 1;
+        return "whole prompt";
+      },
+      run: async () => result({ text: "ok" }),
+    });
+    expect(built).toBe(0);
+    db.close();
+  });
+
   it("tells the listener which job the refused call belonged to", async () => {
     const db = automaticChat();
     const heard: Array<string | undefined> = [];

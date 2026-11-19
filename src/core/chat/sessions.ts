@@ -15,8 +15,12 @@ export type StoredSession = {
   told: string | null;
   /** Characters sent into the session so far. */
   chars: number;
-  /** What the next message must tell the session about what the student sees, until a turn finishes. */
-  note: string | null;
+  /** True after a turn that completed normally on this session, false from the start of any turn until one does. */
+  inStep: boolean;
+  /** The last message the session holds in full: a session out of step is told what the student sees after it. Null: from the start. */
+  syncedTo: string | null;
+  /** Cursor's own folder was seen to hold this chat, so its absence now means the student cleared it. */
+  seen: boolean;
 };
 
 type Row = {
@@ -26,7 +30,9 @@ type Row = {
   cwd: string;
   told: string | null;
   chars: number;
-  note: string | null;
+  in_step: number;
+  synced_to: string | null;
+  seen: number;
 };
 
 /**
@@ -42,11 +48,11 @@ const UNCOMPACTED = new Set(["agent", "antigravity"]);
 export function currentSession(db: Database.Database, chatId: string): StoredSession | undefined {
   const row = db
     .prepare(
-      `SELECT id, provider, session_id, cwd, told, chars, note FROM chat_sessions
+      `SELECT id, provider, session_id, cwd, told, chars, in_step, synced_to, seen FROM chat_sessions
        WHERE chat_id = ? AND ended_at IS NULL ORDER BY opened_at DESC, rowid DESC LIMIT 1`,
     )
     .get(chatId) as Row | undefined;
-  return row && { id: row.id, provider: row.provider, sessionId: row.session_id, cwd: row.cwd, told: row.told, chars: row.chars, note: row.note };
+  return row && { id: row.id, provider: row.provider, sessionId: row.session_id, cwd: row.cwd, told: row.told, chars: row.chars, inStep: row.in_step === 1, syncedTo: row.synced_to, seen: row.seen === 1 };
 }
 
 /** True when a session of this tool has grown past what the tool is known to handle on its own. */
@@ -54,7 +60,14 @@ export function sessionTooLong(session: StoredSession): boolean {
   return UNCOMPACTED.has(session.provider) && session.chars >= UNCOMPACTED_SESSION_CHARS;
 }
 
-/** What a turn leaves in the session: the engine that answered, the context block it was told and what it sent. */
+/**
+ * What a turn leaves in the session: the engine that answered, the context block it was told and what it sent.
+ *
+ * A session is in step when it holds the conversation the student sees. A turn marks the chat's open sessions out of step
+ * when it starts (`markOutOfStep`), and the session that completes the turn normally is in step again (`inStep`). A stop,
+ * a failure, a regenerate that was not kept, a turn that another tool or an API provider answered, and a lost session
+ * all leave it out of step, and the next turn then replays what the student sees since `syncedTo`.
+ */
 export type SessionTurn = {
   provider: string;
   sessionId: string;
@@ -64,11 +77,16 @@ export type SessionTurn = {
   told: string;
   chars: number;
   now: number;
+  inStep: boolean;
+  /** For a session this turn opens: the last message its first prompt held (the one before the question). */
+  syncedTo: string | null;
+  /** Cursor's own folder was seen to hold the chat. */
+  seen?: boolean;
 };
 
 /**
- * Records a finished turn. The session the turn continued is updated; one the turn did not continue (another tool
- * answered, or the tool started a new session) ends with the reason, and the new one is opened.
+ * Records a turn. The session the turn continued is updated; one the turn did not continue (another tool answered, or the
+ * tool started a new session) ends with the reason, and the new one is opened.
  */
 export function recordSession(
   db: Database.Database,
@@ -79,9 +97,9 @@ export function recordSession(
 ): void {
   if (prior && prior.provider === turn.provider && prior.sessionId === turn.sessionId) {
     db.prepare(
-      `UPDATE chat_sessions SET model = ?, effort = ?, told = ?, chars = chars + ?, note = NULL, turns = turns + 1, last_used_at = ?
-       WHERE id = ?`,
-    ).run(turn.model, turn.effort, turn.told, turn.chars, turn.now, prior.id);
+      `UPDATE chat_sessions SET model = ?, effort = ?, told = ?, chars = chars + ?, in_step = ?, seen = MAX(seen, ?),
+         turns = turns + 1, last_used_at = ? WHERE id = ?`,
+    ).run(turn.model, turn.effort, turn.told, turn.chars, turn.inStep ? 1 : 0, turn.seen ? 1 : 0, turn.now, prior.id);
     return;
   }
   if (prior)
@@ -92,8 +110,8 @@ export function recordSession(
     );
   db.prepare(
     `INSERT INTO chat_sessions
-      (id, chat_id, provider, session_id, model, effort, cwd, told, chars, turns, opened_at, last_used_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+      (id, chat_id, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at, last_used_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
   ).run(
     uuidv7(turn.now),
     chatId,
@@ -104,18 +122,31 @@ export function recordSession(
     turn.cwd,
     turn.told,
     turn.chars,
+    turn.inStep ? 1 : 0,
+    turn.syncedTo,
+    turn.seen ? 1 : 0,
     turn.now,
     turn.now,
   );
 }
 
-/** Ends the chat's open session without opening another, when a turn on an engine with no stored session answered. */
-export function endSession(db: Database.Database, chatId: string, now: number, reason: "tool" | "gone" | "long"): void {
-  db.prepare(`UPDATE chat_sessions SET ended_at = ?, ended_reason = ? WHERE chat_id = ? AND ended_at IS NULL`).run(
-    now,
-    reason,
+/** A turn starts: no open session of the chat can be trusted to hold the conversation until one completes normally. */
+export function markOutOfStep(db: Database.Database, chatId: string): void {
+  db.prepare(`UPDATE chat_sessions SET in_step = 0 WHERE chat_id = ? AND ended_at IS NULL`).run(chatId);
+}
+
+/** A turn completed normally on the open session of `provider`: it holds everything up to `messageId`. */
+export function syncSession(db: Database.Database, chatId: string, provider: string, messageId: string): void {
+  db.prepare(`UPDATE chat_sessions SET synced_to = ? WHERE chat_id = ? AND provider = ? AND ended_at IS NULL AND in_step = 1`).run(
+    messageId,
     chatId,
+    provider,
   );
+}
+
+/** The open session holds the conversation only up to `messageId` (null: not even its first message), for what a regenerate left in it. */
+export function rewindSession(db: Database.Database, chatId: string, messageId: string | null): void {
+  db.prepare(`UPDATE chat_sessions SET synced_to = ? WHERE chat_id = ? AND ended_at IS NULL`).run(messageId, chatId);
 }
 
 /** How many tool sessions the chat has opened, the ended ones included. */
@@ -128,13 +159,11 @@ export function contextHash(text: string): string {
   return createHash("sha256").update(text).digest("hex").slice(0, 16);
 }
 
-/** Counts what a tool kept of a turn that ended without an answer (stopped or failed) into the open session of that tool. */
+/**
+ * Counts what a tool kept of a turn that ended without an answer into the open session of that tool, for the size bound
+ * only: what a session is told next does not depend on it.
+ */
 export function addSessionChars(db: Database.Database, chatId: string, provider: string, chars: number): void {
   if (chars <= 0) return;
   db.prepare(`UPDATE chat_sessions SET chars = chars + ? WHERE chat_id = ? AND provider = ? AND ended_at IS NULL`).run(chars, chatId, provider);
-}
-
-/** The next message tells the open session `note`, which a finished turn then clears. */
-export function setSessionNote(db: Database.Database, chatId: string, note: string): void {
-  db.prepare(`UPDATE chat_sessions SET note = ? WHERE chat_id = ? AND ended_at IS NULL`).run(note, chatId);
 }

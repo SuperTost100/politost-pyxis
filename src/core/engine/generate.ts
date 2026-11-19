@@ -393,7 +393,10 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
   try {
     let result = await run({
       selection,
-      prompt: input.promptFor?.(selection.provider) ?? input.prompt,
+      // Read only when the engine sends a prompt: a chat turn that resumes a session sends its follow-up instead.
+      get prompt() {
+        return input.promptFor?.(selection.provider) ?? input.prompt;
+      },
       system: input.system,
       responseSchema,
       signal: input.signal,
@@ -425,9 +428,10 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
               key: repairs,
               followUp: `Your answer failed validation against the JSON schema.\n\nValidation error:\n${issues}\n\nYour answer:\n${result.text}\n\nReturn the corrected JSON only.`,
               // Claude Code and Codex go on in the session the first answer ran in. The others get the whole prompt again.
-              ...(result.sessionId && result.cwd && (result.provider === "claude" || result.provider === "codex")
-                ? { session: { provider: result.provider, id: result.sessionId, cwd: result.cwd } }
-                : {}),
+              session:
+                result.sessionId && result.cwd && (result.provider === "claude" || result.provider === "codex")
+                  ? { provider: result.provider, id: result.sessionId, cwd: result.cwd }
+                  : null,
             }
           : undefined,
       });

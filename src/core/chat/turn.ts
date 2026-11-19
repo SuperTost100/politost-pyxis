@@ -41,7 +41,16 @@ import {
   dataBlock,
 } from "./prompts";
 import { liveSubject, pickSubject, sourceSubjects, subjectSourceIds, type SubjectBy } from "./subject";
-import { addSessionChars, contextHash, currentSession, endSession, recordSession, sessionTooLong, setSessionNote } from "./sessions";
+import {
+  addSessionChars,
+  contextHash,
+  currentSession,
+  markOutOfStep,
+  recordSession,
+  rewindSession,
+  sessionTooLong,
+  syncSession,
+} from "./sessions";
 
 export type ChatContext = {
   kind: "answer" | "passage";
@@ -293,27 +302,27 @@ export function splitFollowups(text: string): { body: string; followups: string[
 
 /**
  * The chat so far, as the model reads it: the question being answered and the reply being replaced are left out, and an
- * answer loses its check blocks and suggestions. Messages are kept whole, newest first, while they fit in `budget`
- * characters; only a newest message longer than the whole budget is cut, at its end. Older messages that do not fit are
- * named in one line, so the model knows the conversation began earlier.
+ * answer loses its check blocks and suggestions. A reply the student stopped is marked as what the student saw. Messages
+ * are kept whole, newest first, while they fit in `budget` characters, and no older body is read once it is met; only a
+ * newest message longer than the whole budget is cut, at its end. Older messages that do not fit are named in one line,
+ * so the model knows the conversation began earlier. With `after`, only the messages after that one (null: all).
  */
 function historyText(
   db: Database.Database,
   chatId: string,
   exclude: string[],
   budget: number,
+  after?: string | null,
 ): string {
   const ids = exclude.filter(Boolean);
+  const floor = after ? ((db.prepare(`SELECT rowid FROM messages WHERE id = ?`).pluck().get(after) as number | undefined) ?? 0) : 0;
+  const filter = `chat_id = ? AND rowid > ?${ids.length ? ` AND id NOT IN (${ids.map(() => "?").join(", ")})` : ""}`;
   const rows = db
-    .prepare(
-      `SELECT role, body FROM messages WHERE chat_id = ?${
-        ids.length ? ` AND id NOT IN (${ids.map(() => "?").join(", ")})` : ""
-      } ORDER BY created_at DESC, rowid DESC`,
-    )
-    .all(chatId, ...ids) as Array<{ role: string; body: string }>;
+    .prepare(`SELECT role, body, stopped FROM messages WHERE ${filter} ORDER BY created_at DESC, rowid DESC`)
+    .iterate(chatId, floor, ...ids) as Iterable<{ role: string; body: string; stopped: number }>;
   const lines: string[] = [];
   let used = 0;
-  let left = 0;
+  let cut = false;
   for (const row of rows) {
     const body =
       row.role === "assistant"
@@ -322,17 +331,21 @@ function historyText(
             "Figure",
           ).trim()
         : row.body;
-    const line = `${row.role}: ${body}`;
+    const line = `${row.role === "assistant" && row.stopped ? "assistant (stopped, the student saw only this)" : row.role}: ${body}`;
     if (used + line.length > budget) {
       if (lines.length === 0) lines.push(`${line.slice(0, budget - 1)}…`);
-      left = rows.length - lines.length;
+      cut = true;
       break;
     }
     lines.push(line);
     used += line.length + 1;
   }
   const kept = lines.reverse();
-  if (left > 0) kept.unshift(`(${left} earlier ${left === 1 ? "message" : "messages"} left out)`);
+  if (cut) {
+    const total = db.prepare(`SELECT COUNT(*) FROM messages WHERE ${filter}`).pluck().get(chatId, floor, ...ids) as number;
+    const left = total - kept.length;
+    if (left > 0) kept.unshift(`(${left} earlier ${left === 1 ? "message" : "messages"} left out)`);
+  }
   return kept.join("\n");
 }
 
@@ -739,42 +752,21 @@ function describeCitations(db: Database.Database, citations: ChatCitation[]): Ch
   });
 }
 
-/** The most of a cut answer a tool session is told the student saw. */
-const SEEN_CHARS = 6000;
+/** A regenerated reply: the session holds the old answer, which the student no longer sees once the new one is kept. */
+const ASKED_AGAIN =
+  "The student asked for this question to be answered again. Your earlier answer to it is discarded and the student sees only the new one.\n\n";
 
-/**
- * What the tool's session may have missed since the last answer it holds in full, in words the model can use. A cut
- * answer is not kept by every tool: Claude Code and Codex hold the question and a stub, Cursor Agent holds neither, and
- * Antigravity holds the start of it, so the notice carries the question and what the student saw. A question that got no
- * text at all (the engine failed before it began) is named the same way. `again` is a regenerated reply: the session
- * holds the old answer, which the student no longer sees.
- */
-function missedByTool(db: Database.Database, chatId: string, exclude: string[], again: boolean, note: string | null): string {
-  const ids = exclude.filter(Boolean);
-  const rows = db
-    .prepare(
-      `SELECT role, body, stopped FROM messages WHERE chat_id = ?${
-        ids.length ? ` AND id NOT IN (${ids.map(() => "?").join(", ")})` : ""
-      } ORDER BY created_at DESC, rowid DESC LIMIT 2`,
-    )
-    .all(chatId, ...ids) as Array<{ role: string; body: string; stopped: number }>;
-  const last = rows[0];
-  const notes: string[] = note ? [note] : [];
-  if (again)
-    notes.push(
-      "The student asked for this question to be answered again. Your earlier answer to it is discarded and the student sees only the new one.",
-    );
-  if (last?.role === "assistant" && last.stopped) {
-    const question = rows[1]?.role === "user" ? rows[1].body : "";
-    const seen = splitFollowups(splitChecks(last.body).body).body;
-    notes.push(
-      `Your last answer was cut off before its end${question ? `, to the question "${oneLine(question, 300)}"` : ""}. The student saw only this much of it, and your own record of the conversation may not have it:\n${dataBlock("seen", seen.length > SEEN_CHARS ? `${seen.slice(0, SEEN_CHARS)}…` : seen)}`,
-    );
-  } else if (last?.role === "user")
-    notes.push(
-      `Your answer to the student's earlier question "${oneLine(last.body, 300)}" failed before any text arrived, so the student has no answer to it.`,
-    );
-  return notes.length ? `${notes.join("\n\n")}\n\n` : "";
+/** The message just before `messageId` in its chat, or null: what the first prompt of a session started at it held. */
+function messageBefore(db: Database.Database, chatId: string, messageId: string): string | null {
+  return (
+    (db
+      .prepare(
+        `SELECT id FROM messages WHERE chat_id = ? AND rowid < (SELECT rowid FROM messages WHERE id = ?)
+         ORDER BY rowid DESC LIMIT 1`,
+      )
+      .pluck()
+      .get(chatId, messageId) as string | undefined) ?? null
+  );
 }
 
 export async function askTurn(
@@ -1086,24 +1078,30 @@ async function answer(
     : "";
   const question = `${attachedBlock}${passageBlock}${noPassages}\n\nQuestion:\n${input.text}${resumeBlock}`;
   const exclude = [userMessageId, replacing?.assistantId ?? ""];
-  // The tool session the chat stored, when this turn can continue it. It already holds the conversation, so the message
-  // is the new question with what the session missed (an answer the student saw only in part, a question that got none),
-  // and the context block when it changed. A new session gets the context block and the whole conversation instead.
+  // The tool session the chat stored, when this turn can continue it. A session in step already holds the conversation,
+  // so the message is the new question, with the context block when it changed. A session out of step (a turn on it
+  // stopped, failed, was not kept, or another engine answered it) gets the full context block and what the student sees
+  // since the last turn that was in step, and is in step again once this turn completes. A new session gets the context
+  // block and the whole conversation instead.
   const stored = currentSession(db, chatId);
   const long = Boolean(stored && sessionTooLong(stored));
   const session = stored && !long ? stored : undefined;
-  const missed = missedByTool(db, chatId, exclude, Boolean(replacing) && !resume, session?.note ?? null);
+  const outOfStep = Boolean(session && !session.inStep);
+  const replay = outOfStep ? historyText(db, chatId, exclude, handoverChars(selection.provider), session!.syncedTo) : "";
+  const replayBlock = replay
+    ? `The conversation as the student sees it, since the last turn you completed. This, not anything you remember differently, is the conversation. A reply marked stopped was cut off, and the student saw only the text shown.\n${replay}\n\n`
+    : "";
   const newQuestion = citations.length
     ? `New question. Its passages are numbered from P1 again; cite only these.\n\n${question.trimStart()}`
     : question.trimStart();
-  const followUp = `${session?.told === told ? "" : `${header}\n\n`}${missed}${newQuestion}`;
+  const followUp = `${outOfStep || session?.told !== told ? `${header}\n\n` : ""}${replayBlock}${replacing && !resume ? ASKED_AGAIN : ""}${newQuestion}`;
   // The conversation handed to a new session is sized to the window of the engine that answers, which an automatic choice
-  // can change inside `generate()`.
+  // can change inside `generate()`. It is built only when a prompt is sent: a fresh start or a retry after a lost session.
   const promptFor = (provider: string) => {
     const earlier = historyText(db, chatId, exclude, handoverChars(provider));
     return `${header}\n\n${earlier ? `Earlier turns:\n${earlier}\n\n` : ""}${question}`;
   };
-  const prompt = promptFor(selection.provider);
+  const beforeQuestion = messageBefore(db, chatId, userMessageId);
   const messageId = uuidv7(now + 2);
   // The engine answering, which differs from the selection when an automatic one was out and another took over.
   let answering: { provider: string; model: string } = selection;
@@ -1120,7 +1118,8 @@ async function answer(
     text: string,
     error: string | null,
     drawn?: { markdown: string; figures: Record<string, string> },
-  ) => ({
+  ) => {
+    const reply = {
     ...finishReply(
       db,
       chatId,
@@ -1144,10 +1143,16 @@ async function answer(
       input.resumeFrom?.figures,
     ),
     ...skippedImages,
-  });
+    };
+    // A stopped reply is what the student sees. When the model had finished it, its session holds it whole.
+    syncSession(db, chatId, answering.provider, messageId);
+    return reply;
+  };
+  // From here no open session of the chat can be trusted to hold the conversation until one completes this turn.
+  markOutOfStep(db, chatId);
   try {
     result = await generate({
-      prompt,
+      prompt: "",
       promptFor,
       system,
       selection,
@@ -1165,14 +1170,14 @@ async function answer(
       conversation: {
         key: chatId,
         followUp,
-        ...(session ? { session: { provider: session.provider, id: session.sessionId, cwd: session.cwd } } : {}),
+        session: session ? { provider: session.provider, id: session.sessionId, cwd: session.cwd, seen: session.seen } : null,
         // A tool that keeps what it was sent keeps a turn the student stops, so the session is stored when it begins.
         // Cursor Agent loses such a turn, so its session is stored when the turn ends.
         onSession: (sessionId, provider, cwd) => {
           if (provider === "agent") return;
           const open = currentSession(db, chatId);
           if (open?.provider === provider && open.sessionId === sessionId) return;
-          recordSession(db, chatId, open, { provider, sessionId, cwd, model: selection.model, effort: selection.effort ?? null, told: "", chars: 0, now: Date.now() }, long ? "long" : "gone");
+          recordSession(db, chatId, open, { provider, sessionId, cwd, model: selection.model, effort: selection.effort ?? null, told: "", chars: 0, now: Date.now(), inStep: false, syncedTo: beforeQuestion }, long ? "long" : "gone");
         },
       },
       cache: true,
@@ -1201,10 +1206,13 @@ async function answer(
           told,
           chars: (result.continued ? followUp : promptFor(result.provider)).length + result.text.length,
           now: Date.now(),
+          inStep: true,
+          syncedTo: beforeQuestion,
+          seen: result.seen,
         },
         long ? "long" : "gone",
       );
-    } else if (stored && result.provider !== stored.provider) endSession(db, chatId, Date.now(), "tool");
+    }
     // The engine ended the stream without finishing the answer: out of room, or no final event. That is a failure
     // mid-answer like a dropped connection, so the catch below keeps what arrived marked cut off with Continue, saves
     // nothing when nothing arrived, and leaves the earlier reply in place when an answer is regenerated.
@@ -1286,6 +1294,7 @@ async function answer(
     figures,
     now,
   });
+  syncSession(db, chatId, result.provider, messageId);
   // The subject Pyxis picked is kept only with a whole reply, and only if nobody set one while it was written: a failed
   // or stopped turn leaves the chat as it was.
   if (picked) {
@@ -1456,10 +1465,6 @@ function saveReply(
   };
 }
 
-/** What a session is told after a regenerated answer failed or was stopped: the student keeps the one before it. */
-const EARLIER_STAYS =
-  "The new answer you were asked for was not finished and is not kept. The student still sees your earlier answer to that question, so do not treat it as discarded.";
-
 /**
  * Answers the chat's last question again, replacing the reply that ends the chat once the new one is saved. With
  * `resume` it continues a reply that was cut short instead: the new reply is that text plus what the model adds.
@@ -1507,9 +1512,10 @@ export async function regenerateTurn(
         }
       : undefined;
   // The tool's session was told this question is answered again and the earlier answer discarded. When the new answer
-  // fails or is stopped, the earlier one stays on screen, and the next message says so.
+  // fails or is stopped, the earlier one stays on screen: the session holds the conversation only up to the message before
+  // that question, so the next message replays the question and the answer the student sees.
   const keepsEarlier = () => {
-    if (last?.role === "assistant" && !resumeFrom) setSessionNote(db, input.chatId, EARLIER_STAYS);
+    if (last?.role === "assistant" && !resumeFrom) rewindSession(db, input.chatId, messageBefore(db, input.chatId, user.id));
   };
   const result = await askTurn(
     db,
