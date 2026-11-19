@@ -20,6 +20,7 @@ import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
+import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { animationsSettled, clickSettled } from "./settled";
 import { expectNoAxeViolations } from "./axe";
@@ -82,6 +83,19 @@ const ocrJobs = async (page: Page) =>
   (await invoke<Job[]>(page, "jobs.list")).filter(
     (job) => job.kind === "ocr-data-download",
   );
+
+/** Every row of the download job in the database, whether it failed, was dismissed or is done, and why it ended. */
+function downloadJobs(userData: string): string {
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { readOnly: true, timeout: 5000 });
+  try {
+    const rows = db
+      .prepare("SELECT state, error, dismissed, created_at AS createdAt, updated_at AS updatedAt FROM jobs WHERE kind = 'ocr-data-download' ORDER BY created_at, rowid")
+      .all() as Array<{ state: string; error: string | null; dismissed: number; createdAt: number; updatedAt: number }>;
+    return rows.map((row) => `${row.state}${row.error ? ` (${row.error})` : ""}, dismissed ${row.dismissed}, ${row.createdAt} to ${row.updatedAt}`).join("; ");
+  } finally {
+    db.close();
+  }
+}
 
 function expectPinned(userData: string) {
   for (const [lang, pinned] of Object.entries(OCR_DATA_FILES)) {
@@ -218,7 +232,7 @@ test("OCR data: once setup is done Pyxis downloads the pinned files by itself, r
     );
     expect(
       files.requests.slice(2),
-      `Requests: ${files.trail.join("; ")}. Download jobs finished today: ${finished.map((job) => `${job.state} at ${job.updatedAt}`).join(", ")}.`,
+      `Requests: ${files.trail.join("; ")}. Download jobs finished today: ${finished.map((job) => `${job.state} at ${job.updatedAt}`).join(", ")}. Every download job, including one that stopped and was dismissed: ${downloadJobs(userData)}.`,
     ).toEqual(["/eng.traineddata"]);
   } finally {
     await app.close();
