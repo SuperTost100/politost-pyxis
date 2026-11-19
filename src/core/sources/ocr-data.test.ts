@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -18,6 +19,7 @@ import {
   downloadOcrLanguage,
   OCR_DATA_BASE,
   OCR_DATA_FILES,
+  type OcrDataIo,
   ocrConsent,
   ocrDataDir,
   ocrDataStatus,
@@ -240,7 +242,7 @@ describe("OCR language data", () => {
       writeFileSync(join(ocrDataDir(tess), "eng.traineddata"), bytes);
       return tess;
     };
-    const download = (tess: string, io: ReturnType<typeof flaky>["io"]) => {
+    const download = (tess: string, io: OcrDataIo) => {
       const fetchImpl = vi.fn(reply(fake.eng));
       return { fetchImpl, run: () => downloadOcrLanguage(tess, "eng", signal(), { fetchImpl: fetchImpl as never, files, io }) };
     };
@@ -268,6 +270,73 @@ describe("OCR language data", () => {
       expect(readdirSync(ocrDataDir(tess))).toEqual(["eng.traineddata"]);
       await expect(readVerifiedOcrData(tess, ["eng"], files, system.io)).rejects.toThrow("ocr-data-unreadable");
       expect(await ocrDataStatus(tess, { eng: files.eng! }, system.io)).toMatchObject({ state: "unreadable" });
+    });
+
+    // Putting the verified file in place is the last step of a repair. On Windows a virus scanner that has just opened the
+    // new file makes the rename fail for a moment, as it does a read, and a job that failed there left the file altered and
+    // let the next start fetch it a second time.
+    const renaming = (codes: string[], forever = false) => {
+      let renames = 0;
+      const waits: number[] = [];
+      return {
+        renames: () => renames,
+        waits,
+        io: {
+          wait: async (ms: number) => void waits.push(ms),
+          rename: async (from: string, to: string) => {
+            const code = forever ? codes[0] : codes[renames];
+            renames += 1;
+            if (code) throw fail(code);
+            renameSync(from, to);
+          },
+        },
+      };
+    };
+
+    it.each(["EBUSY", "EPERM", "EACCES"])("%s on the rename of a repaired file, once: tried again, and the file is fetched once", async (code) => {
+      const tess = withFile(fake.eng.subarray(0, 4));
+      const system = renaming([code]);
+      const { fetchImpl, run } = download(tess, system.io);
+      await run();
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(system.waits).toEqual([50]);
+      expect(readFileSync(join(ocrDataDir(tess), "eng.traineddata")).equals(fake.eng)).toBe(true);
+      expect(readdirSync(ocrDataDir(tess))).toEqual(["eng.traineddata"]);
+    });
+
+    it("a rename that keeps failing ends after a bounded wait with the system's error, and leaves no staging file behind", async () => {
+      const tess = withFile(fake.eng.subarray(0, 4));
+      const system = renaming(["EPERM"], true);
+      const { fetchImpl, run } = download(tess, system.io);
+      await expect(run()).rejects.toThrow("EPERM");
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(system.waits).toEqual([50, 100, 250, 500]);
+      expect(system.renames()).toBe(5);
+      expect(readdirSync(ocrDataDir(tess))).toEqual(["eng.traineddata"]);
+    });
+
+    it("a cancel during the pause between two rename attempts ends the download: the file is not put in place", async () => {
+      const tess = withFile(fake.eng.subarray(0, 4));
+      const controller = new AbortController();
+      const system = renaming(["EPERM"]);
+      // The student cancels while the repair waits to try the rename again.
+      const io = { ...system.io, wait: async (ms: number) => void (system.waits.push(ms), controller.abort()) };
+      const fetchImpl = vi.fn(reply(fake.eng));
+      await expect(downloadOcrLanguage(tess, "eng", controller.signal, { fetchImpl: fetchImpl as never, files, io })).rejects.toThrow();
+      expect(controller.signal.aborted).toBe(true);
+      // The second attempt did not run, the file is the altered one it was, and the staging file is gone.
+      expect(system.renames()).toBe(1);
+      expect(system.waits).toEqual([50]);
+      expect(readFileSync(join(ocrDataDir(tess), "eng.traineddata")).equals(fake.eng.subarray(0, 4))).toBe(true);
+      expect(readdirSync(ocrDataDir(tess))).toEqual(["eng.traineddata"]);
+    });
+
+    it("an error that is not a file held for a moment is not tried again", async () => {
+      const tess = withFile(fake.eng.subarray(0, 4));
+      const system = renaming(["ENOSPC"], true);
+      await expect(download(tess, system.io).run()).rejects.toThrow("ENOSPC");
+      expect(system.waits).toEqual([]);
+      expect(system.renames()).toBe(1);
     });
 
     it("a language that is not there is still missing and still downloads, whichever way the system says so", async () => {
