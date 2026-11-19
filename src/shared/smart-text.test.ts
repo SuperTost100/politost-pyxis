@@ -347,6 +347,17 @@ describe("figure blocks", () => {
     expect(parseLooseJson('{"c\\u006fde":"a\\tb"}', ["code"])).toEqual({ code: "a\tb" });
   });
 
+  it("compares a key as the repaired text writes it, which is the key the output has", () => {
+    // `\\u0063ode` is the escaped pair `\\` and then `u0063ode`: the key is those literal characters, and is not `code`, so its
+    // value is prose and `\nabla` in it stays a LaTeX command.
+    expect(parseLooseJson(String.raw`{"\\u0063ode":"\nabla"}`, ["code"])).toEqual({ [String.raw`\u0063ode`]: String.raw`\nabla` });
+    // A key that the repair writes as `\nabla` (a LaTeX command, not a newline) is that key, and a verbatim name that spells
+    // it matches: its value is read as JSON says, so the tab is a tab.
+    expect(parseLooseJson(String.raw`{"\nabla":"a\tb"}`, [String.raw`\nabla`])).toEqual({ [String.raw`\nabla`]: "a\tb" });
+    // And the key that is `code` once decoded still matches, as before.
+    expect(parseLooseJson(String.raw`{"c\u006fde":"a\tb"}`, ["code"])).toEqual({ code: "a\tb" });
+  });
+
   it("keeps a block without a kind a plot under the key it had before figures had kinds", () => {
     const old = parseFigure('{"caption": "Una parabola", "code": "  x = np.linspace(-2, 2)\\nplt.plot(x, x**2)\\n"}');
     expect(old).toEqual({
