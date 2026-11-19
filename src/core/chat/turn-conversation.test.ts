@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { strToU8, zipSync } from "fflate";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
+import { saveProfile } from "../profile/profile";
 import { importSmartbook } from "../sources/smartbook";
 import { clearBench } from "../engine/bench";
 import { rememberReady } from "../engine/selection";
@@ -118,7 +119,7 @@ describe("a chat's stored tool session", () => {
   async function ask(
     db: ReturnType<typeof setup>["db"],
     text: string,
-    options: { chatId?: string; sourceIds?: string[]; sessionId?: string; provider?: string; subject?: string; way?: "solved" | "guided" } = {},
+    options: { chatId?: string; sourceIds?: string[]; sessionId?: string; provider?: string; subject?: string } = {},
   ) {
     let seen!: Seen;
     const result = await askTurn(db, {
@@ -126,7 +127,6 @@ describe("a chat's stored tool session", () => {
       text,
       sourceIds: options.sourceIds,
       subject: options.subject,
-      way: options.way,
       allowGeneral: options.sourceIds === undefined,
       run: async (input) => {
         seen = input as Seen;
@@ -148,16 +148,18 @@ describe("a chat's stored tool session", () => {
     db.close();
   });
 
-  it("keeps the system prompt the same for the whole chat, whatever way the reply takes", async () => {
+  it("keeps the system prompt the same for the whole chat, whatever the question or the context", async () => {
     const { db } = setup();
+    db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('s-fis', 'Fisica', 1)").run();
     const first = await ask(db, "Che cos'è il vettore posizione?");
     const guided = await ask(db, "Non ho capito, guidami passo passo", { chatId: first.chatId });
     const solved = await ask(db, "Dammi la soluzione", { chatId: first.chatId });
     const subject = await ask(db, "Ora parliamo di altro", { chatId: first.chatId, subject: "Fisica" });
-    expect(guided.seen.system).toBe(first.seen.system);
-    expect(solved.seen.system).toBe(first.seen.system);
-    expect(subject.seen.system).toBe(first.seen.system);
+    saveProfile(db, { followups: false });
+    const followups = await ask(db, "E dopo?", { chatId: first.chatId });
+    for (const turn of [guided, solved, subject, followups]) expect(turn.seen.system).toBe(first.seen.system);
     expect(first.seen.system).not.toContain("Italian");
+    expect(first.seen.system).not.toContain("Fisica");
     db.close();
   });
 
@@ -168,13 +170,16 @@ describe("a chat's stored tool session", () => {
     expect(first.seen.prompt).toContain("<context>");
     const same = await ask(db, "E il vettore spostamento?", { chatId: first.chatId });
     expect(same.seen.conversation!.followUp).not.toContain("<context>");
-    const guided = await ask(db, "Non ho capito, guidami passo passo", { chatId: first.chatId });
-    expect(guided.seen.conversation!.followUp).toContain("<context>");
-    expect(guided.seen.conversation!.followUp).toContain("Guide the student one step at a time.");
-    const subject = await ask(db, "E in meccanica?", { chatId: first.chatId, subject: "Fisica", way: "guided" });
+    // Asking for a hint or for the solution changes nothing in the block: there is one way of answering.
+    const hint = await ask(db, "Non ho capito, dammi un indizio", { chatId: first.chatId });
+    expect(hint.seen.conversation!.followUp).not.toContain("<context>");
+    const subject = await ask(db, "E in meccanica?", { chatId: first.chatId, subject: "Fisica" });
     expect(subject.seen.conversation!.followUp).toContain("Subject: Fisica.");
-    const again = await ask(db, "E il resto?", { chatId: first.chatId, way: "guided" });
+    const again = await ask(db, "E il resto?", { chatId: first.chatId });
     expect(again.seen.conversation!.followUp).not.toContain("<context>");
+    saveProfile(db, { followups: false });
+    const off = await ask(db, "E poi?", { chatId: first.chatId });
+    expect(off.seen.conversation!.followUp).toContain("Follow-ups: leave the <followups> block out.");
     db.close();
   });
 

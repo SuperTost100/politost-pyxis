@@ -113,7 +113,6 @@ describe("askTurn", () => {
     const input = {
       text: "Che cos'è il vettore posizione?",
       sourceIds: [imported.sourceId],
-      way: "guided" as const,
     };
     const question = await askTurn(db, {
       ...input,
@@ -129,7 +128,6 @@ describe("askTurn", () => {
     );
     const factual = await askTurn(db, {
       ...input,
-      way: "solved",
       run: async () => ({
         ...reply,
         text: "Il vettore posizione descrive il punto.",
@@ -290,8 +288,8 @@ describe("askTurn", () => {
         )
         .get(),
     ).toEqual({
-      prompt_template: "chat.solver",
-      prompt_version: templateVersion("chat.solver"),
+      prompt_template: "chat.tutor",
+      prompt_version: templateVersion("chat.tutor"),
     });
     expect(result.covered).toBe(true);
     expect(result.message?.modelId).toBe("gpt-6.1-sol");
@@ -516,7 +514,7 @@ describe("askTurn", () => {
     expect(system).toContain("Language: Italian.");
     // The system prompt is the same for every chat turn, so a general answer carries the citation rule too.
     expect(system).toContain(partialText("citation"));
-    expect(system).toContain("No passages from the student's material are attached");
+    expect(system).toContain("answer from your own knowledge without referring to passages or sources");
     expect(system).not.toMatch(/\{\{[A-Za-z]/);
   });
 

@@ -5,7 +5,7 @@ import type { EngineResult } from "../engine/funnel";
 import { saveProfile } from "../profile/profile";
 import { setPlanEducation } from "../plans/education";
 import { importSmartbook } from "../sources/smartbook";
-import { askTurn, chatContext, chatPlan, chatScope, readChat, regenerateTurn, seedChat } from "./turn";
+import { askTurn, chatContext, chatPlan, chatScope, readChat, seedChat } from "./turn";
 
 const reply: EngineResult = {
   text: "Il vettore descrive il punto [P1].\n<followups>\nUno?\nDue?\nTre?\n</followups>",
@@ -124,54 +124,32 @@ describe("profile context in the tutor prompt", () => {
 });
 
 describe("the way of answering and follow-ups", () => {
-  const guided = "Guide the student one step at a time.";
-
-  it("guides a question that asks for help, solves one that asks for the answer, and the asked way wins", async () => {
+  it("sends the same instructions whatever the question asks for, and stores one template", async () => {
     const { db, sourceId } = setup();
-    const help = await systemFor(db, {
-      text: "Non ho capito il vettore posizione, mi aiuti a ragionarci?",
-      sourceIds: [sourceId],
-    });
-    expect(help.system).toContain(guided);
-    expect(readChat(db, help.result.chatId).at(-1)?.way).toBe("guided");
-    const solve = await systemFor(db, { text: question, sourceIds: [sourceId] });
-    expect(solve.system).not.toContain(guided);
-    expect(solve.system).toContain("opening line is exactly ```check");
-    expect(readChat(db, solve.result.chatId).at(-1)?.way).toBe("solved");
-    const asked = await systemFor(db, { text: question, sourceIds: [sourceId], way: "guided" });
-    expect(asked.system).toContain(guided);
-    db.close();
-  });
-
-  it("keeps guiding while the student answers a step, and Regenerate and the switch under the reply keep or change the way", async () => {
-    const { db, sourceId } = setup();
-    const first = await systemFor(db, { text: "Guidami passo passo sul vettore posizione", sourceIds: [sourceId] });
-    expect(first.system).toContain(guided);
-    // The student's answer to the step names no way: Pyxis keeps guiding.
-    const answer = await systemFor(db, { chatId: first.result.chatId, text: "Il punto rispetto all'origine" });
-    expect(answer.system).toContain(guided);
-    let again = "";
-    const run = async (call: { system?: string; prompt: string }) => {
-      again = `${call.system ?? ""}\n${call.prompt}`;
-      return reply;
-    };
-    await regenerateTurn(db, { chatId: first.result.chatId, run });
-    expect(again).toContain(guided);
-    await regenerateTurn(db, { chatId: first.result.chatId, way: "solved", run });
-    expect(again).not.toContain(guided);
-    expect(readChat(db, first.result.chatId).at(-1)?.way).toBe("solved");
-    // Asking for the solution ends the guide.
-    const solution = await systemFor(db, { chatId: first.result.chatId, text: "Dammi la soluzione" });
-    expect(solution.system).not.toContain(guided);
-    db.close();
-  });
-
-  it("guides from general knowledge too, and answers from general knowledge with chat.general when nothing is searched", async () => {
-    const { db, sourceId } = setup();
-    const asked = await systemFor(db, { text: question, sourceIds: [sourceId], way: "guided", allowGeneral: true });
-    expect(asked.system).toContain(guided);
-    const general = await systemFor(db, { text: question, allowGeneral: true });
-    expect(general.system).toContain("No passages from the student's material are attached");
+    const asks = [
+      "Non ho capito il vettore posizione, mi aiuti a ragionarci?",
+      question,
+      "Dammi la soluzione",
+    ];
+    const systems = new Set<string>();
+    for (const text of asks) {
+      let system = "";
+      await askTurn(db, {
+        text,
+        sourceIds: [sourceId],
+        run: async (call) => {
+          system = call.system ?? "";
+          return reply;
+        },
+      });
+      systems.add(system);
+      expect(system).toContain("How you answer: read what the student wants");
+      expect(system).toContain("opening line is exactly ```check");
+    }
+    expect(systems.size).toBe(1);
+    expect(db.prepare("SELECT DISTINCT prompt_template FROM messages WHERE role = 'assistant'").pluck().all()).toEqual([
+      "chat.tutor",
+    ]);
     db.close();
   });
 

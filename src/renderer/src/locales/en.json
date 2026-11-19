@@ -328,12 +328,6 @@
       "nowPyxis": "I'll pick the subject once I find the right sources.",
       "failed": "I couldn't change the chat's subject. Try again."
     },
-    "way": {
-      "guide": "Guide me step by step",
-      "solve": "Give me the solution",
-      "guiding": "Rewriting the answer one step at a time",
-      "solving": "Writing the full solution"
-    },
     "notCovered": "Your material does not cover this question.",
     "answerGeneral": "Answer from general knowledge",
     "skippedTooLarge_one": "A photo from this chat was too large to send, so this answer did not see it.",

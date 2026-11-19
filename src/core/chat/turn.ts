@@ -35,14 +35,12 @@ import { plainTitle } from "../../shared/spoken-math";
 import { oneLine, profileContext } from "../profile/context";
 import { readProfile } from "../profile/profile";
 import {
-  type ChatTemplateId,
+  CHAT_TEMPLATE,
   chatSystemPrompt,
   contextBlock,
-  chatTemplateId,
   dataBlock,
 } from "./prompts";
 import { liveSubject, pickSubject, sourceSubjects, subjectSourceIds, type SubjectBy } from "./subject";
-import { answerWay, wayOfTemplate, type AnswerWay } from "./way";
 import { contextHash, currentSession, endSession, recordSession, sessionTooLong } from "./sessions";
 
 export type ChatContext = {
@@ -80,8 +78,6 @@ export type ChatMessageView = {
   modelId: string | null;
   provider: string | null;
   grounding: Grounding | null;
-  /** Solved in full, or guided one step at a time. */
-  way: AnswerWay;
   followups: string[];
   citations: ChatCitation[];
   reaction: "up" | "down" | null;
@@ -117,8 +113,6 @@ type AskInput = {
   sourceIds?: string[];
   /** ASK-07: a plan scopes the chat to the plan's sources; null clears it, undefined keeps it. */
   planId?: string | null;
-  /** The way the student asked for with the action under an answer. Without it the question decides (`answerWay`). */
-  way?: AnswerWay;
   allowGeneral?: boolean;
   /** A subject the student chose for the chat, null for the whole Library. Undefined keeps the chat's own. */
   subject?: string | null;
@@ -721,17 +715,6 @@ function libraryHasPassages(db: Database.Database): boolean {
   );
 }
 
-/** How the reply before this question answered, so a student answering a guided step keeps being guided. */
-function previousWay(db: Database.Database, chatId: string, replacing?: string): AnswerWay | null {
-  const row = db
-    .prepare(
-      `SELECT prompt_template FROM messages WHERE chat_id = ? AND role = 'assistant' AND id IS NOT ?
-       ORDER BY created_at DESC LIMIT 1`,
-    )
-    .get(chatId, replacing ?? null) as { prompt_template: string | null } | undefined;
-  return row ? wayOfTemplate(row.prompt_template) : null;
-}
-
 /** Adds each citation's file title, its subject and whether it was attached to the chat, for the "I used" line. */
 function describeCitations(db: Database.Database, citations: ChatCitation[]): ChatCitation[] {
   if (citations.length === 0) return citations;
@@ -1069,17 +1052,13 @@ async function answer(
       ? `Attached text:\n${dataBlock("attached", notes.join("\n"))}\n\n`
       : "";
   const profile = readProfile(db);
-  const way = answerWay({ text: input.text, previous: previousWay(db, chatId, replacing?.assistantId), asked: input.way });
-  // Nothing searched and no file: the reply can only come from the model's own knowledge.
-  const template = chatTemplateId({ way, general: !searches && !thisTurnFile && !kept });
+  const template = CHAT_TEMPLATE;
   const where = chatPrompt(db, planId);
-  // A guided step asks the student to do the next part, so only solved answers offer figures.
-  const drawer = way === "guided" ? null : await figureRunner(input.python);
+  const drawer = await figureRunner(input.python);
   // The system prompt is the same for the whole chat. What changes from turn to turn is in the context block that opens
   // the message, which a tool's session gets only when it differs from the one it last received.
   const system = chatSystemPrompt();
   const header = `${contextBlock({
-    template,
     language: where.language,
     planLine: where.planLine,
     subject: subjectLine,
@@ -1296,14 +1275,17 @@ async function answer(
         chatId,
       );
   }
-  // The check stays on the chat's own engine: it is a short extraction, not part of a stronger answer.
-  const checking = way === "solved" && needsSolverChecks(parsed.body);
+  // The check stays on the chat's own engine: it is a short extraction, not part of a stronger answer. It is a model call
+  // of its own, a new session in the tool's history, so it runs only for an answer that has math and no check blocks
+  // of its own (the template asks for them inline), and not for a reply that ends with a question: a guiding step
+  // states nothing to check. Cursor Agent takes 11 to 40 s before its first text, longer than the 20 s a check may
+  // take, so its checks were cancelled every time and spent tokens no row recorded.
+  // shortcut: no separate check on Cursor Agent; lift it when its first text comes within the check's time.
+  const checkSelection = selectionFor(db, "chat");
+  const checking =
+    needsSolverChecks(parsed.body) && !parsed.body.trim().endsWith("?") && checkSelection.provider !== "agent";
   if (checking)
-    startChecks(
-      db,
-      { chatId, messageId, body: parsed.body },
-      { selection: selectionFor(db, "chat"), run: input.run },
-    );
+    startChecks(db, { chatId, messageId, body: parsed.body }, { selection: checkSelection, run: input.run });
   return { ...reply, message: { ...reply.message!, checking }, ...skippedImages };
 }
 
@@ -1390,7 +1372,8 @@ function saveReply(
     selected: meta.selected,
     cited: linked.length,
     attached: meta.attached,
-    question: meta.template === "chat.socratic" && parsed.body.trim().endsWith("?"),
+    // A reply that ends with a question is a guiding step, which is not expected to cite.
+    question: parsed.body.trim().endsWith("?"),
     passages: meta.citations.length,
     widened: meta.widened || (within != null && linked.some((cite) => !within.has(cite.sourceId))),
   });
@@ -1409,7 +1392,7 @@ function saveReply(
     meta.model,
     meta.template,
     // Stored with each assistant message: the template ID and its own version.
-    promptProvenance(meta.template as ChatTemplateId).version,
+    promptProvenance(CHAT_TEMPLATE).version,
     storedGrounding(grounding),
     meta.stopped ? 1 : 0,
     meta.error,
@@ -1438,7 +1421,6 @@ function saveReply(
       modelId: meta.model || null,
       provider: meta.provider || null,
       grounding,
-      way: wayOfTemplate(meta.template),
       followups: parsed.followups,
       citations: describeCitations(db, linked),
       reaction: null,
@@ -1498,11 +1480,9 @@ export async function regenerateTurn(
           ...(last.figures_json ? { figures: figureImages(JSON.parse(last.figures_json)) } : {}),
         }
       : undefined;
-  // Regenerate and Continue answer the same way as the reply they replace, unless the student asked for the other way.
-  const way = input.way ?? (last?.role === "assistant" ? wayOfTemplate(last.prompt_template) : undefined);
   const result = await askTurn(
     db,
-    { ...rest, way, text: user.body, resumeFrom },
+    { ...rest, text: user.body, resumeFrom },
     last?.role === "assistant"
       ? { assistantId: last.id, userId: user.id }
       : undefined,
@@ -1716,7 +1696,6 @@ export function readChat(
       modelId: row.model_id,
       provider: row.engine_provider,
       grounding: row.role === "assistant" ? readGrounding(row.grounding) : null,
-      way: wayOfTemplate(row.prompt_template),
       followups: chips ? parsed.followups : [],
       citations,
       reaction:

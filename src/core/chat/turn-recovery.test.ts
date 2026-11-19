@@ -113,7 +113,6 @@ describe("the earlier turns sent to the model", () => {
     const first = await askTurn(db, {
       text: "deriva x al quadrato",
       allowGeneral: true,
-      way: "guided",
       run: async () => ({
         ...reply,
         text: 'La derivata è 2x.\n\n```check\n{"kind":"derivative","expr":"x^2","claimed":"2x"}\n```\n<followups>\nE x al cubo?\n</followups>',
@@ -125,7 +124,6 @@ describe("the earlier turns sent to the model", () => {
       chatId: first.chatId,
       text: "e la seconda derivata?",
       allowGeneral: true,
-      way: "guided",
       run: async (input) => {
         prompt = input.prompt;
         return reply;
@@ -196,7 +194,6 @@ describe("follow-up suggestions", () => {
     const result = await askTurn(db, {
       text: "spiega",
       allowGeneral: true,
-      way: "guided",
       run: async () => ({ ...reply, text: "Il corpo.\n<followups>\nUno?\nDue?" }),
     });
     expect(result.message?.body).toBe("Il corpo.");

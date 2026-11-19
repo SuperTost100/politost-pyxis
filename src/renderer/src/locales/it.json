@@ -328,12 +328,6 @@
       "nowPyxis": "Scelgo io la materia quando trovo le fonti giuste.",
       "failed": "Non sono riuscito a cambiare la materia della chat. Riprova."
     },
-    "way": {
-      "guide": "Guidami passo passo",
-      "solve": "Dammi la soluzione",
-      "guiding": "Riscrivo la risposta un passo alla volta",
-      "solving": "Scrivo la soluzione completa"
-    },
     "notCovered": "Il materiale non copre questa domanda.",
     "answerGeneral": "Rispondi con le conoscenze generali",
     "skippedTooLarge_one": "Una foto di questa chat era troppo grande da inviare, quindi questa risposta non l'ha vista.",

@@ -78,7 +78,7 @@ async function stored(page: Page) {
     subject: string | null;
     subjectBy: string | null;
     sourceIds: string[];
-    messages: Array<{ role: string; way: string; grounding: string | null }>;
+    messages: Array<{ role: string; grounding: string | null }>;
   };
 }
 
@@ -301,40 +301,19 @@ test("Ask: a subject chosen on a new chat's first page survives the whiteboard, 
   }
 });
 
-test("Ask: the action under an answer asks again the other way, in both directions, and keeps it after a reload", async () => {
+test("Ask: an answer has no action that switches how it is written, whatever the question asks for", async () => {
   test.setTimeout(180000);
-  const { app, page, userData } = await launch({ PYXIS_E2E_REPLY: REPLY, PYXIS_E2E_REPLY_DELAY: "2500" });
+  const { app, page, userData } = await launch({ PYXIS_E2E_REPLY: REPLY, PYXIS_E2E_REPLY_DELAY: "500" });
   const db = seedLibrary(userData);
   try {
     await openAsk(page);
-    await ask(page, "Calcola il campo elettrico a 5 cm da un filo carico");
-    // A question that asks for the result is solved, so the action under it offers a guide.
-    const guide = lastReply(page).getByRole("button", { name: "Guidami passo passo" });
-    await expect(guide).toBeVisible();
-    expect((await stored(page)).messages.at(-1)).toMatchObject({ way: "solved" });
-    await guide.click();
-    // The answer is rewritten in place, with a working line that says how, and no action until it is done.
-    await expect(page.getByRole("status").filter({ hasText: "Riscrivo la risposta un passo alla volta" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Guidami passo passo" })).toHaveCount(0);
-    await saveShot(page, "ask-subject/switching.png");
-    const solve = lastReply(page).getByRole("button", { name: "Dammi la soluzione" });
-    await expect(solve).toBeVisible({ timeout: 60000 });
-    await expect(page.locator(".px-msg:not(.px-msg-user):not(.px-msg-thinking)")).toHaveCount(1);
-    expect((await stored(page)).messages.at(-1)).toMatchObject({ way: "guided" });
-
-    // After a reload the answer still offers the way it did not take.
-    await page.reload();
-    await expect(lastReply(page).getByRole("button", { name: "Dammi la soluzione" })).toBeVisible();
-    await lastReply(page).getByRole("button", { name: "Dammi la soluzione" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Scrivo la soluzione completa" })).toBeVisible();
-    await expect(lastReply(page).getByRole("button", { name: "Guidami passo passo" })).toBeVisible({ timeout: 60000 });
-    expect((await stored(page)).messages.at(-1)).toMatchObject({ way: "solved" });
-
-    // A question that asks for help is guided from the start, and only the last answer carries the action.
-    await ask(page, "Non ho capito, mi aiuti a ragionarci?");
-    expect((await stored(page)).messages.at(-1)).toMatchObject({ way: "guided" });
-    await expect(page.getByRole("button", { name: "Dammi la soluzione" })).toHaveCount(1);
-    await expect(page.getByRole("button", { name: "Guidami passo passo" })).toHaveCount(0);
+    for (const text of ["Calcola il campo elettrico a 5 cm da un filo carico", "Non ho capito, mi aiuti a ragionarci?"]) {
+      await ask(page, text);
+      await expect(lastReply(page).getByRole("button", { name: "Rigenera" })).toBeVisible();
+      for (const name of ["Guidami passo passo", "Dammi la soluzione", "Guide me step by step", "Give me the solution"])
+        await expect(page.getByRole("button", { name })).toHaveCount(0);
+    }
+    expect((await stored(page)).messages.filter((message) => message.role === "assistant")).toHaveLength(2);
   } finally {
     await finish(app, userData, db);
   }
