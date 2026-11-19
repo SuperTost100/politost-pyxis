@@ -148,6 +148,21 @@ describe("a chat's stored tool session", () => {
     db.close();
   });
 
+  it("counts a turn once when the tool names its session before the turn ends", async () => {
+    const { db } = setup();
+    const first = await askTurn(db, {
+      text: "prima",
+      allowGeneral: true,
+      run: async (input) => {
+        (input as Seen).conversation?.onSession?.("s1", "claude", "/scratch");
+        return toolReply("s1", input as Seen);
+      },
+    });
+    await ask(db, "seconda", { chatId: first.chatId });
+    expect(db.prepare("SELECT turns FROM chat_sessions WHERE chat_id = ?").pluck().get(first.chatId)).toBe(2);
+    db.close();
+  });
+
   it("keeps the system prompt the same for the whole chat, whatever the question or the context", async () => {
     const { db } = setup();
     db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('s-fis', 'Fisica', 1)").run();

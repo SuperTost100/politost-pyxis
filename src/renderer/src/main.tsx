@@ -1,8 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
 import { watchWindowErrors } from "./lib/errorReports";
+import { createQueryClient } from "./lib/queryClient";
 import "./locales/i18n";
 import "./lib/focusSource";
 import "./lib/spinLabels";
@@ -12,22 +13,7 @@ import "./styles/global.css";
 // Before the first render, so an error while the app starts is reported too (only while the crash-report switch is on).
 watchWindowErrors();
 
-// Every query and mutation reads or writes local data over IPC, so none waits for the network: with the default mode a
-// window "offline" event (a dropped Wi-Fi) paused all of them for good. A reconnect refetches nothing either, as a focus
-// does not: the data is kept fresh by invalidation, and some of it is costly to compute again (the exam list, Progress).
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false, networkMode: "always" },
-    mutations: { networkMode: "always" },
-  },
-});
-// The exam list, a plan and its Progress tab are costly to compute. They stay fresh for 30 s unless a change marks
-// them stale: a finished job, a study write (the `plans.evidence` broadcast) or an explicit invalidation.
-for (const key of ["plans", "plan", "series"])
-  queryClient.setQueryDefaults([key], { staleTime: 30_000 });
-// A long chat or lesson is a lot of text and math. Its data goes 30 s after leaving it, not after the default 5 minutes.
-for (const key of ["chat", "lesson"])
-  queryClient.setQueryDefaults([key], { gcTime: 30_000 });
+const queryClient = createQueryClient();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("missing-root");

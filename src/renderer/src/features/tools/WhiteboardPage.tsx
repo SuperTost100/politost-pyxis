@@ -117,6 +117,10 @@ export function WhiteboardPage() {
     fit();
     const watch = new ResizeObserver(fit);
     watch.observe(canvas);
+    // A context the browser lost (a graphics reset, a window moved to another display) comes back empty and with the default
+    // transform, and nothing else draws the board until the next stroke: it is drawn again here, from the strokes.
+    const restored = () => paint(latest.current);
+    canvas.addEventListener("contextrestored", restored);
     // A window moved to a display of another density keeps the board's size in CSS pixels, so the observer hears nothing:
     // a query for the current density tells when it stops being true, and is made again for the new one.
     let stopDensity = () => {};
@@ -132,6 +136,7 @@ export function WhiteboardPage() {
     watchDensity();
     return () => {
       watch.disconnect();
+      canvas.removeEventListener("contextrestored", restored);
       stopDensity();
     };
   }, []);

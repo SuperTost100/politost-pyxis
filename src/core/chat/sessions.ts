@@ -111,7 +111,7 @@ export function recordSession(
   db.prepare(
     `INSERT INTO chat_sessions
       (id, chat_id, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at, last_used_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     uuidv7(turn.now),
     chatId,
@@ -125,6 +125,8 @@ export function recordSession(
     turn.inStep ? 1 : 0,
     turn.syncedTo,
     turn.seen ? 1 : 0,
+    // A session opened when the tool names it has no finished turn yet.
+    turn.inStep ? 1 : 0,
     turn.now,
     turn.now,
   );

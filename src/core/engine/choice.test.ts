@@ -21,7 +21,7 @@ vi.mock("./funnel", async (original) => {
 const efforts = ["low", "medium", "high"].map((id) => ({ id, label: id }));
 type State = { claude: boolean; codex: boolean };
 const models = {
-  claude: ["claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5"],
+  claude: ["claude-opus-5-5", "claude-sonnet-5", "claude-haiku-5-5"],
   codex: ["gpt-6-sol", "gpt-5.6-terra", "gpt-6-luna"],
 };
 
@@ -340,7 +340,7 @@ describe("the engine test", () => {
     useFunnel({ claude: true, codex: true });
     vi.mocked(runTurn).mockResolvedValueOnce({
       text: "ok",
-      model: "claude-haiku-4-5",
+      model: "claude-haiku-5-5",
       provider: "claude",
       inputTokens: 2,
     });
@@ -348,7 +348,7 @@ describe("the engine test", () => {
     const call = vi.mocked(runTurn).mock.calls[0]![0];
     expect(call.selection).toMatchObject({
       provider: "claude",
-      model: "claude-haiku-4-5",
+      model: "claude-haiku-5-5",
       effort: "low",
     });
     expect(call.system).toMatch(/^.{1,60}$/);
@@ -383,7 +383,7 @@ describe("the engine test", () => {
     useFunnel({ claude: true, codex: false });
     vi.mocked(runTurn).mockRejectedValueOnce(
       Object.assign(
-        new Error("Claude Haiku 4.5 is not included in your plan."),
+        new Error("Claude Haiku 5.5 is not included in your plan."),
         { code: "cli-failed" },
       ),
     );
@@ -393,9 +393,9 @@ describe("the engine test", () => {
     });
     const claude = (await handlers.overview()).find((row) => row.id === "claude");
     // Still signed in, but no longer plain "Ready": the row knows which model was refused.
-    expect(claude).toMatchObject({ loggedIn: true, refused: false, refusedModels: ["claude-haiku-4-5"] });
+    expect(claude).toMatchObject({ loggedIn: true, refused: false, refusedModels: ["claude-haiku-5-5"] });
     const { features } = await handlers.autoConfigure({});
-    expect(Object.values(features).map((row) => row.model)).not.toContain("claude-haiku-4-5");
+    expect(Object.values(features).map((row) => row.model)).not.toContain("claude-haiku-5-5");
     // The row's next test asks a model the subscription has not refused.
     vi.mocked(runTurn).mockResolvedValueOnce({
       text: "ok",
@@ -404,7 +404,7 @@ describe("the engine test", () => {
       inputTokens: 2,
     });
     await handlers.test({ provider: "claude" });
-    expect(vi.mocked(runTurn).mock.calls[1]![0].selection.model).not.toBe("claude-haiku-4-5");
+    expect(vi.mocked(runTurn).mock.calls[1]![0].selection.model).not.toBe("claude-haiku-5-5");
     db.close();
   });
 });

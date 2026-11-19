@@ -3303,11 +3303,17 @@ export const requests = {
       subject: z.string(),
       version: z.string(),
       chapters: z.array(z.object({ number: z.number(), title: z.string() })),
+      /** The checksum of the package the chapters were listed from, which a reader sends back with each chapter it reads. Null for a copy in the Library. */
+      package: z.string().nullable(),
     }),
   },
-  /** One chapter of a book being read before it is added, as paragraphs of text in reading order. */
+  /**
+   * One chapter of a book being read before it is added, as paragraphs of text in reading order. `package` is the one
+   * `sources.bookPreview` listed the chapters from: the text comes from that package, and when it can no longer be
+   * served (the catalog has another version and nothing holds this one) the error is `books-changed`.
+   */
   "sources.bookChapter": {
-    input: z.object({ id: z.string().max(100), chapter: z.number().int() }),
+    input: z.object({ id: z.string().max(100), chapter: z.number().int(), package: z.string().max(100).nullable().optional() }),
     output: z.array(z.object({ id: z.string(), text: z.string() })),
   },
   "sources.linkPreview": {

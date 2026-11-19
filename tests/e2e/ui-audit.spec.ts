@@ -1171,7 +1171,22 @@ async function openAdvancedEngines(page: Page) {
 }
 
 /** Waits for the two signed-in stand-ins in the list of connected tools, and for Pyxis to have planned with them. */
+/**
+ * A refusal an earlier state caused (`onboarding-engines` has Cursor's provider turn a call away) stays in core's memory:
+ * `prepareEngines` clears the stored rows, not what core holds. The tools are then seen signed out and signed in again,
+ * which is how a student ends a refusal, so the states that need them connected do not depend on what ran before them in
+ * the same app. Two states land in one app whenever a short list of states is run, or the parts move when a route is added.
+ */
+async function signInAgain(page: Page) {
+  const on = join(auditEngines, "on");
+  rmSync(on, { force: true });
+  await expect.poll(() => page.evaluate(async () => (await window.pyxis.invoke("engines.overview", {})).filter((row) => row.loggedIn).length)).toBe(0);
+  writeFileSync(on, "");
+  await expect.poll(() => page.evaluate(async () => (await window.pyxis.invoke("engines.overview", {})).filter((row) => row.loggedIn).length)).toBe(2);
+}
+
 async function connectedTools(page: Page) {
+  await signInAgain(page);
   await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(2, { timeout: 30000 });
   await page.evaluate(() => window.pyxis.invoke("engines.autoConfigure", {}));
 }
@@ -1796,7 +1811,7 @@ function fakeEngines(): Record<string, string> {
   --version) echo "2026.09.28-64d2043";;
   status) if [ -f "${on}" ]; then echo '{"isAuthenticated":true}'; else echo '{"isAuthenticated":false}'; fi;;
   about) echo '{}';;
-  --list-models) printf 'gemini-3.8-flash - Gemini 3.8 Flash\\n';;
+  --list-models) printf 'grok-4.7-low - Grok 4.7  Low\\ngemini-3.8-flash - Gemini 3.8 Flash\\n';;
   *) if [ -f "${limit}" ]; then echo "Error: You have hit your usage limit." >&2; else echo "Error: request failed with status 401 Unauthorized" >&2; fi; exit 1;;
 esac`,
     ),

@@ -232,6 +232,46 @@ test("the board follows a change of screen density that leaves its size as it wa
   }
 });
 
+test("a canvas whose context the browser lost and gave back is drawn again with the strokes, and not left blank", async () => {
+  test.setTimeout(120000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-whiteboard-restored-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => {
+      sessionStorage.removeItem("pyxis-board");
+      location.hash = "/tools/whiteboard";
+    });
+    await draw(page);
+    // The ink under the middle of the stroke `draw` made, from (100, 200) to (250, 300) of the board, and a corner of the board.
+    const pixels = () =>
+      page.evaluate(() => {
+        const canvas = document.querySelector<HTMLCanvasElement>(".px-whiteboard canvas")!;
+        const density = canvas.width / canvas.getBoundingClientRect().width;
+        const at = (x: number, y: number) => Array.from(canvas.getContext("2d")!.getImageData(Math.round(x * density), Math.round(y * density), 1, 1).data);
+        return { ink: at(175, 250), corner: at(20, 20) };
+      });
+    const before = await pixels();
+    expect(before.corner[3], "the board is painted").toBe(255);
+    expect(before.ink).not.toEqual(before.corner);
+    // What the browser does when it gives a context back after losing it (a graphics reset, a window moved to another
+    // display): the canvas is empty, with the default transform, and it says so with an event. The page has to draw it again.
+    await page.evaluate(() => {
+      const canvas = document.querySelector<HTMLCanvasElement>(".px-whiteboard canvas")!;
+      // Setting the width clears a canvas and resets its context, as a restored context is.
+      canvas.width = canvas.width;
+      canvas.dispatchEvent(new Event("contextrestored"));
+    });
+    await expect.poll(pixels, "the board is drawn again, strokes included").toEqual(before);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("a screen twice as dense under a board half as big keeps the canvas' pixel size, and a new stroke is drawn where the pointer is", async () => {
   test.setTimeout(120000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-whiteboard-density-half-"));
@@ -260,7 +300,11 @@ test("a screen twice as dense under a board half as big keeps the canvas' pixel 
       page.evaluate(() => {
         const element = document.querySelector<HTMLCanvasElement>(".px-whiteboard canvas")!;
         const box = element.getBoundingClientRect();
-        return { density: devicePixelRatio, width: element.width, height: element.height, css: [box.width, box.height], page: [box.x, box.y] };
+        // `scale` is the drawing scale the canvas was last painted at (the page sets it as it refits to a density) and `painted`
+        // whether its background is there: together they tell that the page has caught up with a new density, which its pixel
+        // size cannot when that does not change, and that the browser has not cleared the canvas since.
+        const ctx = element.getContext("2d")!;
+        return { density: devicePixelRatio, scale: ctx.getTransform().a, painted: ctx.getImageData(5, 5, 1, 1).data[3] === 255, width: element.width, height: element.height, css: [box.width, box.height], page: [box.x, box.y] };
       });
     // The canvas has the board's size, one pixel to each of its CSS pixels.
     await expect
@@ -283,6 +327,15 @@ test("a screen twice as dense under a board half as big keeps the canvas' pixel 
         return [now.width, now.height];
       }, "the canvas has the pixels it had")
       .toEqual([first.width, first.height]);
+    // The canvas keeps its size, so that proves nothing about the page having refitted: it hears the new density in the next
+    // frame, and until then the canvas still draws at the old scale (and may be empty). A stroke made before that is drawn
+    // at a scale the page then replaces, so the test waits for the new scale.
+    await expect
+      .poll(async () => {
+        const now = await board();
+        return [now.scale, now.painted];
+      }, "the page has painted the canvas at the new density")
+      .toEqual([2, true]);
     const second = await board();
     // A new stroke, drawn by the pointer from (100, 200) to (300, 300) of the board, under its toolbar: its ink is under the
     // pointer.

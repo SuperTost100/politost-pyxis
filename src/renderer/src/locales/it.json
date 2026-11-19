@@ -734,6 +734,7 @@
       "catalog": "L'elenco dei libri su books.politost.it ora non si legge. Riprova più tardi.",
       "integrity": "Il libro scaricato non corrisponde all'elenco, quindi non l'ho importato. Riprova.",
       "missing": "Questo libro non è più nell'elenco.",
+      "changed": "Questo libro è stato aggiornato mentre era aperto. Pyxis sta leggendo la nuova versione.",
       "upToDate": "Questo libro è già all'ultima versione."
     },
     "panel": {
