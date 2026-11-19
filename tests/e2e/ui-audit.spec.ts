@@ -436,7 +436,7 @@ const routes = [
   ["ask-search-empty", "/ask/audit-chat"],
   ["ask-subject-menu", "/ask/audit-guided"],
   ["ask-new-subject-menu", "/ask"],
-  // A guided answer, with "Dammi la soluzione" under it, and an answer from general knowledge that says so.
+  // A guiding answer, with nothing to switch it under it, and an answer from general knowledge that says so.
   ["ask-guided", "/ask/audit-guided"],
   ["ask-general", "/ask/audit-general"],
   // The confirmations behind a solid danger button: delete a chat and delete a hand-made flashcard.
@@ -528,7 +528,7 @@ function seed(db: DatabaseSync) {
     INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-guided-user','audit-guided','user','Non ho capito come si trova la forza, mi aiuti?',1);
     INSERT INTO messages(id,chat_id,role,body,grounding,prompt_template,created_at) VALUES('audit-guided-reply','audit-guided','assistant','Facciamolo un passo alla volta. La forza dipende dalla massa e dall''accelerazione [P1].
 
-Passo 1 di 2: quale legge lega le tre grandezze?','sources','chat.socratic',2);
+Passo 1 di 2: quale legge lega le tre grandezze?','sources','chat.tutor',2);
     INSERT INTO message_passages(message_id,passage_id,label) VALUES('audit-guided-reply','audit-passage','P1');
     INSERT INTO chats(id,title,created_at,updated_at) VALUES('audit-general','Teorema di Bayes',1,1);
     INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-general-user','audit-general','user','Che cos''è il teorema di Bayes?',1);
@@ -3522,7 +3522,8 @@ async function openState(page: Page, name: string) {
       break;
     }
     case "ask-guided":
-      await expect(page.getByRole("button", { name: both("Dammi la soluzione", "Give me the solution") })).toBeVisible();
+      await expect(page.getByText(/Passo 1 di 2: quale legge lega le tre grandezze/)).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Dammi la soluzione", "Give me the solution") })).toHaveCount(0);
       break;
     case "ask-general":
       await expect(page.getByText(/^(Non ho trovato niente su questa domanda|I found nothing on this)/)).toBeVisible();

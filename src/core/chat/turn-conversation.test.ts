@@ -4,9 +4,9 @@ import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
 import { saveProfile } from "../profile/profile";
 import { importSmartbook } from "../sources/smartbook";
-import { clearBench } from "../engine/bench";
+import { benchEngine, clearBench } from "../engine/bench";
 import { rememberReady } from "../engine/selection";
-import { askTurn, clearChatContext, readChat, regenerateTurn } from "./turn";
+import { askTurn, clearChatContext, readChat, regenerateTurn, settleChecks } from "./turn";
 import { currentSession, sessionsOpened, UNCOMPACTED_SESSION_CHARS } from "./sessions";
 
 const reply: EngineResult = {
@@ -119,7 +119,7 @@ describe("a chat's stored tool session", () => {
   async function ask(
     db: ReturnType<typeof setup>["db"],
     text: string,
-    options: { chatId?: string; sourceIds?: string[]; sessionId?: string; provider?: string; subject?: string; way?: "solved" | "guided" } = {},
+    options: { chatId?: string; sourceIds?: string[]; sessionId?: string; provider?: string; subject?: string } = {},
   ) {
     let seen!: Seen;
     const result = await askTurn(db, {
@@ -127,10 +127,10 @@ describe("a chat's stored tool session", () => {
       text,
       sourceIds: options.sourceIds,
       subject: options.subject,
-      way: options.way,
       allowGeneral: options.sourceIds === undefined,
       run: async (input) => {
-        seen = input as Seen;
+        // The follow-up is read while the engine runs, as the funnel does: it is built for the engine that asks.
+        seen = { ...input, conversation: input.conversation && { ...input.conversation, followUp: input.conversation.followUp } } as Seen;
         return toolReply(options.sessionId ?? "s1", seen, options.provider);
       },
     });
@@ -149,6 +149,30 @@ describe("a chat's stored tool session", () => {
     db.close();
   });
 
+  it("delivers the current instructions to a session opened under another system prompt, on the tools that carry them in the prompt", async () => {
+    for (const [provider, model, carries] of [
+      ["agent", "cursor-grok-4.5", true],
+      ["antigravity", "gemini-3.8-flash", true],
+      ["claude", "claude-sonnet-5", false],
+    ] as const) {
+      const { db } = setup();
+      db.prepare("UPDATE feature_engines SET selection_json = ?").run(JSON.stringify({ provider, model }));
+      const first = await ask(db, "prima", { provider, sessionId: "s1" });
+      // The template was edited since the session was opened.
+      db.prepare("UPDATE chat_sessions SET instructions = 'older' WHERE chat_id = ?").run(first.chatId);
+      const next = await ask(db, "seconda", { chatId: first.chatId, provider, sessionId: "s1" });
+      const sent = next.seen.conversation!.followUp;
+      expect(sent.startsWith("<instructions>\nYou are Pyxis, a study tutor"), provider).toBe(carries);
+      // Every tool gets the full context block again, since the session is out of step.
+      expect(sent, provider).toContain("<context>");
+      // The session has the current instructions now, so the turn after it sends neither.
+      const after = await ask(db, "terza", { chatId: first.chatId, provider, sessionId: "s1" });
+      expect(after.seen.conversation!.followUp, provider).not.toContain("<instructions>");
+      expect(after.seen.conversation!.followUp, provider).not.toContain("<context>");
+      db.close();
+    }
+  });
+
   it("counts a turn once when the tool names its session before the turn ends", async () => {
     const { db } = setup();
     const first = await askTurn(db, {
@@ -164,16 +188,18 @@ describe("a chat's stored tool session", () => {
     db.close();
   });
 
-  it("keeps the system prompt the same for the whole chat, whatever way the reply takes", async () => {
+  it("keeps the system prompt the same for the whole chat, whatever the question or the context", async () => {
     const { db } = setup();
+    db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('s-fis', 'Fisica', 1)").run();
     const first = await ask(db, "Che cos'è il vettore posizione?");
     const guided = await ask(db, "Non ho capito, guidami passo passo", { chatId: first.chatId });
     const solved = await ask(db, "Dammi la soluzione", { chatId: first.chatId });
     const subject = await ask(db, "Ora parliamo di altro", { chatId: first.chatId, subject: "Fisica" });
-    expect(guided.seen.system).toBe(first.seen.system);
-    expect(solved.seen.system).toBe(first.seen.system);
-    expect(subject.seen.system).toBe(first.seen.system);
+    saveProfile(db, { followups: false });
+    const followups = await ask(db, "E dopo?", { chatId: first.chatId });
+    for (const turn of [guided, solved, subject, followups]) expect(turn.seen.system).toBe(first.seen.system);
     expect(first.seen.system).not.toContain("Italian");
+    expect(first.seen.system).not.toContain("Fisica");
     db.close();
   });
 
@@ -184,13 +210,16 @@ describe("a chat's stored tool session", () => {
     expect(first.seen.prompt).toContain("<context>");
     const same = await ask(db, "E il vettore spostamento?", { chatId: first.chatId });
     expect(same.seen.conversation!.followUp).not.toContain("<context>");
-    const guided = await ask(db, "Non ho capito, guidami passo passo", { chatId: first.chatId });
-    expect(guided.seen.conversation!.followUp).toContain("<context>");
-    expect(guided.seen.conversation!.followUp).toContain("Guide the student one step at a time.");
-    const subject = await ask(db, "E in meccanica?", { chatId: first.chatId, subject: "Fisica", way: "guided" });
+    // Asking for a hint or for the solution changes nothing in the block: there is one way of answering.
+    const hint = await ask(db, "Non ho capito, dammi un indizio", { chatId: first.chatId });
+    expect(hint.seen.conversation!.followUp).not.toContain("<context>");
+    const subject = await ask(db, "E in meccanica?", { chatId: first.chatId, subject: "Fisica" });
     expect(subject.seen.conversation!.followUp).toContain("Subject: Fisica.");
-    const again = await ask(db, "E il resto?", { chatId: first.chatId, way: "guided" });
+    const again = await ask(db, "E il resto?", { chatId: first.chatId });
     expect(again.seen.conversation!.followUp).not.toContain("<context>");
+    saveProfile(db, { followups: false });
+    const off = await ask(db, "E poi?", { chatId: first.chatId });
+    expect(off.seen.conversation!.followUp).toContain("Follow-ups: leave the <followups> block out.");
     db.close();
   });
 
@@ -693,6 +722,86 @@ describe("a chat's stored tool session", () => {
     expect(cleared.seen.conversation!.followUp).toContain("Pinned context: none.");
     expect(cleared.seen.conversation!.followUp).not.toContain("Testo scelto");
     expect(sessionsOpened(db, first.chatId)).toBe(1);
+    db.close();
+  });
+});
+
+describe("a decision taken from the tool that answers, not the one that was planned", () => {
+  const ready = () =>
+    rememberReady([
+      { id: "claude", kind: "cli", effort: true, models: [{ id: "claude-haiku-5-5", efforts: [] }] },
+      { id: "agent", kind: "cli", effort: true, models: [{ id: "cursor-grok-4.5", efforts: [] }] },
+    ]);
+  const automatic = (db: ReturnType<typeof setup>["db"], provider: string, model: string) =>
+    db
+      .prepare("UPDATE feature_engines SET selection_json = ?")
+      .run(JSON.stringify({ provider, model, auto: true }));
+
+  it("delivers the new instructions to a Cursor session that a fallback resumes, and records the model that answered", async () => {
+    const { db } = setup();
+    db.prepare("UPDATE feature_engines SET feature = 'chat', selection_json = ?").run(JSON.stringify({ provider: "agent", model: "cursor-grok-4.5" }));
+    const first = await askTurn(db, {
+      text: "prima",
+      allowGeneral: true,
+      run: async (input) => toolReply("a1", input as Seen, "agent"),
+    });
+    db.prepare("UPDATE chat_sessions SET instructions = 'older' WHERE chat_id = ?").run(first.chatId);
+    // The chat's tool is Claude now and is out of requests, so the turn falls back to the Cursor session.
+    automatic(db, "claude", "claude-haiku-5-5");
+    ready();
+    const providers: string[] = [];
+    let followUp = "";
+    try {
+      await askTurn(db, {
+        chatId: first.chatId,
+        text: "seconda",
+        allowGeneral: true,
+        run: async (input) => {
+          providers.push(input.selection.provider);
+          if (input.selection.provider === "claude")
+            throw Object.assign(new Error("usage limit"), { code: "cli-failed", limit: { kind: "rate", detail: "usage limit" } });
+          followUp = (input as Seen).conversation!.followUp;
+          return { ...toolReply("a1", input as Seen, "agent"), model: "cursor-grok-4.5" };
+        },
+      });
+    } finally {
+      rememberReady([]);
+      clearBench();
+    }
+    expect(providers).toEqual(["claude", "agent"]);
+    expect(followUp.startsWith("<instructions>\nYou are Pyxis, a study tutor")).toBe(true);
+    expect(currentSession(db, first.chatId)).toMatchObject({ provider: "agent", sessionId: "a1", inStep: true });
+    expect(db.prepare("SELECT model FROM chat_sessions WHERE chat_id = ? AND ended_at IS NULL").pluck().get(first.chatId)).toBe("cursor-grok-4.5");
+    db.close();
+  });
+
+  it("runs the separate maths check on the tool that would answer it when Cursor, the chat's tool, is out of requests", async () => {
+    const { db } = setup();
+    automatic(db, "agent", "cursor-grok-4.5");
+    db.prepare("UPDATE feature_engines SET feature = 'chat'").run();
+    ready();
+    benchEngine("agent", "limit", { retryAfterMs: 60_000 });
+    const claim = { kind: "derivative", expr: "x**2", claimed: "2*x", vars: ["x"], step: "La derivata è $f'(x) = 2x$." };
+    const providers: string[] = [];
+    try {
+      const result = await askTurn(db, {
+        text: "Deriva x^2",
+        allowGeneral: true,
+        run: async (input) => {
+          providers.push(`${input.selection.provider}${input.responseSchema ? " (check)" : ""}`);
+          if (input.responseSchema)
+            return { ...reply, provider: "claude", text: JSON.stringify({ checks: [claim] }), structured: { checks: [claim] } };
+          return { ...reply, provider: "claude", model: "claude-haiku-5-5", text: claim.step };
+        },
+      });
+      expect(result.message?.checking).toBe(true);
+      await settleChecks();
+    } finally {
+      rememberReady([]);
+      clearBench();
+    }
+    // Cursor was out of requests, so Claude answered the turn and runs the check.
+    expect(providers).toEqual(["claude", "claude (check)"]);
     db.close();
   });
 });

@@ -139,7 +139,6 @@ const Reply = memo(function Reply({
   onSuggest,
   onReact,
   onMakeCards,
-  onSwitchWay,
 }: {
   row: ChatRow;
   /** The reply that ends the chat: it carries Regenerate and the suggestions. */
@@ -152,10 +151,7 @@ const Reply = memo(function Reply({
   onSuggest: (text: string) => void;
   onReact: (messageId: string, reaction: "up" | "down") => void;
   onMakeCards: (row: ChatRow) => void;
-  /** Ask the same question again the other way: guided under a solution, solved under a guided step. */
-  onSwitchWay?: (way: "solved" | "guided") => void;
 }) {
-  const { t } = useTranslation();
   const describeEngineError = useEngineError();
   const engineNames = useEngineNames();
   // A reply the engine cut short because its sign-in was refused names that engine and offers its sign-in.
@@ -191,13 +187,6 @@ const Reply = memo(function Reply({
         engineNames.label(row.provider, row.modelId) || undefined
       }
       lead={<UsedSources grounding={row.grounding} citations={row.citations} searched={row.searched} />}
-      switchWay={
-        onSwitchWay && !row.stopped
-          ? row.way === "guided"
-            ? { label: t("ask.way.solve"), icon: "lightbulb", onClick: () => onSwitchWay("solved"), disabled: busy }
-            : { label: t("ask.way.guide"), icon: "list-ordered", onClick: () => onSwitchWay("guided"), disabled: busy }
-          : undefined
-      }
       stopped={row.stopped}
       failure={failure?.text}
       failureAction={failure?.action}
@@ -235,13 +224,10 @@ function PendingQuestion({ turn, last }: { turn: Turn; last: ChatRow | undefined
 function StreamingReply({
   turn,
   usesSources,
-  line,
   onGrow,
 }: {
   turn: Turn;
   usesSources: boolean;
-  /** What the working state says, such as "Riscrivo la risposta un passo alla volta" for the switch under an answer. */
-  line?: string;
   onGrow: () => void;
 }) {
   const text = useSyncExternalStore(turn.live.subscribe, turn.live.get);
@@ -260,7 +246,7 @@ function StreamingReply({
       </MarkdownView>
     </ChatMessage>
   ) : (
-    <ThinkingMessage usesSources={usesSources} line={line} />
+    <ThinkingMessage usesSources={usesSources} />
   );
 }
 
@@ -279,8 +265,6 @@ export function AskPage() {
   // choice stays in the session with the new chat's draft, so the whiteboard, the graph or the Library do not lose it.
   const [newSubject, setNewSubject] = useState<NewChatSubject>(() => readPendingSubject(sessionStorage));
   const field = useRef<MathTextEditorHandle>(null);
-  // The way being asked for with the action under the last answer, for its working line.
-  const [switching, setSwitching] = useState<"solved" | "guided" | null>(null);
   const [uncovered, setUncovered] = useState<string | null>(null);
   // The reply being written, kept outside the page so it survives leaving Ask and coming back. Its text shows only in
   // the chat it was sent from, and the page follows it to its new chat only if the student is still there.
@@ -660,14 +644,12 @@ export function AskPage() {
   }, []);
 
   /**
-   * Answers the last question again. `strong` uses the strongest model; `resume` continues a reply that was cut short;
-   * `way` asks for the other way of answering, from the action under the answer.
+   * Answers the last question again. `strong` uses the strongest model; `resume` continues a reply that was cut short.
    */
-  function regenerate(options: { engine?: "strong"; resume?: boolean; way?: "solved" | "guided" } = {}) {
+  function regenerate(options: { engine?: "strong"; resume?: boolean } = {}) {
     if (!chatId) return;
     const turn = turns.start(chatId, null, true);
     if (!turn) return;
-    setSwitching(options.way ?? null);
     setError(null);
     setAnnouncement("");
     // Continue keeps the saved part on screen, with its citation chips: the cut-off reply is hidden while it runs, core
@@ -708,7 +690,6 @@ export function AskPage() {
         if (errorKey(err) !== "errors.aborted" && !turn.dropped) showing(turn)?.fail(err);
       })
       .finally(() => {
-        setSwitching(null);
         turns.end(turn);
       });
   }
@@ -757,7 +738,6 @@ export function AskPage() {
   const regenerateNow = useStable(() => regenerate());
   const strongerNow = useStable(() => regenerate({ engine: "strong" }));
   const continueNow = useStable(() => regenerate({ resume: true }));
-  const switchWay = useStable((way: "solved" | "guided") => regenerate({ way }));
   const makeCards = useStable((row: ChatRow) =>
     openMakeCards({
       text: replyPlainText(row.body),
@@ -923,7 +903,6 @@ export function AskPage() {
                 onSuggest={suggest}
                 onReact={react}
                 onMakeCards={makeCards}
-                onSwitchWay={row.id === lastTutorId && chatId ? switchWay : undefined}
               />
             ),
           )}
@@ -945,7 +924,6 @@ export function AskPage() {
             <StreamingReply
               turn={turn}
               usesSources={usesSources}
-              line={switching ? t(switching === "guided" ? "ask.way.guiding" : "ask.way.solving") : undefined}
               onGrow={followStream}
             />
           ) : null}

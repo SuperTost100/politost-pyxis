@@ -13,6 +13,8 @@ export type StoredSession = {
   cwd: string;
   /** The hash of the context block the session last received, see `contextHash`. */
   told: string | null;
+  /** The hash of the system prompt the session was opened under (null: opened before it was kept). */
+  instructions: string | null;
   /** Characters sent into the session so far. */
   chars: number;
   /** True after a turn that completed normally on this session, false from the start of any turn until one does. */
@@ -29,6 +31,7 @@ type Row = {
   session_id: string;
   cwd: string;
   told: string | null;
+  instructions: string | null;
   chars: number;
   in_step: number;
   synced_to: string | null;
@@ -48,11 +51,11 @@ const UNCOMPACTED = new Set(["agent", "antigravity"]);
 export function currentSession(db: Database.Database, chatId: string): StoredSession | undefined {
   const row = db
     .prepare(
-      `SELECT id, provider, session_id, cwd, told, chars, in_step, synced_to, seen FROM chat_sessions
+      `SELECT id, provider, session_id, cwd, told, instructions, chars, in_step, synced_to, seen FROM chat_sessions
        WHERE chat_id = ? AND ended_at IS NULL ORDER BY opened_at DESC, rowid DESC LIMIT 1`,
     )
     .get(chatId) as Row | undefined;
-  return row && { id: row.id, provider: row.provider, sessionId: row.session_id, cwd: row.cwd, told: row.told, chars: row.chars, inStep: row.in_step === 1, syncedTo: row.synced_to, seen: row.seen === 1 };
+  return row && { id: row.id, provider: row.provider, sessionId: row.session_id, cwd: row.cwd, told: row.told, instructions: row.instructions, chars: row.chars, inStep: row.in_step === 1, syncedTo: row.synced_to, seen: row.seen === 1 };
 }
 
 /** True when a session of this tool has grown past what the tool is known to handle on its own. */
@@ -76,6 +79,8 @@ export type SessionTurn = {
   model: string;
   effort: string | null;
   told: string;
+  /** The hash of the system prompt this turn ran under. */
+  instructions: string;
   chars: number;
   now: number;
   /** The model completed this turn: it counts as a turn of the session, which is not yet in step (see `keepSession`). */
@@ -99,9 +104,9 @@ export function recordSession(
 ): void {
   if (prior && prior.provider === turn.provider && prior.sessionId === turn.sessionId) {
     db.prepare(
-      `UPDATE chat_sessions SET model = ?, effort = ?, told = ?, chars = chars + ?, seen = MAX(seen, ?),
+      `UPDATE chat_sessions SET model = ?, effort = ?, told = ?, instructions = ?, chars = chars + ?, seen = MAX(seen, ?),
          turns = turns + 1, last_used_at = ? WHERE id = ?`,
-    ).run(turn.model, turn.effort, turn.told, turn.chars, turn.seen ? 1 : 0, turn.now, prior.id);
+    ).run(turn.model, turn.effort, turn.told, turn.instructions, turn.chars, turn.seen ? 1 : 0, turn.now, prior.id);
     return;
   }
   if (prior)
@@ -112,8 +117,8 @@ export function recordSession(
     );
   db.prepare(
     `INSERT INTO chat_sessions
-      (id, chat_id, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at, last_used_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+      (id, chat_id, provider, session_id, model, effort, cwd, told, instructions, chars, in_step, synced_to, seen, turns, opened_at, last_used_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
   ).run(
     uuidv7(turn.now),
     chatId,
@@ -123,6 +128,7 @@ export function recordSession(
     turn.effort,
     turn.cwd,
     turn.told,
+    turn.instructions,
     turn.chars,
     turn.syncedTo,
     turn.seen ? 1 : 0,

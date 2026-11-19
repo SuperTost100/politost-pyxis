@@ -2,9 +2,7 @@ import { Button as AntButton } from "antd";
 import { ArrowRight } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "./Button";
 import { Chip } from "./Chip";
-import type { IconName } from "./Icon";
 import { InlineMarkdown } from "./InlineMarkdown";
 import { IconButton } from "./IconButton";
 import { MenuButton } from "./ItemMenu";
@@ -20,7 +18,6 @@ export function ChatMessage({
   suggestions,
   onSuggest,
   lead,
-  switchWay,
   text,
   onMakeCards,
   reaction,
@@ -42,8 +39,6 @@ export function ChatMessage({
   onSuggest?: (text: string) => void;
   /** A line above the answer, such as what it used. */
   lead?: ReactNode;
-  /** The quiet action that asks the same question again the other way, first in the row under the answer. */
-  switchWay?: { label: string; icon: IconName; onClick: () => void; disabled?: boolean };
   text?: string;
   /** Opens the flashcard dialog for this reply. */
   onMakeCards?: () => void;
@@ -132,18 +127,6 @@ export function ChatMessage({
         ) : null}
         {streaming ? null : (
           <div className="px-msg-foot">
-            {switchWay ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={switchWay.icon}
-                className="px-msg-switch"
-                disabled={switchWay.disabled}
-                onClick={switchWay.onClick}
-              >
-                {switchWay.label}
-              </Button>
-            ) : null}
             <IconButton
               icon={copied === "done" ? "check" : "copy"}
               label={
@@ -239,7 +222,7 @@ export function ChatMessage({
  * The tutor's turn before any text has streamed: the mark and one status line, so the wait is never blank.
  * With sources it says it is reading them first, then that it is thinking.
  */
-export function ThinkingMessage({ usesSources, line }: { usesSources?: boolean; line?: string }) {
+export function ThinkingMessage({ usesSources }: { usesSources?: boolean }) {
   const { t } = useTranslation();
   const [reading, setReading] = useState(Boolean(usesSources));
   useEffect(() => {
@@ -254,7 +237,7 @@ export function ThinkingMessage({ usesSources, line }: { usesSources?: boolean; 
       </span>
       <div className="px-msg-body">
         <p className="px-msg-status">
-          {line ?? (reading ? t("components.chat.readingSources") : t("components.chat.thinking"))}
+          {reading ? t("components.chat.readingSources") : t("components.chat.thinking")}
         </p>
       </div>
     </div>
