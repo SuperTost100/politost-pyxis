@@ -37,7 +37,7 @@ function undoAfter16(db: Database.Database) {
 /** Removes what migrations 32 to 34 add, so a test can rewind the version past them. */
 function undoLessonParts(db: Database.Database) {
   db.exec(
-    "ALTER TABLE attachments DROP COLUMN recognised; ALTER TABLE attachments DROP COLUMN source_id; ALTER TABLE attachments DROP COLUMN size; ALTER TABLE attachments DROP COLUMN kind; ALTER TABLE attachments DROP COLUMN name;",
+    "DROP TABLE held_files; ALTER TABLE attachments DROP COLUMN recognised; ALTER TABLE attachments DROP COLUMN source_id; ALTER TABLE attachments DROP COLUMN size; ALTER TABLE attachments DROP COLUMN kind; ALTER TABLE attachments DROP COLUMN name;",
   );
   db.exec(
     "DROP INDEX card_reviews_day; ALTER TABLE card_reviews DROP COLUMN seconds; DROP TABLE lesson_parts; DROP TABLE lesson_outlines;",
@@ -1073,6 +1073,20 @@ describe("files a message carried (migration 34)", () => {
     insert("photo", "photo");
     insert("document", "document");
     expect(() => insert("other", "video")).toThrow(/CHECK/);
+    // Every file attached in a composer and not sent yet is a row, with the draft it belongs to and what it made.
+    expect(again.prepare("SELECT name FROM pragma_table_info('held_files') ORDER BY cid").pluck().all()).toEqual([
+      "id", "draft", "name", "kind", "size", "ext", "state", "error", "source_id", "blob_sha", "extracted_sha", "created_at",
+    ]);
+    expect(again.prepare("SELECT COUNT(*) FROM held_files").pluck().get()).toBe(0);
+    const held = (id: string, kind: string, state: string) =>
+      again
+        .prepare("INSERT INTO held_files (id, name, kind, size, ext, state, created_at) VALUES (?, 'x', ?, 1, '.x', ?, 1)")
+        .run(id, kind, state);
+    held("h1", "photo", "ready");
+    held("h2", "document", "needs-data");
+    expect(() => held("h3", "video", "ready")).toThrow(/CHECK/);
+    expect(() => held("h4", "photo", "gone")).toThrow(/CHECK/);
+    expect(again.prepare("SELECT draft FROM held_files WHERE id = 'h1'").pluck().get()).toBe("");
     expect(again.pragma("integrity_check", { simple: true })).toBe("ok");
     expect(again.pragma("foreign_key_check")).toEqual([]);
   });

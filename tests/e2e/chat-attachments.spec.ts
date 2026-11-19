@@ -267,3 +267,72 @@ test("Free up space run before sending leaves the attached files as they were, a
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/** A sparse file of `megabytes` that core takes a moment to register. */
+function sparse(path: string, megabytes: number) {
+  writeFileSync(path, "%PDF-1.7 ");
+  const fd = openSync(path, "r+");
+  ftruncateSync(fd, megabytes * 1024 * 1024);
+  closeSync(fd);
+}
+
+test("a file being attached when the student moves to another chat stays in the draft it was picked for", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-files-"));
+  try {
+    const big = join(dir, "dispensa.pdf");
+    sparse(big, 150);
+    const other = await page.evaluate(() =>
+      window.pyxis.invoke("chats.seed", { kind: "passage", title: "Altra chat", body: "Un passaggio." }),
+    );
+    await pick(app, big);
+    await attach(page);
+    // Core is still registering the file. The student opens the other chat.
+    await page.evaluate((id) => {
+      location.hash = `/ask/${id}`;
+    }, other.chatId);
+    await expect(page).toHaveURL(new RegExp(`#/ask/${other.chatId}`));
+    await expect.poll(() => rows(userData, "SELECT draft FROM held_files").length, { timeout: 30000 }).toBe(1);
+    // It was picked for the new chat's draft: the other chat's composer has no file, and the next send there carries none.
+    await expect(page.locator(".ask-attachments")).toHaveCount(0);
+    expect(rows<{ draft: string }>(userData, "SELECT draft FROM held_files")).toEqual([{ draft: "" }]);
+    await page.getByRole("link", { name: "Nuova chat" }).click();
+    await expect(page.locator(".ask-attachments li").filter({ hasText: "dispensa.pdf" })).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Enter pressed while several picked files are still being attached sends the question with all of them", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-files-"));
+  try {
+    const paths = ["uno.pdf", "due.pdf", "tre.pdf"].map((name) => join(dir, name));
+    for (const path of paths) sparse(path, 60);
+    await app.evaluate(({ dialog }, selected) => {
+      delete process.env["PYXIS_E2E_FILE"];
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: selected });
+    }, paths);
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    await box.fill("Riassumi");
+    await attach(page);
+    // The first file is in the composer and the others are still being registered when Enter is pressed.
+    await expect(page.locator(".ask-attachments li")).toHaveCount(1, { timeout: 30000 });
+    await box.press("Enter");
+    await expect(page).toHaveURL(/#\/ask\/.+/, { timeout: 60000 });
+    // The files are not real PDFs, so each one is sent without and named. All three being named means all three went with
+    // the question: it waited for the pick to finish registering.
+    for (const name of ["uno.pdf", "due.pdf", "tre.pdf"])
+      await expect(page.getByText(`Ho mandato la domanda senza ${name}.`)).toBeVisible({ timeout: 60000 });
+    // Nothing is left behind for the next draft.
+    await expect(page.locator(".ask-attachments")).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

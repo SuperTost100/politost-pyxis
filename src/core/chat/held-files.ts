@@ -16,7 +16,7 @@ import {
   isImageExt,
   maxSourceBytes,
 } from "../../shared/source-types";
-import { chatListedSources, deleteHiddenSources, holdReferences, removeUnreferencedBlobs } from "./delete";
+import { deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
 
 /** What a chat message can carry: the Library's documents and photos, without a smartbook. */
 const ATTACHABLE = new Set<string>([...DOCUMENT_EXTENSIONS, ...IMAGE_EXTENSIONS].map((ext) => `.${ext}`));
@@ -33,6 +33,8 @@ type Photo = {
 
 type Entry = {
   id: string;
+  /** The composer draft it was attached to: a chat id, or empty for a new chat. */
+  draft: string;
   name: string;
   kind: "document" | "photo";
   size: number;
@@ -101,11 +103,32 @@ export function createHeldFiles(deps: HeldDeps) {
   const entries = new Map<string, Entry>();
   const bySource = new Map<string, string>();
   const waiters = new Set<() => void>();
-  // Until a file is sent or taken off, its hidden copy and its stored photo are named only here, so every cleanup counts them.
-  holdReferences(db, () => ({
-    sources: [...entries.values()].flatMap((entry) => entry.sourceId ?? []),
-    blobs: [...entries.values()].flatMap((entry) => (entry.photo ? [entry.photo.sha] : [])),
-  }));
+  // Every held file is a row of `held_files` from the moment it is attached, so each cleanup (a deleted chat or plan, Free
+  // up space, taking a file off, the sweep at start) asks the database whether a source or a file is still wanted.
+  const insertRow = db.prepare(
+    `INSERT INTO held_files (id, draft, name, kind, size, ext, state, source_id, blob_sha, created_at)
+     VALUES (@id, @draft, @name, @kind, @size, @ext, 'reading', @source, @blob, @at)`,
+  );
+  const updateRow = db.prepare(
+    `UPDATE held_files SET state = ?, error = ?, source_id = COALESCE(?, source_id), extracted_sha = COALESCE(?, extracted_sha)
+     WHERE id = ?`,
+  );
+  const extractedOf = db.prepare(
+    `SELECT json_extract(params_json, '$.extractedSha') FROM jobs WHERE kind IN ('source-import', 'source-import-vision')
+     AND json_extract(params_json, '$.sourceId') = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+  );
+  const record = (entry: Entry) =>
+    insertRow.run({
+      id: entry.id,
+      draft: entry.draft,
+      name: entry.name,
+      kind: entry.kind,
+      size: entry.size,
+      ext: entry.ext,
+      source: entry.sourceId ?? null,
+      blob: entry.photo?.sha ?? null,
+      at: Date.now(),
+    });
   const fit = deps.fit ?? loadVisionImage;
   const scan =
     deps.scan ??
@@ -194,6 +217,13 @@ export function createHeldFiles(deps: HeldDeps) {
     const text = JSON.stringify(view);
     if (entry.told !== text) {
       entry.told = text;
+      updateRow.run(
+        view.state,
+        view.error ?? null,
+        entry.sourceId ?? null,
+        entry.sourceId ? ((extractedOf.pluck().get(entry.sourceId) as string | null) ?? null) : null,
+        entry.id,
+      );
       deps.emit(view);
     }
     notify();
@@ -219,21 +249,34 @@ export function createHeldFiles(deps: HeldDeps) {
     refresh(entry);
   }
 
-  /** Removes a file's work and what it made: the job, the hidden copy and the stored photo, unless something else uses them. */
-  function discard(entry: Entry): void {
-    entry.abort.abort();
-    entries.delete(entry.id);
-    if (entry.sourceId) {
-      bySource.delete(entry.sourceId);
+  type Record = { id: string; source_id: string | null; blob_sha: string | null; extracted_sha: string | null };
+
+  /**
+   * Removes a file's work and what it made: its row, its jobs, its hidden copy, its stored photo and the extracted-text
+   * file of its import. The row goes first, so the shared check (`deleteHiddenSources`, `removeUnreferencedBlobs`) does
+   * not count it; whatever a stored question, another held file, a plan or an unfinished job still names stays.
+   */
+  function discardRecord(row: Record): void {
+    // Read before the job is given up: the import's extracted-text file is named by its parameters.
+    const extracted = row.extracted_sha ?? (row.source_id ? ((extractedOf.pluck().get(row.source_id) as string | null) ?? null) : null);
+    db.prepare(`DELETE FROM held_files WHERE id = ?`).run(row.id);
+    const hashes: string[] = [];
+    if (row.source_id) {
       const jobs = db
         .prepare(`SELECT id FROM jobs WHERE kind IN (?, ?, 'source-ocr') AND json_extract(params_json, '$.sourceId') = ?`)
         .pluck()
-        .all(...IMPORT_KINDS, entry.sourceId) as string[];
+        .all(...IMPORT_KINDS, row.source_id) as string[];
       for (const id of jobs) runner.discard(id);
-      const hashes = db.transaction(() => deleteHiddenSources(db, [entry.sourceId!]))();
-      removeUnreferencedBlobs(db, workspace, hashes);
+      hashes.push(...db.transaction(() => deleteHiddenSources(db, [row.source_id!]))());
     }
-    if (entry.photo) removeUnreferencedBlobs(db, workspace, [entry.photo.sha]);
+    removeUnreferencedBlobs(db, workspace, [...hashes, ...(row.blob_sha ? [row.blob_sha] : []), ...(extracted ? [extracted] : [])]);
+  }
+
+  function discard(entry: Entry): void {
+    entry.abort.abort();
+    entries.delete(entry.id);
+    if (entry.sourceId) bySource.delete(entry.sourceId);
+    discardRecord({ id: entry.id, source_id: entry.sourceId ?? null, blob_sha: entry.photo?.sha ?? null, extracted_sha: null });
   }
 
   return {
@@ -241,18 +284,23 @@ export function createHeldFiles(deps: HeldDeps) {
      * Attaches a file the IPC boundary has already read within its size cap. A file that cannot be attached is held as
      * a failed one with its reason, so its chip says why instead of the whole request failing.
      */
-    async attach(path: string): Promise<AttachmentView> {
+    async attach(path: string, draft = ""): Promise<AttachmentView> {
       const ext = extname(path).toLowerCase();
       const name = basename(path);
       const id = uuidv7();
       const size = (await stat(path)).size;
-      const base = { id, name, kind: isImageExt(ext) ? ("photo" as const) : ("document" as const), size, ext };
-      const refused = (error: AttachmentError) => refresh(register({ ...base, refused: error }));
+      const base = { id, draft, name, kind: isImageExt(ext) ? ("photo" as const) : ("document" as const), size, ext };
+      const refused = (error: AttachmentError) => {
+        const entry = register({ ...base, refused: error });
+        record(entry);
+        return refresh(entry);
+      };
       if (!ATTACHABLE.has(ext)) return refused("unsupported");
       if (size > maxSourceBytes(ext)) return refused("too-large");
       if (base.kind === "photo") {
         const bytes = await readFile(path);
         const entry = register({ ...base, photo: { sha: putBlob(workspace, bytes, imageMime(ext), ext.slice(1)) } });
+        record(entry);
         const file = readBlob(workspace, entry.photo!.sha).file;
         entry.working = fit(file, ext, entry.abort.signal).then(
           (image) => {
@@ -267,9 +315,18 @@ export function createHeldFiles(deps: HeldDeps) {
         return refresh(entry);
       }
       try {
-        const queued = await enqueueSourceFile(db, workspace, runner, path, undefined, undefined, true);
-        const entry = register({ ...base, sourceId: queued.sourceId });
-        bySource.set(queued.sourceId, id);
+        // The row exists before the copy does, so a quit in between leaves a row for the sweep, not a copy nothing names.
+        const entry = register(base);
+        record(entry);
+        try {
+          const queued = await enqueueSourceFile(db, workspace, runner, path, undefined, undefined, true);
+          entry.sourceId = queued.sourceId;
+          bySource.set(queued.sourceId, id);
+        } catch (error) {
+          entries.delete(id);
+          db.prepare(`DELETE FROM held_files WHERE id = ?`).run(id);
+          throw error;
+        }
         return refresh(entry);
       } catch (error) {
         const code = error instanceof Error ? error.message : "";
@@ -379,23 +436,43 @@ export function createHeldFiles(deps: HeldDeps) {
       return taken;
     },
 
-    /** The hidden copies and stored files of the held files among `ids`, which a chat's removal must leave for a retry. */
-    holding(ids: string[]): { sources: string[]; blobs: string[] } {
-      const held = ids.flatMap((id) => entries.get(id) ?? []);
-      return {
-        sources: held.flatMap((entry) => entry.sourceId ?? []),
-        blobs: held.flatMap((entry) => (entry.photo ? [entry.photo.sha] : [])),
-      };
-    },
-
-    /** The files went with a message: they are no longer held, and their copies belong to the chat now. */
+    /** The files went with a message: they are no longer held. Its rows name their copies now, so nothing is removed. */
     release(ids: string[]): void {
       for (const id of ids) {
         const entry = entries.get(id);
-        if (!entry) continue;
-        entries.delete(id);
-        if (entry.sourceId) bySource.delete(entry.sourceId);
+        if (entry) {
+          entries.delete(id);
+          if (entry.sourceId) bySource.delete(entry.sourceId);
+        }
+        db.prepare(`DELETE FROM held_files WHERE id = ?`).run(id);
       }
+    },
+
+    /** A new chat took the composer a draft was in, so the files left in it follow. */
+    rehome(from: string, to: string): void {
+      for (const entry of entries.values()) if (entry.draft === from) entry.draft = to;
+      db.prepare(`UPDATE held_files SET draft = ? WHERE draft = ?`).run(to, from);
+    },
+
+    /** A chat was deleted: the files of its composer go, including the ones a send that was stopped still held. */
+    discardDraft(draft: string): void {
+      for (const entry of [...entries.values()]) if (entry.draft === draft) discard(entry);
+      for (const row of db.prepare(`SELECT id, source_id, blob_sha, extracted_sha FROM held_files WHERE draft = ?`).all(draft) as Record[])
+        discardRecord(row);
+      notify();
+    },
+
+    /**
+     * At start, removes what the last run left held. Core held the files in memory, so after a quit nothing can send them:
+     * each row the table still lists and this run does not hold goes the way a file taken off does, which keeps whatever a
+     * stored question or a plan names. Run in the middle of a session, it leaves what this composer holds alone.
+     */
+    sweep(): number {
+      const rows = (db.prepare(`SELECT id, source_id, blob_sha, extracted_sha FROM held_files`).all() as Record[]).filter(
+        (row) => !entries.has(row.id),
+      );
+      for (const row of rows) discardRecord(row);
+      return rows.length;
     },
   };
 }
@@ -411,34 +488,4 @@ export function setHeldFiles(held: HeldFiles | null): void {
 
 export function heldFiles(): HeldFiles | null {
   return current;
-}
-
-/**
- * At start, removes the hidden copies of files that were attached and never sent: core held them only in memory, so after
- * a quit nothing can send them. A copy goes only when no stored message names it (`attachments.source_id`), no chat's
- * scope lists it and no plan uses it, with the same code Free up space uses (`deleteHiddenSources`, which also keeps a
- * copy whose passages anything cites), and its reading is given up first so it does not start again. Nothing in the
- * Library is looked at. Returns how many it removed.
- */
-export function dropUnsentCopies(db: Database.Database, workspace: string, runner: Runner): number {
-  const listed = chatListedSources(db);
-  const candidates = (
-    db
-      .prepare(
-        `SELECT id FROM sources WHERE library = 0 AND kind <> 'smartbook'
-         AND id NOT IN (SELECT source_id FROM plan_sources)
-         AND id NOT IN (SELECT source_id FROM attachments WHERE source_id IS NOT NULL)
-         ORDER BY id`,
-      )
-      .pluck()
-      .all() as string[]
-  ).filter((id) => !listed.has(id));
-  if (candidates.length === 0) return 0;
-  const jobs = db.prepare(
-    `SELECT id FROM jobs WHERE kind IN ('source-import', 'source-import-vision', 'source-ocr') AND json_extract(params_json, '$.sourceId') = ?`,
-  );
-  for (const id of candidates) for (const job of jobs.pluck().all(id) as string[]) runner.discard(job);
-  const hashes = db.transaction(() => deleteHiddenSources(db, candidates))();
-  removeUnreferencedBlobs(db, workspace, hashes);
-  return candidates.filter((id) => db.prepare(`SELECT 1 FROM sources WHERE id = ?`).get(id) === undefined).length;
 }

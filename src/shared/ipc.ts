@@ -3302,7 +3302,11 @@ export const requests = {
    * arrives as `chats.attachment`. Sending waits until every attached file is read.
    */
   "chats.attach": {
-    input: z.object({ path: z.string() }),
+    input: z.object({
+      path: z.string(),
+      /** The composer draft the file belongs to: a chat id, or absent for a new chat's. Deleting the chat takes its files off. */
+      draft: z.string().max(100).optional(),
+    }),
     output: AttachmentView,
   },
   /** Takes a file off the composer: its reading stops and what it made is deleted. Unknown ids are ignored. */

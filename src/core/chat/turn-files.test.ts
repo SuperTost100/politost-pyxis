@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
 import { clearBench } from "../engine/bench";
+import { LOCAL_PROVIDER } from "../engine/local";
 import { rememberReady } from "../engine/selection";
 import { extractPlain } from "../sources/documents";
 import { tempDir } from "../test-temp";
@@ -215,6 +216,10 @@ describe("a reply to a question that came with a file", () => {
 describe("a photo goes to a model that can read it", () => {
   it("runs the turn on the same tool's image model, and the chat after it, instead of reading the photo with OCR", async () => {
     const { db, workspace, photo, attached } = setup();
+    // An automatic choice may move; a pinned one never does (see the tests below).
+    db.prepare(`UPDATE feature_engines SET selection_json = ? WHERE feature = 'chat'`).run(
+      JSON.stringify({ provider: "claude", model: "text-only-small", auto: true }),
+    );
     let ocr = 0;
     const seen: Array<{ model: string; images: number }> = [];
     const run = async (input: { selection: { model: string }; attachments?: unknown[] }) => {
@@ -301,6 +306,104 @@ describe("the model chosen for a photo is still an automatic choice", () => {
       { provider: "codex", model: "gpt-6.1-terra", images: 1 },
     ]);
     expect(result.message?.provider).toBe("codex");
+    db.close();
+  });
+});
+
+describe("a photo never leaves the computer, or the model the student chose, against that choice", () => {
+  const engine = (db: ReturnType<typeof openDatabase>, feature: string, selection: object) =>
+    db.prepare(`INSERT OR REPLACE INTO feature_engines (feature, selection_json, updated_at) VALUES (?, ?, 1)`).run(feature, JSON.stringify(selection));
+  const cloud = { id: "claude", kind: "cli" as const, effort: false, models: ["claude-sonnet-5-5"].map((id) => ({ id, efforts: [] })) };
+  const local = (models: string[]) => ({ id: LOCAL_PROVIDER, kind: "local" as const, effort: false, models: models.map((id) => ({ id, efforts: [] })) });
+
+  /** Sends one photo and reports where the turn ran and what it carried. */
+  async function sendPhoto(setupDb: (db: ReturnType<typeof openDatabase>) => void, ready: Parameters<typeof rememberReady>[0]) {
+    const { db, workspace, photo, attached } = setup();
+    setupDb(db);
+    rememberReady(ready);
+    const ran: Array<{ provider: string; model: string; images: number; prompt: string }> = [];
+    await askTurn(db, {
+      text: "cosa c'è scritto",
+      allowGeneral: true,
+      ...(await attached(photo)),
+      workspace,
+      recognize: async () => "Esercizio 2. Determinare il dominio",
+      run: async (input) => {
+        ran.push({ provider: input.selection.provider, model: input.selection.model, images: input.attachments?.length ?? 0, prompt: input.prompt });
+        return reply;
+      },
+    });
+    db.close();
+    return ran;
+  }
+
+  it("keeps a chat pinned to a local text-only model on this computer: the photo is read by local OCR, its text is sent", async () => {
+    const ran = await sendPhoto((db) => {
+      engine(db, "chat", { provider: LOCAL_PROVIDER, model: "llama3.2:3b" });
+      // The picture work is set to a cloud tool, which a pinned local chat must never reach.
+      engine(db, "vision", { provider: "claude", model: "claude-sonnet-5-5" });
+    }, [cloud, local(["llama3.2:3b"])]);
+    expect(ran).toEqual([expect.objectContaining({ provider: LOCAL_PROVIDER, model: "llama3.2:3b", images: 0 })]);
+    expect(ran[0]!.prompt).toContain("Esercizio 2. Determinare il dominio");
+  });
+
+  it("keeps a chat pinned to a cloud text-only model on that model: the photo is read by local OCR, its text is sent", async () => {
+    const ran = await sendPhoto((db) => {
+      engine(db, "chat", { provider: "claude", model: "text-only-small" });
+    }, [{ ...cloud, models: [{ id: "text-only-small", efforts: [] }, { id: "claude-sonnet-5-5", efforts: [] }] }]);
+    expect(ran).toEqual([expect.objectContaining({ provider: "claude", model: "text-only-small", images: 0 })]);
+    expect(ran[0]!.prompt).toContain("Esercizio 2. Determinare il dominio");
+  });
+
+  it("lets an automatic choice move to an image model, but not from a local model to a cloud tool", async () => {
+    // Local-only setup: the chat is automatic on a local text model, and a cloud tool is the photo task's engine.
+    const stays = await sendPhoto((db) => {
+      engine(db, "chat", { provider: LOCAL_PROVIDER, model: "llama3.2:3b", auto: true });
+      engine(db, "vision", { provider: "anthropic-api", model: "claude-sonnet-5-5", auto: true });
+    }, [local(["llama3.2:3b"]), { id: "anthropic-api", kind: "api", effort: false, models: [{ id: "claude-sonnet-5-5", efforts: [] }] }]);
+    expect(stays).toEqual([expect.objectContaining({ provider: LOCAL_PROVIDER, images: 0 })]);
+    // The same tool's own image model is still fine on this computer.
+    const sameLocal = await sendPhoto((db) => {
+      engine(db, "chat", { provider: LOCAL_PROVIDER, model: "llama3.2:3b", auto: true });
+    }, [local(["llama3.2:3b", "gemma3:4b"])]);
+    expect(sameLocal).toEqual([expect.objectContaining({ provider: LOCAL_PROVIDER, model: "gemma3:4b", images: 1 })]);
+    // With a subscription tool signed in, the automatic chat is on it, and the photo moves to its image model.
+    const moves = await sendPhoto((db) => {
+      engine(db, "chat", { provider: "claude", model: "text-only-small", auto: true });
+    }, [{ ...cloud, models: [{ id: "text-only-small", efforts: [] }, { id: "claude-sonnet-5-5", efforts: [] }] }]);
+    expect(moves).toEqual([expect.objectContaining({ provider: "claude", model: "claude-sonnet-5-5", images: 1 })]);
+  });
+});
+
+describe("a photo with no usable copy for the model is read locally", () => {
+  it("uses OCR when a model that reads images got no copy, instead of sending it neither pixels nor text", async () => {
+    const { db, workspace, write, attached } = setup();
+    db.prepare(`UPDATE feature_engines SET selection_json = ? WHERE feature = 'chat'`).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5-5" }));
+    // A valid photo past the provider's size limit: it could not be fitted, so there is nothing for the model to see.
+    const files = heldFilesFor(db, workspace, {
+      fit: async () => {
+        throw new Error("vision-image-too-large");
+      },
+    });
+    const photo = write("grande.webp", "pixels di una foto troppo grande");
+    let prompt = "";
+    let images = -1;
+    await askTurn(db, {
+      text: "cosa c'è scritto",
+      allowGeneral: true,
+      attachments: (await files.attach(photo)).ids,
+      held: files.held,
+      workspace,
+      recognize: async () => "Esercizio 2. Determinare il dominio",
+      run: async (input) => {
+        prompt = input.prompt;
+        images = input.attachments?.length ?? 0;
+        return reply;
+      },
+    });
+    expect(images).toBe(0);
+    expect(prompt).toContain("Esercizio 2. Determinare il dominio");
+    void attached;
     db.close();
   });
 });

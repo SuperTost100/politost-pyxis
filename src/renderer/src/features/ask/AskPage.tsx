@@ -32,21 +32,17 @@ import { MAX_ATTACHED_FILES, MAX_DROPPED_FILES } from "@shared/source-types";
 import type { AttachmentView } from "@shared/ipc";
 import {
   ATTACH_EXTENSIONS,
-  LOCAL_PREFIX,
-  attachFailure,
   attachable,
   attachmentLine,
   draftKey,
-  fileName,
   isLocalFile,
-  refusedFile,
   type PickedFile,
-  readPendingFiles,
   readPendingSubject,
   takeBoardAttachment,
-  writePendingFiles,
   writePendingSubject,
 } from "./attachments";
+import { attachQueue, drafts, useDraftFiles, useFilePreviews, useFileViews } from "./draftSession";
+import type { Preview } from "./draftFiles";
 import { ChatHeader } from "./ChatHeader";
 import { pastedPng } from "./paste";
 import { replyPlainText } from "./replyText";
@@ -84,10 +80,8 @@ function errorParams(err: unknown): Record<string, unknown> {
 }
 
 type ChatRow = Awaited<ReturnType<typeof invoke<"chats.read">>>["messages"][number];
-/** An image staged for the next message, shown in its attachment chip. A pasted one is named for what it is. */
-type Preview = { src: string; alt: string; name?: string };
 /** A message taken out of the composer as it was sent, put back if its turn fails or is stopped. */
-type Held = { draft: string; files: PickedFile[]; previews: Record<string, Preview> };
+type Held = { draft: string; files: PickedFile[] };
 type Skipped = Array<"too-large" | "unreadable" | "over-limit">;
 /** The files a sent message carried, as the chat reads them, or as the composer held them before the reply arrived. */
 type SentFile = { id: string; name: string | null; kind: "document" | "photo"; sourceId?: string | null };
@@ -322,28 +316,28 @@ export function AskPage() {
   const chatNow = useRef(chatId);
   chatNow.current = chatId;
   const arrived = useRef<string | null>(null);
-  const [files, setFiles] = useState<PickedFile[]>(() =>
-    readPendingFiles(sessionStorage, chatId),
-  );
-  const filesRef = useRef(files);
-  filesRef.current = files;
+  // The files of the draft on screen. They live in the session store, so an attach that finishes while another chat is on
+  // screen lands in the draft that started it, and each draft is attached to one batch at a time (see `draftFiles.ts`).
+  const files = useDraftFiles(chatId ?? "");
   // What core says of each picked file, kept by its id: its reading, or why it failed. A chip refused before core held it
   // has a `local-` id and a view made here.
-  const [views, setViews] = useState<Record<string, AttachmentView>>({});
+  const views = useFileViews();
+  const previews = useFilePreviews();
   // Files the last question went without, because they could not be read.
   const [leftOut, setLeftOut] = useState<LeftOut>([]);
-  useEffect(() => onBroadcast("chats.attachment", (view) => setViews((current) => ({ ...current, [view.id]: view }))), []);
+  useEffect(() => onBroadcast("chats.attachment", (view) => drafts.views.put(view)), []);
   // Files kept for a chat that was left are asked about again, and the ones core no longer holds drop off.
   useEffect(() => {
-    const ids = readPendingFiles(sessionStorage, chatId).map((file) => file.id);
+    const draft = chatId ?? "";
+    const ids = drafts.files.get(draft).map((file) => file.id).filter((id) => !id.startsWith("local-"));
     if (ids.length === 0) return;
     let current = true;
     void invoke("chats.attachments", { ids }).then(
       (list) => {
         if (!current) return;
-        setViews((now) => ({ ...now, ...Object.fromEntries(list.map((view) => [view.id, view])) }));
+        drafts.views.put(...list);
         const known = new Set(list.map((view) => view.id));
-        setFiles((now) => now.filter((file) => isLocalFile(file) || known.has(file.id)));
+        drafts.files.set(draft, (now) => now.filter((file) => isLocalFile(file) || known.has(file.id)));
       },
       () => undefined,
     );
@@ -351,19 +345,11 @@ export function AskPage() {
       current = false;
     };
   }, [chatId]);
-  // Images staged by the whiteboard's Attach or by a paste, keyed by the file they belong to.
-  const [previews, setPreviews] = useState<Record<string, Preview>>({});
-  // Picked files are kept by core's id, so opening the whiteboard or the graph and coming back does not lose them.
-  useEffect(() => {
-    writePendingFiles(sessionStorage, composerFor.current, files);
-  }, [files]);
   // Moving to another chat shows that chat's own draft and files.
   useLayoutEffect(() => {
     if (composerFor.current === chatId) return;
     composerFor.current = chatId;
     setDraft(sessionStorage.getItem(draftKey(chatId)) ?? "");
-    setFiles(readPendingFiles(sessionStorage, chatId));
-    setPreviews({});
     // A new chat shows the subject kept for it, which is Pyxis's choice once its first question has gone.
     setNewSubject(readPendingSubject(sessionStorage));
   }, [chatId]);
@@ -574,14 +560,20 @@ export function AskPage() {
     if (!trimmed || turns.get()) return;
     if (chatId && !thread.data) return;
     const startedIn = chatId ?? "";
+    // Files still being registered with core, from a pick Enter caught half way, go with this question: it waits for them.
+    if (!options.textOnly && attachQueue.busy(startedIn)) {
+      await attachQueue.idle(startedIn);
+      if (turns.get()) return;
+    }
+    const picked = drafts.files.get(startedIn);
     // A file refused before core held it never goes with the question.
-    const attached = options.textOnly ? [] : files.filter((file) => !isLocalFile(file));
+    const attached = options.textOnly ? [] : picked.filter((file) => !isLocalFile(file));
     const turn = turns.start(
       startedIn,
       trimmed,
       false,
       messages.at(-1)?.id ?? null,
-      attached.map((file) => ({ id: file.id, name: file.name, kind: views[file.id]?.kind ?? "document" })),
+      attached.map((file) => ({ id: file.id, name: file.name, kind: drafts.views.get()[file.id]?.kind ?? "document" })),
     );
     if (!turn) return;
     setError(null);
@@ -590,11 +582,10 @@ export function AskPage() {
     setLeftOut([]);
     following.current = true;
     // The message leaves the composer as it is sent; a failed or stopped turn puts it back.
-    const held: Held = { draft, files, previews };
+    const held: Held = { draft, files: picked };
     if (!options.textOnly) {
       setDraft("");
-      setFiles([]);
-      setPreviews({});
+      drafts.files.set(startedIn, []);
       sessionStorage.removeItem(draftKey(chatId));
     }
     // A new chat's first question takes the subject chosen for it, which stays kept only until the question has gone.
@@ -605,11 +596,10 @@ export function AskPage() {
       if (sentSubject && readPendingSubject(sessionStorage).kind === "auto") writePendingSubject(sessionStorage, sentSubject);
       if (options.textOnly || turn.dropped) return;
       const from = startedIn || undefined;
+      // The files go back to the draft the question was sent from, whatever is on screen now.
+      drafts.files.set(startedIn, (current) => (current.length > 0 ? current : held.files));
       const page = screen?.current;
       if (page && page.composer() === startedIn) page.restore(held);
-      else if (readPendingFiles(sessionStorage, from).length === 0) {
-        writePendingFiles(sessionStorage, from, held.files);
-      }
       if (held.draft && !sessionStorage.getItem(draftKey(from)))
         sessionStorage.setItem(draftKey(from), held.draft);
     };
@@ -636,6 +626,8 @@ export function AskPage() {
         return;
       }
       askedGeneral.set(result.chatId, options.allowGeneral === true);
+      // The files went with the question, so their previews are not needed any more.
+      drafts.previews.drop(attached.map((file) => file.id));
       // Store the new messages in the cache before the placeholder goes, so the reply replaces it without a gap.
       await client
         .fetchQuery({
@@ -676,17 +668,13 @@ export function AskPage() {
     composer: () => composerFor.current ?? "",
     restore(held) {
       setDraft((current) => current || held.draft);
-      setFiles((current) => (current.length > 0 ? current : held.files));
       // Core kept the files while the send ran, so the chips come back as they are now, ready.
       const ids = held.files.filter((file) => !isLocalFile(file)).map((file) => file.id);
       if (ids.length > 0)
         void invoke("chats.attachments", { ids }).then(
-          (list) => setViews((now) => ({ ...now, ...Object.fromEntries(list.map((view) => [view.id, view])) })),
+          (list) => drafts.views.put(...list),
           () => undefined,
         );
-      setPreviews((current) =>
-        Object.keys(current).length > 0 ? current : held.previews,
-      );
     },
     replied(to, notCovered, skippedImages, reply, left = []) {
       setUncovered(notCovered);
@@ -700,8 +688,8 @@ export function AskPage() {
         const typed = sessionStorage.getItem(draftKey());
         if (typed) sessionStorage.setItem(draftKey(to), typed);
         sessionStorage.removeItem(draftKey());
-        writePendingFiles(sessionStorage, to, readPendingFiles(sessionStorage));
-        writePendingFiles(sessionStorage, undefined, []);
+        drafts.files.set(to, drafts.files.get(""));
+        drafts.files.set("", []);
         composerFor.current = to;
       }
       // The new chat takes the place of the empty page it was written on, which starts the trail as Nuova chat does: a
@@ -848,39 +836,17 @@ export function AskPage() {
   useEffect(() => setAttachNote(null), [chatId]);
   const [dropping, setDropping] = useState(false);
   /**
-   * Attaches files to the composer. Core reads each one at once and tells how it goes, so the chip shows the reading. A file
-   * that core refuses outright, or that does not fit in the message, shows its reason on a chip of its own.
+   * Attaches files to the draft on screen. Core reads each one at once and tells how it goes, so the chip shows the reading.
+   * The draft's queue runs one batch at a time and applies each result to this draft, so a switch to another chat meanwhile
+   * moves nothing, and a ninth file is marked as over the limit when it is picked.
    */
-  async function attachPaths(paths: string[], preview?: Preview) {
-    let count = filesRef.current.length;
-    for (const path of paths) {
-      // Pending files survive leaving the chat, so picking a file that is already waiting must not attach it twice.
-      if (filesRef.current.some((file) => file.path === path)) continue;
-      if (count >= MAX_ATTACHED_FILES) {
-        const id = `${LOCAL_PREFIX}${crypto.randomUUID()}`;
-        setViews((now) => ({ ...now, [id]: refusedFile(id, path, "too-many") }));
-        setFiles((now) => [...now, { id, name: fileName(path), path }]);
-        count += 1;
-        continue;
-      }
-      try {
-        const view = await invoke("chats.attach", { path });
-        setViews((now) => ({ ...now, [view.id]: now[view.id] ?? view }));
-        setFiles((now) => (now.some((file) => file.id === view.id) ? now : [...now, { id: view.id, name: view.name, path }]));
-        filesRef.current = [...filesRef.current, { id: view.id, name: view.name, path }];
-        if (preview) setPreviews((now) => ({ ...now, [view.id]: preview }));
-      } catch (err) {
-        const id = `${LOCAL_PREFIX}${crypto.randomUUID()}`;
-        setViews((now) => ({ ...now, [id]: refusedFile(id, path, attachFailure(err)) }));
-        setFiles((now) => [...now, { id, name: fileName(path), path }]);
-      }
-      count += 1;
-    }
+  function attachPaths(paths: string[], preview?: Preview): Promise<void> {
+    return attachQueue.attach(chatId ?? "", paths, preview);
   }
   /** Takes a file off the composer: core stops its reading and deletes what it made. */
   function removeFile(file: PickedFile) {
-    setFiles((current) => current.filter((item) => item.id !== file.id));
-    setPreviews((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== file.id)));
+    drafts.files.set(chatId ?? "", (current) => current.filter((item) => item.id !== file.id));
+    drafts.previews.drop([file.id]);
     if (!isLocalFile(file)) void invoke("chats.detach", { id: file.id }).catch(() => undefined);
   }
   async function attachPasted(images: File[]) {

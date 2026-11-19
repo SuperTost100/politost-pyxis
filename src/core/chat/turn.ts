@@ -22,6 +22,7 @@ import { isAbort, IpcError, toIpcError, type AttachmentError, type MessageFile }
 import { generate, type GenerateInput } from "../engine/generate";
 import { endConversation } from "../engine/funnel";
 import { engineSeesImages } from "../engine/capabilities";
+import { LOCAL_PROVIDER } from "../engine/local";
 import { selectionFor, selectionOn, strongestSelection, type StoredSelection } from "../engine/selection";
 import { withUsageScope } from "../engine/usage";
 import type { Embedder, PassageHit } from "../sources/retrieve";
@@ -321,16 +322,21 @@ function chatHoldsPhotos(db: Database.Database, chatId: string): boolean {
 }
 
 /**
- * The engine for a turn that has a photo. The chat's own when it reads images. Otherwise the model of the same tool that
- * does (the one its automatic choice makes for photos), then the model of another available tool. Only when no tool
- * has one does the chat keep its engine and read the photo with local OCR.
+ * The engine for a turn that has a photo. The chat's own when it reads images. A model the student pinned for the chat is
+ * a pin: it never moves to another model or tool for a photo, and a photo it cannot read is read by local OCR and sent as
+ * text. An automatic choice may move to an image model, of the same tool first, then of another available tool, but never
+ * from a local model to a cloud tool: the order of tools only names subscription tools, and a local chat is automatic only
+ * when none is signed in, so nothing the student set lets a local chat's photo, question and conversation leave this
+ * computer. With no image model to move to, the chat keeps its engine and reads the photo with local OCR.
  */
 function selectionForPhotos(db: Database.Database, chat: StoredSelection): StoredSelection {
   if (engineSeesImages(chat)) return chat;
+  if (!chat.chosenFor) return chat;
   const sameTool = selectionOn(chat.provider, "vision");
   // Pyxis chose this model for the picture work, so it stays an automatic choice: at a limit, a sign-out or a refused model
   // the call moves on to the next tool's image model (`chosenFor` is what `generate` reads for that).
   if (sameTool && engineSeesImages(sameTool)) return { ...sameTool, chosenFor: "vision" };
+  if (chat.provider === LOCAL_PROVIDER) return chat;
   try {
     const vision = selectionFor(db, "vision");
     if (engineSeesImages(vision)) return vision;
@@ -809,6 +815,8 @@ export async function askTurn(
     // be read, are taken off only now, so a send that failed would have kept every chip as it was.
     for (const id of report.drop ?? []) input.held?.detach(id);
     input.held?.release(input.attachments ?? []);
+    // A new chat takes the composer the draft was in: the files left in it belong to the chat now.
+    if (chat.created) input.held?.rehome(input.chatId ?? "", chat.id);
     return report.leftOut?.length
       ? { ...result, leftOut: report.leftOut.map(({ name, error }) => ({ name, error })) }
       : result;
@@ -820,8 +828,8 @@ export async function askTurn(
       db.prepare(`SELECT 1 FROM chats WHERE id = ?`).get(chat.id) &&
       !db.prepare(`SELECT 1 FROM messages WHERE chat_id = ? AND role = 'assistant'`).get(chat.id)
     )
-      // The files still held in the composer stay, with the copies they made, for the retry.
-      deleteChat(db, input.workspace ?? "", chat.id, input.held?.holding(input.attachments ?? []));
+      // The files still held in the composer stay, with the copies they made, for the retry: their rows name them.
+      deleteChat(db, input.workspace ?? "", chat.id);
     throw err;
   } finally {
     input.signal?.removeEventListener("abort", stopChecks);
@@ -877,8 +885,9 @@ async function answer(
   const photoRows: Array<{ id: string; name: string; size: number; image: PreparedFiles["images"][number]; text: string }> = [];
   for (const photo of taken?.photos ?? []) {
     const one = await stagePhoto(photo, reads, input.signal);
-    // Only a photo no model reads goes to local OCR: it is the last resort, when no available tool has a model for images.
-    const text = reads || !input.workspace ? "" : await recognisePhoto(photo, input.workspace, input.recognize, input.signal);
+    // Local OCR is the last resort: no model of the chat reads images, or the photo has no copy a model can take (a valid
+    // photo past the provider's size limit), so the model would get neither pixels nor text.
+    const text = (reads && one.image.data) || !input.workspace ? "" : await recognisePhoto(photo, input.workspace, input.recognize, input.signal);
     input.signal?.throwIfAborted();
     if (text && !notes.includes(text)) notes.push(text);
     blobs.push(...one.blobs);
@@ -896,7 +905,11 @@ async function answer(
     const held = sameDocument.get(doc.sourceId, doc.sourceId, scopeNow) as { id: string } | undefined;
     return { ...doc, use: held?.id ?? doc.sourceId, duplicate: held != null };
   });
-  const reused = documents.map((doc) => doc.use);
+  // A question answered again (Try again) brings the documents it was stored with, as it did when it was sent.
+  const stored = reusedQuestion
+    ? (db.prepare(`SELECT source_id FROM attachments WHERE message_id = ? AND source_id IS NOT NULL`).pluck().all(reusedQuestion) as string[])
+    : [];
+  const reused = [...new Set([...documents.map((doc) => doc.use), ...stored])];
 
   // The files were read while the chat could be deleted, so it is checked again here, in the one transaction that stores
   // the attached sources with the turn's scope, message and photos. A failure anywhere in it leaves none of them.
@@ -1558,13 +1571,7 @@ export function renameChat(
  * anything built from them still uses one, or the student promoted it to the library), and the photo and document
  * files nothing else names. The rows go in one transaction; the files are removed after it commits.
  */
-export function deleteChat(
-  db: Database.Database,
-  workspace: string,
-  chatId: string,
-  /** Hidden copies and stored files a composer still holds for a retry: they stay when the chat goes. */
-  keep: { sources: string[]; blobs: string[] } = { sources: [], blobs: [] },
-) {
+export function deleteChat(db: Database.Database, workspace: string, chatId: string) {
   cancelChecks(chatId);
   const hashes = db.transaction(() => {
     const mine = readScope(db, chatId).ids;
@@ -1591,11 +1598,11 @@ export function deleteChat(
       ...photos.map((row) => row.sha),
       ...deleteHiddenSources(
         db,
-        [...new Set([...mine, ...cited])].filter((id) => !shared.has(id) && !keep.sources.includes(id)),
+        [...new Set([...mine, ...cited])].filter((id) => !shared.has(id)),
       ),
     ];
   })();
-  removeUnreferencedBlobs(db, workspace, hashes.filter((sha) => !keep.blobs.includes(sha)));
+  removeUnreferencedBlobs(db, workspace, hashes);
 }
 
 export function listChats(db: Database.Database) {

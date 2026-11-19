@@ -428,14 +428,31 @@ CREATE INDEX card_reviews_day ON card_reviews(reviewed_at);`,
   // The files a message carried, shown with it. A row with a `kind` is one file: its name and size as picked, and for a
   // document the id of the hidden source that holds its text (no foreign key: a source that is gone reads as a file that can no longer be opened). `recognised` is the text local OCR read from a photo for a model
   // that cannot see images, kept apart from the message body. Rows made before this step have none of these and stay as
-  // they are.
+  // they are. `held_files` records every file attached in a composer and not yet sent, from the moment it is attached: its
+  // draft (a chat id, or empty for a new chat), the hidden source or the stored photo, the extracted-text file of its
+  // import and its state, so every cleanup can ask the database whether a source or a file is still wanted.
   {
     version: 34,
     sql: `ALTER TABLE attachments ADD COLUMN name TEXT;
 ALTER TABLE attachments ADD COLUMN kind TEXT CHECK (kind IS NULL OR kind IN ('photo', 'document'));
 ALTER TABLE attachments ADD COLUMN size INTEGER;
 ALTER TABLE attachments ADD COLUMN source_id TEXT;
-ALTER TABLE attachments ADD COLUMN recognised TEXT;`,
+ALTER TABLE attachments ADD COLUMN recognised TEXT;
+CREATE TABLE held_files (
+  id TEXT PRIMARY KEY,
+  draft TEXT NOT NULL DEFAULT '',
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('photo', 'document')),
+  size INTEGER NOT NULL,
+  ext TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'reading' CHECK (state IN ('reading', 'ready', 'failed', 'needs-data')),
+  error TEXT,
+  source_id TEXT,
+  blob_sha TEXT,
+  extracted_sha TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX held_files_draft ON held_files(draft);`,
   },
 ] satisfies Array<{ version: number; sql: string; foreignKeysOff?: { check: string[] } }>;
 

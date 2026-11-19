@@ -5,7 +5,7 @@ import type { Runner } from "../jobs/runner";
 import { ocrConsent, ocrDataStatus } from "../sources/ocr-data";
 import { startScan } from "../sources/ocr-job";
 import type { AttachmentView } from "../../shared/ipc";
-import { createHeldFiles, dropUnsentCopies, setHeldFiles } from "./held-files";
+import { createHeldFiles, setHeldFiles } from "./held-files";
 import { isFigureFixCall, recordedPlanRun } from "../engine/recorded-plan";
 import { exportChat, type ChatExportLanguage } from "./export";
 import { searchChats } from "./search";
@@ -67,8 +67,6 @@ export function chatHandlers(
   files?: { runner: Runner; emit: (view: AttachmentView) => void },
 ) {
   const tess = join(workspace, "runtimes", "tesseract");
-  // Files attached before the last quit and never sent have nothing left to send them.
-  if (files) dropUnsentCopies(db, workspace, files.runner);
   const held = files
     ? createHeldFiles({
         db,
@@ -84,13 +82,15 @@ export function chatHandlers(
       })
     : null;
   setHeldFiles(held);
+  // Files attached before the last quit and never sent have nothing left to send them.
+  held?.sweep();
   const needHeld = () => {
     if (!held) throw new Error("attachments-unavailable");
     return held;
   };
   return {
-    attach(input: { path: string }) {
-      return needHeld().attach(input.path);
+    attach(input: { path: string; draft?: string }) {
+      return needHeld().attach(input.path, input.draft ?? "");
     },
     detach(input: { id: string }) {
       needHeld().detach(input.id);
@@ -159,6 +159,8 @@ export function chatHandlers(
     },
     remove(input: { chatId: string }) {
       endConversation(input.chatId);
+      // The files its composer still held go first: what a stored question names stays with the chat until it is deleted.
+      held?.discardDraft(input.chatId);
       deleteChat(db, workspace, input.chatId);
       return { ok: true as const };
     },

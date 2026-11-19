@@ -32,8 +32,11 @@ it("backup and delete both see a file named in each place", () => {
     INSERT INTO whiteboards (id, blob_sha, created_at, updated_at) VALUES ('w', '${sha(3)}', 1, 1);
     INSERT INTO source_documents (id, source_id, version, tree_json, created_at)
       VALUES ('d1', 's', 1, '{"blobSha":"${sha(4)}"}', 1), ('d2', 's', 2, '{"sourceSha":"${sha(5)}"}', 1);
+    INSERT INTO held_files (id, draft, name, kind, size, ext, blob_sha, extracted_sha, created_at)
+      VALUES ('h1', '', 'foto.png', 'photo', 1, '.png', '${sha(6)}', NULL, 1),
+             ('h2', '', 'note.txt', 'document', 1, '.txt', NULL, '${sha(7)}', 1);
   `);
-  const all = [1, 2, 3, 4, 5].map(sha);
+  const all = [1, 2, 3, 4, 5, 6, 7].map(sha);
   expect(BLOB_REFERENCES).toHaveLength(all.length);
   expect([...namedBlobs(db)].sort()).toEqual(all);
   const inUse = blobUse(db);
@@ -41,7 +44,7 @@ it("backup and delete both see a file named in each place", () => {
     expect(blobNamed(db, hash)).toBe(true);
     expect(inUse(hash)).toBe(true);
   }
-  expect(blobNamed(db, sha(6))).toBe(false);
-  expect(inUse(sha(6))).toBe(false);
+  expect(blobNamed(db, sha(8))).toBe(false);
+  expect(inUse(sha(8))).toBe(false);
   db.close();
 });

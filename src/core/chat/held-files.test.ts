@@ -9,7 +9,10 @@ import { registerOcrJob, startScan } from "../sources/ocr-job";
 import { freeUpSpace } from "../share/usage";
 import { sha256 } from "../sources/quality";
 import { tempDir } from "../test-temp";
-import { dropUnsentCopies } from "./held-files";
+import { createHeldFiles, heldFiles, setHeldFiles } from "./held-files";
+import { chatHandlers } from "./handlers";
+import { createRunner } from "../jobs/runner";
+import { registerSourceJobs } from "../sources/jobs";
 import { heldFilesFor } from "./test-attach";
 
 const opened: Array<{ close: () => void }> = [];
@@ -374,15 +377,103 @@ describe("cleanup sees the files a composer holds", () => {
     files.held.detach(second.id);
     expect(hasBlob(workspace, sha)).toBe(false);
   });
+});
 
-  it("agrees with the start-up cleanup: a copy that is held now is not an unsent one", async () => {
-    const { files, write, workspace, db, sources } = setup();
+describe("every held file is recorded in the database", () => {
+  const png = { mediaType: "image/png" as const, bytes: new Uint8Array([1, 2, 3]) };
+
+  it("records a document and a photo from the moment they are attached: draft, hidden source, stored file, state", async () => {
+    const { files, write, db, sources } = setup({ fit: async () => png });
+    const doc = await files.held.attach(write("appunti.txt", "Il calore si trasmette per conduzione."), "chat-a");
+    const pic = await files.held.attach(write("foto.png", "pixels"), "chat-b");
+    const rows = () =>
+      db.prepare(`SELECT id, draft, name, kind, state, source_id, blob_sha FROM held_files ORDER BY created_at, rowid`).all();
+    expect(rows()).toEqual([
+      expect.objectContaining({ id: doc.id, draft: "chat-a", name: "appunti.txt", kind: "document", source_id: sources()[0]!.id, blob_sha: null }),
+      expect.objectContaining({ id: pic.id, draft: "chat-b", name: "foto.png", kind: "photo", source_id: null, blob_sha: expect.stringMatching(/^[a-f0-9]{64}$/) }),
+    ]);
+    await files.held.settle([doc.id, pic.id]);
+    expect(rows().map((row) => (row as { state: string }).state)).toEqual(["ready", "ready"]);
+    // Sent: the message's rows name the files now, and the held rows go.
+    files.held.release([doc.id, pic.id]);
+    expect(rows()).toEqual([]);
+  });
+
+  it("removes the import job's extracted-text blob when a file is taken off", async () => {
+    const { files, write, db, workspace } = setup();
+    const view = await files.held.attach(write("appunti.txt", "Il calore si trasmette per conduzione."));
+    await files.held.settle([view.id]);
+    const extracted = db
+      .prepare(`SELECT json_extract(params_json, '$.extractedSha') FROM jobs WHERE kind = 'source-import'`)
+      .pluck()
+      .get() as string;
+    expect(hasBlob(workspace, extracted)).toBe(true);
+    files.held.detach(view.id);
+    expect(hasBlob(workspace, extracted)).toBe(false);
+    expect(db.prepare(`SELECT COUNT(*) FROM held_files`).pluck().get()).toBe(0);
+  });
+
+  it("removes at start what the last run left held: documents, their blobs and photo originals up to 40 MB", async () => {
+    const { files, write, db, workspace, sources } = setup({ fit: async () => png });
     const doc = await files.held.attach(write("appunti.txt", "Il calore si trasmette per conduzione."));
-    await files.held.settle([doc.id]);
-    expect(dropUnsentCopies(db, workspace, files.runner)).toBe(0);
+    const photoPath = write("foto.png", "pixels di una foto abbandonata");
+    const pic = await files.held.attach(photoPath);
+    await files.held.settle([doc.id, pic.id]);
+    const photoSha = sha256(readFileSync(photoPath));
+    expect(hasBlob(workspace, photoSha)).toBe(true);
+    // The app quit: nothing holds them in memory any more. The next run starts and sweeps what the table still lists.
+    const next = createHeldFiles({ db, workspace, runner: files.runner, emit: () => {} });
+    next.sweep();
+    expect(sources()).toEqual([]);
+    expect(hasBlob(workspace, photoSha)).toBe(false);
+    expect(db.prepare(`SELECT COUNT(*) FROM held_files`).pluck().get()).toBe(0);
+  });
+
+  it("leaves what the running composer holds alone when it sweeps", async () => {
+    const { files, write, db, sources } = setup();
+    const view = await files.held.attach(write("appunti.txt", "Il calore si trasmette per conduzione."));
+    await files.held.settle([view.id]);
+    files.held.sweep();
     expect(sources()).toHaveLength(1);
-    files.held.release([doc.id]);
-    // Released and never stored on a message, as after a quit: now nothing holds it.
-    expect(dropUnsentCopies(db, workspace, files.runner)).toBe(1);
+    expect(db.prepare(`SELECT COUNT(*) FROM held_files`).pluck().get()).toBe(1);
+  });
+
+  it("keeps a source and its passages that a stored question names when its held row goes", async () => {
+    const { files, write, db, sources } = setup();
+    const view = await files.held.attach(write("appunti.txt", "Il calore si trasmette per conduzione."));
+    await files.held.settle([view.id]);
+    const [source] = sources();
+    db.prepare(`INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c', 't', 1, 1)`).run();
+    db.prepare(`INSERT INTO messages (id, chat_id, role, body, created_at) VALUES ('m', 'c', 'user', 'q', 1)`).run();
+    db.prepare(
+      `INSERT INTO attachments (id, message_id, blob_sha, mime, created_at, name, kind, size, source_id)
+       SELECT 'a', 'm', blob_sha, 'text/plain', 1, 'appunti.txt', 'document', 10, id FROM sources WHERE id = ?`,
+    ).run(source!.id);
+    files.held.detach(view.id);
+    expect(sources()).toHaveLength(1);
+    expect(db.prepare(`SELECT COUNT(*) FROM passages WHERE source_id = ?`).pluck().get(source!.id)).toBeGreaterThan(0);
+    expect(db.prepare(`SELECT COUNT(*) FROM held_files`).pluck().get()).toBe(0);
+  });
+
+  it("releases the unsent files of a chat that is deleted, whatever the send that held them did", async () => {
+    const workspace = tempDir("pyxis-held-delete-");
+    const db = openDatabase(join(workspace, "pyxis.db"));
+    opened.push(db);
+    // The app's wiring: the runner's updates reach the running composer.
+    const runner = createRunner(db, (job) => heldFiles()?.onJob(job));
+    registerSourceJobs(db, workspace, runner, async () => ({ document: extractPlain("Il calore si trasmette per conduzione.", false) }));
+    const handlers = chatHandlers(db, workspace, undefined, 0, undefined, { runner, emit: () => {} });
+    db.prepare(`INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c', 't', 1, 1)`).run();
+    const path = join(workspace, "appunti.txt");
+    writeFileSync(path, "Il calore si trasmette per conduzione.");
+    const view = await handlers.attach({ path, draft: "c" });
+    const other = await handlers.attach({ path, draft: "altra" });
+    for (let i = 0; i < 200 && db.prepare(`SELECT COUNT(*) FROM sources WHERE status = 'ready'`).pluck().get() !== 2; i += 1)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    handlers.remove({ chatId: "c" });
+    expect(handlers.attachments({ ids: [view.id, other.id] }).map((item) => item.id)).toEqual([other.id]);
+    expect(db.prepare(`SELECT draft FROM held_files`).pluck().all()).toEqual(["altra"]);
+    expect(db.prepare(`SELECT COUNT(*) FROM sources`).pluck().get()).toBe(1);
+    setHeldFiles(null);
   });
 });

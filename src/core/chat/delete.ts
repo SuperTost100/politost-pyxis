@@ -5,7 +5,8 @@ import { GIVEN_UP } from "../jobs/runner";
 /**
  * What deleting a chat or a plan takes with it besides its own rows: the hidden documents it brought and their files.
  * A document is permanently deleted only when nothing else uses it. It stays when a chat's scope lists it, a plan uses
- * it, it is a smartbook (unless the caller owns the book, see `books`), a job that may still run names it, any plan
+ * it, a composer holds it (`held_files`) or a stored question's file names it (`attachments.source_id`), it is a smartbook
+ * (unless the caller owns the book, see `books`), a job that may still run names it, any plan
  * item, card, exercise or chat citation points at its passages, or JSON elsewhere names it, its passages or its book's
  * exercises (see `jsonReferences`). A file is removed only when no source, attachment,
  * document version, whiteboard or job that may still run names its hash.
@@ -19,23 +20,6 @@ import { GIVEN_UP } from "../jobs/runner";
 const OPEN_JOBS = `SELECT params_json AS text FROM jobs WHERE state != 'succeeded' AND dismissed < ${GIVEN_UP}
   UNION ALL SELECT s.output_json FROM job_steps s JOIN jobs j ON j.id = s.job_id
   WHERE j.state != 'succeeded' AND j.dismissed < ${GIVEN_UP} AND s.output_json IS NOT NULL`;
-
-/** What something holds in memory that no row names yet: hidden copies and stored files of files a composer has attached. */
-export type HeldReferences = { sources: Iterable<string>; blobs: Iterable<string> };
-const holders = new WeakMap<Database.Database, () => HeldReferences>();
-
-/**
- * Registers what a database's composer holds, so every cleanup that asks whether a source or a stored file is in use (a
- * deleted chat or plan, Free up space, taking a file off) counts it until the file is sent or taken off.
- */
-export function holdReferences(db: Database.Database, held: () => HeldReferences): void {
-  holders.set(db, held);
-}
-
-function heldBy(db: Database.Database): { sources: Set<string>; blobs: Set<string> } {
-  const held = holders.get(db)?.();
-  return { sources: new Set(held?.sources ?? []), blobs: new Set(held?.blobs ?? []) };
-}
 
 /**
  * Whether JSON without a foreign key names an ID: a lesson's citation order, a question's `sourceId`, an exercise
@@ -86,7 +70,6 @@ function sourceInUse(
   references: () => JsonReferences,
 ): boolean {
   if (relationallyInUse(db, sourceId, books)) return true;
-  if (heldBy(db).sources.has(sourceId)) return true;
   const named = references();
   const book = (db.prepare(`SELECT id FROM smartbooks WHERE source_id = ?`).pluck().get(sourceId) ?? undefined) as
     | string
@@ -114,6 +97,9 @@ function relationallyInUse(db: Database.Database, sourceId: string, books: boole
       .prepare(
         [
           `SELECT 1 FROM plan_sources WHERE source_id = ?`,
+          // A file attached in a composer and not sent yet, and a file a stored question carries, name their source.
+          `SELECT 1 FROM held_files WHERE source_id = ?`,
+          `SELECT 1 FROM attachments WHERE source_id = ?`,
           // A smartbook row would cascade away with its source, and its exercises with it.
           books ? `SELECT 1 WHERE ? IS NULL` : `SELECT 1 FROM smartbooks WHERE source_id = ?`,
           `SELECT 1 FROM (${OPEN_JOBS}) WHERE instr(text, ?) > 0`,
@@ -124,7 +110,7 @@ function relationallyInUse(db: Database.Database, sourceId: string, books: boole
           }`,
         ].join(" UNION ALL ") + ` LIMIT 1`,
       )
-      .get(...Array.from({ length: 8 }, () => sourceId)) !== undefined
+      .get(...Array.from({ length: 10 }, () => sourceId)) !== undefined
   );
 }
 
@@ -261,9 +247,8 @@ export function deleteLoosePassages(db: Database.Database, candidates: string[])
  */
 export function blobUse(db: Database.Database): (sha: string) => boolean {
   const named = namedBlobs(db);
-  const held = heldBy(db);
   const jobs = (db.prepare(OPEN_JOBS).all() as Array<{ text: string }>).map((row) => row.text);
-  return (sha) => named.has(sha) || held.blobs.has(sha) || jobs.some((text) => text.includes(sha));
+  return (sha) => named.has(sha) || jobs.some((text) => text.includes(sha));
 }
 
 /**

@@ -146,6 +146,36 @@ describe("a failed send keeps its files held, ready, for the retry", () => {
   });
 });
 
+describe("taking off a chip that came back after a failed send", () => {
+  it("keeps the document the stored question already names, so the question still opens it and Try again still has it", async () => {
+    const { workspace, db, file, attached } = setup();
+    const opened = await askTurn(db, { text: "ciao", allowGeneral: true, run: async () => reply });
+    await tick();
+    const sent = await attached(file("appunti.txt", "Il calore si trasmette per conduzione."));
+    await expect(
+      askTurn(db, { chatId: opened.chatId, text: "spiega gli appunti", allowGeneral: true, ...sent, workspace, run: down }),
+    ).rejects.toThrow("engine-down");
+    await tick();
+    // The question and its document are stored. The student removes the chip that came back to the composer.
+    sent.held.detach(sent.attachments[0]!);
+    const question = readChat(db, opened.chatId).filter((row) => row.role === "user").at(-1)!;
+    expect(question.files).toEqual([expect.objectContaining({ name: "appunti.txt", sourceId: expect.any(String) })]);
+    expect(db.prepare(`SELECT COUNT(*) FROM passages WHERE source_id = ?`).pluck().get(question.files![0]!.sourceId)).toBeGreaterThan(0);
+    let prompt = "";
+    await regenerateTurn(db, {
+      chatId: opened.chatId,
+      allowGeneral: true,
+      workspace,
+      run: async (input) => {
+        prompt = input.prompt;
+        return reply;
+      },
+    });
+    expect(prompt).toContain("Il calore si trasmette per conduzione.");
+    db.close();
+  });
+});
+
 describe("the earlier turns sent to the model", () => {
   const earlier = (prompt: string) => prompt.slice(prompt.indexOf("Earlier turns:"), prompt.lastIndexOf("Question:"));
 
