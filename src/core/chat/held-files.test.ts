@@ -6,8 +6,10 @@ import { openDatabase } from "../db/connection";
 import type { AttachmentView } from "../../shared/ipc";
 import { extractPlain } from "../sources/documents";
 import { registerOcrJob, startScan } from "../sources/ocr-job";
+import { freeUpSpace } from "../share/usage";
 import { sha256 } from "../sources/quality";
 import { tempDir } from "../test-temp";
+import { dropUnsentCopies } from "./held-files";
 import { heldFilesFor } from "./test-attach";
 
 const opened: Array<{ close: () => void }> = [];
@@ -213,6 +215,29 @@ describe("taking a file off", () => {
     expect(files.held.list([view.id])).toEqual([]);
   });
 
+  it("leaves no finished reading in the jobs list after its file is taken off, for a document and for a scan", async () => {
+    const t = setup({
+      extract: scanned(2),
+      scan: async (id) => {
+        startScan(t.db, t.files.runner, id);
+        return "started";
+      },
+    });
+    registerOcrJob(t.db, t.workspace, t.files.runner, {
+      readPages: async (_path, wanted) => ({ count: 2, pages: wanted.filter((page) => page <= 2).map((page) => ({ page, text: `Pagina ${page}` })) }),
+      requireData: async () => {},
+      onReady: () => {},
+    });
+    const view = await t.files.held.attach(t.write("scansione.pdf", "%PDF"));
+    await until(() => t.last(view.id)?.state === "ready");
+    // Both jobs ended well. The source goes with its chip, and the finished jobs must not turn up in Attività then.
+    expect(t.db.prepare(`SELECT COUNT(*) FROM jobs WHERE state = 'succeeded'`).pluck().get()).toBe(2);
+    t.files.held.detach(view.id);
+    await until(() => t.sources().length === 0);
+    expect(t.files.runner.finished()).toEqual([]);
+    expect(t.files.runner.list()).toEqual([]);
+  });
+
   it("stops a reading that is in progress", async () => {
     const { files, write, sources, db } = setup({
       extract: (_input, signal) =>
@@ -277,6 +302,22 @@ describe("what a message takes", () => {
     await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
   });
 
+  it("stops waiting for a photo being fitted when the turn is stopped, and the photo's own work goes on", async () => {
+    let finish: (image: { mediaType: "image/png"; bytes: Uint8Array }) => void = () => {};
+    const { files, write } = setup({ fit: () => new Promise((resolve) => (finish = resolve)) });
+    const view = await files.held.attach(write("foto.png", "pixels"));
+    const controller = new AbortController();
+    const waiting = files.held.settle([view.id], controller.signal);
+    // The signal fires while the photo is still being fitted, and a stop must not wait for the fitting to end.
+    setTimeout(() => controller.abort(), 10);
+    await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+    // The photo stays held and is fitted in the background: the composer still has it, ready, for the retry.
+    expect(files.held.list([view.id])[0]).toMatchObject({ state: "reading" });
+    finish({ mediaType: "image/png", bytes: new Uint8Array([1]) });
+    await files.held.settle([view.id]);
+    expect(files.held.list([view.id])[0]).toMatchObject({ state: "ready" });
+  });
+
   it("carries at most eight files, and names the ones past them", async () => {
     const { files, write } = setup({ extract: async () => ({ document: extractPlain("testo", false) }) });
     const views = [];
@@ -296,5 +337,52 @@ describe("what a message takes", () => {
     const [photo] = files.held.take([view.id]).photos;
     expect(photo).toMatchObject({ name: "foto.jpg", ext: ".jpg", fitted: copy });
     expect(readFileSync(photo!.file)).toEqual(Buffer.from("pixels"));
+  });
+});
+
+describe("cleanup sees the files a composer holds", () => {
+  it("keeps a held document and a held photo through Free up space, and removes them once they are taken off", async () => {
+    const { files, write, workspace, db, sources } = setup({ fit: async () => ({ mediaType: "image/png", bytes: new Uint8Array([1, 2, 3]) }) });
+    const note = write("appunti.txt", "Il calore si trasmette per conduzione.");
+    const photo = write("foto.png", "pixels");
+    const doc = await files.held.attach(note);
+    const pic = await files.held.attach(photo);
+    await files.held.settle([doc.id, pic.id]);
+    const photoSha = sha256(readFileSync(photo));
+    // The student opens Settings and frees up space before sending anything.
+    freeUpSpace(db, workspace);
+    expect(sources()).toEqual([expect.objectContaining({ library: 0, status: "ready" })]);
+    expect(hasBlob(workspace, photoSha)).toBe(true);
+    expect(files.held.list([doc.id, pic.id]).map((view) => view.state)).toEqual(["ready", "ready"]);
+    files.held.detach(doc.id);
+    files.held.detach(pic.id);
+    freeUpSpace(db, workspace);
+    expect(sources()).toEqual([]);
+    expect(hasBlob(workspace, photoSha)).toBe(false);
+  });
+
+  it("keeps the stored file of a photo while another held copy of it is there", async () => {
+    const { files, write, workspace } = setup({ fit: async () => ({ mediaType: "image/png", bytes: new Uint8Array([1]) }) });
+    const photo = write("foto.png", "gli stessi pixel");
+    const sha = sha256(readFileSync(photo));
+    const first = await files.held.attach(photo);
+    const second = await files.held.attach(photo);
+    await files.held.settle([first.id, second.id]);
+    files.held.detach(first.id);
+    expect(hasBlob(workspace, sha)).toBe(true);
+    expect(files.held.take([second.id]).photos[0]!.file).toBeTruthy();
+    files.held.detach(second.id);
+    expect(hasBlob(workspace, sha)).toBe(false);
+  });
+
+  it("agrees with the start-up cleanup: a copy that is held now is not an unsent one", async () => {
+    const { files, write, workspace, db, sources } = setup();
+    const doc = await files.held.attach(write("appunti.txt", "Il calore si trasmette per conduzione."));
+    await files.held.settle([doc.id]);
+    expect(dropUnsentCopies(db, workspace, files.runner)).toBe(0);
+    expect(sources()).toHaveLength(1);
+    files.held.release([doc.id]);
+    // Released and never stored on a message, as after a quit: now nothing holds it.
+    expect(dropUnsentCopies(db, workspace, files.runner)).toBe(1);
   });
 });

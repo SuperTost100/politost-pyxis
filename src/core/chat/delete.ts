@@ -20,6 +20,23 @@ const OPEN_JOBS = `SELECT params_json AS text FROM jobs WHERE state != 'succeede
   UNION ALL SELECT s.output_json FROM job_steps s JOIN jobs j ON j.id = s.job_id
   WHERE j.state != 'succeeded' AND j.dismissed < ${GIVEN_UP} AND s.output_json IS NOT NULL`;
 
+/** What something holds in memory that no row names yet: hidden copies and stored files of files a composer has attached. */
+export type HeldReferences = { sources: Iterable<string>; blobs: Iterable<string> };
+const holders = new WeakMap<Database.Database, () => HeldReferences>();
+
+/**
+ * Registers what a database's composer holds, so every cleanup that asks whether a source or a stored file is in use (a
+ * deleted chat or plan, Free up space, taking a file off) counts it until the file is sent or taken off.
+ */
+export function holdReferences(db: Database.Database, held: () => HeldReferences): void {
+  holders.set(db, held);
+}
+
+function heldBy(db: Database.Database): { sources: Set<string>; blobs: Set<string> } {
+  const held = holders.get(db)?.();
+  return { sources: new Set(held?.sources ?? []), blobs: new Set(held?.blobs ?? []) };
+}
+
 /**
  * Whether JSON without a foreign key names an ID: a lesson's citation order, a question's `sourceId`, an exercise
  * directive, a generated exercise's `passageIds`, a map node's sources, a topic tree, a learning event's payload or a
@@ -69,6 +86,7 @@ function sourceInUse(
   references: () => JsonReferences,
 ): boolean {
   if (relationallyInUse(db, sourceId, books)) return true;
+  if (heldBy(db).sources.has(sourceId)) return true;
   const named = references();
   const book = (db.prepare(`SELECT id FROM smartbooks WHERE source_id = ?`).pluck().get(sourceId) ?? undefined) as
     | string
@@ -243,8 +261,9 @@ export function deleteLoosePassages(db: Database.Database, candidates: string[])
  */
 export function blobUse(db: Database.Database): (sha: string) => boolean {
   const named = namedBlobs(db);
+  const held = heldBy(db);
   const jobs = (db.prepare(OPEN_JOBS).all() as Array<{ text: string }>).map((row) => row.text);
-  return (sha) => named.has(sha) || jobs.some((text) => text.includes(sha));
+  return (sha) => named.has(sha) || held.blobs.has(sha) || jobs.some((text) => text.includes(sha));
 }
 
 /**

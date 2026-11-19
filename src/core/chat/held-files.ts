@@ -16,7 +16,7 @@ import {
   isImageExt,
   maxSourceBytes,
 } from "../../shared/source-types";
-import { chatListedSources, deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
+import { chatListedSources, deleteHiddenSources, holdReferences, removeUnreferencedBlobs } from "./delete";
 
 /** What a chat message can carry: the Library's documents and photos, without a smartbook. */
 const ATTACHABLE = new Set<string>([...DOCUMENT_EXTENSIONS, ...IMAGE_EXTENSIONS].map((ext) => `.${ext}`));
@@ -101,6 +101,11 @@ export function createHeldFiles(deps: HeldDeps) {
   const entries = new Map<string, Entry>();
   const bySource = new Map<string, string>();
   const waiters = new Set<() => void>();
+  // Until a file is sent or taken off, its hidden copy and its stored photo are named only here, so every cleanup counts them.
+  holdReferences(db, () => ({
+    sources: [...entries.values()].flatMap((entry) => entry.sourceId ?? []),
+    blobs: [...entries.values()].flatMap((entry) => (entry.photo ? [entry.photo.sha] : [])),
+  }));
   const fit = deps.fit ?? loadVisionImage;
   const scan =
     deps.scan ??
@@ -319,7 +324,8 @@ export function createHeldFiles(deps: HeldDeps) {
         });
       for (;;) {
         signal?.throwIfAborted();
-        await Promise.all(ids.map((id) => entries.get(id)?.working));
+        // A photo being fitted wakes the waiters when it ends (`refresh`), like a document's job does, so the wait below
+        // is the only one and a stop ends it at once; the photo's own work goes on in the background.
         if (!reading()) return;
         await new Promise<void>((resolve, reject) => {
           const done = () => {
@@ -330,7 +336,7 @@ export function createHeldFiles(deps: HeldDeps) {
           const stop = () => (done(), reject(signal!.reason));
           waiters.add(wake);
           signal?.addEventListener("abort", stop, { once: true });
-          // A stop that came while the photos were being fitted has already been heard.
+          // A stop that came before the listener was there has already been heard.
           if (signal?.aborted) stop();
         });
       }

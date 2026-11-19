@@ -4,13 +4,17 @@ import { PNG } from "pngjs";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
+import { clearBench } from "../engine/bench";
 import { rememberReady } from "../engine/selection";
 import { extractPlain } from "../sources/documents";
 import { tempDir } from "../test-temp";
 import { heldFilesFor } from "./test-attach";
 import { askTurn, readChat, regenerateTurn } from "./turn";
 
-afterEach(() => rememberReady([]));
+afterEach(() => {
+  rememberReady([]);
+  clearBench();
+});
 
 const reply: EngineResult = { text: "Ecco la risposta.", model: "claude-sonnet-5", provider: "claude", inputTokens: 1 };
 
@@ -114,6 +118,44 @@ describe("the files a message carried belong to it", () => {
   });
 });
 
+describe("a question that went unanswered keeps the text read from its photo", () => {
+  it("sends it again when Try again answers the stored question, and does not store it twice", async () => {
+    const { db, workspace, photo, attached } = setup({ visionAvailable: false });
+    const opened = await askTurn(db, { text: "ciao", allowGeneral: true, workspace, run: async () => reply });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await expect(
+      askTurn(db, {
+        chatId: opened.chatId,
+        text: "cosa c'è scritto",
+        allowGeneral: true,
+        ...(await attached(photo)),
+        workspace,
+        recognize: async () => "Esercizio 2. Determinare il dominio",
+        run: async () => {
+          throw new Error("engine-down");
+        },
+      }),
+    ).rejects.toThrow("engine-down");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    // The student presses Try again: the last row is still their question, so nothing is being replaced.
+    let prompt = "";
+    const retried = await regenerateTurn(db, {
+      chatId: opened.chatId,
+      allowGeneral: true,
+      workspace,
+      run: async (input) => {
+        prompt = input.prompt;
+        return reply;
+      },
+    });
+    expect(retried.message?.body).toBe("Ecco la risposta.");
+    expect(prompt).toContain("Esercizio 2. Determinare il dominio");
+    expect(prompt.match(/Esercizio 2\. Determinare il dominio/g)).toHaveLength(1);
+    expect(db.prepare(`SELECT COUNT(*) FROM messages WHERE role = 'user' AND body = 'cosa c''è scritto'`).pluck().get()).toBe(1);
+    db.close();
+  });
+});
+
 describe("a reply to a question that came with a file", () => {
   it("does not say it comes from general knowledge when the file's passages were sent and the reply cites none of them", async () => {
     const { db, workspace, write, attached } = setup();
@@ -211,6 +253,43 @@ describe("a photo goes to a model that can read it", () => {
       },
     });
     expect(model).toBe("text-only-small");
+    db.close();
+  });
+});
+
+describe("the model chosen for a photo is still an automatic choice", () => {
+  it("moves on to another tool's image model when the first one is at its limit, as an automatic chat does", async () => {
+    const { db, workspace, photo, attached } = setup();
+    // The chat's own model is automatic, and another tool is signed in with a model that reads images.
+    db.prepare(`UPDATE feature_engines SET selection_json = ? WHERE feature = 'chat'`).run(
+      JSON.stringify({ provider: "claude", model: "text-only-small", auto: true }),
+    );
+    rememberReady([
+      { id: "claude", kind: "cli", effort: false, models: [{ id: "text-only-small", efforts: [] }, { id: "claude-sonnet-5", efforts: [] }] },
+      { id: "codex", kind: "cli", effort: false, models: [{ id: "gpt-5.6-terra", efforts: [] }] },
+    ]);
+    const limited = Object.assign(new Error("You've hit your usage limit"), {
+      code: "cli-failed",
+      limit: { kind: "rate", detail: "You've hit your usage limit" },
+    });
+    const asked: Array<{ provider: string; model: string; images: number }> = [];
+    const result = await askTurn(db, {
+      text: "cosa c'è scritto",
+      allowGeneral: true,
+      ...(await attached(photo)),
+      workspace,
+      run: async (input) => {
+        asked.push({ provider: input.selection.provider, model: input.selection.model, images: input.attachments?.length ?? 0 });
+        if (input.selection.provider === "claude") throw limited;
+        return { ...reply, provider: "codex", model: "gpt-5.6-terra" };
+      },
+    });
+    // Claude's image model was asked first and hit its limit; ChatGPT's, which reads images too, answered with the photo.
+    expect(asked).toEqual([
+      { provider: "claude", model: "claude-sonnet-5", images: 1 },
+      { provider: "codex", model: "gpt-5.6-terra", images: 1 },
+    ]);
+    expect(result.message?.provider).toBe("codex");
     db.close();
   });
 });

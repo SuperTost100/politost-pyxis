@@ -2,7 +2,7 @@ import { linkedFile, readableLinkedPath } from "./linked-file";
 import type Database from "better-sqlite3";
 import type { Runner } from "../jobs/runner";
 import { hasBlob, readBlob } from "../blobs";
-import { sourceTitle, worksOnHiddenSource } from "./jobs";
+import { isHeldReading, sourceTitle } from "./jobs";
 import {
   applyOcrPage,
   canStartOcr,
@@ -32,7 +32,7 @@ export type ScanDeps = {
 };
 
 /** `pages` is the number of pages the file has, known after the first batch, for a window that shows "page N of M". */
-type ScanParams = { sourceId: string; autoResumedAt?: string; pages?: number };
+type ScanParams = { sourceId: string; autoResumedAt?: string; pages?: number; held?: true };
 
 const ACTIVE = ["queued", "running", "interrupted"];
 
@@ -50,7 +50,7 @@ export function registerOcrJob(
   runner.register("source-ocr", {
     jobClass: "local",
     title: (params) => sourceTitle(db, params),
-    unlisted: (params) => worksOnHiddenSource(db, params),
+    unlisted: isHeldReading,
     // A scan stopped before its step ran, while it waited for a slot, or dismissed while paused must not keep showing
     // as reading. Another run the student started for the same source keeps it.
     onCancelled: (params) => {
@@ -150,7 +150,9 @@ export function startScan(db: Database.Database, runner: Runner, sourceId: strin
   const row = db.prepare(`SELECT status FROM sources WHERE id = ?`).get(sourceId) as { status: string } | undefined;
   if (!row) throw new Error("source-missing");
   if (row.status !== "ocr-queued") requestOcr(db, sourceId);
-  return runner.start("source-ocr", { sourceId });
+  // A file attached to a chat is read for its chip, and the jobs list does not show it (see `isHeldReading`).
+  const held = db.prepare(`SELECT library FROM sources WHERE id = ?`).pluck().get(sourceId) === 0;
+  return runner.start("source-ocr", { sourceId, ...(held ? { held: true as const } : {}) } satisfies ScanParams);
 }
 
 /**

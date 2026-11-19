@@ -36,6 +36,8 @@ import { readableLinkedPath } from "./linked-file";
 
 type ImportParams = {
   sourceId: string;
+  /** The file is attached to a chat: its hidden copy is read for that chip, and the jobs list never shows the reading. */
+  held?: true;
   sha: string;
   ext: string;
   title: string;
@@ -101,12 +103,12 @@ export type Extraction = {
 };
 
 /**
- * Whether the job's source is a hidden copy (`library = 0`), such as a file attached to a chat. Its reading belongs to
- * that chat's chip, so the jobs list leaves it out (`JobSpec.unlisted`).
+ * Whether the job belongs to a file attached to a chat (`held` in its parameters), whose reading its chip shows, so the
+ * jobs list leaves it out (`JobSpec.unlisted`). The mark is in the job itself, so it holds after the file is taken off
+ * and its source is gone.
  */
-export function worksOnHiddenSource(db: Database.Database, params: unknown): boolean {
-  const { sourceId } = (params ?? {}) as { sourceId?: string };
-  return sourceId ? db.prepare(`SELECT library FROM sources WHERE id = ?`).pluck().get(sourceId) === 0 : false;
+export function isHeldReading(params: unknown): boolean {
+  return (params as { held?: unknown } | null)?.held === true;
 }
 
 /** The source a job works on, as the library names it now (after a rename, or a link's page title), or as queued. */
@@ -208,7 +210,7 @@ export function registerSourceJobs(
     jobClass: "local",
     title: (params) => sourceTitle(db, params),
     group: (params) => importGroup(db, params),
-    unlisted: (params) => worksOnHiddenSource(db, params),
+    unlisted: isHeldReading,
     steps: [
       {
         name: "extract",
@@ -911,6 +913,7 @@ export function enqueueSourceData(
       url,
       version,
       replace: Boolean(existingId),
+      ...(hidden ? { held: true as const } : {}),
       ...(previousStatus ? { previousStatus } : {}),
       ...(vision ? { vision } : {}),
       ...(catalog ? { catalog } : {}),

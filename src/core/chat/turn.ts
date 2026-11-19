@@ -328,7 +328,9 @@ function chatHoldsPhotos(db: Database.Database, chatId: string): boolean {
 function selectionForPhotos(db: Database.Database, chat: StoredSelection): StoredSelection {
   if (engineSeesImages(chat)) return chat;
   const sameTool = selectionOn(chat.provider, "vision");
-  if (sameTool && engineSeesImages(sameTool)) return sameTool;
+  // Pyxis chose this model for the picture work, so it stays an automatic choice: at a limit, a sign-out or a refused model
+  // the call moves on to the next tool's image model (`chosenFor` is what `generate` reads for that).
+  if (sameTool && engineSeesImages(sameTool)) return { ...sameTool, chosenFor: "vision" };
   try {
     const vision = selectionFor(db, "vision");
     if (engineSeesImages(vision)) return vision;
@@ -862,7 +864,14 @@ async function answer(
   const reads = Boolean(input.workspace) && engineSeesImages(selection);
   // The text local OCR read from photos is sent with the question and stored apart from it. A regenerated turn reads the
   // text stored with its question.
-  const notes: string[] = replacing ? storedNotes(db, replacing.userId) : [];
+  // A question left unanswered (a failed turn, then Try again) is the chat's last row and is answered, not replaced: its
+  // own text is read from the same stored place.
+  const lastRow = db
+    .prepare(`SELECT id, role, body FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`)
+    .get(chatId) as { id: string; role: string; body: string } | undefined;
+  const reusedQuestion =
+    replacing?.userId || (lastRow?.role === "user" && lastRow.body === input.text ? lastRow.id : "");
+  const notes: string[] = reusedQuestion ? storedNotes(db, reusedQuestion) : [];
   const images: PreparedFiles["images"] = [];
   const blobs: StagedBlob[] = [];
   const photoRows: Array<{ id: string; name: string; size: number; image: PreparedFiles["images"][number]; text: string }> = [];
@@ -871,7 +880,7 @@ async function answer(
     // Only a photo no model reads goes to local OCR: it is the last resort, when no available tool has a model for images.
     const text = reads || !input.workspace ? "" : await recognisePhoto(photo, input.workspace, input.recognize, input.signal);
     input.signal?.throwIfAborted();
-    if (text) notes.push(text);
+    if (text && !notes.includes(text)) notes.push(text);
     blobs.push(...one.blobs);
     images.push(one.image);
     photoRows.push({ id: photo.id, name: photo.name, size: photo.size, image: one.image, text });

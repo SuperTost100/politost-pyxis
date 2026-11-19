@@ -239,3 +239,31 @@ test("after a quit, a file that was attached and never sent is gone, and one a m
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("Free up space run before sending leaves the attached files as they were, and they can be sent", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-files-"));
+  try {
+    const note = join(dir, "appunti.txt");
+    writeFileSync(note, "Il calore si trasmette per conduzione.");
+    await pick(app, note);
+    await attach(page);
+    const chip = page.locator(".ask-attachments li").filter({ hasText: "appunti.txt" });
+    await expect(chip).toBeVisible();
+    await expect.poll(() => rows(userData, "SELECT status FROM sources WHERE library = 0")).toEqual([{ status: "ready" }]);
+    // Settings › Data › Free up space, before anything is sent: the held copy is not an orphan.
+    await page.evaluate(() => window.pyxis.invoke("plans.freeSpace", {}));
+    expect(rows(userData, "SELECT status FROM sources WHERE library = 0")).toEqual([{ status: "ready" }]);
+    await expect(chip).not.toContainText(/fermata|non riesce/);
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    await box.fill("Riassumi gli appunti");
+    await box.press("Enter");
+    await expect(page.locator(".ask-sent-files").getByRole("button", { name: "appunti.txt" })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText("Ho usato il file che hai allegato")).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
