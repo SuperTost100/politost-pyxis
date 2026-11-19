@@ -312,7 +312,7 @@ test("Enter pressed while several picked files are still being attached sends th
   const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-files-"));
   try {
     const paths = ["uno.pdf", "due.pdf", "tre.pdf"].map((name) => join(dir, name));
-    for (const path of paths) sparse(path, 60);
+    for (const path of paths) sparse(path, 150);
     await app.evaluate(({ dialog }, selected) => {
       delete process.env["PYXIS_E2E_FILE"];
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: selected });
