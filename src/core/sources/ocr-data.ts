@@ -108,6 +108,7 @@ type Problem = "missing" | "integrity" | "unreadable";
 /** How a file is read and how long a failed read waits, so a test can stand in for both. */
 export type OcrDataIo = {
   read?: (path: string) => Promise<Buffer>;
+  rename?: (from: string, to: string) => Promise<void>;
   wait?: (ms: number) => Promise<void>;
 };
 
@@ -117,6 +118,27 @@ export type OcrDataIo = {
  * 1.85 s the file is reported as one that could not be checked.
  */
 const READ_RETRY_MS = [100, 250, 500, 1000];
+/** The same for putting a downloaded file in place: the scanner that has just opened the new file makes the rename fail. */
+const RENAME_RETRY_MS = [50, 100, 250, 500];
+
+/** Whether the error says the system holds the file for a moment, which is worth another try. */
+const held = (error: unknown) =>
+  typeof error === "object" && error !== null && "code" in error && (error.code === "EBUSY" || error.code === "EPERM" || error.code === "EACCES");
+
+async function renameIntoPlace(from: string, to: string, signal: AbortSignal, io: OcrDataIo): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    // A cancel that came during the pause ends the repair here, before the file is put in place.
+    signal.throwIfAborted();
+    try {
+      await (io.rename ?? rename)(from, to);
+      return;
+    } catch (error) {
+      const pause = RENAME_RETRY_MS[attempt];
+      if (pause === undefined || !held(error)) throw error;
+      await (io.wait ?? sleep)(pause);
+    }
+  }
+}
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Whether the error says there is no file at the path, as opposed to a file that cannot be read. */
@@ -266,8 +288,7 @@ export async function downloadOcrLanguage(
   const staging = join(dir, `${lang}.traineddata.${randomUUID()}.tmp`);
   try {
     await writeFile(staging, bytes, { flag: "wx", mode: 0o600 });
-    signal.throwIfAborted();
-    await rename(staging, join(dir, `${lang}.traineddata`));
+    await renameIntoPlace(staging, join(dir, `${lang}.traineddata`), signal, options.io ?? {});
   } finally {
     await rm(staging, { force: true });
   }
