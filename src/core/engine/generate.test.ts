@@ -688,7 +688,7 @@ describe("switching engines on a usage limit or sign-out", () => {
     const db = automaticChat();
     rememberReady([
       ready[0]!,
-      { id: "agent", kind: "cli", effort: true, models: [{ id: "gemini-3.8-flash", efforts: [] }] },
+      { id: "agent", kind: "cli", effort: true, models: [{ id: "grok-4.7", efforts: [] }] },
     ]);
     const asked: string[] = [];
     const call = (jobId: string, attachments?: GenerateInput["attachments"]) =>
@@ -718,7 +718,7 @@ describe("switching engines on a usage limit or sign-out", () => {
     const db = automaticChat();
     rememberReady([
       ready[0]!,
-      { id: "agent", kind: "cli", effort: true, models: [{ id: "gemini-3.8-flash", efforts: [] }] },
+      { id: "agent", kind: "cli", effort: true, models: [{ id: "grok-4.7", efforts: [] }] },
     ]);
     let calls = 0;
     await expect(
@@ -748,6 +748,7 @@ describe("a chosen engine whose subscription refuses the model", () => {
       "composer-2.5",
       "claude-opus-5-thinking",
       "gpt-5.6-sol",
+      "cursor-grok-4.4",
       "cursor-grok-4.5",
       "gemini-3.7-flash",
       "grok-4.7",
@@ -768,12 +769,12 @@ describe("a chosen engine whose subscription refuses the model", () => {
     );
 
   /** The plan task on Cursor Agent alone, as "Scelgo io" with only Cursor ticked leaves it. */
-  function cursorOnly() {
+  function cursorOnly(model = "grok-4.7") {
     const db = openDatabase(":memory:");
     db.prepare(
       "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('plan', ?, 1)",
     ).run(
-      JSON.stringify({ provider: "agent", model: "claude-opus-5-5", effort: "high", auto: true }),
+      JSON.stringify({ provider: "agent", model, effort: "high", auto: true }),
     );
     rememberReady([cursor]);
     return db;
@@ -786,7 +787,8 @@ describe("a chosen engine whose subscription refuses the model", () => {
   });
 
   it("moves a job's saved selection to the model the refusal points to", async () => {
-    const db = cursorOnly();
+    // A row an earlier build wrote, with a Claude model on Cursor, goes to Grok, the only kind Cursor runs.
+    const db = cursorOnly("claude-opus-5-5");
     // A background job keeps its selection in its saved parameters, so it comes back as plain JSON.
     const saved = JSON.parse(JSON.stringify(selectionFor(db, "plan"))) as ReturnType<
       typeof selectionFor
@@ -822,11 +824,11 @@ describe("a chosen engine whose subscription refuses the model", () => {
         return result({ text: "ciao", provider: "agent" });
       },
     });
-    expect(sent).toEqual([{ provider: "agent", model: "claude-opus-5-5", effort: "high" }]);
+    expect(sent).toEqual([{ provider: "agent", model: "grok-4.7", effort: "high" }]);
     db.close();
   });
 
-  it("tries a few more of the engine's models when the refusal names none", async () => {
+  it("tries a few more of the engine's own models when the refusal names none, in the file's order", async () => {
     const db = cursorOnly();
     const asked: string[] = [];
     const output = await generate({
@@ -834,11 +836,12 @@ describe("a chosen engine whose subscription refuses the model", () => {
       prompt: "hi",
       run: async (input) => {
         asked.push(input.selection.model);
-        if (input.selection.model.startsWith("claude-opus")) throw refusal("Claude Opus", ".");
+        if (["grok-4.7", "cursor-grok-4.6"].includes(input.selection.model)) throw refusal("Grok", ".");
         return result({ text: "ciao", provider: "agent", model: input.selection.model });
       },
     });
-    expect(asked).toEqual(["claude-opus-5-5", "claude-opus-5", "claude-opus-4-8", "gpt-5.6-sol"]);
+    // Never a Claude, GPT or Gemini model of the account: after Grok 4.7 and 4.6 the file's next Grok model is used.
+    expect(asked).toEqual(["grok-4.7", "cursor-grok-4.6", "cursor-grok-4.5"]);
     expect(output.text).toBe("ciao");
     db.close();
   });
@@ -860,6 +863,22 @@ describe("a chosen engine whose subscription refuses the model", () => {
       params: { provider: "agent" },
     });
     expect(calls).toBe(4);
+    db.close();
+  });
+
+  it("never walks to another company's model on its way down the refusals", async () => {
+    const db = cursorOnly();
+    const asked: string[] = [];
+    await generate({
+      selection: selectionFor(db, "plan"),
+      prompt: "hi",
+      run: async (input) => {
+        asked.push(input.selection.model);
+        if (asked.length < 4) throw refusal("This model", ".");
+        return result({ text: "ciao", provider: "agent", model: input.selection.model });
+      },
+    });
+    expect(asked.every((model) => /grok/.test(model))).toBe(true);
     db.close();
   });
 

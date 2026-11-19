@@ -10,14 +10,19 @@ const all = [
 ];
 const model = (id: string, efforts = all) => ({ id, efforts });
 
+// What the tools report on a signed-in machine (cli-funnel 0.9), newest first as they come.
 const claude: AutoProvider = {
   id: "claude",
   kind: "cli",
   effort: true,
   models: [
+    model("claude-fable-5-2"),
     model("claude-fable-5-1"),
     model("claude-opus-5-5"),
+    model("claude-sonnet-5-5"),
     model("claude-sonnet-5"),
+    model("claude-opus-4-6"),
+    model("claude-haiku-5-5"),
     model("claude-haiku-4-5-20251001", []),
   ],
 };
@@ -26,13 +31,16 @@ const codex: AutoProvider = {
   kind: "cli",
   effort: true,
   models: [
+    model("gpt-6.2-sol"),
+    model("gpt-6.2-astra"),
+    model("gpt-6.1-terra"),
+    model("gpt-6.1-sol"),
     model("gpt-6-astra"),
     model("gpt-6-sol"),
     model("gpt-6-luna"),
     model("gpt-5.6-sol"),
     model("gpt-5.6-terra"),
     model("gpt-5.6-luna"),
-    model("gpt-5.5"),
   ],
 };
 const anthropicApi: AutoProvider = {
@@ -74,10 +82,10 @@ describe("automatic engine policy", () => {
       chat: "codex:gpt-6-luna:low",
       map: "codex:gpt-6-luna:low",
       cards: "codex:gpt-6-luna:low",
-      grading: "codex:gpt-5.6-terra:medium",
-      lesson: "claude:claude-sonnet-5:medium",
-      vision: "claude:claude-sonnet-5:medium",
-      default: "claude:claude-sonnet-5:medium",
+      grading: "codex:gpt-6.1-terra:medium",
+      lesson: "claude:claude-sonnet-5-5:medium",
+      vision: "claude:claude-sonnet-5-5:medium",
+      default: "claude:claude-sonnet-5-5:medium",
       plan: "claude:claude-opus-5-5:high",
     });
   });
@@ -90,44 +98,33 @@ describe("automatic engine policy", () => {
 
   it("puts everything on Claude Code by tier when it is the only engine", () => {
     expect(summary(planAuto([claude]))).toEqual({
-      chat: "claude:claude-haiku-4-5-20251001",
-      map: "claude:claude-haiku-4-5-20251001",
-      cards: "claude:claude-haiku-4-5-20251001",
-      lesson: "claude:claude-sonnet-5:medium",
-      vision: "claude:claude-sonnet-5:medium",
-      default: "claude:claude-sonnet-5:medium",
-      grading: "claude:claude-sonnet-5:medium",
+      chat: "claude:claude-haiku-5-5:low",
+      map: "claude:claude-haiku-5-5:low",
+      cards: "claude:claude-haiku-5-5:low",
+      lesson: "claude:claude-sonnet-5-5:medium",
+      vision: "claude:claude-sonnet-5-5:medium",
+      default: "claude:claude-sonnet-5-5:medium",
+      grading: "claude:claude-sonnet-5-5:medium",
       plan: "claude:claude-opus-5-5:high",
     });
   });
 
-  it("compares versions without the snapshot date, so a newer model beats an older dated one", () => {
-    const api: AutoProvider = {
+  it("takes the first id of the role that the tool reports, whatever order the tool lists its models in", () => {
+    const shuffled: AutoProvider = { ...claude, models: [...claude.models].reverse() };
+    expect(summary(planAuto([shuffled]))).toEqual(summary(planAuto([claude])));
+    // The file's order wins: Sonnet 5.5 is listed before Sonnet 5, so Sonnet 5 is used only when 5.5 is not reported.
+    const olderSonnet: AutoProvider = {
+      ...claude,
+      models: claude.models.filter((m) => m.id !== "claude-sonnet-5-5"),
+    };
+    expect(pickModel(olderSonnet, "mid")?.id).toBe("claude-sonnet-5");
+    const dated: AutoProvider = {
       id: "anthropic-api",
       kind: "api",
       effort: false,
-      models: [
-        model("claude-sonnet-4-20250514", []),
-        model("claude-sonnet-4-5-20250929", []),
-        model("claude-opus-4-20250514", []),
-        model("claude-opus-4-1-20250805", []),
-        model("claude-haiku-4-5-20251001", []),
-      ],
+      models: [model("claude-sonnet-4-5-20250929", []), model("claude-opus-4-1-20250805", [])],
     };
-    const plan = summary(planAuto([api]));
-    expect(plan.lesson).toBe("anthropic-api:claude-sonnet-4-5-20250929");
-    expect(plan.plan).toBe("anthropic-api:claude-opus-4-1-20250805");
-    // The same version in two snapshots takes the newer one, whatever the listing order.
-    const snapshots: AutoProvider = {
-      ...api,
-      models: [
-        model("claude-sonnet-4-5-20250929", []),
-        model("claude-sonnet-4-5-20251101", []),
-      ],
-    };
-    expect(summary(planAuto([snapshots])).lesson).toBe(
-      "anthropic-api:claude-sonnet-4-5-20251101",
-    );
+    expect(pickModel(dated, "mid")?.id).toBe("claude-sonnet-4-5-20250929");
   });
 
   it("puts everything on Codex by tier when it is the only engine", () => {
@@ -135,12 +132,12 @@ describe("automatic engine policy", () => {
       chat: "codex:gpt-6-luna:low",
       map: "codex:gpt-6-luna:low",
       cards: "codex:gpt-6-luna:low",
-      lesson: "codex:gpt-5.6-terra:medium",
-      // gpt-6-luna is not a known image model, so photos use the newest model that is.
+      lesson: "codex:gpt-6.1-terra:medium",
+      // Photos need a model known to read images, and the file's first mid model is not among them, so the next one is used.
       vision: "codex:gpt-5.6-terra:medium",
-      default: "codex:gpt-5.6-terra:medium",
-      grading: "codex:gpt-5.6-terra:medium",
-      plan: "codex:gpt-6-sol:high",
+      default: "codex:gpt-6.1-terra:medium",
+      grading: "codex:gpt-6.1-terra:medium",
+      plan: "codex:gpt-6.2-sol:high",
     });
   });
 
@@ -166,44 +163,47 @@ describe("automatic engine policy", () => {
     expect(planAuto([{ ...claude, models: [] }])).toEqual({});
   });
 
-  it("steps to a neighbouring tier, then to the first listed model", () => {
+  it("steps to a neighbouring role, then to the maker's first own model, never to another company's", () => {
     const noHaiku: AutoProvider = {
       ...claude,
       models: claude.models.filter((m) => !m.id.includes("haiku")),
     };
-    expect(pickModel(noHaiku, "fast")?.id).toBe("claude-sonnet-5");
+    expect(pickModel(noHaiku, "fast")?.id).toBe("claude-sonnet-5-5");
     const onlyOpus: AutoProvider = {
       ...claude,
       models: [model("claude-opus-5-5")],
     };
     expect(pickModel(onlyOpus, "mid")?.id).toBe("claude-opus-5-5");
-    const unknown: AutoProvider = {
+    // None of the file's ids is reported: the first of the maker's own models is used.
+    const unlisted: AutoProvider = {
       ...codex,
-      models: [model("mystery-1"), model("mystery-2")],
+      models: [model("gpt-7-nova"), model("gpt-7-vega"), model("claude-opus-5-5")],
     };
-    expect(pickModel(unknown, "strong")?.id).toBe("mystery-1");
+    expect(pickModel(unlisted, "strong")?.id).toBe("gpt-7-nova");
+    // Nothing of its own is reported: the tool has no model to give, and planAuto leaves it out.
+    const foreign: AutoProvider = { ...codex, models: [model("claude-opus-5-5"), model("gemini-3.8-flash")] };
+    expect(pickModel(foreign, "strong")).toBeUndefined();
+    expect(planAuto([foreign])).toEqual({});
   });
 
-  it("takes the newest model of a tier and uses Fable only after Opus", () => {
+  it("never picks Fable, even when it is the only model the account reports", () => {
     const fableOnly: AutoProvider = {
       ...claude,
       models: [model("claude-sonnet-5"), model("claude-fable-5-1")],
     };
-    expect(pickModel(fableOnly, "strong")?.id).toBe("claude-fable-5-1");
+    expect(pickModel(fableOnly, "strong")?.id).toBe("claude-sonnet-5");
     expect(pickModel(claude, "strong")?.id).toBe("claude-opus-5-5");
-    const twoOpus: AutoProvider = {
-      ...claude,
-      models: [model("claude-opus-5"), model("claude-opus-5-5")],
-    };
-    expect(pickModel(twoOpus, "strong")?.id).toBe("claude-opus-5-5");
+    const onlyFable: AutoProvider = { ...claude, models: [model("claude-fable-5-2")] };
+    expect(planAuto([onlyFable])).toEqual({});
   });
 
   it("keeps photos on a model that reads images", () => {
-    const textOnlyClaude: AutoProvider = {
-      ...claude,
-      models: [model("text-only-mini"), model("claude-sonnet-5")],
+    // The catalog does not know gpt-6-luna as an image model, so the photo feature takes the one it does know.
+    const noImageModel: AutoProvider = {
+      ...codex,
+      models: [model("gpt-6-luna"), model("gpt-5.6-terra")],
     };
-    expect(planAuto([textOnlyClaude]).vision?.model).toBe("claude-sonnet-5");
+    expect(planAuto([noImageModel]).vision?.model).toBe("gpt-5.6-terra");
   });
 
   it("never plans photos on a provider that refuses images, whatever its model ids say", () => {
@@ -223,75 +223,74 @@ describe("automatic engine policy", () => {
   });
 });
 
-// Cursor Agent and Antigravity model ids as CLI Funnel 0.4 lists them.
+// Cursor Agent and Antigravity as `agent --list-models` and `agy models` report them: a mix of makers, of which only
+// the Grok models (Cursor) and the Gemini models (Antigravity) may be used.
 const agent: AutoProvider = {
   id: "agent",
   kind: "cli",
-  effort: false,
+  effort: true,
   images: false,
   models: [
-    "gpt-5.3-codex",
-    "composer-2.5",
-    "claude-opus-5-thinking",
-    "gpt-5.6-sol",
-    "claude-fable-5-thinking",
-    "gemini-3.7-flash",
-    "claude-sonnet-5-thinking",
-    "gpt-5.6-luna",
-    "claude-opus-5-5",
-    "claude-opus-5",
-    "claude-fable-5-1",
-    "gemini-3.8-flash",
-    "gpt-5.6-terra",
-    "claude-sonnet-5-5",
-    "claude-sonnet-5",
-    "claude-4.6-sonnet",
-    "gemini-3.1-pro",
-    "gpt-5.4-mini",
-    "kimi-k3",
-  ].map((id) => model(id, [])),
+    model("gpt-5.3-codex", []),
+    model("composer-2.5", []),
+    model("claude-opus-5-thinking"),
+    model("gpt-5.6-sol"),
+    model("claude-fable-5-thinking"),
+    model("cursor-grok-4.5", all.slice(0, 3)),
+    model("grok-4.7", all.slice(0, 4)),
+    model("cursor-grok-4.6", all.slice(0, 4)),
+    model("claude-opus-5-5"),
+    model("gemini-3.8-flash", all.slice(0, 3)),
+    model("claude-sonnet-5-5"),
+    model("gemini-4-argon", all.slice(0, 3)),
+    model("gpt-5.6-luna"),
+    model("kimi-k3", []),
+  ],
 };
 const antigravity: AutoProvider = {
   id: "antigravity",
   kind: "cli",
-  effort: false,
+  effort: true,
   images: false,
   models: [
-    "gemini-3.8-flash",
-    "gemini-3.7-flash",
-    "gemini-3.1-pro",
-    "claude-sonnet-4-6",
-    "claude-opus-4-6-thinking",
-    "gpt-oss-120b-medium",
-  ].map((id) => model(id, [])),
+    model("gemini-4-neon", all.slice(0, 3)),
+    model("gemini-4-neon-xhigh", []),
+    model("gemini-4-argon", all.slice(0, 3)),
+    model("gemini-4-hydrogen", all.slice(0, 3)),
+    model("gemini-pro-orchestrator-neon", []),
+    model("gemini-3.8-flash", all.slice(0, 3)),
+    model("claude-opus-5-5", all.slice(0, 3)),
+    model("claude-sonnet-5-5", all.slice(0, 3)),
+    model("gpt-oss-120b-medium", []),
+  ],
 };
 
 /** provider/model per feature, in the order default chat plan lesson grading map vision cards. */
 const combinations: Record<string, string> = {
   agent:
-    "agent/claude-sonnet-5-5 agent/gemini-3.8-flash agent/claude-opus-5-5 agent/claude-sonnet-5-5 agent/claude-sonnet-5-5 agent/gemini-3.8-flash agent/claude-sonnet-5-5 agent/gemini-3.8-flash",
+    "agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7",
   antigravity:
-    "antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash antigravity/gemini-3.1-pro antigravity/gemini-3.1-pro antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash",
+    "antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash antigravity/gemini-4-argon antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash",
   "claude+agent":
-    "claude/claude-sonnet-5 agent/gemini-3.8-flash claude/claude-opus-5-5 claude/claude-sonnet-5 agent/claude-sonnet-5-5 agent/gemini-3.8-flash claude/claude-sonnet-5 agent/gemini-3.8-flash",
+    "claude/claude-sonnet-5-5 agent/grok-4.7 claude/claude-opus-5-5 claude/claude-sonnet-5-5 agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 agent/grok-4.7",
   "codex+agent":
-    "agent/claude-sonnet-5-5 codex/gpt-6-luna codex/gpt-6-sol agent/claude-sonnet-5-5 agent/claude-sonnet-5-5 codex/gpt-6-luna codex/gpt-5.6-terra codex/gpt-6-luna",
+    "agent/grok-4.7 codex/gpt-6-luna codex/gpt-6.2-sol agent/grok-4.7 agent/grok-4.7 codex/gpt-6-luna codex/gpt-5.6-terra codex/gpt-6-luna",
   "claude+antigravity":
-    "claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 claude/claude-sonnet-5 antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash claude/claude-sonnet-5 antigravity/gemini-3.8-flash",
+    "claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash",
   "codex+antigravity":
-    "codex/gpt-5.6-terra antigravity/gemini-3.8-flash codex/gpt-6-sol codex/gpt-5.6-terra antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash codex/gpt-5.6-terra antigravity/gemini-3.8-flash",
+    "codex/gpt-6.1-terra antigravity/gemini-3.8-flash codex/gpt-6.2-sol codex/gpt-6.1-terra antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash codex/gpt-5.6-terra antigravity/gemini-3.8-flash",
   "agent+antigravity":
-    "agent/claude-sonnet-5-5 antigravity/gemini-3.8-flash agent/claude-opus-5-5 agent/claude-sonnet-5-5 antigravity/gemini-3.1-pro antigravity/gemini-3.8-flash agent/claude-sonnet-5-5 antigravity/gemini-3.8-flash",
+    "agent/grok-4.7 antigravity/gemini-3.8-flash agent/grok-4.7 agent/grok-4.7 antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash agent/grok-4.7 antigravity/gemini-3.8-flash",
   "claude+codex+agent":
-    "claude/claude-sonnet-5 codex/gpt-6-luna agent/claude-opus-5-5 agent/claude-sonnet-5-5 claude/claude-sonnet-5 codex/gpt-6-luna claude/claude-sonnet-5 codex/gpt-6-luna",
+    "claude/claude-sonnet-5-5 codex/gpt-6-luna agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 codex/gpt-6-luna claude/claude-sonnet-5-5 codex/gpt-6-luna",
   "claude+codex+antigravity":
-    "claude/claude-sonnet-5 antigravity/gemini-3.8-flash codex/gpt-6-sol codex/gpt-5.6-terra claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5 antigravity/gemini-3.8-flash",
+    "claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash codex/gpt-6.2-sol codex/gpt-6.1-terra claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash",
   "claude+agent+antigravity":
-    "claude/claude-sonnet-5 antigravity/gemini-3.8-flash agent/claude-opus-5-5 agent/claude-sonnet-5-5 claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5 antigravity/gemini-3.8-flash",
+    "claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash",
   "codex+agent+antigravity":
-    "agent/claude-sonnet-5-5 antigravity/gemini-3.8-flash codex/gpt-6-sol agent/claude-sonnet-5-5 codex/gpt-5.6-terra antigravity/gemini-3.8-flash codex/gpt-5.6-terra antigravity/gemini-3.8-flash",
+    "agent/grok-4.7 antigravity/gemini-3.8-flash codex/gpt-6.2-sol agent/grok-4.7 codex/gpt-6.1-terra antigravity/gemini-3.8-flash codex/gpt-5.6-terra antigravity/gemini-3.8-flash",
   "claude+codex+agent+antigravity":
-    "claude/claude-sonnet-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 codex/gpt-5.6-terra agent/claude-sonnet-5-5 agent/gemini-3.8-flash claude/claude-sonnet-5 antigravity/gemini-3.8-flash",
+    "claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 codex/gpt-6.1-terra agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash",
 };
 const order = [
   "default",
@@ -303,6 +302,12 @@ const order = [
   "vision",
   "cards",
 ] as const;
+const makers: Record<string, RegExp> = {
+  claude: /^claude-/,
+  codex: /^gpt-/,
+  agent: /^(?:cursor-)?grok-/,
+  antigravity: /^gemini-/,
+};
 const byId: Record<string, AutoProvider> = {
   claude,
   codex,
@@ -321,7 +326,7 @@ describe("automatic choice with Cursor Agent and Antigravity", () => {
     },
   );
 
-  it("covers every mix of the four CLIs, using each engine and never a thinking or no-retention model", () => {
+  it("covers every mix of the four CLIs, using each engine and only its maker's models", () => {
     const ids = ["claude", "codex", "agent", "antigravity"];
     for (let mask = 1; mask < 16; mask++) {
       const ready = ids
@@ -335,9 +340,7 @@ describe("automatic choice with Cursor Agent and Antigravity", () => {
       expect(used.size).toBe(Math.min(ready.length, 4));
       for (const choice of Object.values(plan)) {
         expect(choice!.model).not.toMatch(/thinking|fable/);
-        // Cursor and Antigravity take no effort setting.
-        if (choice!.provider === "agent" || choice!.provider === "antigravity")
-          expect(choice!.effort).toBeUndefined();
+        expect(choice!.model).toMatch(makers[choice!.provider]!);
       }
     }
   });
@@ -352,11 +355,11 @@ describe("the order the student put their tools in", () => {
       chat: "codex:gpt-6-luna:low",
       map: "codex:gpt-6-luna:low",
       cards: "codex:gpt-6-luna:low",
-      grading: "codex:gpt-5.6-terra:medium",
-      lesson: "codex:gpt-5.6-terra:medium",
+      grading: "codex:gpt-6.1-terra:medium",
+      lesson: "codex:gpt-6.1-terra:medium",
       vision: "codex:gpt-5.6-terra:medium",
-      default: "codex:gpt-5.6-terra:medium",
-      plan: "codex:gpt-6-sol:high",
+      default: "codex:gpt-6.1-terra:medium",
+      plan: "codex:gpt-6.2-sol:high",
     });
     expect(new Set(Object.values(providersOf(planAuto([claude, codex], undefined, ["claude", "codex"]))))).toEqual(
       new Set(["claude"]),

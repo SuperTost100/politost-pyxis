@@ -27,7 +27,7 @@ function fakeFunnel(state: State, listing: "ok" | "offline" = "ok") {
     capabilities: { effort: true, fast: false, access },
   });
   const models = {
-    claude: ["claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5"],
+    claude: ["claude-opus-5-5", "claude-sonnet-5", "claude-haiku-5-5"],
     codex: ["gpt-6-sol", "gpt-5.6-terra", "gpt-6-luna"],
   };
   return {
@@ -148,7 +148,7 @@ describe("automatic engine choice", () => {
     });
     expect(moved.features.map).toMatchObject({
       provider: "claude",
-      model: "claude-haiku-4-5",
+      model: "claude-haiku-5-5",
       auto: true,
     });
     const reset = await withFunnel({ claude: true, codex: true }, () =>

@@ -1,5 +1,11 @@
 import { nearestEffort } from "../../shared/effort";
 import { modelCapability } from "./capabilities";
+import {
+  automaticModels,
+  hasRoles,
+  roleEffort,
+  roleModels,
+} from "./model-roles";
 import { tierData as data, type Tier } from "./tiers";
 
 export const autoFeatures = [
@@ -45,30 +51,6 @@ function loadOf(feature: string): number {
   return weightOf(feature) * data.tierCost[featureTier(feature)];
 }
 
-/** A snapshot date at the end of an id: `-20250929`, `@20250929` or `-2025-08-07`. It says when, not which version. */
-const SNAPSHOT_DATE = /[-@](?:\d{8}|\d{4}-\d{2}-\d{2})$/;
-
-/** The version numbers of a model id, without its snapshot date, so `claude-sonnet-4-5-20250929` reads 4.5 and not 4.20250929. */
-function versionParts(id: string): number[] {
-  return (id.replace(SNAPSHOT_DATE, "").match(/\d+/g) ?? []).map(Number);
-}
-
-/** The snapshot date as a number, 0 when the id has none. Among equal versions the newer snapshot wins. */
-function snapshotOf(id: string): number {
-  const date = SNAPSHOT_DATE.exec(id)?.[0].replace(/\D/g, "");
-  return date ? Number(date) : 0;
-}
-
-function compareVersionsDesc(a: AutoModel, b: AutoModel): number {
-  const left = versionParts(a.id);
-  const right = versionParts(b.id);
-  for (let i = 0; i < Math.max(left.length, right.length); i++) {
-    const diff = (right[i] ?? -1) - (left[i] ?? -1);
-    if (diff !== 0) return diff;
-  }
-  return snapshotOf(b.id) - snapshotOf(a.id);
-}
-
 function usableModels(provider: AutoProvider, feature: string): AutoModel[] {
   if (feature !== "vision") return provider.models;
   if (provider.images === false) return [];
@@ -77,24 +59,26 @@ function usableModels(provider: AutoProvider, feature: string): AutoModel[] {
   );
 }
 
-/** Picks the newest model of a tier, stepping to the neighbouring tiers when the provider lists none. */
+/**
+ * Picks the model for a role from the file's list (`model-roles.json`): the first id of the role that the provider
+ * reports, in the file's order. When the provider reports none of them the neighbouring roles are tried, and the last
+ * resort is the first of the maker's own models the provider reports, never a model of another company. A provider
+ * the file has no rule for, such as the local model, gets the first model it lists.
+ */
 export function pickModel(
   provider: AutoProvider,
   tier: Tier,
   models: AutoModel[] = provider.models,
 ): AutoModel | undefined {
-  const family = data.patterns[data.family[provider.id] ?? ""];
-  if (family) {
-    for (const step of data.tierOrder[tier]) {
-      for (const pattern of family[step]) {
-        const expression = new RegExp(pattern);
-        const matches = models.filter((model) => expression.test(model.id));
-        // Array.prototype.sort is stable, so equal versions keep the provider's order.
-        if (matches.length) return [...matches].sort(compareVersionsDesc)[0];
-      }
+  if (!hasRoles(provider.id)) return models[0];
+  const own = automaticModels(provider.id, models);
+  for (const step of data.tierOrder[tier]) {
+    for (const id of roleModels(provider.id, step)) {
+      const found = own.find((model) => model.id === id);
+      if (found) return found;
     }
   }
-  return models[0];
+  return own[0];
 }
 
 function choiceFor(
@@ -107,7 +91,7 @@ function choiceFor(
   if (!model) return undefined;
   const effort = provider.effort
     ? nearestEffort(
-        data.effort[tier]!,
+        roleEffort(provider.id, tier),
         model.efforts.map((option) => option.id),
       )
     : undefined;
@@ -148,9 +132,15 @@ export function planAuto(
   features: readonly string[] = autoFeatures,
   order?: readonly string[] | null,
 ): AutoPlan {
-  const usable = ready.filter(
-    (provider) => provider.models.length > 0 && data.family[provider.id],
-  );
+  // Only the maker's own models count, so a tool that lists another company's models never gets one of them.
+  const usable = ready
+    .filter((provider) => hasRoles(provider.id) || provider.kind === "local")
+    .map((provider) =>
+      hasRoles(provider.id)
+        ? { ...provider, models: automaticModels(provider.id, provider.models) }
+        : provider,
+    )
+    .filter((provider) => provider.models.length > 0);
   const clis = usable.filter((provider) => provider.kind === "cli");
   const local = usable.filter((provider) => provider.kind === "local");
   const pool = clis.length ? clis : local.length ? local : usable;

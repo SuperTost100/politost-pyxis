@@ -1,0 +1,298 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import shipped from "../../../resources/model-roles.json";
+import { openDatabase } from "../db/connection";
+import { planAuto, type AutoProvider } from "./auto";
+import { clearBench } from "./bench";
+import { forgetModels, modelNames } from "./efforts";
+import { getFunnel } from "./funnel";
+import { engineHandlers } from "./handlers";
+import {
+  adoptModelFile,
+  isForeignModel,
+  isOwnModel,
+  modelFile,
+  modelFileSchema,
+  ownModels,
+  resetModelFile,
+  type ModelFile,
+} from "./model-roles";
+import { fallbackSelection, rememberReady, selectionFor } from "./selection";
+
+vi.mock("./funnel", async (original) => {
+  const actual = await original<typeof import("./funnel")>();
+  return { ...actual, getFunnel: vi.fn(actual.getFunnel), runTurn: vi.fn() };
+});
+
+const levels = ["low", "medium", "high"].map((id) => ({ id }));
+const model = (id: string) => ({ id, efforts: levels });
+const copy = (): ModelFile => JSON.parse(JSON.stringify(shipped)) as ModelFile;
+
+/** Everything each tool reports on a signed-in account today, makers mixed the way Cursor and Antigravity mix them. */
+const reported: Record<string, string[]> = {
+  claude: ["claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+  codex: ["gpt-6.2-sol", "gpt-6.1-terra", "gpt-6-luna"],
+  agent: [
+    "composer-2.5",
+    "claude-opus-5-5",
+    "gpt-5.6-sol",
+    "gemini-3.8-flash",
+    "claude-fable-5-2",
+    "cursor-grok-4.5",
+    "grok-4.7",
+    "cursor-grok-4.6",
+    "kimi-k3",
+  ],
+  antigravity: [
+    "gemini-4-argon",
+    "gemini-4-hydrogen",
+    "gemini-3.8-flash",
+    "gemini-pro-orchestrator-neon",
+    "claude-sonnet-5-5",
+    "claude-opus-5-5",
+    "gpt-oss-120b-medium",
+  ],
+};
+const makers: Record<string, RegExp> = {
+  claude: /^claude-/,
+  codex: /^gpt-/,
+  agent: /^(?:cursor-)?grok-/,
+  antigravity: /^gemini-/,
+};
+
+function fakeFunnel() {
+  const capabilities = { effort: true, fast: false, access: ["none"] };
+  const row = (id: string, displayName: string) => ({
+    id,
+    displayName,
+    installation: { installed: true },
+    auth: { loggedIn: true },
+    capabilities,
+  });
+  return {
+    overview: async () => Object.keys(reported).map((id) => row(id, id)),
+    models: async (id: string) => reported[id]!.map((name) => ({ id: name, name: `name of ${name}`, efforts: levels })),
+    providers: Object.fromEntries(Object.keys(reported).map((id) => [id, { capabilities }])),
+  } as unknown as ReturnType<typeof getFunnel>;
+}
+
+afterEach(() => {
+  resetModelFile();
+  rememberReady([]);
+  clearBench();
+  forgetModels();
+  vi.mocked(getFunnel).mockReset();
+});
+
+describe("the model file", () => {
+  it("is valid as shipped, and every role names models", () => {
+    expect(modelFileSchema.safeParse(shipped).success).toBe(true);
+    expect(Object.keys(shipped.tools).sort()).toEqual(["agent", "anthropic-api", "antigravity", "claude", "codex", "openai-api"]);
+  });
+
+  it("puts no Fable model in any role", () => {
+    for (const rule of Object.values(modelFile().tools))
+      for (const role of Object.values(rule.roles)) expect(role.models.join(" ")).not.toMatch(/fable/i);
+  });
+
+  it("lists only each maker's own ids in its roles", () => {
+    for (const [id, rule] of Object.entries(modelFile().tools))
+      for (const role of Object.values(rule.roles)) for (const name of role.models) expect(isOwnModel(id, name)).toBe(true);
+  });
+
+  it("ignores a file that does not validate", () => {
+    const newer = (change: (file: ModelFile) => unknown) => {
+      const file = copy();
+      file.updatedAt = "2099-01-01T00:00:00Z";
+      return change(file) ?? file;
+    };
+    expect(adoptModelFile(newer((file) => ({ ...file, version: 2 })))).toBe(false);
+    expect(adoptModelFile(newer((file) => ({ ...file, updatedAt: "yesterday" })))).toBe(false);
+    expect(adoptModelFile(newer((file) => ({ ...file, tools: { claude: { ...file.tools.claude, own: "(" } } })))).toBe(false);
+    expect(adoptModelFile(newer((file) => ({ ...file, tools: { claude: { own: "^claude-", roles: {} } } })))).toBe(false);
+    expect(adoptModelFile(newer((file) => ({ ...file, tools: { claude: { ...file.tools.claude, roles: { ...file.tools.claude!.roles, fast: { effort: "low", models: [] } } } } })))).toBe(false);
+    // A file that leaves a tool out would strand that tool, so it is ignored too.
+    expect(adoptModelFile(newer((file) => ({ ...file, tools: {} })))).toBe(false);
+    expect(adoptModelFile(newer((file) => ({ ...file, tools: { claude: file.tools.claude } })))).toBe(false);
+    expect(adoptModelFile(null)).toBe(false);
+    expect(adoptModelFile("model-roles")).toBe(false);
+    expect(modelFile().updatedAt).toBe(shipped.updatedAt);
+  });
+
+  it("keeps the newest of two valid copies: an older or equal download does not replace the shipped one", () => {
+    const older = copy();
+    older.updatedAt = "2020-01-01T00:00:00Z";
+    older.tools.claude!.roles.fast.models = ["claude-haiku-4-5-20251001"];
+    expect(adoptModelFile(older)).toBe(false);
+    expect(adoptModelFile(copy())).toBe(false);
+    expect(modelFile().tools.claude!.roles.fast.models[0]).toBe("claude-haiku-5-5");
+    const newer = copy();
+    newer.updatedAt = "2099-01-01T00:00:00Z";
+    newer.tools.claude!.roles.fast.models = ["claude-haiku-9"];
+    expect(adoptModelFile(newer)).toBe(true);
+    expect(modelFile().tools.claude!.roles.fast.models[0]).toBe("claude-haiku-9");
+    // Once a newer copy is in use, an older one cannot take its place either.
+    expect(adoptModelFile(older)).toBe(false);
+    expect(modelFile().tools.claude!.roles.fast.models[0]).toBe("claude-haiku-9");
+  });
+});
+
+describe("a tool only runs its maker's models", () => {
+  it("recognises the maker's ids and another maker's", () => {
+    expect(isOwnModel("agent", "grok-4.7")).toBe(true);
+    expect(isOwnModel("agent", "cursor-grok-4.5")).toBe(true);
+    expect(isOwnModel("agent", "composer-2.5")).toBe(false);
+    expect(isOwnModel("agent", "claude-opus-5-5")).toBe(false);
+    expect(isOwnModel("antigravity", "claude-sonnet-5-5")).toBe(false);
+    expect(isOwnModel("antigravity", "gemini-3.8-flash")).toBe(true);
+    expect(isForeignModel("agent", "claude-opus-5-5")).toBe(true);
+    expect(isForeignModel("agent", "composer-2.5")).toBe(false);
+    expect(isForeignModel("claude", "claude-opus-5-5")).toBe(false);
+    // The local model has no rule: nothing is ruled out for it.
+    expect(isOwnModel("ollama", "gemma3:12b")).toBe(true);
+  });
+
+  it("keeps only the maker's models of each tool's own listing", () => {
+    for (const [id, names] of Object.entries(reported)) {
+      const own = ownModels(id, names.map((name) => ({ id: name }))).map((entry) => entry.id);
+      expect(own.length).toBeGreaterThan(0);
+      for (const name of own) expect(name).toMatch(makers[id]!);
+    }
+    expect(ownModels("agent", reported.agent!.map((name) => ({ id: name }))).map((entry) => entry.id)).toEqual([
+      "cursor-grok-4.5",
+      "grok-4.7",
+      "cursor-grok-4.6",
+    ]);
+  });
+
+  it("never gives a tool another maker's model in the automatic choice, whatever the tool reports", () => {
+    const ready: AutoProvider[] = Object.entries(reported).map(([id, names]) => ({
+      id,
+      kind: "cli",
+      effort: true,
+      models: names.map(model),
+    }));
+    const plan = planAuto(ready);
+    expect(Object.keys(plan).length).toBe(8);
+    for (const choice of Object.values(plan)) expect(choice.model).toMatch(makers[choice.provider]!);
+    // Each tool alone, with the others' models mixed into its list.
+    for (const provider of ready)
+      for (const choice of Object.values(planAuto([provider]))) expect(choice.model).toMatch(makers[provider.id]!);
+  });
+
+  it("never falls back to another maker's model after a refusal, a limit or a missing program", () => {
+    const ready: AutoProvider[] = ["agent", "antigravity"].map((id) => ({
+      id,
+      kind: "cli",
+      effort: true,
+      images: false,
+      models: reported[id]!.map(model),
+    }));
+    rememberReady(ready);
+    for (const reason of ["model", "limit", "signed-out", "not-installed"] as const) {
+      for (const provider of ["agent", "antigravity"]) {
+        const next = fallbackSelection({ provider, chosenFor: "plan" }, reason);
+        if (next) expect(next.model).toMatch(makers[next.provider]!);
+      }
+    }
+  });
+
+  it("follows the file's order, not the order the tool lists its models in", () => {
+    const provider: AutoProvider = {
+      id: "antigravity",
+      kind: "cli",
+      effort: true,
+      models: ["gemini-4-neon", "gemini-4-hydrogen", "gemini-3.8-flash"].map(model),
+    };
+    expect(planAuto([provider]).lesson?.model).toBe("gemini-4-hydrogen");
+    const reordered = copy();
+    reordered.updatedAt = "2099-01-01T00:00:00Z";
+    reordered.tools.antigravity!.roles.mid.models = ["gemini-4-neon", "gemini-4-hydrogen"];
+    expect(adoptModelFile(reordered)).toBe(true);
+    expect(planAuto([provider]).lesson?.model).toBe("gemini-4-neon");
+    // A model the new file names first but the account does not report is skipped for the next one.
+    const without: AutoProvider = { ...provider, models: [model("gemini-4-hydrogen"), model("gemini-3.8-flash")] };
+    expect(planAuto([without]).lesson?.model).toBe("gemini-4-hydrogen");
+  });
+
+  it("uses the effort the file gives the role, and the nearest level the model lists", () => {
+    const file = copy();
+    file.updatedAt = "2099-01-01T00:00:00Z";
+    file.tools.codex!.roles.fast.effort = "high";
+    adoptModelFile(file);
+    const provider: AutoProvider = { id: "codex", kind: "cli", effort: true, models: [model("gpt-6-luna")] };
+    expect(planAuto([provider]).chat).toEqual({ provider: "codex", model: "gpt-6-luna", effort: "high" });
+  });
+});
+
+describe("through the engine handlers", () => {
+  function setup() {
+    vi.mocked(getFunnel).mockImplementation(fakeFunnel);
+    const db = openDatabase(":memory:");
+    return { db, handlers: engineHandlers(db, () => undefined) };
+  }
+
+  it("shows only the maker's models in the list and in the names", async () => {
+    const { db, handlers } = setup();
+    for (const id of Object.keys(reported)) {
+      const list = await handlers.models({ provider: id as never });
+      expect(list.length).toBeGreaterThan(0);
+      for (const entry of list) expect(entry.id).toMatch(makers[id]!);
+      for (const name of Object.keys(modelNames()[id] ?? {})) expect(name).toMatch(makers[id]!);
+    }
+    await handlers.autoConfigure({});
+    for (const [id, names] of Object.entries(modelNames())) for (const name of Object.keys(names)) expect(name).toMatch(makers[id]!);
+    db.close();
+  });
+
+  it("gives every task a model of its tool's maker, with all four tools ready", async () => {
+    const { db, handlers } = setup();
+    const { features } = await handlers.autoConfigure({});
+    expect(Object.keys(features).length).toBe(8);
+    for (const row of Object.values(features)) expect(row.model).toMatch(makers[row.provider]!);
+    for (const feature of Object.keys(features)) {
+      const choice = selectionFor(db, feature);
+      expect(choice.model).toMatch(makers[choice.provider]!);
+    }
+    db.close();
+  });
+
+  it("refuses to pin another maker's model", async () => {
+    const { db, handlers } = setup();
+    await handlers.autoConfigure({});
+    const pin = (provider: string, model: string) => () =>
+      handlers.setFeature({ feature: "chat", provider: provider as never, model });
+    // Cursor reported Composer in the listing above, so it is known as not Cursor's own to run.
+    for (const [provider, name] of [
+      ["agent", "claude-opus-5-5"],
+      ["agent", "gpt-5.6-sol"],
+      ["agent", "composer-2.5"],
+      ["antigravity", "claude-sonnet-5-5"],
+      ["codex", "gemini-3.8-flash"],
+      ["claude", "gpt-6.2-sol"],
+    ] as const)
+      expect(pin(provider, name), `${provider} ${name}`).toThrow(expect.objectContaining({ code: "invalid-selection" }));
+    expect(pin("agent", "grok-4.7")).not.toThrow();
+    db.close();
+  });
+
+  it("returns a stored pin on another maker's model to automatic, without an error, and keeps the effort pick", async () => {
+    const { db, handlers } = setup();
+    await handlers.autoConfigure({});
+    // What an earlier build allowed: a Claude model and Composer pinned on Cursor, and a good pin on Claude.
+    const stored = (feature: string, selection: object) =>
+      db
+        .prepare("INSERT OR REPLACE INTO feature_engines (feature, selection_json, updated_at) VALUES (?, ?, 1)")
+        .run(feature, JSON.stringify(selection));
+    stored("lesson", { provider: "agent", model: "claude-opus-5-5", effort: "high" });
+    stored("map", { provider: "agent", model: "composer-2.5" });
+    stored("plan", { provider: "claude", model: "claude-opus-5-5", effort: "high" });
+    const { features } = await handlers.autoConfigure({});
+    expect(features.lesson).toMatchObject({ auto: true, effortChoice: "high" });
+    expect(features.lesson!.model).toMatch(makers[features.lesson!.provider]!);
+    expect(features.map).toMatchObject({ auto: true });
+    expect(features.map!.model).not.toBe("composer-2.5");
+    // A pin on the maker's own model stays where it is.
+    expect(features.plan).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "high" });
+    db.close();
+  });
+});

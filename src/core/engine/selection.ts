@@ -1,9 +1,10 @@
 import { IpcError } from "../../shared/ipc";
 import type Database from "better-sqlite3";
-import { automaticEffort, nearestEffort, studentEffort } from "../../shared/effort";
+import { nearestEffort, studentEffort } from "../../shared/effort";
 import { planAuto, type AutoFeature, type AutoProvider } from "./auto";
 import { isBenched, isModelBenched, pointedModels } from "./bench";
 import { effortsOf } from "./efforts";
+import { automaticEffortOn } from "./model-roles";
 import type { ProviderId } from "./funnel";
 import { LOCAL_PROVIDER, localData, readLocal } from "./local";
 
@@ -73,7 +74,7 @@ export function selectionFor(
       : (picked ?? inherited)
     : picked && listed.includes(picked)
       ? picked
-      : automaticEffort(feature, listed);
+      : automaticEffortOn(selection.provider, feature, listed);
   return {
     ...selection,
     ...(effort ? { effort } : {}),

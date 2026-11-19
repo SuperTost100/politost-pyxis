@@ -348,7 +348,7 @@ test("Settings: a test the provider refuses turns the engine to an expired sign-
   --version) echo "2026.09.28-64d2043";;
   status) echo '{"isAuthenticated":true}';;
   about) echo '{}';;
-  --list-models) printf 'gemini-3.8-flash - Gemini 3.8 Flash\\n';;
+  --list-models) printf 'grok-4.7-low - Grok 4.7  Low\\ngemini-3.8-flash - Gemini 3.8 Flash\\n';;
   *) echo "Error: request failed with status 401 Unauthorized" >&2; exit 1;;
 esac`,
     ),
@@ -411,7 +411,7 @@ esac`,
       window.pyxis.invoke("engines.setFeature", {
         feature: "chat",
         provider: "agent",
-        model: "gemini-3.8-flash",
+        model: "grok-4.7",
       }),
     );
     await page.evaluate(() => {
@@ -458,19 +458,20 @@ test("Settings: a model the subscription refuses keeps the engine, but the row s
     HOME: bin,
     PATH: "/usr/bin:/bin",
     CLI_FUNNEL_NO_SHELL_PATH: "1",
-    // Cursor Agent signed in on a plan whose weekly usage covers only Grok, as in the walkthrough.
+    // Cursor Agent signed in on a plan that lists models of several makers, but whose weekly usage covers one Grok
+    // model only. Pyxis runs only Cursor's Grok models, so the others never reach the row or a task.
     CLI_FUNNEL_AGENT_BIN: fake(
       "agent",
       `case "$1" in
   --version) echo "2026.10.22-27dcf5f";;
   status) echo '{"isAuthenticated":true}';;
   about) echo '{}';;
-  --list-models) printf 'gemini-3.8-flash-low - Gemini 3.8 Flash Low\\ngemini-3.8-flash-high - Gemini 3.8 Flash High\\nclaude-opus-5-5-high - Claude Opus 5.5 1M High\\ngrok-4.7-low - Grok 4.7  Low\\ngrok-4.7-high - Grok 4.7  High\\n';;
+  --list-models) printf 'gemini-3.8-flash-low - Gemini 3.8 Flash Low\\ngemini-3.8-flash-high - Gemini 3.8 Flash High\\nclaude-opus-5-5-high - Claude Opus 5.5 1M High\\ngrok-4.7-low - Grok 4.7  Low\\ngrok-4.7-high - Grok 4.7  High\\ncursor-grok-4.6-low - Grok 4.6 Low\\ncursor-grok-4.6-high - Grok 4.6\\n';;
   *)
-    # Grok answers; every other model is outside the plan.
+    # Grok 4.6 answers; Grok 4.7 is outside the plan.
     case "$*" in
-      *grok-4.7*) cat >/dev/null; printf '%s\\n' '{"type":"result","subtype":"success","is_error":false,"result":"ok"}';;
-      *) echo "ActionRequiredError: Gemini 3.8 Flash is not included in your weekly usage Buy credits or switch to a Grok model to continue." >&2; exit 1;;
+      *cursor-grok-4.6*) cat >/dev/null; printf '%s\\n' '{"type":"result","subtype":"success","is_error":false,"result":"ok"}';;
+      *) echo "ActionRequiredError: Grok 4.7 is not included in your weekly usage Buy credits or switch to a Grok model to continue." >&2; exit 1;;
     esac;;
 esac`,
     ),
@@ -490,9 +491,11 @@ esac`,
     await page.reload();
     const row = tool(page, "agent");
     await expect(row).toContainText("Connected", { timeout: 30000 });
-    // The row names the models the plan gives the engine, never their ids.
-    await expect(row).toContainText("Claude Opus 5.5", { timeout: 30000 });
-    await expect(row).not.toContainText("claude-opus-5-5");
+    // The row names the models the plan gives the engine, never their ids, and only Cursor's own kind.
+    await expect(row).toContainText("Grok 4.7", { timeout: 30000 });
+    await expect(row).not.toContainText("grok-4.7");
+    await expect(row).not.toContainText("Claude");
+    await expect(row).not.toContainText("Gemini");
     // A tool with models in its row still names its program, once.
     await expect(row.locator(".px-ctl-description")).toContainText("Cursor Agent");
     expect((await row.innerText()).split("Cursor Agent").length - 1).toBe(1);
@@ -504,8 +507,8 @@ esac`,
       page.getByText("Your Cursor subscription doesn't include the chosen model."),
     ).toBeVisible({ timeout: 30000 });
     await expect(row).toContainText("Ready, with limits");
-    await expect(row).toContainText("Gemini 3.8 Flash isn't in your subscription");
-    // The refusal said to switch to a Grok model, so every task Pyxis chose moves there.
+    await expect(row).toContainText("Grok 4.7 isn't in your subscription");
+    // The plan moves every task Pyxis chose to the next Grok model of the model file.
     await expect
       .poll(
         async () => [
@@ -517,14 +520,14 @@ esac`,
         ],
         { timeout: 30000 },
       )
-      .toEqual(["grok-4.7"]);
-    await expect(row).toContainText("Grok 4.7");
+      .toEqual(["cursor-grok-4.6"]);
+    await expect(row).toContainText("Grok 4.6");
     await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
     await saveShot(page, "engines-model-refused-en.png", { fullPage: true });
     // The next Prova skips the refused model, answers on Grok and names it as the engine lists it.
     await choose(page, "Cursor", "Test");
-    await expect(page.locator(".engines-result")).toContainText("Grok 4.7", { timeout: 30000 });
-    await expect(page.locator(".engines-result")).not.toContainText("grok-4.7");
+    await expect(page.locator(".engines-result")).toContainText("Grok 4.6", { timeout: 30000 });
+    await expect(page.locator(".engines-result")).not.toContainText("cursor-grok-4.6");
   } finally {
     await app.close();
     removeTestFolder(userData);

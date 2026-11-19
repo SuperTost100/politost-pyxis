@@ -9,7 +9,18 @@ import { readableModel } from "../../shared/model-names";
 const seen = new Map<string, Map<string, string[]>>();
 /** The engine's own name for each model it listed, such as "Codex 5.3" for `gpt-5.3-codex`. */
 const names = new Map<string, Map<string, string>>();
+/** Every id a tool reported at its last listing, the maker's own or not. */
+const reported = new Map<string, Set<string>>();
 
+/** Whether the tool's last listing held this id, even though it is not one of its maker's models. */
+export function wasReported(provider: string, model: string): boolean {
+  return reported.get(provider)?.has(model) ?? false;
+}
+
+/**
+ * Remembers the models a tool offers, with their efforts and names. Callers pass the maker's own models, so the screens
+ * never read another company's. `reportedIds` are all the ids the tool listed, own or not, which the listing itself passes.
+ */
 export function rememberModels(
   provider: string,
   models: ReadonlyArray<{
@@ -17,7 +28,9 @@ export function rememberModels(
     name?: string;
     efforts: ReadonlyArray<{ id: string }>;
   }>,
+  reportedIds?: ReadonlyArray<{ id: string }>,
 ): void {
+  if (reportedIds) reported.set(provider, new Set(reportedIds.map((model) => model.id)));
   seen.set(
     provider,
     new Map(models.map((model) => [model.id, model.efforts.map((e) => e.id)])),
@@ -87,4 +100,5 @@ export function resolveEffort(
 export function forgetModels(): void {
   seen.clear();
   names.clear();
+  reported.clear();
 }
