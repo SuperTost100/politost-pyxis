@@ -173,7 +173,7 @@ describe("a scanned PDF is read page by page when it is attached", () => {
     const view = await t.files.held.attach(t.write("scansione.pdf", "%PDF"));
     await until(() => t.last(view.id)?.state === "needs-data");
     expect(t.last(view.id)).toMatchObject({ phase: "scan" });
-    expect((await t.files.held.settle([view.id]), t.files.held.take([view.id]).leftOut)).toEqual([{ name: "scansione.pdf", error: "data" }]);
+    expect((await t.files.held.settle([view.id]), t.files.held.take([view.id]).leftOut)).toEqual([{ id: view.id, name: "scansione.pdf", error: "data" }]);
   });
 
   it("reads the scan after the data download, without attaching the file again", async () => {
@@ -261,8 +261,10 @@ describe("what a message takes", () => {
     await files.held.settle([good.id, bad.id]);
     const taken = files.held.take([good.id, bad.id]);
     expect(taken.documents.map((doc) => doc.name)).toEqual(["buono.txt"]);
-    expect(taken.leftOut).toEqual([{ name: "rotto.txt", error: "unreadable" }]);
-    // The one left out is taken off: its copy goes.
+    expect(taken.leftOut).toEqual([{ id: bad.id, name: "rotto.txt", error: "unreadable" }]);
+    // The one left out stays held, failed, until the send goes through, so a send that fails keeps the composer as it was.
+    expect(files.held.list([bad.id])).toEqual([expect.objectContaining({ state: "failed", error: "unreadable" })]);
+    files.held.detach(bad.id);
     expect(files.held.list([bad.id])).toEqual([]);
   });
 
@@ -283,7 +285,7 @@ describe("what a message takes", () => {
     await files.held.settle(ids);
     const taken = files.held.take(ids);
     expect(taken.documents).toHaveLength(8);
-    expect(taken.leftOut).toEqual([{ name: "f8.txt", error: "too-many" }]);
+    expect(taken.leftOut).toEqual([{ id: ids[8], name: "f8.txt", error: "too-many" }]);
   });
 
   it("fits a photo for the model when it is attached and hands over the copy with the stored original", async () => {

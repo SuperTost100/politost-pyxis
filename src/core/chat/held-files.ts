@@ -16,7 +16,7 @@ import {
   isImageExt,
   maxSourceBytes,
 } from "../../shared/source-types";
-import { deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
+import { chatListedSources, deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
 
 /** What a chat message can carry: the Library's documents and photos, without a smartbook. */
 const ATTACHABLE = new Set<string>([...DOCUMENT_EXTENSIONS, ...IMAGE_EXTENSIONS].map((ext) => `.${ext}`));
@@ -74,8 +74,11 @@ export type TakenFiles = {
   order: string[];
   documents: Array<{ id: string; sourceId: string; name: string; size: number }>;
   photos: Array<{ id: string; name: string; size: number; ext: string; sha: string; file: string; fitted: VisionImage | null }>;
-  /** Files that could not be read, sent without. */
-  leftOut: Array<{ name: string; error: AttachmentError }>;
+  /**
+   * Files that could not be read, sent without. They stay held, failed, until the send goes through (the turn then takes
+   * them off by `id`), so a send that fails leaves the composer as it was.
+   */
+  leftOut: Array<{ id: string; name: string; error: AttachmentError }>;
 };
 
 /** The reason a failed reading gives, from the code its job stopped with. */
@@ -335,7 +338,8 @@ export function createHeldFiles(deps: HeldDeps) {
 
     /**
      * The files of a message, once they are settled: the ones that are read, and the ones left out with their reason.
-     * A file left out is taken off. Files past the most a message carries are left out the same way.
+     * Files past the most a message carries are left out the same way. Nothing is taken off here: the files stay held
+     * until the message is stored and answered (`release`), so a send that fails keeps them.
      */
     take(ids: string[]): TakenFiles {
       const taken: TakenFiles = { order: [], documents: [], photos: [], leftOut: [] };
@@ -346,10 +350,10 @@ export function createHeldFiles(deps: HeldDeps) {
         const view = viewOf(entry);
         if (view.state !== "ready" || kept >= MAX_ATTACHED_FILES) {
           taken.leftOut.push({
+            id,
             name: entry.name,
             error: view.state === "ready" ? "too-many" : view.state === "needs-data" ? "data" : (view.error ?? "unreadable"),
           });
-          discard(entry);
           continue;
         }
         kept += 1;
@@ -401,4 +405,34 @@ export function setHeldFiles(held: HeldFiles | null): void {
 
 export function heldFiles(): HeldFiles | null {
   return current;
+}
+
+/**
+ * At start, removes the hidden copies of files that were attached and never sent: core held them only in memory, so after
+ * a quit nothing can send them. A copy goes only when no stored message names it (`attachments.source_id`), no chat's
+ * scope lists it and no plan uses it, with the same code Free up space uses (`deleteHiddenSources`, which also keeps a
+ * copy whose passages anything cites), and its reading is given up first so it does not start again. Nothing in the
+ * Library is looked at. Returns how many it removed.
+ */
+export function dropUnsentCopies(db: Database.Database, workspace: string, runner: Runner): number {
+  const listed = chatListedSources(db);
+  const candidates = (
+    db
+      .prepare(
+        `SELECT id FROM sources WHERE library = 0 AND kind <> 'smartbook'
+         AND id NOT IN (SELECT source_id FROM plan_sources)
+         AND id NOT IN (SELECT source_id FROM attachments WHERE source_id IS NOT NULL)
+         ORDER BY id`,
+      )
+      .pluck()
+      .all() as string[]
+  ).filter((id) => !listed.has(id));
+  if (candidates.length === 0) return 0;
+  const jobs = db.prepare(
+    `SELECT id FROM jobs WHERE kind IN ('source-import', 'source-import-vision', 'source-ocr') AND json_extract(params_json, '$.sourceId') = ?`,
+  );
+  for (const id of candidates) for (const job of jobs.pluck().all(id) as string[]) runner.discard(job);
+  const hashes = db.transaction(() => deleteHiddenSources(db, candidates))();
+  removeUnreferencedBlobs(db, workspace, hashes);
+  return candidates.filter((id) => db.prepare(`SELECT 1 FROM sources WHERE id = ?`).get(id) === undefined).length;
 }

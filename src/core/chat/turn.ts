@@ -801,11 +801,15 @@ export async function askTurn(
   input.signal?.addEventListener("abort", stopChecks, { once: true });
   generating.add(chat.id);
   try {
-    const report: { leftOut?: TakenFiles["leftOut"] } = {};
+    const report: { leftOut?: TakenFiles["leftOut"]; drop?: string[] } = {};
     const result = await answer(db, input, replacing, chat.id, now, report);
-    // The files went with the question: the chat holds them now.
+    // The files went with the question: the chat holds them now. A copy the chat already had, and a file that could not
+    // be read, are taken off only now, so a send that failed would have kept every chip as it was.
+    for (const id of report.drop ?? []) input.held?.detach(id);
     input.held?.release(input.attachments ?? []);
-    return report.leftOut?.length ? { ...result, leftOut: report.leftOut } : result;
+    return report.leftOut?.length
+      ? { ...result, leftOut: report.leftOut.map(({ name, error }) => ({ name, error })) }
+      : result;
   } catch (err) {
     // A chat this turn created and could not answer is removed with its question and attachments. The student's
     // message goes back to the composer, so a retry starts one new chat instead of leaving an empty one behind.
@@ -829,7 +833,7 @@ async function answer(
   replacing: { assistantId: string; userId: string } | undefined,
   chatId: string,
   now: number,
-  report: { leftOut?: TakenFiles["leftOut"] },
+  report: { leftOut?: TakenFiles["leftOut"]; drop?: string[] },
 ): Promise<AskResult> {
   const prior = readScope(db, chatId);
   const planId = input.planId === undefined ? prior.planId : input.planId;
@@ -847,6 +851,7 @@ async function answer(
     await input.held.settle(input.attachments, input.signal);
     taken = input.held.take(input.attachments);
     report.leftOut = taken.leftOut;
+    report.drop = taken.leftOut.map((file) => file.id);
   }
   // A turn with a photo runs on a model that reads it when the chat's tool has one (or another available tool does), and
   // so does every later turn of a chat that holds a photo, so its model does not change from question to question.
@@ -978,8 +983,8 @@ async function answer(
   const { sourceIds, subject, subjectBy, userMessageId, attachedIds } = commitStaged(db, input.workspace ?? "", blobs, () =>
     persist(reused),
   );
-  // The copy of a document the chat already held is not needed any more.
-  for (const doc of documents) if (doc.duplicate) input.held?.detach(doc.id);
+  // The copy of a document the chat already held is not needed any more, once the send has gone through.
+  report.drop = [...(report.drop ?? []), ...documents.filter((doc) => doc.duplicate).map((doc) => doc.id)];
   input.onQuestion?.(userMessageId, chatId);
 
   const seesImage = reads && images.some((image) => image.data);
@@ -1061,6 +1066,9 @@ async function answer(
     ],
   };
   const selected = searches || sourceIds.length > 0 || Boolean(planId) || Boolean(subject);
+  // A file attached to this question is its own source: a photo that went with it, or a document whose passages did. A reply
+  // that cites none of them is still not "general knowledge", so the line above it does not say nothing was found.
+  const ownSource = thisTurnFile || found.hits.some((hit) => attachedIds.includes(hit.sourceId));
 
   const citations: ChatCitation[] = found.hits.map((hit, index) => ({
     label: hit.sectionPath || hit.locator.paragraph || `P${kept?.numbers[index] ?? index + 1}`,
@@ -1156,7 +1164,7 @@ async function answer(
         provider: answering.provider,
         model: answering.model,
         selected,
-        attached: thisTurnFile,
+        attached: ownSource,
         widened: widened || Boolean(input.resumeFrom?.widened),
         within,
         searched,
@@ -1258,7 +1266,7 @@ async function answer(
     provider: result.provider,
     model: result.model,
     selected,
-    attached: thisTurnFile,
+    attached: ownSource,
     widened: widened || Boolean(input.resumeFrom?.widened),
     within,
     searched,

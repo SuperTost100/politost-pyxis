@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
+import { extractPlain } from "../sources/documents";
 import { heldFilesFor } from "./test-attach";
 import { askTurn, deleteChat, readChat, regenerateTurn } from "./turn";
 
@@ -91,6 +92,56 @@ describe("a failed or stopped first turn leaves no chat behind", () => {
     expect(count("sources")).toBe(1);
     expect(count("sources WHERE library = 0")).toBe(1);
     expect(readChat(db, first.chatId).map((row) => row.role)).toEqual(["user", "assistant", "user", "assistant"]);
+    db.close();
+  });
+});
+
+describe("a failed send keeps its files held, ready, for the retry", () => {
+  const NOTE = "Il calore si trasmette per conduzione.";
+
+  it("keeps a file the chat already held, instead of dropping the copy made for this send", async () => {
+    const { workspace, db, file, count, attached } = setup();
+    const first = await attached(file("appunti.txt", NOTE));
+    const opened = await askTurn(db, { text: "ciao", allowGeneral: true, ...first, workspace, run: async () => reply });
+    await tick();
+    // The same file again, in the same chat: its text is already there, so the new copy is only a duplicate.
+    const again = await attached(file("appunti-bis.txt", NOTE));
+    const turn = (run: typeof down) =>
+      askTurn(db, { chatId: opened.chatId, text: "spiega", allowGeneral: true, ...again, workspace, run });
+    await expect(turn(down)).rejects.toThrow("engine-down");
+    // The composer gets it back as a ready chip: core still knows it, and nothing is shown as failed.
+    expect(first.held.list(again.attachments)).toEqual([expect.objectContaining({ name: "appunti-bis.txt", state: "ready" })]);
+    await tick();
+    await turn(async () => reply);
+    // The retry sent it, the question lists it, and the chat holds one copy of the text, not two.
+    expect(first.held.list(again.attachments)).toEqual([]);
+    expect(count("sources WHERE library = 0")).toBe(1);
+    expect(readChat(db, opened.chatId).filter((row) => row.role === "user").at(-1)!.files).toEqual([
+      expect.objectContaining({ name: "appunti-bis.txt", kind: "document" }),
+    ]);
+    db.close();
+  });
+
+  it("keeps a file that could not be read held and failed, and names it once the send goes through", async () => {
+    const { workspace, db, file } = setup();
+    const files = heldFilesFor(db, workspace, {
+      extract: async ({ path }) => {
+        if (readFileSync(path, "utf8").includes("rotto")) throw new Error("pdf-password-required");
+        return { document: extractPlain(NOTE, false) };
+      },
+    });
+    const ok = await files.held.attach(file("buono.txt", "buono"));
+    const bad = await files.held.attach(file("chiuso.pdf", "rotto"));
+    await files.held.settle([ok.id, bad.id]);
+    const sent = { attachments: [ok.id, bad.id], held: files.held };
+    await expect(askTurn(db, { text: "spiega", allowGeneral: true, ...sent, workspace, run: down })).rejects.toThrow("engine-down");
+    expect(files.held.list([ok.id, bad.id]).map((view) => [view.name, view.state])).toEqual([
+      ["buono.txt", "ready"],
+      ["chiuso.pdf", "failed"],
+    ]);
+    const result = await askTurn(db, { text: "spiega", allowGeneral: true, ...sent, workspace, run: async () => reply });
+    expect(result.leftOut).toEqual([{ name: "chiuso.pdf", error: "password" }]);
+    expect(files.held.list([ok.id, bad.id])).toEqual([]);
     db.close();
   });
 });

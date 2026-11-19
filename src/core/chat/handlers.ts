@@ -5,7 +5,7 @@ import type { Runner } from "../jobs/runner";
 import { ocrConsent, ocrDataStatus } from "../sources/ocr-data";
 import { startScan } from "../sources/ocr-job";
 import type { AttachmentView } from "../../shared/ipc";
-import { createHeldFiles, setHeldFiles } from "./held-files";
+import { createHeldFiles, dropUnsentCopies, setHeldFiles } from "./held-files";
 import { isFigureFixCall, recordedPlanRun } from "../engine/recorded-plan";
 import { exportChat, type ChatExportLanguage } from "./export";
 import { searchChats } from "./search";
@@ -67,6 +67,8 @@ export function chatHandlers(
   files?: { runner: Runner; emit: (view: AttachmentView) => void },
 ) {
   const tess = join(workspace, "runtimes", "tesseract");
+  // Files attached before the last quit and never sent have nothing left to send them.
+  if (files) dropUnsentCopies(db, workspace, files.runner);
   const held = files
     ? createHeldFiles({
         db,

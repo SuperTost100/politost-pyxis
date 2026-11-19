@@ -29,7 +29,7 @@ test("a scanned PDF is read page by page on its chip, then sent, and the chat ho
   const userData = mkdtempSync(join(tmpdir(), "pyxis-chat-scan-"));
   // The language files are there, and the student agreed to local reading, as after an earlier download.
   installTessdata(userData, staged!);
-  const app = await launchPyxis({ userData, env: { PYXIS_E2E_REPLY: "Ecco la risposta." } });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_REPLY: "La scansione dice che la forza è massa per accelerazione [P1]." } });
   try {
     await setUp(app, userData, async () => {
       const page = await app.firstWindow();
@@ -74,7 +74,8 @@ test("a scanned PDF is read page by page on its chip, then sent, and the chat ho
     await box.fill("Cosa dice la scansione?");
     await box.press("Enter");
     await expect(page.locator(".ask-sent-files").getByRole("button", { name: "scansione.pdf" })).toBeVisible();
-    await expect(page.getByText("Ecco la risposta.")).toBeVisible();
+    await expect(page.getByText("La scansione dice che la forza è massa per accelerazione")).toBeVisible();
+    await expect(page.getByText("Ho usato il file che hai allegato")).toBeVisible();
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
     await app.close();

@@ -114,6 +114,62 @@ describe("the files a message carried belong to it", () => {
   });
 });
 
+describe("a reply to a question that came with a file", () => {
+  it("does not say it comes from general knowledge when the file's passages were sent and the reply cites none of them", async () => {
+    const { db, workspace, write, attached } = setup();
+    let prompt = "";
+    const result = await askTurn(db, {
+      text: "riassumi gli appunti",
+      ...(await attached(write("appunti.txt", "Il calore si trasmette per conduzione."))),
+      workspace,
+      run: async (input) => {
+        prompt = input.prompt;
+        return reply;
+      },
+    });
+    expect(prompt).toContain("Il calore si trasmette per conduzione.");
+    // The file was this question's own source, as a photo is: the reply is not marked as general knowledge, so the
+    // line above it does not claim that nothing was found.
+    expect(result.message?.grounding).toBe("sources");
+    expect(result.message?.searched).toBeUndefined();
+    expect(readChat(db, result.chatId).at(-1)).toMatchObject({ grounding: "sources" });
+    db.close();
+  });
+
+  it("says it used the attached file when the reply cites it", async () => {
+    const { db, workspace, write, attached } = setup();
+    const result = await askTurn(db, {
+      text: "riassumi gli appunti",
+      ...(await attached(write("appunti.txt", "Il calore si trasmette per conduzione."))),
+      workspace,
+      run: async () => ({ ...reply, text: "Il calore si trasmette per conduzione [P1]." }),
+    });
+    expect(result.message?.grounding).toBe("sources");
+    expect(result.message?.citations).toHaveLength(1);
+    expect(readChat(db, result.chatId).at(-1)!.citations[0]).toMatchObject({ attached: true });
+    db.close();
+  });
+
+  it("still says general knowledge for a question about a file attached earlier that finds nothing in it", async () => {
+    const { db, workspace, write, attached } = setup();
+    const first = await askTurn(db, {
+      text: "riassumi",
+      ...(await attached(write("appunti.txt", "Il calore si trasmette per conduzione."))),
+      workspace,
+      run: async () => reply,
+    });
+    // No new file: the claim is about this turn's own file only, so the existing rule decides.
+    const later = await askTurn(db, {
+      chatId: first.chatId,
+      text: "Who wrote Hamlet?",
+      workspace,
+      run: async () => ({ ...reply, text: "Shakespeare." }),
+    });
+    expect(later.message?.grounding).toBe("general");
+    db.close();
+  });
+});
+
 describe("a photo goes to a model that can read it", () => {
   it("runs the turn on the same tool's image model, and the chat after it, instead of reading the photo with OCR", async () => {
     const { db, workspace, photo, attached } = setup();

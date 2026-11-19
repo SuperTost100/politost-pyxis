@@ -677,6 +677,13 @@ export function AskPage() {
     restore(held) {
       setDraft((current) => current || held.draft);
       setFiles((current) => (current.length > 0 ? current : held.files));
+      // Core kept the files while the send ran, so the chips come back as they are now, ready.
+      const ids = held.files.filter((file) => !isLocalFile(file)).map((file) => file.id);
+      if (ids.length > 0)
+        void invoke("chats.attachments", { ids }).then(
+          (list) => setViews((now) => ({ ...now, ...Object.fromEntries(list.map((view) => [view.id, view])) })),
+          () => undefined,
+        );
       setPreviews((current) =>
         Object.keys(current).length > 0 ? current : held.previews,
       );

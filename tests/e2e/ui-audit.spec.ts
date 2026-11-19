@@ -537,9 +537,13 @@ Passo 1 di 2: quale legge lega le tre grandezze?','sources','chat.socratic',2);
     INSERT INTO chats(id,title,created_at,updated_at) VALUES('audit-files','Appunti e lavagna',1,1);
     INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-files-user','audit-files','user','Riassumi la dispensa e dimmi cosa c''è scritto sulla lavagna',1);
     INSERT INTO attachments(id,message_id,blob_sha,mime,created_at,name,kind,size,source_id) VALUES
-      ('audit-files-a','audit-files-user','${"a".repeat(64)}','application/pdf',1,'Dispensa di fisica, capitolo 4.pdf','document',1048576,'audit-source'),
+      ('audit-files-a','audit-files-user','${"a".repeat(64)}','application/pdf',1,'Dispensa di fisica, capitolo 4.pdf','document',1048576,'audit-files-source'),
       ('audit-files-b','audit-files-user','${"b".repeat(64)}','image/png',1,'Lavagna.png','photo',204800,NULL);
-    INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-files-reply','audit-files','assistant','La dispensa spiega la seconda legge di Newton. Sulla lavagna c''è scritto $F=ma$.',2);
+    INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('audit-files-source','pdf','Dispensa di fisica, capitolo 4','ready',0,1,1);
+    INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('audit-files-document','audit-files-source',1,'{"kind":"pdf"}',1);
+    INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at) VALUES('audit-files-passage','audit-files-source','audit-files-document','La seconda legge di Newton lega la forza alla massa e all''accelerazione.','{"page":3}','p. 3',1);
+    INSERT INTO messages(id,chat_id,role,body,grounding,created_at) VALUES('audit-files-reply','audit-files','assistant','La dispensa spiega la seconda legge di Newton [P1]. Sulla lavagna c''è scritto $F=ma$.','sources',2);
+    INSERT INTO message_passages(message_id,passage_id,label) VALUES('audit-files-reply','audit-files-passage','P1');
     INSERT INTO chats(id,title,created_at,updated_at) VALUES('audit-general','Teorema di Bayes',1,1);
     INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-general-user','audit-general','user','Che cos''è il teorema di Bayes?',1);
     INSERT INTO messages(id,chat_id,role,body,grounding,prompt_template,passages_json,created_at) VALUES('audit-general-reply','audit-general','assistant','Il teorema di Bayes dice come cambia la probabilità di un''ipotesi dopo un fatto osservato: $P(A|B) = P(B|A)P(A)/P(B)$.','general','chat.solver','{"found":false,"where":"files"}',2);`);
@@ -4337,6 +4341,8 @@ async function openState(page: Page, name: string) {
     }
     case "ask-sent-files":
       await expect(page.locator(".ask-sent-files").getByText("Lavagna.png")).toBeVisible();
+      // The reply cites the attached file, and says so.
+      await expect(page.getByText(/Ho usato il file che hai allegato|I used the file you attached/)).toBeVisible();
       await expect(
         page.locator(".ask-sent-files").getByRole("button", { name: "Dispensa di fisica, capitolo 4.pdf" }),
       ).toBeVisible();
