@@ -117,7 +117,7 @@ describe("files on a session that continues", () => {
     t.db.close();
   });
 
-  it("send the photo itself to the image model an automatic chat moves to, in the same session, and the next question comes back", async () => {
+  it("send the photo itself to the image model an automatic chat moves to, in the same session, and the next question stays on it", async () => {
     const t = setup({ provider: "claude", model: "text-only-small", auto: true });
     const chatId = await opened(t);
     const ran: Array<{ model: string; images: number; session?: string }> = [];
@@ -135,11 +135,11 @@ describe("files on a session that continues", () => {
     });
     await tick();
     expect(currentSession(t.db, chatId)).toMatchObject({ sessionId: "s1", inStep: true });
-    // A question with no photo goes back to the chat's own model, still in the same session.
+    // A question with no photo stays on the image model, in the same session: the session holds the image.
     await askTurn(t.db, { chatId, text: "e il secondo esercizio?", allowGeneral: true, workspace: t.workspace, run: run as never });
     expect(ran).toEqual([
       { model: "claude-sonnet-5-5", images: 1, session: "s1" },
-      { model: "text-only-small", images: 0, session: "s1" },
+      { model: "claude-sonnet-5-5", images: 1, session: "s1" },
     ]);
     expect(sessionsOpened(t.db, chatId)).toBe(1);
     t.db.close();

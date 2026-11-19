@@ -329,13 +329,15 @@ function storedNotes(db: Database.Database, messageId: string): string[] {
     .all(messageId) as string[];
 }
 
-/** Whether a stored question carries a photo, as a question answered again does. */
-function questionHasPhotos(db: Database.Database, messageId: string): boolean {
+/** Whether the chat holds a photo that a model reading images could be sent. */
+function chatHoldsPhotos(db: Database.Database, chatId: string): boolean {
   return (
-    Boolean(messageId) &&
     db
-      .prepare(`SELECT 1 FROM attachments WHERE message_id = ? AND kind = 'photo' LIMIT 1`)
-      .get(messageId) !== undefined
+      .prepare(
+        `SELECT 1 FROM attachments a JOIN messages m ON m.id = a.message_id
+         WHERE m.chat_id = ? AND a.mime IN ('image/png', 'image/jpeg', 'image/webp') LIMIT 1`,
+      )
+      .get(chatId) !== undefined
   );
 }
 
@@ -917,12 +919,12 @@ async function answer(
     .get(chatId) as { id: string; role: string; body: string } | undefined;
   const reusedQuestion =
     replacing?.userId || (lastRow?.role === "user" && lastRow.body === input.text ? lastRow.id : "");
-  // A turn with a photo, or one that answers a question stored with a photo, runs on a model that reads it when the choice is
-  // automatic: the chat's tool has one, or another available tool. The next question goes back to the chat's own model, on
-  // the same tool session: a change of model on one tool continues it.
+  // A turn with a photo runs on a model that reads it when the choice is automatic: the chat's tool has one, or another
+  // available tool. So does every later turn of a chat that holds a photo: its session holds the image, and a model without
+  // image input may not resume it, and could not answer about the photo anyway.
   const chatSelection: StoredSelection =
     input.engine === "strong" ? strongestSelection(db) : selectionFor(db, "chat");
-  const photosHere = (taken?.photos.length ?? 0) > 0 || questionHasPhotos(db, reusedQuestion);
+  const photosHere = (taken?.photos.length ?? 0) > 0 || chatHoldsPhotos(db, chatId);
   const selection = photosHere ? selectionForPhotos(db, chatSelection) : chatSelection;
   const reads = Boolean(input.workspace) && engineSeesImages(selection);
   // The text local OCR read from photos is sent with the question and stored apart from it. A regenerated turn reads the
