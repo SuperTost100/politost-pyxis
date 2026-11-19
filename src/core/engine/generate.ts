@@ -30,6 +30,11 @@ import { currentUsageScope, reportUsage, withUsageScope, type UsageScope } from 
 
 export type GenerateInput = {
   prompt: string;
+  /**
+   * The prompt for the engine that answers, when it depends on the engine (the earlier conversation a chat hands over is
+   * sized to the engine's window). An automatic choice can move to another engine, and `prompt` was built for the first.
+   */
+  promptFor?: (provider: string) => string;
   system?: string;
   /** `chosenFor` marks a selection Pyxis chose itself (see `selectionFor`); the engine never receives it. */
   selection: Omit<Selection, "cwd" | "access"> & { chosenFor?: string };
@@ -388,7 +393,7 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
   try {
     let result = await run({
       selection,
-      prompt: input.prompt,
+      prompt: input.promptFor?.(selection.provider) ?? input.prompt,
       system: input.system,
       responseSchema,
       signal: input.signal,

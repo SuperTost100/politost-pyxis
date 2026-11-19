@@ -429,7 +429,7 @@ CREATE INDEX card_reviews_day ON card_reviews(reviewed_at);`,
   // Gemini history. A chat has at most one open row (`ended_at` null); a row ends when the chat moves to another tool or
   // the tool no longer knows the session, and the next turn opens a new one. `told` is the hash of the context block the
   // session last received, `chars` what has been sent into it, and `cwd` the folder the tool keyed the session by.
-  // The rows of a chat also count how many sessions it opened.
+  // `note` is what the next message must tell the session about what the student sees. The rows of a chat also count how many sessions it opened.
   {
     version: 34,
     sql: `CREATE TABLE chat_sessions (
@@ -442,6 +442,7 @@ CREATE INDEX card_reviews_day ON card_reviews(reviewed_at);`,
   cwd TEXT NOT NULL,
   told TEXT,
   chars INTEGER NOT NULL DEFAULT 0,
+  note TEXT,
   turns INTEGER NOT NULL DEFAULT 0,
   opened_at INTEGER NOT NULL,
   last_used_at INTEGER NOT NULL,

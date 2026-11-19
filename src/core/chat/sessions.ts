@@ -15,6 +15,8 @@ export type StoredSession = {
   told: string | null;
   /** Characters sent into the session so far. */
   chars: number;
+  /** What the next message must tell the session about what the student sees, until a turn finishes. */
+  note: string | null;
 };
 
 type Row = {
@@ -24,6 +26,7 @@ type Row = {
   cwd: string;
   told: string | null;
   chars: number;
+  note: string | null;
 };
 
 /**
@@ -39,11 +42,11 @@ const UNCOMPACTED = new Set(["agent", "antigravity"]);
 export function currentSession(db: Database.Database, chatId: string): StoredSession | undefined {
   const row = db
     .prepare(
-      `SELECT id, provider, session_id, cwd, told, chars FROM chat_sessions
+      `SELECT id, provider, session_id, cwd, told, chars, note FROM chat_sessions
        WHERE chat_id = ? AND ended_at IS NULL ORDER BY opened_at DESC, rowid DESC LIMIT 1`,
     )
     .get(chatId) as Row | undefined;
-  return row && { id: row.id, provider: row.provider, sessionId: row.session_id, cwd: row.cwd, told: row.told, chars: row.chars };
+  return row && { id: row.id, provider: row.provider, sessionId: row.session_id, cwd: row.cwd, told: row.told, chars: row.chars, note: row.note };
 }
 
 /** True when a session of this tool has grown past what the tool is known to handle on its own. */
@@ -76,7 +79,7 @@ export function recordSession(
 ): void {
   if (prior && prior.provider === turn.provider && prior.sessionId === turn.sessionId) {
     db.prepare(
-      `UPDATE chat_sessions SET model = ?, effort = ?, told = ?, chars = chars + ?, turns = turns + 1, last_used_at = ?
+      `UPDATE chat_sessions SET model = ?, effort = ?, told = ?, chars = chars + ?, note = NULL, turns = turns + 1, last_used_at = ?
        WHERE id = ?`,
     ).run(turn.model, turn.effort, turn.told, turn.chars, turn.now, prior.id);
     return;
@@ -123,4 +126,15 @@ export function sessionsOpened(db: Database.Database, chatId: string): number {
 /** A short fingerprint of the context block, so a session is told it again only when it changed. */
 export function contextHash(text: string): string {
   return createHash("sha256").update(text).digest("hex").slice(0, 16);
+}
+
+/** Counts what a tool kept of a turn that ended without an answer (stopped or failed) into the open session of that tool. */
+export function addSessionChars(db: Database.Database, chatId: string, provider: string, chars: number): void {
+  if (chars <= 0) return;
+  db.prepare(`UPDATE chat_sessions SET chars = chars + ? WHERE chat_id = ? AND provider = ? AND ended_at IS NULL`).run(chars, chatId, provider);
+}
+
+/** The next message tells the open session `note`, which a finished turn then clears. */
+export function setSessionNote(db: Database.Database, chatId: string, note: string): void {
+  db.prepare(`UPDATE chat_sessions SET note = ? WHERE chat_id = ? AND ended_at IS NULL`).run(note, chatId);
 }
