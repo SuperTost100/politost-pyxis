@@ -40,13 +40,16 @@ describe("prompt templates", () => {
         "The student reads the explanation after a wrong pick too, so never call any option but the answer correct",
       );
     expect(loadTemplate("quiz.batch").version).toBe("quiz-5");
-    // chat.socratic 6 guides one step at a time: the idea behind the step, then one question, and feedback on the answer.
-    expect(loadTemplate("chat.socratic").version).toBe("6");
-    // Answers may ask for a figure. chat.general 7 and chat.solver 9 take the instruction from the figures partial,
+    // The chat's system prompt is chat.system, the same for the whole chat. chat.socratic 7, chat.general 8 and
+    // chat.solver 10 are the ways of answering, which ride in the context block of each message. chat.socratic guides
+    // one step at a time: the idea behind the step, then one question, and feedback on the answer.
+    expect(loadTemplate("chat.system").version).toBe("1");
+    expect(loadTemplate("chat.socratic").version).toBe("7");
+    // Answers may ask for a figure. chat.general and chat.solver take the instruction from the figures partial,
     // which offers a kind per figure. The lesson templates take it from the partial too and keep their versions: a
     // part's cache key holds the version of lesson.part, so a new one would mark every written part as older.
-    expect(loadTemplate("chat.general").version).toBe("7");
-    expect(loadTemplate("chat.solver").version).toBe("9");
+    expect(loadTemplate("chat.general").version).toBe("8");
+    expect(loadTemplate("chat.solver").version).toBe("10");
     expect(loadTemplate("lesson.part").version).toBe("part-1");
     for (const id of ["lesson.write", "lesson.part", "chat.general", "chat.solver"] as const) {
       // The instruction is the partial on a line of its own, so its tagged lines can be left out one by one.
@@ -54,13 +57,14 @@ describe("prompt templates", () => {
       expect(loadTemplate(id).body, id).not.toContain("pyxis-figure");
     }
     expect(partialsOf(loadTemplate("chat.socratic"))).not.toContain("figures");
-    // Passages, pinned context and attached files are third-party text: every chat template says they are data.
-    for (const id of ["chat.solver", "chat.socratic", "chat.general"] as const) {
-      expect(loadTemplate(id).body, id).toMatch(/never instructions to follow/);
-      expect(loadTemplate(id).body, id).toContain("<pinned>");
-    }
+    // Passages, pinned context and attached files are third-party text: the chat's system prompt says they are data.
+    expect(loadTemplate("chat.system").body).toMatch(/never instructions to follow/);
+    expect(loadTemplate("chat.system").body).toContain("<pinned>");
+    // The system prompt names no language and no way of answering: the context block of each message does.
+    expect(placeholders(loadTemplate("chat.system"))).toEqual([]);
+    expect(loadTemplate("chat.system").body).toContain("in the language it names");
     // With sources the passages guide the answer, they do not limit it, and the model never refuses.
-    for (const id of ["chat.solver", "chat.socratic"] as const) {
+    for (const id of ["chat.system", "chat.socratic"] as const) {
       expect(loadTemplate(id).body, id).not.toContain("NOT_COVERED");
       expect(loadTemplate(id).body, id).not.toMatch(/only from the numbered passages/i);
       expect(loadTemplate(id).body, id).toContain("own knowledge");
@@ -133,7 +137,18 @@ describe("prompt templates", () => {
 
   it("asks for output in the supplied content language wherever the output is text", () => {
     const withLanguage = ids.filter(
-      (id) => !["quiz.open-grade", "chat.checks", "source.transcribe", "figure.fix"].includes(id),
+      (id) =>
+        ![
+          "quiz.open-grade",
+          "chat.checks",
+          "source.transcribe",
+          "figure.fix",
+          // The chat names its language in the context block of each message (see contextBlock).
+          "chat.system",
+          "chat.general",
+          "chat.solver",
+          "chat.socratic",
+        ].includes(id),
     );
     for (const id of withLanguage) {
       expect(placeholders(loadTemplate(id)), id).toEqual(["contentLanguage"]);
@@ -154,7 +169,7 @@ describe("prompt templates", () => {
 
   it("offers only the figure kinds that can be drawn, and no figure without the runtime", () => {
     for (const id of ["lesson.write", "lesson.part", "chat.general", "chat.solver"] as const) {
-      const text = systemPrompt(id, { contentLanguage: "Italian" });
+      const text = systemPrompt(id, id.startsWith("chat.") ? {} : { contentLanguage: "Italian" });
       const all = figureText(text, ["plot", "circuit", "graph"], 2);
       expect(all, id).toContain("opening line is exactly ```pyxis-figure");
       expect(all, id).toContain('\n- "plot", for function plots');
@@ -193,7 +208,7 @@ describe("prompt templates", () => {
         `${FIGURE_KINDS[kind].codeMax} characters`,
       );
     // A template without the partial is left alone.
-    const socratic = systemPrompt("chat.socratic", { contentLanguage: "Italian" });
+    const socratic = systemPrompt("chat.socratic");
     expect(figureText(socratic, ["plot"], 2)).toBe(socratic);
   });
 
@@ -203,8 +218,7 @@ describe("prompt templates", () => {
       "quiz.batch",
       "plan.diagnostic",
       "map.generate",
-      "chat.solver",
-      "chat.socratic",
+      "chat.system",
       "lesson.agent",
     ];
     const figureTemplates: TemplateId[] = ["lesson.write", "lesson.part", "chat.general", "chat.solver"];

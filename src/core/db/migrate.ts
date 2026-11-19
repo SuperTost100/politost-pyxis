@@ -425,6 +425,31 @@ CREATE INDEX lesson_parts_item ON lesson_parts(item_id) WHERE item_id IS NOT NUL
     sql: `ALTER TABLE card_reviews ADD COLUMN seconds INTEGER CHECK (seconds IS NULL OR seconds >= 0);
 CREATE INDEX card_reviews_day ON card_reviews(reviewed_at);`,
   },
+  // The tool session a chat continues, so one Pyxis chat stays one chat in the student's Claude, ChatGPT, Cursor or
+  // Gemini history. A chat has at most one open row (`ended_at` null); a row ends when the chat moves to another tool or
+  // the tool no longer knows the session, and the next turn opens a new one. `told` is the hash of the context block the
+  // session last received, `chars` what has been sent into it, and `cwd` the folder the tool keyed the session by.
+  // The rows of a chat also count how many sessions it opened.
+  {
+    version: 34,
+    sql: `CREATE TABLE chat_sessions (
+  id TEXT PRIMARY KEY,
+  chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  model TEXT,
+  effort TEXT,
+  cwd TEXT NOT NULL,
+  told TEXT,
+  chars INTEGER NOT NULL DEFAULT 0,
+  turns INTEGER NOT NULL DEFAULT 0,
+  opened_at INTEGER NOT NULL,
+  last_used_at INTEGER NOT NULL,
+  ended_at INTEGER,
+  ended_reason TEXT CHECK (ended_reason IS NULL OR ended_reason IN ('tool', 'gone', 'long'))
+);
+CREATE INDEX chat_sessions_chat ON chat_sessions(chat_id, opened_at);`,
+  },
 ] satisfies Array<{ version: number; sql: string; foreignKeysOff?: { check: string[] } }>;
 
 /** The newest schema version this build knows. */

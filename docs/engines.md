@@ -206,44 +206,72 @@ An older chat whose sources were picked by hand keeps answering from them, and i
 
 Pyxis solves and explains when the student asks for an answer, and guides one step at a time when the student asks for help understanding, asks to be guided, shows their own attempt, or answers a guided step without asking for the solution. `answerWay()` in `src/core/chat/way.ts` decides it from the question's words and the way the previous reply took, so it is tested without a model. A request for the solution wins over a request for help, but a solve verb that only names the task ("guidami a risolvere questo integrale", "walk me through how to solve it") or a refused solution ("non darmi la soluzione") is not a request for the solution.
 
-The way picks the template: `chat.socratic` for a guided step, `chat.solver` for a solved answer (with the math checks and figures), and `chat.general` for a solved answer when nothing was searched. The reply stores its template in `messages.prompt_template`, which is how the chat knows which way it went after a reload. Under the last reply one action asks the same question again the other way ("Guidami passo passo" or "Dammi la soluzione"), which is `chats.regenerate` with `way`. Regenerate and Continue keep the way of the reply they replace.
+The way picks the template: `chat.socratic` for a guided step, `chat.solver` for a solved answer (with the math checks and figures), and `chat.general` for a solved answer when nothing was searched. The template's text goes in the context block of the message, not in the system prompt, so a change of way never changes the system prompt (see [Chat sessions](#chat-sessions-and-prompt-caching)). The reply stores its template in `messages.prompt_template`, which is how the chat knows which way it went after a reload. Under the last reply one action asks the same question again the other way ("Guidami passo passo" or "Dammi la soluzione"), which is `chats.regenerate` with `way`. Regenerate and Continue keep the way of the reply they replace.
 
-## Chat conversations and prompt caching
+## Chat sessions and prompt caching
 
-Each chat keeps one conversation with its engine while the student stays in it. The first question sends the whole context: the system prompt (tutor template, profile, plan line, subject), then the pinned context and the earlier turns, then this question's passages and the question. The parts that stay the same come first so a provider's prompt cache keeps the start of the prompt. Later questions send only the new question and its passages, numbered from P1 again.
+A chat on Claude Code, Codex, Cursor Agent or Antigravity is one session in that tool, so one Pyxis chat is one chat in the student's Claude, ChatGPT, Cursor or Gemini history. Core stores the session in `chat_sessions` (one open row per chat: the tool's session id, the provider, the folder it was keyed by, the model and effort of the last turn, the hash of the context block the session last received, and how many characters went into it) and continues it by id. `src/core/chat/sessions.ts` reads and writes the rows, `turn.ts` builds the messages and `funnel.ts` runs the turn. `chats.read` returns how many sessions the chat opened (`sessions`, every row counts, the ended ones included), which is 1 for a chat that stayed on one tool.
 
-| Engine                    | How the conversation is kept                                           |
-| ------------------------- | ---------------------------------------------------------------------- |
-| Claude Code, Codex        | A live CLI process (`createFunnel({ sessions: { keepAlive: true } })`) |
-| Anthropic and OpenAI API  | The conversation history in core's memory, sent with `sessionId`       |
-| Cursor Agent, Antigravity | None. Every question starts a new process and gets the whole context   |
+| Tool                      | How a session is continued                                                                                     |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Claude Code, Codex        | A live CLI process while the chat is open, else a new process that resumes by id (`--resume`, `thread/resume`) |
+| Cursor Agent, Antigravity | A new process for every turn that resumes by id (`--resume`, `--conversation`)                                 |
+| Anthropic and OpenAI API  | The conversation history in core's memory, sent with `sessionId`, lost when the app quits                      |
+| Ollama                    | The same history in memory                                                                                     |
 
-Chat turns ask for prompt caching (`cache: true`) on providers that take it, today the Anthropic API. It marks the system prompt and the newest turn, so the next question reads everything before it from the cache. OpenAI caches long prompts with the same start on its own.
+A resume needs the same folder the session started in, because Claude Code, Cursor Agent and Antigravity key their sessions by it. Pyxis runs every tool in the workspace's `scratch` folder, and a row remembers it. A turn that finds a different folder starts a new session.
 
-The conversation ends, and a live process with it, when:
+### What a turn sends
 
-- the student leaves the chat (`chats.leave`), deletes it or clears its pinned context;
-- no question came for 10 minutes;
-- the chat's engine, effort or system prompt changed (a new subject or the other way of answering changes the system prompt), or the student changed any engine choice;
-- a turn was stopped or failed, or a reply is regenerated;
-- a second question ran beside a turn still in progress, so the conversation would miss that exchange;
-- an API key changed (core also drops every stored API history then);
-- the conversation carried more than 150,000 characters;
-- the app quits.
+The chat's system prompt (`chat.system`) is the same for the whole chat. What changes from turn to turn sits in a context block that opens the message: the language, the exam and subject, the profile lines, whether to end with follow-ups, the pinned context, and how to answer with the figure kinds that can be drawn. A session is sent the block only when its hash differs from the one the session last received, so a chat that gets a subject after its first reply, or flips between solving and guiding, tells its session once and goes on. The parts of a prompt that stay the same come first, so a provider's prompt cache keeps the start.
 
-The next question then starts a new conversation with the whole context. Runs outside a chat, such as lessons and plans, close their CLI process as soon as they end.
+- **Continuing a session.** The message is the context block when it changed, then what the session missed, then this question's passages (numbered from P1 again) and the question.
+- **A new session.** The message is the context block, the earlier conversation and the question. The earlier conversation is every message of the chat, newest first and whole, up to 200,000 characters (`HANDOVER_CHARS`). The smallest window among the tools' models today is 200,000 tokens (Claude Haiku), and 200,000 characters are about 55,000 tokens, a quarter of it, which leaves room for the system prompt, twelve passages, the question and a long answer. A local model has a 16,384-token window, so it gets 24,000 characters. Messages that do not fit are replaced by one line that counts them.
+
+Cursor Agent and Antigravity receive `system` as a block at the start of the prompt, so a turn in a session they hold leaves it out: the first prompt of the session carried it.
+
+### When a new session starts
+
+Only when:
+
+- the turn runs on another tool than the stored session's (the student changed the engine, the automatic choice moved on after a limit, or "Answer again with the strongest model" is another tool). Core ends the old row with the reason `tool` and opens a new one;
+- the tool no longer holds the stored session. Claude Code says "No conversation found", Codex "no rollout found" and Antigravity "was not found", and `funnel.ts` then sends the same turn again with the whole prompt. The old row ends with `gone`. Cursor Agent starts a new chat without a word when it is given an id it does not know, so a session it lost cannot be told from one it holds;
+- the session of Cursor Agent or Antigravity passed 400,000 characters (`UNCOMPACTED_SESSION_CHARS`, about 100,000 tokens). Claude Code and Codex compact a long session on their own, so theirs has no bound. For the other two Pyxis has not seen what happens at the limit, so it starts over with the conversation handed across, with the reason `long`.
+
+A change of model or effort on the same tool continues the session. This was run on all four tools in one session each (Claude Haiku 5.5 to Haiku 4.5, Codex Luna to Terra, Cursor Grok 4.5 to Grok 4.7, Gemini Flash to Gemini 4 Argon): each answered with a word it had been given before the change. The closing of a live process never ends a session. The process closes when the chat is left or deleted, after 10 minutes without a question (`CONVERSATION_IDLE_MS`), when the student changes an engine choice or the app quits, and the next turn resumes by id.
+
+### After a stop or a failure
+
+The session goes on after a turn the student stopped or that failed. What the tool keeps of such a turn differs, as found by stopping a long answer and asking each tool what it holds:
+
+| Tool         | After a stopped turn                                                          |
+| ------------ | ----------------------------------------------------------------------------- |
+| Claude Code  | The question, and a stub in place of the reply. The text that arrived is lost |
+| Codex        | The question. The text that arrived is lost                                   |
+| Cursor Agent | Nothing: the turn is missing from the session, the question too               |
+| Antigravity  | The question and the start of the reply                                       |
+
+So the next message says what the student saw: when the last reply of the chat is a stopped one, it carries the question and the text that arrived (at most 6,000 characters), and a question that got no text at all is named too. The notice appears once, with the turn after the stop. A regenerated reply tells the model the question is asked again and the earlier answer is discarded. Continue sends the saved text, as before.
+
+A session is stored the moment the tool names it, so a first turn the student stops leaves a session to continue, for Claude Code, Codex and Antigravity. Cursor Agent loses a stopped turn, so its session is stored only when a turn ends. If a stored session turns out to be lost, the gone rule above applies.
+
+### Other conversations
+
+API providers and Ollama keep their conversation in core's memory. It ends when the chat is left or deleted, has been idle for 10 minutes, carried more than 150,000 characters, when a stopped or failed turn leaves it in an unknown state, or when an API key changes. The next turn starts a new conversation with the whole context. Runs outside a chat, such as lessons and plans, close their CLI process as soon as they end. A repair of a structured answer continues the first answer's session on Claude Code and Codex and sends the whole prompt again on the other tools.
+
+Chat turns ask for prompt caching (`cache: true`) on providers that take it, today the Anthropic API. It marks the system prompt and the newest turn, so the next question reads everything before it from the cache. OpenAI, and the CLIs, cache a prompt with the same start on their own.
 
 ## Replies in Ask
 
 - **Answer again with the strongest model.** The reply's menu sends `chats.regenerate` with `engine: "strong"`. That turn runs on the plan task's engine, which uses the strong tier, at `high` effort or the nearest level its model lists (`strongestSelection()` in `src/core/engine/selection.ts`). The new reply replaces the old one only once it is saved.
-- **A reply cut short.** When the engine fails mid-answer (a dropped connection, a usage limit, a stream that closed early, which CLI Funnel 0.5.0 reports as `stream-truncated`), the text that arrived is saved as a stopped reply with the failure's message key in `messages.error`. A stopped reply also records every passage it was given, with its P-number, in `messages.passages_json`. Continue sends `chats.regenerate` with `resume: true`: the prompt carries those same passages in the same numbering, without a new retrieval, and the saved text, and asks the model to go on from where it stops. The new reply is the saved text plus what it adds, so the citations in the saved part still point to the passages they named. If Continue fails again, the longer text is kept the same way. If it adds nothing, the reply stays as it was. A regenerated reply that fails keeps the earlier reply.
+- **A reply cut short.** When the student stops a reply, or the engine fails mid-answer (a dropped connection, a usage limit, a stream that closed early, which CLI Funnel 0.5.0 reports as `stream-truncated`), the text that arrived is saved as a stopped reply, with the failure's message key in `messages.error` when an engine failure cut it (a reply the student stopped has none). A stopped reply also records every passage it was given, with its P-number, in `messages.passages_json`. Both show Continue under the reply, which sends `chats.regenerate` with `resume: true`: the prompt carries those same passages in the same numbering, without a new retrieval, and the saved text, and asks the model to go on from where it stops. The new reply is the saved text plus what it adds, so the citations in the saved part still point to the passages they named. If Continue fails again, the longer text is kept the same way. If it adds nothing, the reply stays as it was. A regenerated reply that fails keeps the earlier reply.
 - **The math check runs after the reply is saved.** The reply is saved once its figures are drawn (they change the stored text) and returns with `checking: true`. The `chat.checks` call then runs in core on that text, tied to the message, and appends its claims to the stored body. Core broadcasts `chats.checks` when it ends, with or without badges. Stop in that chat stops a running check, Regenerate and Continue drop the check of the reply they replace, and deleting the chat stops it. A check that fails or times out (20 s) leaves the reply without badges, as before.
 
 ## Token usage
 
-`generate()` reports the tokens of every call that returns, schema repairs included, and core writes one `engine_usage` row per call. The row names the chat and message for a chat turn and its math check, and the job and its kind for a call inside a job step (an `AsyncLocalStorage` scope in `src/core/engine/usage.ts`). Calls that report no tokens are not stored. `inputTokens` includes the tokens read from and written to the prompt cache.
+`generate()` reports the tokens of every call that returns, schema repairs included, and core writes one `engine_usage` row per call. The row names the chat and message for a chat turn and its math check, and the job and its kind for a call inside a job step (an `AsyncLocalStorage` scope in `src/core/engine/usage.ts`). Calls that report no tokens are not stored. A turn the student stopped is stored when the tool reports tokens for it: Claude Code and Codex do, Cursor Agent and Antigravity report none for a cancelled turn. Codex's figure for a stopped turn repeated the previous turn's in one of two stops we ran, so a stopped Codex turn can be over-counted. `inputTokens` includes the tokens read from and written to the prompt cache.
 
-Settings, AI engines shows the tokens each engine sent and received since Monday (`engines.usage`), with the share of input tokens the prompt cache served. Ask shows the chat's total in its top bar (`usage` in `chats.read`), with the breakdown for screen readers and on hover.
+Settings, AI engines shows the tokens each engine sent and received since Monday (`engines.usage`), with the share of input tokens the prompt cache served. Ask shows the chat's total in its top bar (`usage` in `chats.read`), with the breakdown for screen readers and on hover. The number of sessions a chat opened is in `chat_sessions` and `chats.read`.
 
 ## Startup and provider detection
 

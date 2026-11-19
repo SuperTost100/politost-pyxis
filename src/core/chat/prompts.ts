@@ -6,6 +6,7 @@ import {
 import { figureText } from "../math/figures";
 import type { AnswerWay } from "./way";
 
+/** The way of answering. Its text goes in the context block of the message, so the chat's system prompt never changes. */
 export type ChatTemplateId = Extract<
   TemplateId,
   "chat.general" | "chat.socratic" | "chat.solver"
@@ -24,21 +25,41 @@ export function chatTemplateId(input: { way: AnswerWay; general?: boolean }): Ch
       : "chat.solver";
 }
 
+/** The system prompt of a chat. It is the same for the whole chat, so a tool's session never ends because of it. */
+export function chatSystemPrompt(): string {
+  return systemPrompt("chat.system");
+}
+
 /**
- * ASK-03: with the switch off, the follow-up instruction is left out of the template. The figure instruction offers
- * the kinds in `figures`, at most two in an answer, and is left out when nothing can draw one.
+ * What varies from turn to turn, as a block at the start of the message: the language, exam, subject, profile, whether
+ * to end with follow-ups, and the way of answering with the figure kinds that can be drawn (at most two in an answer,
+ * none when nothing can draw one). A session is sent the block only when it differs from the one it last received.
  */
-export function chatSystemPrompt(
-  id: ChatTemplateId,
-  contentLanguage: string,
-  followups = true,
-  figures: readonly FigureKind[] = [],
-): string {
-  const text = systemPrompt(id, { contentLanguage })
-    .split("\n")
-    .filter((line) => followups || !line.includes("<followups>"))
+export function contextBlock(input: {
+  template: ChatTemplateId;
+  language: string;
+  planLine: string;
+  subject: string;
+  profile: string;
+  followups: boolean;
+  figures: readonly FigureKind[];
+}): string {
+  const how = figureText(systemPrompt(input.template), input.figures, 2);
+  return [
+    "<context>",
+    `Language: ${input.language}.`,
+    input.planLine,
+    input.subject,
+    input.profile,
+    input.followups
+      ? "Follow-ups: end with the <followups> block."
+      : "Follow-ups: leave the <followups> block out.",
+    "How to answer:",
+    how,
+    "</context>",
+  ]
+    .filter(Boolean)
     .join("\n");
-  return figureText(text, figures, 2);
 }
 
 /**

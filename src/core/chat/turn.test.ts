@@ -243,7 +243,7 @@ describe("askTurn", () => {
       text: "Ora parliamo d altro",
       subject: "",
       run: async (input) => {
-        system = input.system ?? "";
+        system = `${input.system ?? ""}\n${input.prompt}`;
         return reply;
       },
     });
@@ -276,11 +276,11 @@ describe("askTurn", () => {
       text: "Che cos'è il vettore?",
       sourceIds: [imported.sourceId],
       run: async (input) => {
-        system = input.system ?? "";
+        system = `${input.system ?? ""}\n${input.prompt}`;
         return reply;
       },
     });
-    expect(system).toContain("Write all output in Italian.");
+    expect(system).toContain("Language: Italian.");
     expect(system).toContain(partialText("citation"));
     expect(system).not.toMatch(/\{\{[A-Za-z]/);
     expect(
@@ -506,16 +506,17 @@ describe("askTurn", () => {
       text: "ciao",
       allowGeneral: true,
       run: async (input) => {
-        system = input.system ?? "";
+        system = `${input.system ?? ""}\n${input.prompt}`;
         return reply;
       },
     });
     // The level and course go in; the student's name does not.
     expect(system).not.toContain("Ada");
     expect(system).toContain("Level: university. Course: Fisica 1.");
-    expect(system).toContain("Write all output in Italian.");
-    // General answers have no passages, so they do not carry the citation rule.
-    expect(system).not.toContain(partialText("citation"));
+    expect(system).toContain("Language: Italian.");
+    // The system prompt is the same for every chat turn, so a general answer carries the citation rule too.
+    expect(system).toContain(partialText("citation"));
+    expect(system).toContain("No passages from the student's material are attached");
     expect(system).not.toMatch(/\{\{[A-Za-z]/);
   });
 
@@ -630,7 +631,7 @@ describe("askTurn", () => {
       text: "un esempio",
       allowGeneral: true,
       run: async (input) => {
-        system = input.system ?? "";
+        system = `${input.system ?? ""}\n${input.prompt}`;
         return reply;
       },
     });

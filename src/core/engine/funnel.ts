@@ -18,7 +18,7 @@ export { FunnelError };
 import { clearSignOut } from "./bench";
 import { shellPathReady } from "./shell-path";
 import { setRedact, startCall } from "../debug/log";
-import { currentUsageScope } from "./usage";
+import { currentUsageScope, reportUsage } from "./usage";
 import { TOOL_NAMES } from "../../shared/tool-names";
 
 // Debug mode's log masks every line with cli-funnel's redact before it writes it.
@@ -40,6 +40,12 @@ export type EngineResult = {
   structuredError?: string;
   /** Why the engine stopped writing: "length" (out of room) and "error" (the stream ended without its final event) mean the text is cut short. */
   finishReason?: string;
+  /** For a chat turn on a CLI tool: the tool's session id, which the next turn resumes by (`TurnInput.conversation.session`). */
+  sessionId?: string;
+  /** The folder the tool keyed that session by. */
+  cwd?: string;
+  /** The turn went on in the stored session. False when it started a new one (another tool, a folder that changed, a session the tool no longer knew). */
+  continued?: boolean;
 };
 
 type Keys = { anthropic?: string; openai?: string };
@@ -48,9 +54,9 @@ type ApiId = (typeof apiIds)[number];
 const vendorOf = (id: ApiId) =>
   id === "anthropic-api" ? "anthropic" : "openai";
 
-/** A chat's conversation ends after this long without a question, and its CLI process with it. */
+/** A chat's live CLI process closes after this long without a question. The chat's session stays stored and resumes by id. */
 export const CONVERSATION_IDLE_MS = 10 * 60_000;
-/** Characters a conversation may carry. Past this the next question starts a new one with the recent turns only. */
+/** Characters an API or local conversation may carry. Past this the next question starts a new one with the recent turns only. */
 const CONVERSATION_CHARS = 150_000;
 
 let keys: Keys = {};
@@ -147,31 +153,44 @@ export function providerName(id: string): string {
 
 type Conversation = {
   provider: ProviderId;
-  /** Engine and system prompt the conversation started with. A change starts a new one. */
+  /** For an API or local conversation: engine and system prompt it started with. A change starts a new one. */
   fingerprint: string;
   sessionId?: string;
   chars: number;
   lastUsed: number;
   busy: boolean;
-  /** The chat was left while a turn ran; the conversation ends when the turn does. */
+  /** The chat was left while a turn ran; the live process ends when the turn does. */
   leaving: boolean;
 };
 
 const conversations = new Map<string, Conversation>();
 
 /**
- * Providers that keep a conversation between turns: Claude Code and Codex in a live process, the API providers and
- * Ollama as history in this process. Cursor Agent and Antigravity start a new process for every turn and get the whole prompt.
+ * A chat on a subscription CLI (Claude Code, Codex, Cursor Agent, Antigravity) keeps its session in the database and
+ * continues it by id, in a live process or in a new one. API providers and Ollama keep their conversation as history
+ * in this process.
  */
-function keepsConversation(provider: ProviderId): boolean {
-  return (
-    provider.endsWith("-api") ||
-    provider === "ollama" ||
-    Boolean(getFunnel().providers[provider]?.openSession)
-  );
+function isToolProvider(provider: ProviderId): boolean {
+  return !provider.endsWith("-api") && provider !== "ollama";
 }
 
-/** Ends a chat's conversation and stops its CLI process. A turn still running finishes first. */
+/** Cursor Agent and Antigravity get `system` as a block at the start of the prompt, so a turn in a session they hold leaves it out. */
+function systemInPrompt(provider: ProviderId): boolean {
+  return provider === "agent" || provider === "antigravity";
+}
+
+/**
+ * The CLIs word the failure of a resume differently: Claude Code "No conversation found with session ID", Codex "no
+ * rollout found for thread id", Antigravity "Conversation ... was not found". Cursor Agent starts a new chat without a
+ * word, so a session it lost cannot be told from one it holds.
+ */
+const SESSION_GONE = /no conversation found|no rollout found|conversation .{0,80}was not found|session .{0,80}not found/i;
+
+export function isSessionGone(err: unknown): boolean {
+  return SESSION_GONE.test(err instanceof Error ? err.message : String(err));
+}
+
+/** Ends a chat's live process. The stored session stays, and the next turn resumes it. A turn still running finishes first. */
 export function endConversation(key: string): void {
   const talk = conversations.get(key);
   if (!talk) return;
@@ -184,7 +203,7 @@ export function endConversation(key: string): void {
     funnel.closeSession(talk.sessionId, talk.provider);
 }
 
-/** Ends every chat's conversation, for example after the student changed engines. */
+/** Ends every chat's live process, for example after the student changed engines. */
 export function endConversations(): void {
   for (const key of [...conversations.keys()]) endConversation(key);
 }
@@ -195,7 +214,25 @@ export function closeFunnel(): void {
   funnel?.close();
 }
 
-/** The chat's conversation when it can go on with this engine and system prompt, else a new one. */
+/** The live process the chat's CLI turns run on. A turn on another tool stops the previous tool's process. */
+function toolTalk(key: string, provider: ProviderId): Conversation {
+  const talk = conversations.get(key);
+  if (talk && talk.provider === provider && !talk.busy) return talk;
+  if (talk && !talk.busy) endConversation(key);
+  // A turn beside one still running goes outside the tracked process; the running turn's own entry stays.
+  const fresh: Conversation = {
+    provider,
+    fingerprint: "",
+    chars: 0,
+    lastUsed: Date.now(),
+    busy: false,
+    leaving: false,
+  };
+  if (!conversations.has(key)) conversations.set(key, fresh);
+  return fresh;
+}
+
+/** The API or local chat's conversation when it can go on with this engine and system prompt, else a new one. */
 function conversationFor(
   key: string,
   selection: Selection,
@@ -238,6 +275,11 @@ function conversationFor(
   return fresh;
 }
 
+/** API providers and Ollama keep a conversation as history in this process. */
+function keepsConversation(provider: ProviderId): boolean {
+  return provider.endsWith("-api") || provider === "ollama";
+}
+
 export type TurnInput = {
   selection: Omit<Selection, "cwd" | "access"> & { cwd?: string };
   prompt: string;
@@ -252,9 +294,20 @@ export type TurnInput = {
   }>;
   /**
    * A chat that keeps its conversation with the engine. `prompt` is the whole context and starts a conversation;
-   * `followUp` (the new question and its passages) continues one the engine still holds.
+   * `followUp` (the new message) continues one the engine still holds.
+   *
+   * On a subscription CLI the conversation is the tool's own session, which the chat stored: `session` names it, and
+   * the turn continues it by id, in a live process or a new one, when it runs on the same tool in the same folder. A
+   * session the tool no longer knows (Claude Code, Codex and Antigravity say so) starts over with `prompt`. The result
+   * carries the session id to store. `onSession` hears it as soon as the tool reports it, so a turn the student stops
+   * leaves a session the next turn can continue.
    */
-  conversation?: { key: string; followUp: string };
+  conversation?: {
+    key: string;
+    followUp: string;
+    session?: { provider: string; id: string; cwd: string };
+    onSession?: (sessionId: string, provider: string, cwd: string) => void;
+  };
   /** Mark the system prompt and the conversation so far for the provider's prompt cache, where it has one. */
   cache?: boolean;
 };
@@ -293,96 +346,140 @@ async function turn(input: TurnInput): Promise<EngineResult> {
     access: "none" as const,
   };
   const engine = getFunnel();
-  const talk = input.conversation
-    ? conversationFor(input.conversation.key, selection, input.system)
+  const conversation = input.conversation;
+  const tool = Boolean(conversation) && isToolProvider(selection.provider);
+  const talk = conversation
+    ? tool
+      ? toolTalk(conversation.key, selection.provider)
+      : conversationFor(conversation.key, selection, input.system)
     : undefined;
-  const continuing = Boolean(talk?.sessionId);
+  // The session this turn goes on in: the chat's stored one when it ran on this tool in this folder, else (API and
+  // local) the conversation core holds in memory.
+  const stored = tool ? conversation!.session : undefined;
+  let resumeId: string | undefined = tool
+    ? stored && stored.provider === selection.provider && stored.cwd === selection.cwd
+      ? stored.id
+      : undefined
+    : talk?.sessionId;
   // agy 1.4 fills a --json-schema with a report on its own run, not with the answer: Sonnet graded its own work 1 and
   // narrated it, and Gemini returned nothing. Antigravity gets the schema in the prompt and answers in text, which
   // `generate` parses and repairs like any other reply.
   // shortcut: Pyxis works around the adapter here; drop this once cli-funnel's Antigravity provider does the same.
   const schemaInPrompt = selection.provider === "antigravity" && input.responseSchema;
-  const asked =
-    continuing && input.conversation ? input.conversation.followUp : input.prompt;
-  const prompt = schemaInPrompt
-    ? `${asked}\n\n${SCHEMA_REPLY}\n${JSON.stringify(schemaInPrompt.schema)}`
-    : asked;
   const cache =
     input.cache && engine.providers[selection.provider]?.capabilities.cache;
   if (talk) talk.busy = true;
   let sessionId: string | undefined;
   let finished = false;
+  let continued = false;
   // Debug mode records the call in its job's log, with the engine's own lines (cli-funnel's `verbose`).
   const scope = currentUsageScope();
-  const log = startCall(scope?.jobId, {
-    provider: selection.provider,
-    model: selection.model,
-    access: selection.provider === "ollama" ? "local" : selection.provider.endsWith("-api") ? "api-key" : "subscription",
-    ...(scope?.kind ? { kind: scope.kind } : {}),
-    prompt,
-    ...(input.system ? { system: input.system } : {}),
-  });
+  const access = selection.provider === "ollama" ? "local" : selection.provider.endsWith("-api") ? "api-key" : "subscription";
   let text = "";
-  let ended = false;
   try {
-    const stream = engine.stream({
-      selection,
-      prompt,
-      system: input.system,
-      responseSchema: schemaInPrompt ? undefined : input.responseSchema,
-      attachments: input.attachments,
-      signal: input.signal,
-      ...(continuing ? { sessionId: talk!.sessionId } : {}),
-      ...(cache ? { cache: true } : {}),
-      ...(log ? { verbose: true } : {}),
-    });
-    for await (const event of stream) {
-      log?.event(event);
-      if (event.type === "session") sessionId = event.sessionId;
-      if (event.type !== "text.delta") continue;
-      text += event.text;
-      input.onDelta?.(text);
+    for (;;) {
+      const continuing = Boolean(resumeId) && Boolean(conversation);
+      const asked = continuing ? conversation!.followUp : input.prompt;
+      const prompt = schemaInPrompt
+        ? `${asked}\n\n${SCHEMA_REPLY}\n${JSON.stringify(schemaInPrompt.schema)}`
+        : asked;
+      // The tool already holds the instructions the first prompt of a Cursor or Antigravity session carried.
+      const system = continuing && systemInPrompt(selection.provider) ? undefined : input.system;
+      const log = startCall(scope?.jobId, {
+        provider: selection.provider,
+        model: selection.model,
+        access,
+        ...(scope?.kind ? { kind: scope.kind } : {}),
+        prompt,
+        ...(system ? { system } : {}),
+      });
+      text = "";
+      try {
+        const stream = engine.stream({
+          selection,
+          prompt,
+          system,
+          responseSchema: schemaInPrompt ? undefined : input.responseSchema,
+          attachments: input.attachments,
+          signal: input.signal,
+          ...(continuing ? { sessionId: resumeId } : {}),
+          ...(cache ? { cache: true } : {}),
+          ...(log ? { verbose: true } : {}),
+        });
+        for await (const event of stream) {
+          log?.event(event);
+          if (event.type === "session") {
+            sessionId = event.sessionId;
+            if (tool) conversation!.onSession?.(event.sessionId, selection.provider, selection.cwd);
+          }
+          if (event.type !== "text.delta") continue;
+          text += event.text;
+          input.onDelta?.(text);
+        }
+        const result = await stream.result;
+        // Live Codex ends a stopped turn with a cancelled result, and a CLI killed on Stop can report what it printed as a
+        // finished answer. Either way the student stopped it.
+        if (result.finishReason === "cancelled" || input.signal?.aborted) {
+          // The tokens of a turn the student stopped were spent all the same. Codex reports them for a cancelled turn;
+          // Claude Code, Cursor Agent and Antigravity report none, and then nothing is recorded.
+          reportUsage({
+            text: "",
+            model: result.model,
+            provider: result.provider,
+            inputTokens: result.usage?.inputTokens ?? 0,
+            outputTokens: result.usage?.outputTokens ?? 0,
+            cacheReadTokens: result.usage?.cachedInputTokens ?? 0,
+            cacheWriteTokens: result.usage?.cacheCreationInputTokens ?? 0,
+          });
+          throw new DOMException("Engine turn cancelled", "AbortError");
+        }
+        finished = true;
+        continued = continuing;
+        log?.end({
+          text: result.text || text,
+          ...(result.finishReason ? { finishReason: result.finishReason } : {}),
+          inputTokens: result.usage?.inputTokens ?? 0,
+          outputTokens: result.usage?.outputTokens ?? 0,
+        });
+        if (talk) {
+          talk.sessionId = result.sessionId ?? sessionId ?? talk.sessionId;
+          talk.chars += prompt.length + (result.text || text).length;
+          talk.lastUsed = Date.now();
+        }
+        return {
+          text: result.text || text,
+          model: result.model,
+          provider: result.provider,
+          inputTokens: result.usage?.inputTokens ?? 0,
+          outputTokens: result.usage?.outputTokens ?? 0,
+          cacheReadTokens: result.usage?.cachedInputTokens ?? 0,
+          cacheWriteTokens: result.usage?.cacheCreationInputTokens ?? 0,
+          structured: result.structured,
+          structuredError: result.structuredError,
+          finishReason: result.finishReason,
+          ...(tool && (result.sessionId ?? sessionId)
+            ? { sessionId: result.sessionId ?? sessionId, cwd: selection.cwd, continued }
+            : {}),
+        };
+      } catch (err) {
+        log?.end({ text, error: input.signal?.aborted ? "cancelled" : err instanceof Error ? err.message : String(err) });
+        // The tool no longer holds the stored session (the student cleared its history, or it was moved): the chat
+        // starts a new one with the whole earlier conversation, which `prompt` carries.
+        if (continuing && tool && !text && !input.signal?.aborted && isSessionGone(err)) {
+          resumeId = undefined;
+          sessionId = undefined;
+          continue;
+        }
+        throw err;
+      }
     }
-    const result = await stream.result;
-    // Live Codex ends a stopped turn with a cancelled result, and a CLI killed on Stop can report what it printed as a
-    // finished answer. Either way the student stopped it.
-    if (result.finishReason === "cancelled" || input.signal?.aborted)
-      throw new DOMException("Engine turn cancelled", "AbortError");
-    finished = true;
-    ended = true;
-    log?.end({
-      text: result.text || text,
-      ...(result.finishReason ? { finishReason: result.finishReason } : {}),
-      inputTokens: result.usage?.inputTokens ?? 0,
-      outputTokens: result.usage?.outputTokens ?? 0,
-    });
-    if (talk && finished) {
-      talk.sessionId = result.sessionId ?? sessionId ?? talk.sessionId;
-      talk.chars += prompt.length + (result.text || text).length;
-      talk.lastUsed = Date.now();
-    }
-    return {
-      text: result.text || text,
-      model: result.model,
-      provider: result.provider,
-      inputTokens: result.usage?.inputTokens ?? 0,
-      outputTokens: result.usage?.outputTokens ?? 0,
-      cacheReadTokens: result.usage?.cachedInputTokens ?? 0,
-      cacheWriteTokens: result.usage?.cacheCreationInputTokens ?? 0,
-      structured: result.structured,
-      structuredError: result.structuredError,
-      finishReason: result.finishReason,
-    };
-  } catch (err) {
-    if (!ended)
-      log?.end({ text, error: input.signal?.aborted ? "cancelled" : err instanceof Error ? err.message : String(err) });
-    throw err;
   } finally {
     if (talk) {
       talk.busy = false;
       if (!talk.sessionId) talk.sessionId = sessionId;
-      // A stopped or failed turn leaves the conversation in an unknown state, so the next question starts over.
-      if (!finished || talk.leaving) endConversation(input.conversation!.key);
+      // An API or local conversation left in an unknown state by a stopped or failed turn starts over. A CLI session
+      // is kept: the tool holds what it holds, and the next turn tells it what the student saw.
+      if ((!finished && !tool) || talk.leaving) endConversation(conversation!.key);
     } else if (sessionId && engine.sessionsEnabled) {
       // A run outside a chat has no next turn, so its process does not wait out the idle time.
       engine.closeSession(sessionId, selection.provider);

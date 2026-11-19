@@ -4,6 +4,7 @@ import { isFigureFixCall, recordedPlanRun } from "../engine/recorded-plan";
 import { exportChat, type ChatExportLanguage } from "./export";
 import { searchChats } from "./search";
 import { chatUsage } from "../engine/usage";
+import { sessionsOpened } from "./sessions";
 import type { FigureEvent } from "../math/figures";
 import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, chatSubjectBy, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat, setChatSubject } from "./turn";
 import type { AnswerWay } from "./way";
@@ -70,6 +71,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
         context: chatContext(db, input.chatId),
         held: heldSources(db, input.chatId),
         usage: chatUsage(db, input.chatId),
+        sessions: sessionsOpened(db, input.chatId),
         messages: readChat(db, input.chatId),
       };
     },
@@ -88,9 +90,8 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       return { ok: true as const };
     },
     clearContext(input: { chatId: string }) {
+      // The next message's context block says there is none, so the tool's session goes on.
       clearChatContext(db, input.chatId);
-      // The engine read the pinned context at the start of the conversation, so it starts over without it.
-      endConversation(input.chatId);
       return { ok: true as const };
     },
     /** The student left the chat: its engine conversation, and a live CLI process with it, can stop. */

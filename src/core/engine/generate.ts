@@ -419,6 +419,10 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
           ? {
               key: repairs,
               followUp: `Your answer failed validation against the JSON schema.\n\nValidation error:\n${issues}\n\nYour answer:\n${result.text}\n\nReturn the corrected JSON only.`,
+              // Claude Code and Codex go on in the session the first answer ran in. The others get the whole prompt again.
+              ...(result.sessionId && result.cwd && (result.provider === "claude" || result.provider === "codex")
+                ? { session: { provider: result.provider, id: result.sessionId, cwd: result.cwd } }
+                : {}),
             }
           : undefined,
       });
