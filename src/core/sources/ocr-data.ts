@@ -125,8 +125,10 @@ const RENAME_RETRY_MS = [50, 100, 250, 500];
 const held = (error: unknown) =>
   typeof error === "object" && error !== null && "code" in error && (error.code === "EBUSY" || error.code === "EPERM" || error.code === "EACCES");
 
-async function renameIntoPlace(from: string, to: string, io: OcrDataIo): Promise<void> {
+async function renameIntoPlace(from: string, to: string, signal: AbortSignal, io: OcrDataIo): Promise<void> {
   for (let attempt = 0; ; attempt += 1) {
+    // A cancel that came during the pause ends the repair here, before the file is put in place.
+    signal.throwIfAborted();
     try {
       await (io.rename ?? rename)(from, to);
       return;
@@ -286,8 +288,7 @@ export async function downloadOcrLanguage(
   const staging = join(dir, `${lang}.traineddata.${randomUUID()}.tmp`);
   try {
     await writeFile(staging, bytes, { flag: "wx", mode: 0o600 });
-    signal.throwIfAborted();
-    await renameIntoPlace(staging, join(dir, `${lang}.traineddata`), options.io ?? {});
+    await renameIntoPlace(staging, join(dir, `${lang}.traineddata`), signal, options.io ?? {});
   } finally {
     await rm(staging, { force: true });
   }

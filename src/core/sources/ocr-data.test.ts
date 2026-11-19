@@ -315,6 +315,22 @@ describe("OCR language data", () => {
       expect(readdirSync(ocrDataDir(tess))).toEqual(["eng.traineddata"]);
     });
 
+    it("a cancel during the pause between two rename attempts ends the download: the file is not put in place", async () => {
+      const tess = withFile(fake.eng.subarray(0, 4));
+      const controller = new AbortController();
+      const system = renaming(["EPERM"]);
+      // The student cancels while the repair waits to try the rename again.
+      const io = { ...system.io, wait: async (ms: number) => void (system.waits.push(ms), controller.abort()) };
+      const fetchImpl = vi.fn(reply(fake.eng));
+      await expect(downloadOcrLanguage(tess, "eng", controller.signal, { fetchImpl: fetchImpl as never, files, io })).rejects.toThrow();
+      expect(controller.signal.aborted).toBe(true);
+      // The second attempt did not run, the file is the altered one it was, and the staging file is gone.
+      expect(system.renames()).toBe(1);
+      expect(system.waits).toEqual([50]);
+      expect(readFileSync(join(ocrDataDir(tess), "eng.traineddata")).equals(fake.eng.subarray(0, 4))).toBe(true);
+      expect(readdirSync(ocrDataDir(tess))).toEqual(["eng.traineddata"]);
+    });
+
     it("an error that is not a file held for a moment is not tried again", async () => {
       const tess = withFile(fake.eng.subarray(0, 4));
       const system = renaming(["ENOSPC"], true);
