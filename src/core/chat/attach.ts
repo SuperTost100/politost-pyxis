@@ -43,6 +43,8 @@ export type PreparedFiles = {
   images: Array<{
     mediaType: ImageMime;
     data: string;
+    /** The fitted copy, for an engine that reads images but was not the one planned: `data` is empty for a text-only one. */
+    copy?: string;
     sha: string;
     original?: { sha: string; mime: string };
     resizedFrom?: { width: number; height: number; bytes: number };
@@ -89,6 +91,7 @@ export async function stagePhoto(
       image: {
         mediaType: fitted.mediaType,
         data: read ? base64(fitted.bytes) : "",
+        copy: base64(fitted.bytes),
         sha,
         ...(original ? { original } : {}),
         ...(fitted.resizedFrom ? { resizedFrom: fitted.resizedFrom } : {}),

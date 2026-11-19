@@ -414,6 +414,85 @@ describe("a photo whose local OCR fails goes out as left out", () => {
   });
 });
 
+describe("whether a photo is sent is decided for the tool that answers, after a fallback too", () => {
+  const limited = Object.assign(new Error("You've hit your usage limit"), {
+    code: "cli-failed",
+    limit: { kind: "rate", detail: "You've hit your usage limit" },
+  });
+  const tools = (claude: string[], codex: string[]) => [
+    { id: "claude", kind: "cli" as const, effort: false, models: claude.map((id) => ({ id, efforts: [] })) },
+    { id: "codex", kind: "cli" as const, effort: false, models: codex.map((id) => ({ id, efforts: [] })) },
+  ];
+
+  /** Sends one photo to a chat whose first tool is at its limit, and reports what each tool that was asked received. */
+  async function limitedFirst(chat: object, ready: ReturnType<typeof tools>, vision: object) {
+    const { db, workspace, photo, attached } = setup();
+    db.prepare(`UPDATE feature_engines SET selection_json = ? WHERE feature = 'chat'`).run(JSON.stringify(chat));
+    // The picture work is set to a tool that cannot read it, so the chat's turn is planned on a text-only model.
+    db.prepare(`INSERT OR REPLACE INTO feature_engines (feature, selection_json, updated_at) VALUES ('vision', ?, 1)`).run(JSON.stringify(vision));
+    rememberReady(ready);
+    const asked: Array<{ provider: string; model: string; images: number; text: boolean }> = [];
+    const outcome = await askTurn(db, {
+      text: "cosa c'è scritto",
+      allowGeneral: true,
+      ...(await attached(photo)),
+      workspace,
+      recognize: async () => "Esercizio 2. Determinare il dominio",
+      run: async (input) => {
+        asked.push({
+          provider: input.selection.provider,
+          model: input.selection.model,
+          images: input.attachments?.length ?? 0,
+          text: input.prompt.includes("Esercizio 2. Determinare il dominio"),
+        });
+        if (input.selection.provider === "claude") throw limited;
+        return { ...reply, provider: "codex", model: "gpt-6.1-terra" };
+      },
+    }).then(
+      (result): { result?: unknown; error?: unknown } => ({ result }),
+      (error: unknown): { result?: unknown; error?: unknown } => ({ error }),
+    );
+    db.close();
+    return { asked, ...outcome };
+  }
+
+  it("sends the photo to a tool that reads images when a planned text-only tool falls back to it, and not before", async () => {
+    const { asked, result } = await limitedFirst(
+      { provider: "claude", model: "text-only-small", auto: true },
+      tools(["text-only-small"], ["gpt-6.1-terra"]),
+      { provider: "claude", model: "text-only-small", auto: true },
+    );
+    expect(result).toBeDefined();
+    // Claude had no image to read, so it got the text OCR read. After its limit, ChatGPT reads the photo itself.
+    expect(asked).toEqual([
+      { provider: "claude", model: "text-only-small", images: 0, text: true },
+      { provider: "codex", model: "gpt-6.1-terra", images: 1, text: true },
+    ]);
+  });
+
+  it("never sends the photo to a tool that cannot read it: a planned image tool does not fall back to one", async () => {
+    const { asked, error } = await limitedFirst(
+      { provider: "claude", model: "text-only-small", auto: true },
+      tools(["text-only-small", "claude-sonnet-5-5"], ["text-only-codex"]),
+      { provider: "claude", model: "claude-sonnet-5-5", auto: true },
+    );
+    // The chat moved to Claude's image model, which is at its limit. The only other tool cannot read the photo, so the
+    // call does not go there, and the limit is what the student is told.
+    expect(asked).toEqual([{ provider: "claude", model: "claude-sonnet-5-5", images: 1, text: false }]);
+    expect(error).toMatchObject({ messageKey: expect.stringContaining("quota") });
+  });
+
+  it("keeps a pinned chat where it is: no fallback, no photo to another tool", async () => {
+    const { asked, error } = await limitedFirst(
+      { provider: "claude", model: "text-only-small" },
+      tools(["text-only-small"], ["gpt-6.1-terra"]),
+      { provider: "codex", model: "gpt-6.1-terra", auto: true },
+    );
+    expect(asked).toEqual([{ provider: "claude", model: "text-only-small", images: 0, text: true }]);
+    expect(error).toBeDefined();
+  });
+});
+
 describe("a photo with no usable copy for the model is read locally", () => {
   it("uses OCR when a model that reads images got no copy, instead of sending it neither pixels nor text", async () => {
     const { db, workspace, write, attached } = setup();

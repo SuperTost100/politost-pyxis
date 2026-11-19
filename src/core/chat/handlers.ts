@@ -13,7 +13,6 @@ import { chatUsage } from "../engine/usage";
 import { sessionsOpened } from "./sessions";
 import type { FigureEvent } from "../math/figures";
 import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, chatSubjectBy, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat, setChatSubject } from "./turn";
-import type { AnswerWay } from "./way";
 
 /** Recorded reply for tests. With a delay it waits, then streams the words, so the thinking and streaming states can be seen. */
 function recordedReply(text: string, delayMs: number) {
@@ -178,7 +177,6 @@ export function chatHandlers(
       chatId: string;
       engine?: "chat" | "strong";
       resume?: boolean;
-      way?: AnswerWay;
       allowGeneral?: boolean;
       signal?: AbortSignal;
       onDelta?: (text: string) => void;

@@ -34,7 +34,7 @@ function undoAfter16(db: Database.Database) {
   for (const name of added.filter((name) => !before.includes(name))) db.exec(`DROP INDEX ${name}`);
 }
 
-/** Removes what migrations 32 to 35 add, so a test can rewind the version past them. */
+/** Removes what migrations 32 to 36 add, so a test can rewind the version past them. */
 function undoLessonParts(db: Database.Database) {
   db.exec(
     "DROP TABLE held_files; ALTER TABLE attachments DROP COLUMN recognised; ALTER TABLE attachments DROP COLUMN source_id; ALTER TABLE attachments DROP COLUMN size; ALTER TABLE attachments DROP COLUMN kind; ALTER TABLE attachments DROP COLUMN name;",
@@ -44,7 +44,7 @@ function undoLessonParts(db: Database.Database) {
   );
 }
 
-/** Removes what migrations 29 to 35 add, so a test can rewind the version past them. */
+/** Removes what migrations 29 to 36 add, so a test can rewind the version past them. */
 function undoSubjectSort(db: Database.Database) {
   undoLessonParts(db);
   db.exec("ALTER TABLE sources DROP COLUMN chosen_kind; DROP INDEX sources_blob_sha; DROP INDEX sources_subject_sort; ALTER TABLE sources DROP COLUMN subject_sort;");
@@ -1040,12 +1040,12 @@ describe("flashcard review time (migration 33)", () => {
   });
 });
 
-describe("files a message carried (migration 35)", () => {
+describe("files a message carried (migration 36)", () => {
   const columns = (db: Database.Database) =>
     (db.prepare("SELECT name FROM pragma_table_info('attachments') ORDER BY cid").pluck().all() as string[]).join(",");
 
   it("adds the file's name, kind, size, hidden source and recognised text, empty for every attachment that exists", () => {
-    const { db, file } = workspaceAt(34);
+    const { db, file } = workspaceAt(35);
     expect(columns(db)).toBe("id,message_id,blob_sha,mime,created_at");
     db.exec(`
       INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c', 't', 1, 1);

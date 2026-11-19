@@ -1,5 +1,5 @@
 import { activeSimulation } from "../study/simulation";
-import { needsSolverChecks, splitChecks, solverChecks } from "./checks";
+import { needsSolverChecks, NO_SEPARATE_CHECK, splitChecks, solverChecks } from "./checks";
 import { stripCheckFences, type AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
@@ -19,8 +19,9 @@ import {
   type FigureRunner,
 } from "../math/figures";
 import { isAbort, IpcError, toIpcError, type AttachmentError, type MessageFile } from "../../shared/ipc";
-import { generate, type GenerateInput } from "../engine/generate";
+import { generate, startingMove, type GenerateInput } from "../engine/generate";
 import { engineSeesImages } from "../engine/capabilities";
+import { systemInPrompt } from "../engine/funnel";
 import { LOCAL_PROVIDER } from "../engine/local";
 import { selectionFor, selectionOn, strongestSelection, type StoredSelection } from "../engine/selection";
 import { withUsageScope } from "../engine/usage";
@@ -36,14 +37,12 @@ import { plainTitle } from "../../shared/spoken-math";
 import { oneLine, profileContext } from "../profile/context";
 import { readProfile } from "../profile/profile";
 import {
-  type ChatTemplateId,
+  CHAT_TEMPLATE,
   chatSystemPrompt,
   contextBlock,
-  chatTemplateId,
   dataBlock,
 } from "./prompts";
 import { liveSubject, pickSubject, sourceSubjects, subjectSourceIds, type SubjectBy } from "./subject";
-import { answerWay, wayOfTemplate, type AnswerWay } from "./way";
 import {
   addSessionChars,
   contextHash,
@@ -92,8 +91,6 @@ export type ChatMessageView = {
   modelId: string | null;
   provider: string | null;
   grounding: Grounding | null;
-  /** Solved in full, or guided one step at a time. */
-  way: AnswerWay;
   followups: string[];
   citations: ChatCitation[];
   reaction: "up" | "down" | null;
@@ -131,8 +128,6 @@ type AskInput = {
   sourceIds?: string[];
   /** ASK-07: a plan scopes the chat to the plan's sources; null clears it, undefined keeps it. */
   planId?: string | null;
-  /** The way the student asked for with the action under an answer. Without it the question decides (`answerWay`). */
-  way?: AnswerWay;
   allowGeneral?: boolean;
   /** A subject the student chose for the chat, null for the whole Library. Undefined keeps the chat's own. */
   subject?: string | null;
@@ -275,22 +270,19 @@ export async function settleChecks(): Promise<void> {
  * What the reply message records, and so whether the "general knowledge" badge shows. The badge is only for a turn where
  * the student had sources or a subject selected and the answer cites none of them: that is "general". A cited answer is
  * "sources", and a turn with nothing selected carries no claim (null) and no badge. A turn's own attachment counts as
- * its source. A Socratic question needs no citation, so it stays "sources" whenever passages were found.
+ * its source. What counts is whether the reply cites, not what kind of reply it is.
  */
 export function replyGrounding(turn: {
   selected: boolean;
   cited: number;
   attached: boolean;
-  /** The reply is a Socratic question, which is not expected to cite. */
-  question: boolean;
-  passages: number;
   /** The passages came from outside the chat's subject, which had nothing on the question. */
   widened?: boolean;
 }): Grounding | null {
   if (turn.cited > 0) return turn.widened ? "wider" : "sources";
   if (turn.attached) return "sources";
   if (!turn.selected) return null;
-  return turn.question && turn.passages > 0 ? (turn.widened ? "wider" : "sources") : "general";
+  return "general";
 }
 
 /** `wider` is stored as `mixed`, a value the column has allowed from the start. */
@@ -788,17 +780,6 @@ function libraryHasPassages(db: Database.Database): boolean {
   );
 }
 
-/** How the reply before this question answered, so a student answering a guided step keeps being guided. */
-function previousWay(db: Database.Database, chatId: string, replacing?: string): AnswerWay | null {
-  const row = db
-    .prepare(
-      `SELECT prompt_template FROM messages WHERE chat_id = ? AND role = 'assistant' AND id IS NOT ?
-       ORDER BY created_at DESC LIMIT 1`,
-    )
-    .get(chatId, replacing ?? null) as { prompt_template: string | null } | undefined;
-  return row ? wayOfTemplate(row.prompt_template) : null;
-}
-
 /** Adds each citation's file title, its subject and whether it was attached to the chat, for the "I used" line. */
 function describeCitations(db: Database.Database, citations: ChatCitation[]): ChatCitation[] {
   if (citations.length === 0) return citations;
@@ -1185,17 +1166,13 @@ async function answer(
       ? `Attached text:\n${dataBlock("attached", notes.join("\n"))}\n\n`
       : "";
   const profile = readProfile(db);
-  const way = answerWay({ text: input.text, previous: previousWay(db, chatId, replacing?.assistantId), asked: input.way });
-  // Nothing searched and no file: the reply can only come from the model's own knowledge.
-  const template = chatTemplateId({ way, general: !searches && !thisTurnFile && !kept });
+  const template = CHAT_TEMPLATE;
   const where = chatPrompt(db, planId);
-  // A guided step asks the student to do the next part, so only solved answers offer figures.
-  const drawer = way === "guided" ? null : await figureRunner(input.python);
+  const drawer = await figureRunner(input.python);
   // The system prompt is the same for the whole chat. What changes from turn to turn is in the context block that opens
   // the message, which a tool's session gets only when it differs from the one it last received.
   const system = chatSystemPrompt();
   const header = `${contextBlock({
-    template,
     language: where.language,
     planLine: where.planLine,
     subject: subjectLine,
@@ -1224,15 +1201,29 @@ async function answer(
   const stored = currentSession(db, chatId);
   const long = Boolean(stored && sessionTooLong(stored));
   const session = stored && !long ? stored : undefined;
-  const outOfStep = Boolean(session && !session.inStep);
-  const replay = outOfStep ? historyText(db, chatId, exclude, handoverChars(selection.provider), session!.syncedTo) : "";
-  const replayBlock = replay
-    ? `The conversation as the student sees it, since the last turn you completed. This, not anything you remember differently, is the conversation. A reply marked stopped was cut off, and the student saw only the text shown.\n${replay}\n\n`
-    : "";
+  // A session keeps the instructions it was opened under. Cursor Agent and Antigravity carry them inside the first prompt,
+  // so when the chat's system prompt is not the one the session has (an edit of the template since), it is out of step and
+  // this turn delivers the current one. The tools that take a system prompt on every call need nothing more.
+  const instructions = contextHash(system);
+  const instructionsChanged = Boolean(session && session.instructions !== instructions);
+  const outOfStep = Boolean(session && (!session.inStep || instructionsChanged));
   const newQuestion = citations.length
     ? `New question. Its passages are numbered from P1 again; cite only these.\n\n${question.trimStart()}`
     : question.trimStart();
-  const followUp = `${outOfStep || session?.told !== told ? `${header}\n\n` : ""}${replayBlock}${replacing && !resume ? ASKED_AGAIN : ""}${newQuestion}`;
+  // The follow-up depends on the tool that resumes the session, which an automatic choice can change inside
+  // `generate()`: whether the instructions travel in the prompt, and the size of the replay. So it is built for the
+  // provider of each attempt, and only when that attempt resumes.
+  const followUpFor = (provider: string) => {
+    const newInstructions =
+      instructionsChanged && systemInPrompt(provider)
+        ? `<instructions>\n${system}\n</instructions>\nThese instructions replace any you were given before.\n\n`
+        : "";
+    const replay = outOfStep ? historyText(db, chatId, exclude, handoverChars(provider), session!.syncedTo) : "";
+    const replayBlock = replay
+      ? `The conversation as the student sees it, since the last turn you completed. This, not anything you remember differently, is the conversation. A reply marked stopped was cut off, and the student saw only the text shown.\n${replay}\n\n`
+      : "";
+    return `${newInstructions}${outOfStep || session?.told !== told ? `${header}\n\n` : ""}${replayBlock}${replacing && !resume ? ASKED_AGAIN : ""}${newQuestion}`;
+  };
   // The conversation handed to a new session is sized to the window of the engine that answers, which an automatic choice
   // can change inside `generate()`. It is built only when a prompt is sent: a fresh start or a retry after a lost session.
   const promptFor = (provider: string) => {
@@ -1242,7 +1233,7 @@ async function answer(
   const beforeQuestion = messageBefore(db, chatId, userMessageId);
   const messageId = uuidv7(now + 2);
   // The engine answering, which differs from the selection when an automatic one was out and another took over.
-  let answering: { provider: string; model: string } = selection;
+  let answering: { provider: string; model: string; effort?: string } = selection;
   let streamed = resume;
   let result;
   // Fitting a saved photo can take seconds, so it runs in the extract worker. A photo left out is reported, not dropped silently.
@@ -1293,12 +1284,23 @@ async function answer(
   markOutOfStep(db, chatId);
   // A session the tool opened during this turn received the whole prompt, not the follow-up.
   let startedSession = false;
+  // A photo read as text for a planned text-only tool still goes as a picture to the tool that answers, if that one reads
+  // images (an automatic choice that fell back to it). It is decided for each attempt, as the prompt is. A pinned chat has no
+  // fallback, and a chat planned on a local model never sends the picture to another tool.
+  const fallbackCopies =
+    !reads && selection.provider !== LOCAL_PROVIDER
+      ? images.flatMap((image) => (image.copy ? [{ type: "image" as const, mediaType: image.mediaType, data: image.copy }] : []))
+      : [];
   try {
     result = await generate({
       prompt: "",
       promptFor,
+      followUpFor,
       system,
       selection,
+      ...(fallbackCopies.length
+        ? { attachmentsFor: (answering) => (engineSeesImages(answering) ? fallbackCopies : undefined) }
+        : {}),
       attachments: saved
         ? saved.images
         : images
@@ -1312,7 +1314,7 @@ async function answer(
       run: input.run,
       conversation: {
         key: chatId,
-        followUp,
+        followUp: "",
         session: session ? { provider: session.provider, id: session.sessionId, cwd: session.cwd, seen: session.seen } : null,
         // A tool that keeps what it was sent keeps a turn the student stops, so the session is stored when it begins.
         // Cursor Agent loses such a turn, so its session is stored when the turn ends.
@@ -1321,7 +1323,7 @@ async function answer(
           const open = currentSession(db, chatId);
           if (open?.provider === provider && open.sessionId === sessionId) return;
           startedSession = true;
-          recordSession(db, chatId, open, { provider, sessionId, cwd, model: selection.model, effort: selection.effort ?? null, told: "", chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion }, long ? "long" : "gone");
+          recordSession(db, chatId, open, { provider, sessionId, cwd, model: answering.model, effort: answering.effort ?? null, told: "", instructions, chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion }, long ? "long" : "gone");
         },
       },
       cache: true,
@@ -1346,9 +1348,10 @@ async function answer(
           sessionId: result.sessionId,
           cwd: result.cwd,
           model: result.model,
-          effort: selection.effort ?? null,
+          effort: answering.effort ?? null,
           told,
-          chars: (result.continued ? followUp : promptFor(result.provider)).length + result.text.length,
+          instructions,
+          chars: (result.continued ? followUpFor(result.provider) : promptFor(result.provider)).length + result.text.length,
           now: Date.now(),
           finished: true,
           syncedTo: beforeQuestion,
@@ -1373,7 +1376,7 @@ async function answer(
     // one instead, and a Continue that added nothing leaves the reply as it was.
     // The tool kept what it was sent, and with Antigravity the start of the reply too, which counts toward the size at
     // which a session starts over. Cursor Agent loses a turn that did not finish.
-    const sent = !startedSession && session && answering.provider === session.provider ? followUp : promptFor(answering.provider);
+    const sent = !startedSession && session && answering.provider === session.provider ? followUpFor(answering.provider) : promptFor(answering.provider);
     addSessionChars(
       db,
       chatId,
@@ -1450,14 +1453,25 @@ async function answer(
         chatId,
       );
   }
-  // The check stays on the chat's own engine: it is a short extraction, not part of a stronger answer.
-  const checking = way === "solved" && needsSolverChecks(parsed.body);
-  if (checking)
-    startChecks(
-      db,
-      { chatId, messageId, body: parsed.body },
-      { selection: selectionFor(db, "chat"), run: input.run },
-    );
+  // The check stays on the chat's own engine: it is a short extraction, not part of a stronger answer. It is a model call
+  // of its own, a new session in the tool's history, so it runs only for an answer that states maths and has no check
+  // blocks of its own (the template asks for them inline), and never on a tool in `NO_SEPARATE_CHECK` (see there), which
+  // `solverChecks` also applies to the tool that runs each attempt. The engine is looked up only when a check is needed:
+  // with none assigned at this moment the saved reply is returned as it is.
+  let checking = false;
+  if (needsSolverChecks(parsed.body)) {
+    try {
+      const checkSelection = selectionFor(db, "chat");
+      // The tool that would run the check is the one `generate()` starts with, which is not the chat's own when that
+      // one is out of requests.
+      const runsOn = (startingMove({ selection: checkSelection })?.to ?? checkSelection).provider;
+      checking = !NO_SEPARATE_CHECK.has(runsOn);
+      if (checking)
+        startChecks(db, { chatId, messageId, body: parsed.body }, { selection: checkSelection, run: input.run });
+    } catch (err) {
+      if (!(err instanceof IpcError && err.code === "engine-missing")) throw err;
+    }
+  }
   return { ...reply, message: { ...reply.message!, checking }, ...skippedImages };
 }
 
@@ -1544,8 +1558,6 @@ function saveReply(
     selected: meta.selected,
     cited: linked.length,
     attached: meta.attached,
-    question: meta.template === "chat.socratic" && parsed.body.trim().endsWith("?"),
-    passages: meta.citations.length,
     widened: meta.widened || (within != null && linked.some((cite) => !within.has(cite.sourceId))),
   });
   // A finished reply from general knowledge records what the search did, in the column a stopped reply keeps its passages in.
@@ -1563,7 +1575,7 @@ function saveReply(
     meta.model,
     meta.template,
     // Stored with each assistant message: the template ID and its own version.
-    promptProvenance(meta.template as ChatTemplateId).version,
+    promptProvenance(CHAT_TEMPLATE).version,
     storedGrounding(grounding),
     meta.stopped ? 1 : 0,
     meta.error,
@@ -1592,7 +1604,6 @@ function saveReply(
       modelId: meta.model || null,
       provider: meta.provider || null,
       grounding,
-      way: wayOfTemplate(meta.template),
       followups: parsed.followups,
       citations: describeCitations(db, linked),
       reaction: null,
@@ -1652,8 +1663,6 @@ export async function regenerateTurn(
           ...(last.figures_json ? { figures: figureImages(JSON.parse(last.figures_json)) } : {}),
         }
       : undefined;
-  // Regenerate and Continue answer the same way as the reply they replace, unless the student asked for the other way.
-  const way = input.way ?? (last?.role === "assistant" ? wayOfTemplate(last.prompt_template) : undefined);
   // The tool's session was told this question is answered again and the earlier answer discarded. When the new answer
   // fails or is stopped, the earlier one stays on screen: the session holds the conversation only up to the message before
   // that question's earlier replies, so the next message replays the question and the answer the student sees.
@@ -1662,7 +1671,7 @@ export async function regenerateTurn(
   };
   const result = await askTurn(
     db,
-    { ...rest, way, text: user.body, resumeFrom },
+    { ...rest, text: user.body, resumeFrom },
     last?.role === "assistant"
       ? { assistantId: last.id, userId: user.id }
       : undefined,
@@ -1915,7 +1924,6 @@ export function readChat(
       modelId: row.model_id,
       provider: row.engine_provider,
       grounding: row.role === "assistant" ? readGrounding(row.grounding) : null,
-      way: wayOfTemplate(row.prompt_template),
       followups: chips ? parsed.followups : [],
       citations,
       reaction:

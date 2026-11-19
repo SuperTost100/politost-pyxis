@@ -3130,8 +3130,6 @@ export const requests = {
       engine: z.enum(["chat", "strong"]).optional(),
       /** Continue the last reply, which was cut short, instead of replacing it. */
       resume: z.boolean().optional(),
-      /** Answer again the other way: "Guidami passo passo" or "Dammi la soluzione" under the reply. */
-      way: z.enum(["solved", "guided"]).optional(),
       allowGeneral: z.boolean().optional(),
     }),
     output: z.object({
@@ -3203,8 +3201,6 @@ export const requests = {
           error: z.string().nullable(),
           /** The math check is still running; `chats.checks` says when it ends. */
           checking: z.boolean(),
-          /** Solved in full, or guided one step at a time. */
-          way: z.enum(["solved", "guided"]),
           citations: z.array(
             z.object({
               label: z.string(),

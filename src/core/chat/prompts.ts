@@ -1,42 +1,27 @@
-import type { FigureKind } from "../../shared/figure-kinds";
+import { figureKinds, type FigureKind } from "../../shared/figure-kinds";
 import {
   systemPrompt,
   type TemplateId,
 } from "../engine/prompts";
 import { figureText } from "../math/figures";
-import type { AnswerWay } from "./way";
 
-/** The way of answering. Its text goes in the context block of the message, so the chat's system prompt never changes. */
-export type ChatTemplateId = Extract<
-  TemplateId,
-  "chat.general" | "chat.socratic" | "chat.solver"
->;
+/** The chat's template. It is the one system prompt of every chat turn, and it is the same for the whole chat. */
+export const CHAT_TEMPLATE = "chat.tutor" satisfies TemplateId;
 
 /**
- * The template for a turn. A guided turn uses chat.socratic, which builds its step on the passages when there are any and
- * on the model's own knowledge when not. A solved turn uses chat.solver, with the math checks, whenever the Library was
- * searched or a file came with the question, and chat.general when nothing was (`general`).
+ * The system prompt of a chat, with the instruction for every figure kind (at most two in an answer). The context block
+ * of each message lists the kinds that can be drawn, so the system prompt never changes with the drawing pack.
  */
-export function chatTemplateId(input: { way: AnswerWay; general?: boolean }): ChatTemplateId {
-  return input.way === "guided"
-    ? "chat.socratic"
-    : input.general
-      ? "chat.general"
-      : "chat.solver";
-}
-
-/** The system prompt of a chat. It is the same for the whole chat, so a tool's session never ends because of it. */
 export function chatSystemPrompt(): string {
-  return systemPrompt("chat.system");
+  return figureText(systemPrompt(CHAT_TEMPLATE), figureKinds, 2);
 }
 
 /**
- * What varies from turn to turn, as a block at the start of the message: the language, exam, subject, profile, whether
- * to end with follow-ups, and the way of answering with the figure kinds that can be drawn (at most two in an answer,
- * none when nothing can draw one). A session is sent the block only when it differs from the one it last received.
+ * What varies from turn to turn, as a block at the start of the message: the language, exam, subject, profile, whether to
+ * end with follow-ups and which figure kinds can be drawn. A session is sent the block only when it differs from the one
+ * it last received.
  */
 export function contextBlock(input: {
-  template: ChatTemplateId;
   language: string;
   planLine: string;
   subject: string;
@@ -44,7 +29,6 @@ export function contextBlock(input: {
   followups: boolean;
   figures: readonly FigureKind[];
 }): string {
-  const how = figureText(systemPrompt(input.template), input.figures, 2);
   return [
     "<context>",
     `Language: ${input.language}.`,
@@ -54,8 +38,7 @@ export function contextBlock(input: {
     input.followups
       ? "Follow-ups: end with the <followups> block."
       : "Follow-ups: leave the <followups> block out.",
-    "How to answer:",
-    how,
+    `Figures you can draw: ${input.figures.length ? input.figures.join(", ") : "none"}.`,
     "</context>",
   ]
     .filter(Boolean)

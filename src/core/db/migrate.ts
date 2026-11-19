@@ -453,6 +453,9 @@ CREATE INDEX card_reviews_day ON card_reviews(reviewed_at);`,
 );
 CREATE INDEX chat_sessions_chat ON chat_sessions(chat_id, opened_at);`,
   },
+  // The hash of the chat's system prompt a tool session was opened under. Cursor Agent and Antigravity carry it inside the
+  // first prompt, so a session keeps it for good, and a turn on a session with another hash delivers the current one.
+  { version: 35, sql: `ALTER TABLE chat_sessions ADD COLUMN instructions TEXT` },
   // The files a message carried, shown with it. A row with a `kind` is one file: its name and size as picked, and for a
   // document the id of the hidden source that holds its text (no foreign key: a source that is gone reads as a file that can no longer be opened). `recognised` is the text local OCR read from a photo for a model
   // that cannot see images, kept apart from the message body. Rows made before this step have none of these and stay as
@@ -460,7 +463,7 @@ CREATE INDEX chat_sessions_chat ON chat_sessions(chat_id, opened_at);`,
   // draft (a chat id, or empty for a new chat), the hidden source or the stored photo, the extracted-text file of its
   // import and its state, so every cleanup can ask the database whether a source or a file is still wanted.
   {
-    version: 35,
+    version: 36,
     sql: `ALTER TABLE attachments ADD COLUMN name TEXT;
 ALTER TABLE attachments ADD COLUMN kind TEXT CHECK (kind IS NULL OR kind IN ('photo', 'document'));
 ALTER TABLE attachments ADD COLUMN size INTEGER;

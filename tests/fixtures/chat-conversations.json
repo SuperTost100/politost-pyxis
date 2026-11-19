@@ -1,0 +1,170 @@
+{
+  "about": "Short conversations that a chat reply is judged on, in Italian and English. 'history' is what was said before the last message, written by hand, and 'message' is the student's last message. 'rule' says what the reply must do. 'must' and 'mustNot' are patterns tested on the reply as written, 'mustFormula' and 'mustNotFormula' on the reply with spaces, backslashes, braces, dollar signs, asterisks and backticks taken out, so a formula matches whatever way it is typeset. No tool's answer is kept here.",
+  "conversations": [
+    {
+      "id": "solve-exercise",
+      "language": "it",
+      "history": [],
+      "message": "Calcola la derivata di f(x) = x^2 sin x.",
+      "rule": "Solves it completely, step by step, with the result 2x sin x + x^2 cos x stated, and does not hand a step back to the student.",
+      "followups": "similar",
+      "mustFormula": [
+        "2xsin\\(?x\\)?\\+x\\^?2cos\\(?x\\)?|x\\^?2cos\\(?x\\)?\\+2xsin\\(?x\\)?"
+      ]
+    },
+    {
+      "id": "explain-topic",
+      "language": "en",
+      "history": [],
+      "message": "Explain what the Doppler effect is.",
+      "rule": "Gives a full explanation: a definition, the formula for the observed frequency and a worked example with numbers. More than 150 words.",
+      "must": [
+        "[Dd]oppler",
+        "[Ee]xample|[Ff]or instance|[Ss]uppose|[Cc]onsider|[Ii]magine"
+      ],
+      "minWords": 150
+    },
+    {
+      "id": "attempt-wrong-step",
+      "language": "it",
+      "history": [],
+      "message": "Devo risolvere 2x + 6 = 14. Ho fatto: 2x = 14 + 6 = 20, quindi x = 10. Va bene?",
+      "rule": "Does not solve it: states no final result (x = 4), says what is right in the attempt, points at the sign error in the first step, and ends with one question that has the student take the step.",
+      "endsWithQuestion": true,
+      "followups": "solution",
+      "mustNotFormula": ["x=4\\b"]
+    },
+    {
+      "id": "stuck",
+      "language": "it",
+      "history": [],
+      "message": "Sono bloccato su questo integrale: ∫ x e^x dx. Non so da dove cominciare.",
+      "rule": "Does not solve it: no final result (x e^x - e^x), explains the idea the first step rests on and ends with one question that has the student take it.",
+      "endsWithQuestion": true,
+      "followups": "solution",
+      "mustNotFormula": ["xe\\^x-e\\^x|e\\^x\\(x-1\\)|\\(x-1\\)e\\^x"]
+    },
+    {
+      "id": "hint",
+      "language": "en",
+      "history": [],
+      "message": "Find the minimum of f(x) = x^2 - 4x + 7. Just give me a hint.",
+      "rule": "Gives a hint and not the solution: neither the point x = 2 nor the minimum value 3 appears, and it ends with a question for the student.",
+      "endsWithQuestion": true,
+      "followups": "solution",
+      "mustNotFormula": ["x=2\\b", "=3\\b|is3\\b"]
+    },
+    {
+      "id": "guide-then-solution",
+      "language": "it",
+      "history": [
+        {
+          "role": "user",
+          "text": "Come trovo il minimo di f(x) = x^2 - 4x + 7? Guidami passo passo."
+        },
+        {
+          "role": "assistant",
+          "text": "Il minimo di una funzione derivabile si trova dove la derivata si annulla. Il primo passo è quindi calcolare la derivata. Quanto vale f'(x)?"
+        },
+        {
+          "role": "user",
+          "text": "f'(x) = 2x - 4"
+        },
+        {
+          "role": "assistant",
+          "text": "Giusto. Ora imposta f'(x) = 0 e risolvi: per quale valore di x la derivata si annulla?"
+        }
+      ],
+      "message": "Dammi la soluzione completa.",
+      "rule": "Gives the complete worked solution in this same reply, with x = 2 and the minimum value 3 (the minimum, or f(2), not a step number), and does not hand a step back to the student or ask a question first.",
+      "followups": "similar",
+      "mustFormula": ["x=2", "=3\\b|\\(2,3\\)|minim\\w*.{0,60}3\\b"],
+      "mustNot": [
+        "[^.!?\\n]*(f ?\\( ?2 ?\\)|value of x|valore di x)[^.!?\\n]*\\?"
+      ]
+    },
+    {
+      "id": "guide-to-the-end",
+      "language": "en",
+      "history": [
+        {
+          "role": "user",
+          "text": "Guide me step by step: find the minimum of f(x) = x^2 - 4x + 7."
+        },
+        {
+          "role": "assistant",
+          "text": "A differentiable function has its minimum where the derivative is zero. What is f'(x)?"
+        },
+        {
+          "role": "user",
+          "text": "f'(x) = 2x - 4"
+        },
+        {
+          "role": "assistant",
+          "text": "Right. Now set f'(x) = 0. What value of x do you get?"
+        },
+        {
+          "role": "user",
+          "text": "x = 2"
+        },
+        {
+          "role": "assistant",
+          "text": "Correct. The last step: the minimum value is f at that point. What is f(2)?"
+        }
+      ],
+      "message": "f(2) = 4 - 8 + 7 = 3",
+      "rule": "Confirms the student's result as right, states the final result (x = 2 and the minimum value 3, as f(2) or as the minimum), and does not hand a step already done back to the student. A further check it proposes is allowed.",
+      "followups": "similar",
+      "mustFormula": ["x=2", "=3\\b|\\(2,3\\)|minim\\w*.{0,60}3\\b"],
+      "must": [
+        "[Rr]ight|[Cc]orrect|[Ee]xactly|[Yy]es|[Gg]iust|[Ee]satt|[Cc]orrett|[Ss]ì"
+      ],
+      "mustNot": [
+        "[^.!?\\n]*(f ?\\( ?2 ?\\)|value of x|valore di x)[^.!?\\n]*\\?"
+      ]
+    },
+    {
+      "id": "check-right",
+      "language": "it",
+      "history": [],
+      "message": "Controlla il mio risultato: ∫ 2x dx = x^2 + C.",
+      "rule": "Says the result is right, and does not write out a long new solution.",
+      "must": ["[Cc]orrett|[Gg]iust|[Ee]satt|[Ee]sattamente"],
+      "mustNot": ["[Ss]bagliat|[Nn]on è corrett"],
+      "maxWords": 220
+    },
+    {
+      "id": "check-wrong",
+      "language": "en",
+      "history": [],
+      "message": "Check my result: the derivative of x^3 is 2x^2.",
+      "rule": "Says the result is wrong and shows the correct working, 3x^2.",
+      "must": [
+        "[Nn]ot correct|[Ii]ncorrect|[Ww]rong|isn't right|is not right|not quite|[Nn]ot right|mistake"
+      ],
+      "mustFormula": ["3x\\^?2"]
+    },
+    {
+      "id": "mixed",
+      "language": "it",
+      "history": [],
+      "message": "Che cosa dice il teorema di Weierstrass? E già che ci siamo, qual è la capitale della Francia?",
+      "rule": "Answers both: the theorem from the material, with a citation [P1], and Paris.",
+      "must": ["\\[P1\\]", "Parigi"],
+      "material": true
+    },
+    {
+      "id": "not-study",
+      "language": "en",
+      "history": [],
+      "message": "Write me a short poem about my cat.",
+      "rule": "Answers the request in a few lines (at most 100 words, at least three lines of it), does not refuse, with no check block and no figure, and three follow-ups.",
+      "must": ["(?:^|\\n)[^\\n]+\\n[^\\n]+\\n[^\\n]+"],
+      "mustNot": [
+        "[Cc]an(?:'|’)t (?:help|write)|[Cc]annot (?:help|write)|[Ii](?:'|’)m only|only help with|not something I can"
+      ],
+      "maxWords": 100,
+      "rawMustNot": ["```"]
+    }
+  ]
+}

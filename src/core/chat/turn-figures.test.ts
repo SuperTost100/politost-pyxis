@@ -95,8 +95,9 @@ it("draws an answer's figures, leaves out the one that fails and cannot be fixed
     run,
     python,
   });
-  // The figure instruction rides in the context block of the message, which names the kinds that can be drawn.
-  expect(calls[0]!.prompt).toContain("pyxis-figure");
+  // The system prompt carries the instruction for every kind, and the context block of the message names the kinds that can be drawn.
+  expect(calls[0]!.system).toContain("pyxis-figure");
+  expect(calls[0]!.prompt).toContain("Figures you can draw: plot, circuit, graph.");
   const message = result.message!;
   expect(message.figures).toEqual({ [figureKey(sine)]: PNG });
   // The figure block stays as the model wrote it; the failed one is gone.
@@ -133,7 +134,7 @@ it("draws an answer's figures, leaves out the one that fails and cannot be fixed
   expect(next.prompt).not.toContain("np.sin");
 });
 
-it("offers no figures without a sandbox or in a Socratic turn, and keeps none in a stopped reply", async () => {
+it("offers no figures without a sandbox, and keeps none in a stopped reply", async () => {
   const { db, calls, run } = setup();
   const plain = await askTurn(db, {
     text: "Il seno?",
@@ -141,13 +142,14 @@ it("offers no figures without a sandbox or in a Socratic turn, and keeps none in
     run,
     python: null,
   });
-  expect(calls[0]!.system).not.toContain("pyxis-figure");
+  expect(calls[0]!.prompt).toContain("Figures you can draw: none.");
   expect(plain.message!.body).not.toContain("pyxis-figure");
   expect(plain.message!.figures).toBeUndefined();
   expect(readChat(db, plain.chatId).at(-1)!.figures).toBeUndefined();
 
-  await askTurn(db, { text: "Il seno?", way: "guided", run, python });
-  expect(calls.at(-1)!.system).not.toContain("pyxis-figure");
+  // The system prompt is the same with and without the drawing pack.
+  await askTurn(db, { text: "Il seno?", allowGeneral: true, run, python });
+  expect(calls.filter((call) => !call.system.startsWith("Extract")).at(-1)!.system).toBe(calls[0]!.system);
 
   const stopped = await askTurn(db, {
     text: "Il seno?",
@@ -267,7 +269,6 @@ it("keeps the whole answer when Stop is pressed while a figure is being drawn, b
 it("asks for no fix in a turn that offers no figures", async () => {
   const { db, fixCalls, run } = setup(["plt.plot([1])"]);
   await askTurn(db, { text: "Il seno?", allowGeneral: true, run, python: null });
-  await askTurn(db, { text: "Il seno?", way: "guided", run, python });
   expect(fixCalls).toEqual([]);
 });
 

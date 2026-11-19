@@ -6,6 +6,9 @@ import { importSmartbook } from "../sources/smartbook";
 import { forgetModels, rememberModels } from "../engine/efforts";
 import type { GenerateInput } from "../engine/generate";
 import type { EngineResult } from "../engine/funnel";
+import { clearBench } from "../engine/bench";
+import { rememberReady, selectionFor } from "../engine/selection";
+import { solverChecks } from "./checks";
 import {
   askTurn,
   readChat,
@@ -14,7 +17,7 @@ import {
   settleChecks,
 } from "./turn";
 
-const step = "La derivata di $x^2\\sin(x)$ è $2x\\sin(x) + x^2\\cos(x)$.";
+const step = "La derivata di $f(x) = x^2\\sin(x)$ è $f'(x) = 2x\\sin(x) + x^2\\cos(x)$.";
 const claim = {
   kind: "derivative" as const,
   expr: "x**2*sin(x)",
@@ -431,14 +434,97 @@ describe("math check after the reply", () => {
     expect(ended).toEqual([{ chatId: result.chatId, messageId: result.message!.id }]);
   });
 
-  it("does not run a check for prose or a Socratic question", async () => {
+  it("does not run a check for prose or for a reply with no step to check", async () => {
     const db = chatDb();
     const check = heldCheck();
     const prose = await askTurn(db, { text: "Cos'è un vettore?", allowGeneral: true, run: async () => reply("Una freccia.") });
     expect(prose.message?.checking).toBe(false);
-    const socratic = await askTurn(db, { text: "Deriva", way: "guided", run: check.run });
-    expect(socratic.message?.checking).toBe(false);
+    const question = await askTurn(db, { text: "Deriva", allowGeneral: true, run: async () => reply("Che cosa ottieni derivando la funzione?") });
+    expect(question.message?.checking).toBe(false);
     expect(check.started()).toBe(0);
+  });
+
+  it("runs no separate check for a reply that only names maths, and none on Cursor Agent", async () => {
+    const db = chatDb();
+    const check = heldCheck();
+    const names = await askTurn(db, {
+      text: "Sono bloccato su x^2 sin x",
+      allowGeneral: true,
+      run: async () => reply("Per derivare $x^2 \\sin x$ serve la regola del prodotto: quale parte è $u$?"),
+    });
+    expect(names.message?.checking).toBe(false);
+    // An answer that states an equation is checked, as before.
+    const solved = await askTurn(db, { text: "Deriva x^2 sin x", allowGeneral: true, run: check.run });
+    expect(solved.message?.checking).toBe(true);
+    check.release();
+    await settleChecks();
+    const cursor = openDatabase(":memory:");
+    cursor
+      .prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)")
+      .run(JSON.stringify({ provider: "agent", model: "cursor-grok-4.5" }));
+    const onCursor = await askTurn(cursor, { text: "Deriva x^2 sin x", allowGeneral: true, run: check.run });
+    expect(onCursor.message?.checking).toBe(false);
+    expect(check.started()).toBe(1);
+    cursor.close();
+  });
+
+  it("checks a worked solution that ends with a practice question: the kind of reply is not read from its last character", async () => {
+    const db = chatDb();
+    const check = heldCheck();
+    const result = await askTurn(db, {
+      text: "Deriva x^2 sin x",
+      allowGeneral: true,
+      run: async (input) =>
+        input.responseSchema ? check.run(input) : reply(`${step}\n\nProva tu: quanto vale la derivata di $x\\cos(x)$?`),
+    });
+    expect(result.message?.checking).toBe(true);
+    expect(check.started()).toBe(1);
+    check.release();
+    await settleChecks();
+    db.close();
+  });
+
+  it("returns the saved reply, with no check, when no engine is assigned to the chat once it finishes", async () => {
+    const db = chatDb();
+    const result = await askTurn(db, {
+      text: "Deriva x^2 sin x",
+      allowGeneral: true,
+      run: async () => {
+        db.prepare("DELETE FROM feature_engines").run();
+        return reply(step);
+      },
+    });
+    expect(result.message).toMatchObject({ body: step, checking: false });
+    expect(readChat(db, result.chatId).at(-1)).toMatchObject({ body: step });
+    db.close();
+  });
+
+  it("applies the no-Cursor rule to the tool that runs each attempt, so a fallback to Cursor skips the check", async () => {
+    rememberReady([
+      { id: "claude", kind: "cli", effort: true, models: [{ id: "claude-haiku-5-5", efforts: [] }] },
+      { id: "agent", kind: "cli", effort: true, models: [{ id: "cursor-grok-4.5", efforts: [] }] },
+    ]);
+    const db = openDatabase(":memory:");
+    db.prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)").run(
+      JSON.stringify({ provider: "claude", model: "claude-haiku-5-5", auto: true }),
+    );
+    const providers: string[] = [];
+    try {
+      const checks = await solverChecks(step, {
+        selection: selectionFor(db, "chat"),
+        run: async (input) => {
+          providers.push(input.selection.provider);
+          throw Object.assign(new Error("usage limit"), { code: "cli-failed", limit: { kind: "rate", detail: "usage limit" } });
+        },
+      });
+      expect(checks).toEqual([]);
+      // Claude was asked and was out of requests; the attempt that would have gone to Cursor made no call.
+      expect(providers).toEqual(["claude"]);
+    } finally {
+      rememberReady([]);
+      clearBench();
+      db.close();
+    }
   });
 
   it("Stop in the chat stops a running check, and the reply stays without badges", async () => {
