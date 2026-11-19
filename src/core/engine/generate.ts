@@ -35,6 +35,8 @@ export type GenerateInput = {
    * sized to the engine's window). An automatic choice can move to another engine, and `prompt` was built for the first.
    */
   promptFor?: (provider: string) => string;
+  /** The follow-up for the engine that resumes a chat's session, for the same reason as `promptFor`. */
+  followUpFor?: (provider: string) => string;
   system?: string;
   /** `chosenFor` marks a selection Pyxis chose itself (see `selectionFor`); the engine never receives it. */
   selection: Omit<Selection, "cwd" | "access"> & { chosenFor?: string };
@@ -207,6 +209,29 @@ function repaired(value: unknown, verbatim?: readonly string[]): unknown {
 }
 
 /**
+ * Where the first attempt of a call goes instead of `input.selection`, or undefined when it runs there. A job the student
+ * told to go on with another tool, since the one it ran on was out of requests, runs there from now on. An automatic
+ * engine still out after a usage limit, a sign-out or a missing program, or a model the subscription refused, is skipped
+ * until it is back. A caller that decides something by the tool that will run the call asks here, as `generate()` does.
+ */
+export function startingMove(
+  input: Pick<GenerateInput, "selection" | "attachments">,
+): { to: GenerateInput["selection"]; reason?: FallbackReason } | undefined {
+  const chosen = jobEngine(currentUsageScope()?.jobId);
+  const chosenSelection =
+    chosen && chosen !== input.selection.provider
+      ? seenBy(input, selectionOn(chosen, input.selection.chosenFor))
+      : undefined;
+  if (chosenSelection) return { to: chosenSelection, reason: "limit" };
+  const instead = isBenched(input.selection.provider)
+    ? usableFallback(input)
+    : isModelBenched(input.selection.provider, input.selection.model)
+      ? usableFallback(input, "model")
+      : undefined;
+  return instead ? { to: instead } : undefined;
+}
+
+/**
  * Every model call goes through here, so a failed engine reaches the screen as its own message (signed out, usage limit,
  * not available) instead of "Something went wrong".
  */
@@ -218,21 +243,8 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
   // A selection saved by an earlier build may name a model its tool may no longer run.
   const current = currentSelection(input.selection);
   if (current !== input.selection) input = { ...input, selection: current };
-  // A job the student told to go on with another tool, since the one it ran on was out of requests, runs there from now on.
-  const chosen = jobEngine(currentUsageScope()?.jobId);
-  const chosenSelection =
-    chosen && chosen !== input.selection.provider
-      ? seenBy(input, selectionOn(chosen, input.selection.chosenFor))
-      : undefined;
-  if (chosenSelection) return moveOn(input, chosenSelection, "limit");
-  // An automatic engine still out after a usage limit, a sign-out or a missing program, or a model the subscription
-  // refused, is skipped until it is back.
-  const instead = isBenched(input.selection.provider)
-    ? usableFallback(input)
-    : isModelBenched(input.selection.provider, input.selection.model)
-      ? usableFallback(input, "model")
-      : undefined;
-  if (instead) return moveOn(input, instead);
+  const start = startingMove(input);
+  if (start) return moveOn(input, start.to, start.reason);
   // Where this call began among refusals: one that lands while it runs is newer, and its answer must not undo it.
   const startedAt = engineClock();
   try {
@@ -344,13 +356,13 @@ class Failed {
  * `selection` when this call may go there: a call that carries a picture only goes to an engine that can see it, however
  * the engine was chosen (by the automatic plan, or by the student for a job), and otherwise stays where it is.
  */
-function seenBy<T extends { provider: string; model: string }>(input: GenerateInput, selection: T | undefined): T | undefined {
+function seenBy<T extends { provider: string; model: string }>(input: Pick<GenerateInput, "attachments">, selection: T | undefined): T | undefined {
   if (!selection) return undefined;
   return !input.attachments?.length || engineSeesImages(selection) ? selection : undefined;
 }
 
 /** The engine an automatic selection moves to. */
-function usableFallback(input: GenerateInput, reason?: FallbackReason) {
+function usableFallback(input: Pick<GenerateInput, "selection" | "attachments">, reason?: FallbackReason) {
   return seenBy(input, fallbackSelection(input.selection, reason));
 }
 
@@ -406,8 +418,16 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
       attachments: input.attachments,
       onDelta: input.onDelta,
       conversation:
-        input.conversation ??
-        (repairs ? { key: repairs, followUp: input.prompt } : undefined),
+        input.conversation && input.followUpFor
+          ? {
+              ...input.conversation,
+              // Read only when the engine resumes the session, and for the engine that does.
+              get followUp() {
+                return input.followUpFor!(selection.provider);
+              },
+            }
+          : (input.conversation ??
+            (repairs ? { key: repairs, followUp: input.prompt } : undefined)),
       cache: input.cache,
     });
     if (!input.schema) return result;

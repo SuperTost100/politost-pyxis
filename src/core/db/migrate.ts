@@ -453,6 +453,9 @@ CREATE INDEX card_reviews_day ON card_reviews(reviewed_at);`,
 );
 CREATE INDEX chat_sessions_chat ON chat_sessions(chat_id, opened_at);`,
   },
+  // The hash of the chat's system prompt a tool session was opened under. Cursor Agent and Antigravity carry it inside the
+  // first prompt, so a session keeps it for good, and a turn on a session with another hash delivers the current one.
+  { version: 35, sql: `ALTER TABLE chat_sessions ADD COLUMN instructions TEXT` },
 ] satisfies Array<{ version: number; sql: string; foreignKeysOff?: { check: string[] } }>;
 
 /** The newest schema version this build knows. */

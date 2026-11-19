@@ -85,7 +85,7 @@ describe("token usage", () => {
 
   it("ties a chat turn and its math check to the chat and the reply", async () => {
     const db = workspace();
-    const step = "La derivata di $x^2$ è $2x$.";
+    const step = "La derivata di $f(x) = x^2$ è $f'(x) = 2x$.";
     const result = await askTurn(db, {
       text: "Deriva x^2",
       allowGeneral: true,
