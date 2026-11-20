@@ -11,11 +11,13 @@ import {
 } from "../../shared/figure-kinds";
 import {
   FIGURE_MAX,
+  darkFigureKey,
   figureImages,
   figureKey,
   mapFigureBlocks,
   type FigureData,
 } from "../../shared/smart-text";
+import { darkFigure } from "./dark-figure";
 import { drawInWindow } from "./draw";
 import { figureProgram } from "./figure-program";
 import { runPython, type PythonRun } from "./python";
@@ -201,6 +203,8 @@ export type FigureEvent = {
   /** The key of the block as the model wrote it (`figureKey` of its code), which is how the text finds its picture. */
   key: string;
   image: string | null;
+  /** The same picture for the dark theme, when it was asked for and could be made. */
+  dark?: string;
 };
 
 /**
@@ -227,6 +231,8 @@ export async function drawFigures(
     known?: Record<string, string>;
     signal?: AbortSignal;
     onFigure?: (event: FigureEvent) => void;
+    /** Also keep each new picture as the dark theme shows it, under the figure's key with `-dark` (`darkFigureKey`). */
+    dark?: boolean;
   } = {},
 ): Promise<{ markdown: string; figures: Record<string, string>; stopped?: true }> {
   const python = options.python ?? runFigure;
@@ -264,9 +270,12 @@ export async function drawFigures(
     }
     if (closed) return;
     if ("image" in drawn) {
-      figures[figureKey(code, figure.figureKind)] = drawn.image;
+      const key = figureKey(code, figure.figureKind);
+      figures[key] = drawn.image;
+      const dark = options.dark ? darkFigure(drawn.image) : null;
+      if (dark) figures[darkFigureKey(key)] = dark;
       settled.set(asked, code);
-      tell({ key: asked, image: drawn.image });
+      tell({ key: asked, image: drawn.image, ...(dark ? { dark } : {}) });
     } else tell({ key: asked, image: null });
   }
   const signal = options.signal;
@@ -289,8 +298,11 @@ export async function drawFigures(
       // A figure that already has its picture keeps it, stopped or not.
       if (known[asked]) {
         figures[asked] = known[asked];
+        // Its dark picture is kept when it has one; a picture stored before there were dark ones stays as it is.
+        const keptDark = known[darkFigureKey(asked)];
+        if (keptDark) figures[darkFigureKey(asked)] = keptDark;
         settled.set(asked, figure.code);
-        tell({ key: asked, image: known[asked] });
+        tell({ key: asked, image: known[asked], ...(keptDark ? { dark: keptDark } : {}) });
         continue;
       }
       // Work that was stopped before it began is not started.

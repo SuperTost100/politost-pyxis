@@ -22,7 +22,8 @@ vi.mock("../math/runtime-client", () => ({
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
 import { isFigureFixCall } from "../engine/recorded-plan";
-import { figureKey } from "../../shared/smart-text";
+import { darkFigureKey, figureKey } from "../../shared/smart-text";
+import { darkFigure } from "../math/dark-figure";
 import { setUsageRecorder } from "../engine/usage";
 import { askTurn, readChat } from "./turn";
 
@@ -36,6 +37,10 @@ const good = "digraph { q0 -> q1 [label=a]; q1 -> q0 [label=b] }";
 const broken = "digraph {\n  q0 -> q1\n  q1 -> boom\n}";
 const brokenError = 'syntax error in line 3, near "boom"';
 /** The drawing window: a text with `boom` fails as Graphviz would, the rest draws. */
+/** What a turn stores for figures drawn with these keys: each picture and its dark one. */
+const figuresWithDark = (...keys: string[]) =>
+  Object.fromEntries(keys.flatMap((key) => [[key, PNG], [darkFigureKey(key), darkFigure(PNG)!]]));
+const withDark = (...keys: string[]) => keys.flatMap((key) => [key, darkFigureKey(key)]);
 const window = (code: string) => (code.includes("boom") ? { error: brokenError } : { image: PNG });
 
 const intro = "Un automa a due stati.";
@@ -100,7 +105,7 @@ it("corrects a graph the drawing window could not read with one fix call, and sh
   expect(main.requests.some((request) => request.operation === "python")).toBe(false);
   // Shown: the image is stored under the corrected code, and the saved block carries that code.
   const message = result.message!;
-  expect(message.figures).toEqual({ [figureKey(good, "graph")]: PNG });
+  expect(message.figures).toEqual(figuresWithDark(figureKey(good, "graph")));
   expect(message.body).toContain(block("Un automa.", good));
   expect(message.body).not.toContain("boom");
   expect(message.body).toContain(intro);
@@ -117,7 +122,7 @@ it("hands the model the check's message for a graph the check refuses, and draws
   );
   // The refused text never reached the window; the corrected one did.
   expect(drawn()).toEqual([{ kind: "graph", code: good, timeoutMs: 5000 }]);
-  expect(result.message!.figures).toEqual({ [figureKey(good, "graph")]: PNG });
+  expect(result.message!.figures).toEqual(figuresWithDark(figureKey(good, "graph")));
 });
 
 it("drops the graph and keeps the answer whole when the fix call fails or its answer fails too", async () => {
@@ -158,7 +163,7 @@ it("hands the corrected text to the window as the model wrote it: the backslash 
   const { db, run } = setup(answerWith(block("Un nodo con due righe.", broken)), [labelled]);
   const result = await ask(db, run);
   expect(drawn().at(-1)).toEqual({ kind: "graph", code: labelled, timeoutMs: 5000 });
-  expect(result.message!.figures).toEqual({ [figureKey(labelled, "graph")]: PNG });
+  expect(result.message!.figures).toEqual(figuresWithDark(figureKey(labelled, "graph")));
 });
 
 it("keeps the whole answer, with the graph left out, when Stop is pressed while the graph is corrected, and keeps the chat", async () => {
@@ -189,7 +194,7 @@ it("treats a graph and a plot in one answer alike: each is corrected once, a gra
   const result = await ask(db, run);
   expect(fixCalls.map((call) => call.request.kind)).toEqual(["graph", "plot"]);
   expect(fixCalls[1]!.request.error).toContain("ValueError: no");
-  expect(Object.keys(result.message!.figures ?? {})).toEqual([figureKey(good, "graph"), figureKey(plotted)]);
+  expect(Object.keys(result.message!.figures ?? {})).toEqual(withDark(figureKey(good, "graph"), figureKey(plotted)));
   expect(main.requests.filter((request) => request.operation === "python")).toHaveLength(2);
   expect(drawn()).toHaveLength(2);
 });

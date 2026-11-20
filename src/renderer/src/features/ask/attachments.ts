@@ -163,3 +163,19 @@ export function attachmentLine(view: AttachmentView): { key: string; values?: Re
   const percent = Math.round((view.progress ?? 0) * 100);
   return percent > 0 ? { key: "ask.attach.readingPercent", values: { percent } } : { key: "ask.attach.reading" };
 }
+
+/** The words under a chip's file name: what the reading is doing, why it failed, or the size once the file is ready. */
+export function chipLine(
+  view: AttachmentView,
+  t: (key: string, values?: Record<string, unknown>) => string,
+  size: (bytes: number) => string,
+): string {
+  const line = attachmentLine(view);
+  if (line) return t(line.key, { ...line.values, size: size(view.size) });
+  return view.size > 0 ? size(view.size) : "";
+}
+
+/** How many of the picked files are still being read, which Invia waits for. A failed or finished file does not wait. */
+export function filesReading(views: ReadonlyArray<AttachmentView | undefined>): number {
+  return views.filter((view) => view?.state === "reading").length;
+}

@@ -35,7 +35,7 @@ test("removing a file while it is read stops the reading and leaves nothing of i
     await page.getByRole("button", { name: "Aggiungi un file o una formula" }).click();
     await clickSettled(page, page.getByRole("menuitem", { name: "Allega file o immagine" }));
     const chip = page.locator(".ask-attachments li").filter({ hasText: "appunti.txt" });
-    await expect(chip).toContainText("Lettura in corso…");
+    await expect(chip).toContainText("Leggo…");
     const db = () => new DatabaseSync(join(userData, "workspace", "pyxis.db"), { readOnly: true, timeout: 10000 });
     const count = (sql: string) => {
       const handle = db();
