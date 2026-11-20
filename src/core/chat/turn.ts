@@ -1281,7 +1281,7 @@ async function answer(
         ? `<instructions>\n${system}\n</instructions>\nThese instructions replace any you were given before.\n\n`
         : "";
     const replay = outOfStep ? historyText(db, chatId, exclude, handoverChars(provider), session!.syncedTo) : "";
-    const withdrawn = outOfStep ? withdrawnNote(db, chatId) : "";
+    const withdrawn = outOfStep && session ? withdrawnNote(db, session.id) : "";
     const replayBlock =
       replay || withdrawn
         ? `The conversation as the student sees it, since the last turn you completed. This, not anything you remember differently, is the conversation. A reply marked stopped was cut off, and the student saw only the text shown.\n${[replay, withdrawn].filter(Boolean).join("\n")}\n\n`

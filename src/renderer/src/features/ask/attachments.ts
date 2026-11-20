@@ -45,7 +45,15 @@ export function keepUnsentQuestion(
   if (!store.getItem(draftKey(chatId))) store.setItem(draftKey(chatId), text);
 }
 
-export function filesKey(chatId?: string): string {
+/**
+ * Whether the composer of a chat holds something that keeps a chat with no message when the student leaves it: text, a
+ * picked file, or a pick the window is still attaching (`attaching`), which is stored nowhere yet.
+ */
+export function composerHolds(store: Pick<Storage, "getItem">, chatId: string, attaching: boolean): boolean {
+  return attaching || Boolean(store.getItem(draftKey(chatId)) || store.getItem(filesKey(chatId)));
+}
+
+function filesKey(chatId?: string): string {
   return chatId ? `pyxis-files:${chatId}` : "pyxis-files";
 }
 

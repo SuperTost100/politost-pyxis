@@ -97,8 +97,16 @@ export function chatHandlers(
     async attach(input: { path: string; draft?: string }) {
       // A draft is a chat's composer or a new chat's (empty). A pick still registering when its chat was deleted is refused,
       // so no hidden copy is made for a chat that is gone.
-      if (input.draft && !db.prepare(`SELECT 1 FROM chats WHERE id = ?`).get(input.draft)) throw new IpcError("chat-missing", "errors.internal");
-      return needHeld().attach(input.path, input.draft ?? "");
+      const gone = () => Boolean(input.draft) && !db.prepare(`SELECT 1 FROM chats WHERE id = ?`).get(input.draft);
+      if (gone()) throw new IpcError("chat-missing", "errors.internal");
+      const view = await needHeld().attach(input.path, input.draft ?? "");
+      // The chat was removed while the file was being registered (an empty chat the student left): the file belongs to
+      // nobody, so what it made goes and the pick is refused.
+      if (gone()) {
+        needHeld().detach(view.id);
+        throw new IpcError("chat-missing", "errors.internal");
+      }
+      return view;
     },
     detach(input: { id: string }) {
       needHeld().detach(input.id);

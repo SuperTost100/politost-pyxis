@@ -37,8 +37,8 @@ import {
   attachable,
   attachmentLine,
   chipLine,
+  composerHolds,
   draftKey,
-  filesKey,
   filesReading,
   isLocalFile,
   type PickedFile,
@@ -388,7 +388,7 @@ export function AskPage() {
       onScreen.delete(chatId);
       setTimeout(() => {
         if (onScreen.has(chatId)) return;
-        const draft = Boolean(sessionStorage.getItem(draftKey(chatId)) || sessionStorage.getItem(filesKey(chatId)));
+        const draft = composerHolds(sessionStorage, chatId, attachQueue.busy(chatId));
         void invoke("chats.leave", { chatId, draft }).catch(() => undefined);
       }, 0);
     };

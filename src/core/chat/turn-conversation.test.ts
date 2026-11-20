@@ -379,6 +379,38 @@ describe("a chat's stored tool session", () => {
     db.close();
   });
 
+  it("keeps the withdrawn line for the session that holds the question until that session completes a reply, whoever else answers", async () => {
+    const { db } = setup();
+    const first = await ask(db, "prima");
+    const controller = new AbortController();
+    await expect(
+      askTurn(db, {
+        chatId: first.chatId,
+        text: "Spiegami i vettori",
+        allowGeneral: true,
+        signal: controller.signal,
+        run: async () => {
+          controller.abort();
+          throw new DOMException("stopped", "AbortError");
+        },
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    // An API provider answers the next turn: the Claude session, which still holds the question, is not touched.
+    await askTurn(db, {
+      chatId: first.chatId,
+      text: "e le matrici?",
+      allowGeneral: true,
+      run: async () => ({ ...reply, provider: "openai-api", model: "gpt-5.6-terra", text: "Risposta dell'API." }),
+    });
+    const back = await ask(db, "e i tensori?", { chatId: first.chatId });
+    expect(back.seen.conversation!.session?.id).toBe("s1");
+    expect(back.seen.conversation!.followUp).toContain("The student withdrew a question before you answered it");
+    // The session completed a reply after it, so the line is not sent again.
+    const after = await ask(db, "e i vettori?", { chatId: first.chatId });
+    expect(after.seen.conversation!.followUp).not.toContain("withdrew");
+    db.close();
+  });
+
   it("replays a question the engine failed on before any text arrived", async () => {
     const { db } = setup();
     const first = await ask(db, "prima");
