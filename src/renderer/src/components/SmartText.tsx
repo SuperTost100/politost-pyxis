@@ -145,6 +145,8 @@ export function SmartText({
           <MarkdownView
             key={index}
             runnable
+            // Only the text at the end can still be growing: a formula in it waits for its closing delimiter.
+            drawing={streaming && index === segments.length - 1}
             onCitationClick={onCitationClick}
             citationResolver={citationResolver}
           >
