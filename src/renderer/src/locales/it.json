@@ -372,6 +372,29 @@
     "subjectDragCancelled": "Riordino annullato.",
     "retry": "Riprova",
     "attachFilter": "Foto e documenti",
+    "attach": {
+      "sent": "File allegati",
+      "photo": "Foto",
+      "reading": "Lettura in corso…",
+      "readingPercent": "Lettura, {{percent}}%",
+      "scan": "Lettura della scansione…",
+      "scanPage": "Lettura della scansione, pagina {{page}} di {{pages}}",
+      "needsData": "Per leggere questa scansione Pyxis deve scaricare i dati di lettura.",
+      "readScan": "Leggi la scansione",
+      "leftOut": "Ho mandato la domanda senza {{name}}.",
+      "error": {
+        "password": "Il file è protetto da password. Toglila e allegalo di nuovo.",
+        "unreadable": "Pyxis non riesce a leggere questo file. Potrebbe essere danneggiato.",
+        "empty": "Non ho trovato testo in questo file.",
+        "tooLargeDocument": "Il file supera i 256 MB che Pyxis legge per un documento.",
+        "tooLargePhoto": "La foto supera i 40 MB che Pyxis legge.",
+        "tooMany": "Un messaggio porta al massimo {{max}} file. Togline uno per allegare questo.",
+        "unsupported": "Un messaggio può portare foto e file PDF, Word, PowerPoint, di testo e Markdown.",
+        "denied": "Pyxis non ha il permesso di aprire questo file.",
+        "cancelled": "La lettura è stata fermata. Togli il file e allegalo di nuovo.",
+        "data": "Non sono riuscito a leggere la scansione, perché mancano i dati di lettura."
+      }
+    },
     "replied": "Pyxis ha risposto.",
     "loadingChat": "Apertura della chat…",
     "loadFailed": "Non è stato possibile aprire la chat.",
@@ -2802,11 +2825,9 @@
     "unknownRequest": "Richiesta sconosciuta",
     "aborted": "Annullato",
     "invalidOutput": "La risposta non ha la forma attesa",
-    "attachTooBig": "Il file è troppo grande. Ogni allegato sta sotto i 15 MB, e al massimo otto file.",
     "invalidSubject": "Inserisci una materia da 1 a 120 caratteri.",
     "subjectExists": "Esiste già una materia con questo nome.",
     "coreUnavailable": "Il motore interno non riesce ad avviarsi. Riprova oppure apri le Impostazioni per ripristinare una copia di sicurezza.",
-    "attachScanned": "{{name}} è una scansione, quindi qui non ci trovo testo da leggere. Aggiungila alla libreria e scegli Leggi la scansione.",
     "chatBusy": "Pyxis sta ancora rispondendo in questa chat. Aspetta la risposta o fermala, poi chiedi di nuovo."
   },
   "dev": {
@@ -2940,6 +2961,7 @@
       "use": "Usa {{name}}"
     },
     "notice": {
+      "close": "Chiudi",
       "details": "Dettagli",
       "retry": "Riprova",
       "loadFailed": "Non è stato possibile caricarlo."

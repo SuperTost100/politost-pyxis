@@ -1,5 +1,11 @@
 import type Database from "better-sqlite3";
+import { join } from "node:path";
 import { endConversation } from "../engine/funnel";
+import type { Runner } from "../jobs/runner";
+import { ocrConsent, ocrDataStatus } from "../sources/ocr-data";
+import { startScan } from "../sources/ocr-job";
+import { IpcError, type AttachmentView } from "../../shared/ipc";
+import { createHeldFiles, setHeldFiles } from "./held-files";
 import { isFigureFixCall, recordedPlanRun } from "../engine/recorded-plan";
 import { exportChat, type ChatExportLanguage } from "./export";
 import { searchChats } from "./search";
@@ -51,8 +57,57 @@ function recordedChat(text: string, delayMs: number, figureFixes?: string) {
     fixes && isFigureFixCall(input.system) ? fixes(input as never) : reply(input)) as unknown as typeof reply;
 }
 
-export function chatHandlers(db: Database.Database, workspace = "", fixtureReply?: string, replyDelayMs = 0, figureFixes?: string) {
+export function chatHandlers(
+  db: Database.Database,
+  workspace = "",
+  fixtureReply?: string,
+  replyDelayMs = 0,
+  figureFixes?: string,
+  /** What attaching a file needs: the job runner and a way to tell the window. Without them no file can be attached. */
+  files?: { runner: Runner; emit: (view: AttachmentView) => void },
+) {
+  const tess = join(workspace, "runtimes", "tesseract");
+  const held = files
+    ? createHeldFiles({
+        db,
+        workspace,
+        runner: files.runner,
+        emit: files.emit,
+        // A scan starts by itself when the student agreed to local OCR and its data is here, as the Library's does.
+        scan: async (sourceId) => {
+          if (!ocrConsent(db) || (await ocrDataStatus(tess)).state !== "ready") return "needs-data";
+          startScan(db, files.runner, sourceId);
+          return "started";
+        },
+      })
+    : null;
+  setHeldFiles(held);
+  // Files attached before the last quit and never sent have nothing left to send them.
+  held?.sweep();
+  const needHeld = () => {
+    if (!held) throw new Error("attachments-unavailable");
+    return held;
+  };
   return {
+    async attach(input: { path: string; draft?: string }) {
+      // A draft is a chat's composer or a new chat's (empty). A pick still registering when its chat was deleted is refused,
+      // so no hidden copy is made for a chat that is gone.
+      if (input.draft && !db.prepare(`SELECT 1 FROM chats WHERE id = ?`).get(input.draft)) throw new IpcError("chat-missing", "errors.internal");
+      return needHeld().attach(input.path, input.draft ?? "");
+    },
+    detach(input: { id: string }) {
+      needHeld().detach(input.id);
+      return { ok: true as const };
+    },
+    attachments(input: { ids: string[] }) {
+      return needHeld().list(input.ids);
+    },
+    /** The student agreed to download the OCR data and it is here: the scan starts. */
+    async attachScan(input: { id: string }) {
+      const { state } = await ocrDataStatus(tess);
+      if (state !== "ready") throw new Error(`ocr-data-${state}`);
+      return needHeld().scan(input.id);
+    },
     list() {
       return listChats(db).map((row) => ({
         id: row.id,
@@ -107,6 +162,8 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
     },
     remove(input: { chatId: string }) {
       endConversation(input.chatId);
+      // The files its composer still held go first: what a stored question names stays with the chat until it is deleted.
+      held?.discardDraft(input.chatId);
       deleteChat(db, workspace, input.chatId);
       return { ok: true as const };
     },
@@ -125,10 +182,10 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       onDelta?: (text: string) => void;
       onFigure?: (event: FigureEvent) => void;
       onPassages?: (passages: Array<{ index: number; label: string }>) => void;
-      files?: string[];
     }) {
       return regenerateTurn(db, {
         ...input,
+        held,
         workspace,
         run: fixtureReply ? recordedChat(fixtureReply, replyDelayMs, figureFixes) : undefined,
       });
@@ -145,10 +202,11 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       onPassages?: (passages: Array<{ index: number; label: string }>) => void;
       onQuestion?: (messageId: string, chatId: string) => void;
       subject?: string | null;
-      files?: string[];
+      attachments?: string[];
     }) {
       return askTurn(db, {
         ...input,
+        held,
         workspace,
         run: fixtureReply ? recordedChat(fixtureReply, replyDelayMs, figureFixes) : undefined,
       });

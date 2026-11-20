@@ -11,7 +11,7 @@ import { linkedFolders } from "./linked";
 import { extractByExt, extractPlain } from "./documents";
 import { EXISTING_LINK_SQL, EXISTING_SOURCE_SQL, existingLinkFor, hashFiles } from "./quality";
 import { blobSize, hasBlob } from "../blobs";
-import { commitStaged } from "../chat/attach";
+import { commitStaged } from "../chat/test-attach";
 import { deleteChat } from "../chat/turn";
 import { promoteSource, removeSource } from "./manage";
 
