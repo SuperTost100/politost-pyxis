@@ -803,6 +803,24 @@ export const requests = {
     input: z.object({}),
     output: z.record(z.string(), engineSelection),
   },
+  /**
+   * What a tool's row says about the models: the model each of its three roles runs for this account (the first of the
+   * role's list the tool reports; null for a role with none), and the role each task runs in on this tool. Core reads
+   * the models from the catalog the automatic choice plans from, so the row cannot disagree with the planner.
+   */
+  "engines.roles": {
+    input: z.object({ provider: z.string() }),
+    output: z.object({
+      /** False while the tool's own models have not been listed: the roles then name the model file's preferred ones. */
+      known: z.boolean(),
+      roles: z.object({
+        fast: z.string().nullable(),
+        mid: z.string().nullable(),
+        strong: z.string().nullable(),
+      }),
+      tasks: z.record(z.string(), z.enum(["fast", "mid", "strong"])),
+    }),
+  },
   /** The names a student reads: each engine's, and each model's that Pyxis has listed, by engine. */
   "engines.names": {
     input: z.object({}),
@@ -3176,7 +3194,7 @@ export const requests = {
       held: z.array(z.object({ id: z.string(), title: z.string() })),
       /** Tokens the chat used so far, null before the first counted call. */
       usage: usageTotals.nullable(),
-      /** Tool sessions the chat opened (Claude, ChatGPT, Cursor, Gemini): one when it stayed on one tool and went on. */
+      /** Tool sessions the chat opened (Claude, ChatGPT, Gemini): one when it stayed on one tool and went on. */
       sessions: z.number(),
       messages: z.array(
         z.object({

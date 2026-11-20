@@ -28,6 +28,8 @@ import { PartFoot, type OtherChoice } from "./PartFoot";
 import { focusFollowsAnswer, lessonLine, oldLessonView, pageMove, startsOnOpen, stoppedTone, withAnswer, workingCopy, type PartData } from "./partView";
 import { PartsList } from "./PartsList";
 import { usePartRewrites, useRewriteArrival } from "./PartRewrite";
+import { unfinishedQuery } from "../plans/Unfinished";
+import { startedQuizSize } from "./lessonQuiz";
 import { ReaderEnd, ReaderLayout, ReaderLoading, SourcesFooter, useOpenNext } from "./Reader";
 import "./PartPage.css";
 
@@ -160,9 +162,11 @@ export function PartPage({
     const focusTitle = (preventScroll: boolean) => {
       const element = title();
       if (!element) return;
+      // A title the student clicked before this ran already has the focus, and it is theirs: the click cleared the record.
+      const had = document.activeElement === element;
       element.focus({ preventScroll });
       // Remembered as the page's own doing, until the student presses or clicks anything or another answer starts.
-      pageFocus.current = document.activeElement === element ? element : null;
+      if (!had) pageFocus.current = document.activeElement === element ? element : null;
     };
     if (move.focus === "title" && move.scroll === "title") requestAnimationFrame(() => focusTitle(false));
     else if (move.focus === "title") focusTitle(true);
@@ -224,12 +228,20 @@ export function PartPage({
   const turned = useRef(false);
   if (data.position !== firstPosition.current) turned.current = true;
 
+  // The part on screen, read when an answer that was saving comes back.
+  // Written once the page has committed, so a render that React drops never says which part is on screen.
+  const shown = useRef("");
+  useEffect(() => {
+    shown.current = `${topicId}:${data.position}`;
+  }, [topicId, data.position]);
+
   // Saving an answer to the part's text. The answer that finishes the part moves the focus to Continua, unless the
   // student moved it on meanwhile.
   async function answer(blockId: string, pick: number) {
     const itemId = lesson?.itemId;
     if (!itemId) return;
     const before = document.activeElement;
+    const answered = shown.current;
     pageFocus.current = null;
     const result = await invoke("study.lessonAnswer", { planId, itemId, blockId, pick });
     client.setQueryData<PartData>(queryKey, (current) => withAnswer(current, itemId, blockId, result.pick));
@@ -238,10 +250,13 @@ export function PartPage({
       await refreshPlan(client, planId);
       void query.refetch();
     }
-    if (result.partDone) moveToContinue(before);
+    // Only while the part answered is still the one on screen: the student may have opened another meanwhile.
+    if (result.partDone && shown.current === answered) moveToContinue(before, answered);
   }
-  function moveToContinue(before: Element | null) {
+  /** `part` is the part that was answered: a frame later it must still be the one on screen, or Continua is not its. */
+  function moveToContinue(before: Element | null, part?: string) {
     requestAnimationFrame(() => {
+      if (part !== undefined && shown.current !== part) return;
       if (focusFollowsAnswer(before, document.activeElement, document.body, pageFocus.current))
         continueRef.current?.querySelector<HTMLElement>("button")?.focus();
     });
@@ -290,10 +305,17 @@ export function PartPage({
         })
       : t(`plans.path.activity.${pathNext.activity}`)
     : null;
+  // The lesson's last part, when the quiz of this topic is what comes next: Continua says so in words of its own.
+  const quizNext = !data.next && pathNext?.activity === "quiz" && (!pathNext.topicId || pathNext.topicId === topicId);
+  // How many questions that quiz has, once it was started and written: said beside the button, and nothing when unknown.
+  const started = useQuery({ ...unfinishedQuery(planId), enabled: quizNext });
+  const quizSize = quizNext ? startedQuizSize(started.data, topicId) : null;
   const continueLabel = data.next ? (
     <InlineMarkdown>
       {t("lesson.partContinue", { title: data.next.kind === "recap" ? t("lesson.recapTitle") : data.next.title })}
     </InlineMarkdown>
+  ) : quizNext ? (
+    t("lesson.doQuiz")
   ) : pathNextTitle ? (
     t("lesson.partContinue", { title: pathNextTitle })
   ) : (
@@ -585,6 +607,7 @@ export function PartPage({
                 active={active}
                 continueLabel={continueLabel}
                 continueMinutes={data.next?.minutes}
+                continueNote={quizSize ? t("quiz.factQuestions", { count: quizSize }) : undefined}
                 onContinue={goOn}
                 busy={finish.isPending ? "done" : undefined}
                 done={questions.length === 0 && part ? () => finish.mutate() : undefined}
@@ -597,11 +620,15 @@ export function PartPage({
                 }}
                 onOther={onOther}
                 onEnough={() => (back ? back.go() : navigate(`/plans/${planId}`))}
+                // Named for the exam, so it goes there whatever the lesson was opened from; "Per oggi basta" goes back.
+                onExam={!data.next && pathNext ? toPath : undefined}
                 continueRef={continueRef}
                 failed={finish.isError}
               />
             ) : (
               <ReaderEnd
+                planId={planId}
+                onExam={toPath}
                 state={!plan.data || !topic ? "other" : read ? "done" : "current"}
                 doneLabel={t("lesson.doneTitle")}
                 busy={markRead.isPending ? markRead.variables : undefined}

@@ -1,5 +1,5 @@
 import { activeSimulation } from "../study/simulation";
-import { needsSolverChecks, NO_SEPARATE_CHECK, splitChecks, solverChecks } from "./checks";
+import { needsSolverChecks, splitChecks, solverChecks } from "./checks";
 import { stripCheckFences, type AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
@@ -20,7 +20,7 @@ import {
   type FigureRunner,
 } from "../math/figures";
 import { isAbort, IpcError, toIpcError, type AttachmentError, type MessageFile } from "../../shared/ipc";
-import { generate, startingMove, type GenerateInput } from "../engine/generate";
+import { generate, type GenerateInput } from "../engine/generate";
 import { engineSeesImages } from "../engine/capabilities";
 import { systemInPrompt } from "../engine/funnel";
 import { LOCAL_PROVIDER } from "../engine/local";
@@ -1202,7 +1202,7 @@ async function answer(
   const stored = currentSession(db, chatId);
   const long = Boolean(stored && sessionTooLong(stored));
   const session = stored && !long ? stored : undefined;
-  // A session keeps the instructions it was opened under. Cursor Agent and Antigravity carry them inside the first prompt,
+  // A session keeps the instructions it was opened under. Antigravity carries them inside the first prompt,
   // so when the chat's system prompt is not the one the session has (an edit of the template since), it is out of step and
   // this turn delivers the current one. The tools that take a system prompt on every call need nothing more.
   const instructions = contextHash(system);
@@ -1319,11 +1319,9 @@ async function answer(
       conversation: {
         key: chatId,
         followUp: "",
-        session: session ? { provider: session.provider, id: session.sessionId, cwd: session.cwd, seen: session.seen } : null,
-        // A tool that keeps what it was sent keeps a turn the student stops, so the session is stored when it begins.
-        // Cursor Agent loses such a turn, so its session is stored when the turn ends.
+        session: session ? { provider: session.provider, id: session.sessionId, cwd: session.cwd } : null,
+        // A tool keeps what it was sent, a turn the student stops too, so the session is stored when the turn begins.
         onSession: (sessionId, provider, cwd) => {
-          if (provider === "agent") return;
           const open = currentSession(db, chatId);
           if (open?.provider === provider && open.sessionId === sessionId) return;
           startedSession = true;
@@ -1359,7 +1357,6 @@ async function answer(
           now: Date.now(),
           finished: true,
           syncedTo: beforeQuestion,
-          seen: result.seen,
         },
         long ? "long" : "gone",
       );
@@ -1379,13 +1376,13 @@ async function answer(
     // limit), as a reply marked with the failure that offers Continue. A regenerated reply that fails keeps the earlier
     // one instead, and a Continue that added nothing leaves the reply as it was.
     // The tool kept what it was sent, and with Antigravity the start of the reply too, which counts toward the size at
-    // which a session starts over. Cursor Agent loses a turn that did not finish.
+    // which a session starts over.
     const sent = !startedSession && session && answering.provider === session.provider ? followUpFor(answering.provider) : promptFor(answering.provider);
     addSessionChars(
       db,
       chatId,
       answering.provider,
-      answering.provider === "antigravity" ? sent.length + streamed.length : answering.provider === "agent" ? 0 : sent.length,
+      answering.provider === "antigravity" ? sent.length + streamed.length : sent.length,
     );
     const kept = streamed.trim() !== "" && streamed !== resume;
     if (kept && (aborted || !replacing || resume))
@@ -1461,19 +1458,14 @@ async function answer(
   }
   // The check stays on the chat's own engine: it is a short extraction, not part of a stronger answer. It is a model call
   // of its own, a new session in the tool's history, so it runs only for an answer that states maths and has no check
-  // blocks of its own (the template asks for them inline), and never on a tool in `NO_SEPARATE_CHECK` (see there), which
-  // `solverChecks` also applies to the tool that runs each attempt. The engine is looked up only when a check is needed:
-  // with none assigned at this moment the saved reply is returned as it is.
+  // blocks of its own (the template asks for them inline). The engine is looked up only when a check is needed: with none
+  // assigned at this moment the saved reply is returned as it is.
   let checking = false;
   if (needsSolverChecks(parsed.body)) {
     try {
       const checkSelection = selectionFor(db, "chat");
-      // The tool that would run the check is the one `generate()` starts with, which is not the chat's own when that
-      // one is out of requests.
-      const runsOn = (startingMove({ selection: checkSelection })?.to ?? checkSelection).provider;
-      checking = !NO_SEPARATE_CHECK.has(runsOn);
-      if (checking)
-        startChecks(db, { chatId, messageId, body: parsed.body }, { selection: checkSelection, run: input.run });
+      startChecks(db, { chatId, messageId, body: parsed.body }, { selection: checkSelection, run: input.run });
+      checking = true;
     } catch (err) {
       if (!(err instanceof IpcError && err.code === "engine-missing")) throw err;
     }

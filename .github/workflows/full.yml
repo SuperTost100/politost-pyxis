@@ -86,12 +86,15 @@ jobs:
         run: npm run test:scripts
       - name: Unit checks
         if: matrix.shard == 1
+        # The suite takes 2 minutes on Linux, 3.6 on Windows and 6 to 7 on the Intel Mac (run 44200146183). A hang here once
+        # ended only when the runner was lost after 50 minutes, with no log; this ends it in 15 with the files finished so far.
+        timeout-minutes: 15
         run: npm test -- --maxWorkers=2
       - name: Recorded Electron end-to-end checks
         env:
-          # A trace of each failed test costs 10 to 25 % of a short spec, so only the macOS jobs, where failures have gone
-          # unexplained, record it. The failed job's artifact carries the traces (see CONTRIBUTING.md).
-          PYXIS_TRACE: ${{ runner.os == 'macOS' && '1' || '0' }}
+          # A trace of each failed test costs 10 to 25 % of a short spec, so only the macOS and Windows jobs, where failures
+          # have gone unexplained, record it. The failed job's artifact carries the traces (see CONTRIBUTING.md).
+          PYXIS_TRACE: ${{ (runner.os == 'macOS' || runner.os == 'Windows') && '1' || '0' }}
         run: |
           # The OCR data and window checks run first, in shard 1, to expose core failures early.
           if [ "${{ matrix.shard }}" = 1 ]; then
@@ -159,7 +162,15 @@ jobs:
           for combo in ${{ matrix.language }}-dark-1280 ${{ matrix.language }}-dark-960 ${{ matrix.language }}-light-1280 ${{ matrix.language }}-light-960; do
             export PYXIS_UI_COMBO="$combo"
             export PYXIS_UI_RECORD="ci-audit/audit-$combo$suffix.json"
-            bash .github/actions/e2e/run.sh tests/e2e/ui-audit.spec.ts || failed=1
+            if ! bash .github/actions/e2e/run.sh tests/e2e/ui-audit.spec.ts; then
+              failed=1
+              # Playwright empties test-results/ when the next combination starts, so a failed one's output is copied out
+              # first. The next step uploads ci-audit/, and the report step after it uploads the last combination's own.
+              if [ -d test-results ]; then
+                mkdir -p "ci-audit/test-results-$combo$suffix"
+                cp -R test-results/. "ci-audit/test-results-$combo$suffix/"
+              fi
+            fi
           done
           exit $failed
       - name: Preserve route audit records

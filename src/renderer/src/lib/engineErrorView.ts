@@ -1,9 +1,11 @@
 import { isInstallable } from "../../../shared/installers";
-import { TOOL_NAMES } from "../../../shared/tool-names";
+import { RETIRED_TOOL_NAMES, TOOL_NAMES } from "../../../shared/tool-names";
 
 /** Engine names for an error read before the engine list has loaded. */
 export const ENGINE_NAMES: Record<string, string> = {
   ...TOOL_NAMES,
+  // Only for an old record that still names a tool Pyxis no longer offers.
+  ...RETIRED_TOOL_NAMES,
   "anthropic-api": "Anthropic API",
   "openai-api": "OpenAI API",
   ollama: "Ollama",

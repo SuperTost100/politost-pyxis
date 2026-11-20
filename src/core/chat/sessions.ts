@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
+import { retiredProviders } from "../../shared/limits";
 
-/** The tool session a chat continues. One Pyxis chat is one chat in the student's Claude, ChatGPT, Cursor or Gemini history. */
+/** The tool session a chat continues. One Pyxis chat is one chat in the student's Claude, ChatGPT or Gemini history. */
 export type StoredSession = {
   /** The row's own id. */
   id: string;
@@ -21,8 +22,6 @@ export type StoredSession = {
   inStep: boolean;
   /** The last message the session holds in full: a session out of step is told what the student sees after it. Null: from the start. */
   syncedTo: string | null;
-  /** Cursor's own folder was seen to hold this chat, so its absence now means the student cleared it. */
-  seen: boolean;
 };
 
 type Row = {
@@ -35,7 +34,6 @@ type Row = {
   chars: number;
   in_step: number;
   synced_to: string | null;
-  seen: number;
 };
 
 /**
@@ -45,17 +43,24 @@ type Row = {
  * shortcut: a fixed size, since neither tool reports how full its context is; replace it when cli-funnel reports that.
  */
 export const UNCOMPACTED_SESSION_CHARS = 400_000;
-const UNCOMPACTED = new Set(["agent", "antigravity"]);
+const UNCOMPACTED = new Set(["antigravity"]);
 
-/** The chat's open session, if any. */
+/**
+ * The chat's open session, if any. A session on a tool Pyxis no longer offers counts as lost: it ends here, and the
+ * chat's next turn opens a new session on the next tool with the whole conversation handed over. The row stays.
+ */
 export function currentSession(db: Database.Database, chatId: string): StoredSession | undefined {
+  const retired = retiredProviders.map(() => "?").join(", ");
+  db.prepare(
+    `UPDATE chat_sessions SET ended_at = ?, ended_reason = 'gone' WHERE chat_id = ? AND ended_at IS NULL AND provider IN (${retired})`,
+  ).run(Date.now(), chatId, ...retiredProviders);
   const row = db
     .prepare(
-      `SELECT id, provider, session_id, cwd, told, instructions, chars, in_step, synced_to, seen FROM chat_sessions
+      `SELECT id, provider, session_id, cwd, told, instructions, chars, in_step, synced_to FROM chat_sessions
        WHERE chat_id = ? AND ended_at IS NULL ORDER BY opened_at DESC, rowid DESC LIMIT 1`,
     )
     .get(chatId) as Row | undefined;
-  return row && { id: row.id, provider: row.provider, sessionId: row.session_id, cwd: row.cwd, told: row.told, instructions: row.instructions, chars: row.chars, inStep: row.in_step === 1, syncedTo: row.synced_to, seen: row.seen === 1 };
+  return row && { id: row.id, provider: row.provider, sessionId: row.session_id, cwd: row.cwd, told: row.told, instructions: row.instructions, chars: row.chars, inStep: row.in_step === 1, syncedTo: row.synced_to };
 }
 
 /** True when a session of this tool has grown past what the tool is known to handle on its own. */
@@ -87,8 +92,6 @@ export type SessionTurn = {
   finished: boolean;
   /** For a session this turn opens: the last message its first prompt held (the one before the question). */
   syncedTo: string | null;
-  /** Cursor's own folder was seen to hold the chat. */
-  seen?: boolean;
 };
 
 /**
@@ -104,9 +107,9 @@ export function recordSession(
 ): void {
   if (prior && prior.provider === turn.provider && prior.sessionId === turn.sessionId) {
     db.prepare(
-      `UPDATE chat_sessions SET model = ?, effort = ?, told = ?, instructions = ?, chars = chars + ?, seen = MAX(seen, ?),
+      `UPDATE chat_sessions SET model = ?, effort = ?, told = ?, instructions = ?, chars = chars + ?,
          turns = turns + 1, last_used_at = ? WHERE id = ?`,
-    ).run(turn.model, turn.effort, turn.told, turn.instructions, turn.chars, turn.seen ? 1 : 0, turn.now, prior.id);
+    ).run(turn.model, turn.effort, turn.told, turn.instructions, turn.chars, turn.now, prior.id);
     return;
   }
   if (prior)
@@ -117,8 +120,8 @@ export function recordSession(
     );
   db.prepare(
     `INSERT INTO chat_sessions
-      (id, chat_id, provider, session_id, model, effort, cwd, told, instructions, chars, in_step, synced_to, seen, turns, opened_at, last_used_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+      (id, chat_id, provider, session_id, model, effort, cwd, told, instructions, chars, in_step, synced_to, turns, opened_at, last_used_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
   ).run(
     uuidv7(turn.now),
     chatId,
@@ -131,7 +134,6 @@ export function recordSession(
     turn.instructions,
     turn.chars,
     turn.syncedTo,
-    turn.seen ? 1 : 0,
     // A session opened when the tool names it has no finished turn yet.
     turn.finished ? 1 : 0,
     turn.now,

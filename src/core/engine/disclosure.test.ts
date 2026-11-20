@@ -38,7 +38,7 @@ it("records several providers together and keeps an earlier acknowledgement", ()
       { key: "engine-disclosure:openai-api" },
     ]);
     expect(disclosure.isAcknowledged("openai-api")).toBe(true);
-    expect(disclosure.isAcknowledged("agent")).toBe(false);
+    expect(disclosure.isAcknowledged("antigravity")).toBe(false);
   } finally {
     db.close();
   }

@@ -148,7 +148,7 @@ const routes = [
   ["plan-dated", "/plans/audit-ready-plan"],
   // The same exam with hours set in the planner: its topic and simulation rows carry expected days.
   ["plan-dated-planner", "/plans/audit-ready-plan"],
-  // The exam page with finished steps on its open topic, and with an open gap that offers Ripasso mirato.
+  // The exam page with finished steps on its open topic, and with an open gap that offers Rivedi gli errori.
   ["plan-done", "/plans/audit-plan"],
   ["plan-gaps", "/plans/audit-plan"],
   // The block of open gaps in the side column with none, with eight folded and unfolded, and the page "Colma" opens: the
@@ -340,7 +340,7 @@ const routes = [
   ["graph", "/tools/graph"],
   ["python", "/tools/python"],
   ["jobs-popover", "/exams"],
-  // A job stopped because Cursor ran out of requests, with the choices to go on with Claude or wait; and the same job
+  // A job stopped because Gemini ran out of requests, with the choices to go on with Claude or wait; and the same job
   // while it waits.
   ["jobs-out-of-requests", "/exams"],
   ["jobs-waiting", "/exams"],
@@ -817,10 +817,10 @@ Passo 1 di 2: quale legge lega le tre grandezze?','sources','chat.tutor',2);
     now,
     now,
   );
-  // Cursor refused the model, Claude Code answered: the finished job in the jobs list says so.
+  // Gemini refused the model, Claude Code answered: the finished job in the jobs list says so.
   db.prepare(
     "UPDATE jobs SET fallback_json = ? WHERE id = 'audit-ready-build'",
-  ).run(JSON.stringify({ from: "Cursor Agent", to: "Claude Code", reason: "model" }));
+  ).run(JSON.stringify({ from: "Antigravity", to: "Claude Code", reason: "model" }));
   seedPlan(db, {
     id: "audit-review-plan",
     title: "Review plan",
@@ -1195,7 +1195,7 @@ async function openAdvancedEngines(page: Page) {
 
 /** Waits for the two signed-in stand-ins in the list of connected tools, and for Pyxis to have planned with them. */
 /**
- * A refusal an earlier state caused (`onboarding-engines` has Cursor's provider turn a call away) stays in core's memory:
+ * A refusal an earlier state caused (`onboarding-engines` has Gemini's provider turn a call away) stays in core's memory:
  * `prepareEngines` clears the stored rows, not what core holds. The tools are then seen signed out and signed in again,
  * which is how a student ends a refusal, so the states that need them connected do not depend on what ran before them in
  * the same app. Two states land in one app whenever a short list of states is run, or the parts move when a route is added.
@@ -1203,14 +1203,30 @@ async function openAdvancedEngines(page: Page) {
 async function signInAgain(page: Page) {
   const on = join(auditEngines, "on");
   rmSync(on, { force: true });
-  await expect.poll(() => page.evaluate(async () => (await window.pyxis.invoke("engines.overview", {})).filter((row) => row.loggedIn).length)).toBe(0);
+  await expect.poll(() => coreConnected(page)).toBe(0);
   writeFileSync(on, "");
-  await expect.poll(() => page.evaluate(async () => (await window.pyxis.invoke("engines.overview", {})).filter((row) => row.loggedIn).length)).toBe(2);
+  await expect.poll(() => coreConnected(page)).toBe(2);
 }
 
+/** How many tools core reports as connected: installed, signed in, not refused and offered, as the list's rows count them. */
+function coreConnected(page: Page): Promise<number> {
+  return page.evaluate(
+    async () =>
+      (await window.pyxis.invoke("engines.overview", {})).filter(
+        (row) => row.kind === "cli" && row.installed && row.loggedIn && !row.disabled,
+      ).length,
+  );
+}
+
+/**
+ * Waits for the two stand-in tools to be connected in core, and then for the page to say so. The page reads the tool list
+ * when it mounts, which can overlap the change the state's setup made (a scan already running when the file was written
+ * answers with the older state); it reads it again on its own within `OVERVIEW_REFRESH_MS`, so the wait is for that
+ * state, with room for the refresh and a scan, and not for a lucky first read.
+ */
 async function connectedTools(page: Page) {
   await signInAgain(page);
-  await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(2, { timeout: 30000 });
+  await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(2, { timeout: 60000 });
   await page.evaluate(() => window.pyxis.invoke("engines.autoConfigure", {}));
 }
 
@@ -1801,9 +1817,9 @@ function prepareBackupState(name: string) {
 
 /** The empty Exams page: the plans move to a side table and come back for every other state. Foreign keys are off on this connection only, so nothing that belongs to a plan is deleted with it. */
 /**
- * Stand-in CLIs for the whole audit. Claude Code and Cursor Agent report a sign-in only while the `on` file exists, so
- * every state but setup step 2 sees installed engines that are signed out. Cursor Agent's provider refuses every call,
- * Codex is always signed out and Antigravity is not installed. No model is ever called.
+ * Stand-in CLIs for the whole audit. Claude Code and Antigravity report a sign-in only while the `on` file exists, so
+ * every state but setup step 2 sees installed engines that are signed out. Antigravity's provider refuses every call
+ * and Codex is always signed out. No model is ever called.
  */
 let auditEngines = "";
 function fakeEngines(): Record<string, string> {
@@ -1828,17 +1844,14 @@ function fakeEngines(): Record<string, string> {
       "codex",
       `case "$1" in --version) echo "codex-cli 0.150.0";; login) echo "Not logged in"; exit 1;; *) exit 1;; esac`,
     ),
-    CLI_FUNNEL_AGENT_BIN: fake(
-      "agent",
+    CLI_FUNNEL_AGY_BIN: fake(
+      "agy",
       `case "$1" in
-  --version) echo "2026.09.28-64d2043";;
-  status) if [ -f "${on}" ]; then echo '{"isAuthenticated":true}'; else echo '{"isAuthenticated":false}'; fi;;
-  about) echo '{}';;
-  --list-models) printf 'grok-4.7-low - Grok 4.7  Low\\ngemini-3.8-flash - Gemini 3.8 Flash\\n';;
+  --version) echo "1.3.0";;
+  models) if [ -f "${on}" ]; then printf 'gemini-3.8-flash\\tGemini 3.8 Flash\\n'; else echo "Please sign in to continue." >&2; exit 1; fi;;
   *) if [ -f "${limit}" ]; then echo "Error: You have hit your usage limit." >&2; else echo "Error: request failed with status 401 Unauthorized" >&2; fi; exit 1;;
 esac`,
     ),
-    CLI_FUNNEL_AGY_BIN: join(auditEngines, "not-installed"),
   };
 }
 
@@ -1854,7 +1867,7 @@ const CONNECTED_TOOLS = [
 /**
  * Setup step 2 and the states of AI tools that show connected tools sign the stand-ins in; every other state finds them
  * signed out and nothing chosen, put in order or confirmed. The pinned default engine of the recorded replies stays:
- * the guided flow and the chats answer through it. In the ordered list Cursor answers a call with a usage limit
+ * the guided flow and the chats answer through it. In the ordered list Gemini answers a call with a usage limit
  * instead of a refused sign-in.
  */
 function prepareEngines(name: string) {
@@ -1878,14 +1891,14 @@ function prepareEngines(name: string) {
         OR key LIKE 'engine-limited:%' OR key IN ('engines.allowed', 'engines.order');`);
     // What the signed-in tools receive is already confirmed, so their notice covers none of these states.
     if (CONNECTED_TOOLS.includes(name))
-      for (const provider of ["claude", "agent"])
+      for (const provider of ["claude", "antigravity"])
         db.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES(?,'true',?)").run(
           `engine-disclosure:${provider}`,
           Date.now(),
         );
     if (name === "settings-engines-listed")
       db.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES('engines.order',?,?)").run(
-        JSON.stringify(["agent", "claude"]),
+        JSON.stringify(["antigravity", "claude"]),
         Date.now(),
       );
     if (name === "onboarding-engines-chosen")
@@ -2442,6 +2455,24 @@ function preparePacks(name: string) {
   if (name === "settings-study-pack-failed") auditPacks?.fail.add("graphviz.js");
 }
 
+/**
+ * A quiz page that is still open saves its draft when it goes, as it does for a student, and that save lands over the draft
+ * the next state seeds if the page is only left by the reload that follows the seeding. The page is left first, and the
+ * save has been answered before anything is written under it: core answers requests in the order they arrive.
+ */
+async function leaveQuiz(page: Page) {
+  if (!(await page.evaluate(() => location.hash.includes("/quiz/")))) return;
+  const heading = page.locator("h1:visible").first();
+  const before = await heading.textContent();
+  await page.evaluate(() => {
+    location.hash = "/";
+  });
+  await expect(heading).not.toHaveText(before ?? "");
+  // The page's effects have run once the frames after the change have.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+}
+
 function prepareState(name: string) {
   preparePacks(name);
   // First, so the exams the empty states hid are back before any step below writes a row that belongs to one: the lesson
@@ -2809,18 +2840,18 @@ function prepareState(name: string) {
       return;
     }
     if (name === "jobs-out-of-requests" || name === "jobs-waiting") {
-      // The job Cursor stopped, as the runner records an engine failure: the code, the tool in brackets, then its text.
+      // The job Gemini stopped, as the runner records an engine failure: the code, the tool in brackets, then its text.
       db.prepare(
         "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('audit-out-cards','cards-build',?,'failed',0,?,?,?)",
       ).run(
         JSON.stringify({ planId: "audit-plan", topicId: "audit-topic" }),
-        "quota [agent]: You have hit your usage limit.",
+        "quota [antigravity]: You have hit your usage limit.",
         now,
         now,
       );
       if (name === "jobs-waiting")
         db.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES('job-wait:audit-out-cards',?,?)").run(
-          JSON.stringify({ until: new Date(new Date().setHours(24 + 6, 0, 0, 0)).getTime(), tool: "agent" }),
+          JSON.stringify({ until: new Date(new Date().setHours(24 + 6, 0, 0, 0)).getTime(), tool: "antigravity" }),
           now,
         );
       return;
@@ -3159,18 +3190,18 @@ async function openState(page: Page, name: string) {
           name: both("Le AI che Pyxis può usare", "The AIs Pyxis can use"),
         })
         .getByRole("listitem");
-      await expect(cards).toHaveCount(4, { timeout: 30000 });
-      const agent = cards.filter({ hasText: "Cursor" });
-      // Cursor's provider refuses a call, so its card reads as an expired sign-in.
+      await expect(cards).toHaveCount(3, { timeout: 30000 });
+      const gemini = cards.filter({ hasText: "Gemini" });
+      // Gemini's provider refuses a call, so its card reads as an expired sign-in.
       await page.evaluate(async () => {
         await window.pyxis.invoke("engines.acknowledge", {
-          providers: ["claude", "agent"],
+          providers: ["claude", "antigravity"],
         });
         await window.pyxis
-          .invoke("engines.test", { provider: "agent" })
+          .invoke("engines.test", { provider: "antigravity" })
           .catch(() => undefined);
       });
-      await expect(agent).toContainText(/Accesso scaduto|Sign-in expired/, {
+      await expect(gemini).toContainText(/Accesso scaduto|Sign-in expired/, {
         timeout: 30000,
       });
       // A saved pick of engines opens Advanced by itself, with the pick ticked.
@@ -3184,16 +3215,16 @@ async function openState(page: Page, name: string) {
     case "settings-engines":
       await openAdvancedEngines(page);
       await expect(page.getByRole("region", { name: both("Da collegare", "To connect") })).toBeVisible();
-      await expect(page.locator(".engines-section")).not.toHaveAttribute("open");
+      await expect(page.locator(".engines-section")).toBeVisible();
       break;
-    // Two tools in the student's order, each with its place. Cursor, the first, answers a call with a usage limit, so
+    // Two tools in the student's order, each with its place. Gemini, the first, answers a call with a usage limit, so
     // its row says it is out of requests and when they are back.
     case "settings-engines-listed": {
       if (process.platform === "win32") break;
       await connectedTools(page);
       await expect(page.locator(".engines-tool-n")).toHaveText(["1", "2"]);
-      await page.evaluate(() => window.pyxis.invoke("engines.test", { provider: "agent" }).catch(() => undefined));
-      await expect(page.locator('.engines-tool[data-tool="agent"] .engines-tool-state')).toHaveText(
+      await page.evaluate(() => window.pyxis.invoke("engines.test", { provider: "antigravity" }).catch(() => undefined));
+      await expect(page.locator('.engines-tool[data-tool="antigravity"] .engines-tool-state')).toHaveText(
         both("Richieste finite", "Out of requests"),
         { timeout: 30000 },
       );
@@ -3201,7 +3232,6 @@ async function openState(page: Page, name: string) {
     }
     case "settings-engines-advanced":
       await openAdvancedEngines(page);
-      await page.locator(".engines-section > summary").click();
       await expect(page.locator(".engines-feature-row")).toHaveCount(8);
       await expect(page.locator(".engines-feature-row").first()).toBeVisible();
       break;
@@ -3408,7 +3438,7 @@ async function openState(page: Page, name: string) {
       break;
     case "plan-gaps":
       await expect(
-        page.getByRole("button", { name: /^(Ripasso mirato|Targeted review)/ }).first(),
+        page.getByRole("button", { name: /^(Rivedi gli errori|Review the mistakes)/ }).first(),
       ).toBeVisible();
       await expect(page.locator(".px-exam-aside li.px-gap")).toHaveCount(1);
       break;
@@ -3916,12 +3946,12 @@ async function openState(page: Page, name: string) {
         .check();
       await expect(page.getByRole("spinbutton")).toBeVisible();
       break;
-    // Cursor answers a call with a usage limit, so its jobs stop and ask; Claude is the tool to go on with.
+    // Gemini answers a call with a usage limit, so its jobs stop and ask; Claude is the tool to go on with.
     case "jobs-out-of-requests":
     case "jobs-waiting": {
       if (process.platform === "win32") break;
       await expect(page.locator("h1:visible").first()).toBeVisible();
-      await page.evaluate(() => window.pyxis.invoke("engines.test", { provider: "agent" }).catch(() => undefined));
+      await page.evaluate(() => window.pyxis.invoke("engines.test", { provider: "antigravity" }).catch(() => undefined));
       await page.getByRole("button", { name: /^(Attività|Background tasks)(:|\s|$)/ }).click();
       const list = page.getByRole("region", { name: /^(Attività|Background tasks)$/ });
       await expect(list).toBeVisible();
@@ -4004,7 +4034,7 @@ async function openState(page: Page, name: string) {
         ).toBeVisible();
         await expect(
           list.getByText(
-            /Il tuo abbonamento a Cursor non include questo modello, quindi ha risposto Claude\.|Your Cursor subscription doesn't include this model, so Claude answered\./,
+            /Il tuo abbonamento a Gemini non include questo modello, quindi ha risposto Claude\.|Your Gemini subscription doesn't include this model, so Claude answered\./,
           ),
         ).toBeVisible();
         await expect(
@@ -4429,13 +4459,13 @@ async function openState(page: Page, name: string) {
       // What the exam changed comes from mastery before and after it and the gap its wrong answer counts for.
       const changes = page.locator(".px-res-changes");
       await expect(changes).toContainText("You leave the weight out");
-      await expect(changes).toContainText(/Nuovo passo: ripasso mirato|New step: targeted review/);
+      await expect(changes).toContainText(/Nuovo passo: rivedi gli errori|New step: review the mistakes/);
       await expect(changes).toContainText(/Force · (una lacuna seria|a serious gap)/);
       await expect(page.locator(".px-res-rises")).toContainText(/Energy (sale|rises)/);
       await expect(page.locator(".px-res-fallback")).toContainText("ChatGPT");
-      // One primary button, Ripasso mirato; every exercise in order, the one to review open.
+      // One primary button, Rivedi gli errori; every exercise in order, the one to review open.
       await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
-      await expect(page.locator(".px-res .ant-btn-primary")).toHaveText(/Ripasso mirato|Targeted review/);
+      await expect(page.locator(".px-res .ant-btn-primary")).toHaveText(/Rivedi (l'errore|i \d+ errori)|Review the (mistake|\d+ mistakes)/);
       await expect(page.locator(".px-res-q:not(.is-correct)")).toHaveCount(1);
       await expect(page.locator(".px-res-q:not(.is-correct)")).toContainText(/Sbagliata|Wrong/);
       break;
@@ -5874,6 +5904,7 @@ async function walk(slice: typeof auditRoutes) {
             try {
               await resetPacks(page, name);
               lookChats(name);
+              await leaveQuiz(page);
               prepareState(name);
               await page.evaluate((route) => {
                 location.hash = route;

@@ -33,7 +33,6 @@ function fakeFunnel(options: { providers?: Record<string, unknown> }) {
     providers: {
       claude: { capabilities: caps(false), openSession: () => undefined },
       codex: { capabilities: caps(false), openSession: () => undefined },
-      agent: { capabilities: caps(false) },
       antigravity: { capabilities: caps(false) },
       ...options.providers,
     },
@@ -105,19 +104,15 @@ const {
   setApiKeys,
   setScratch,
   CONVERSATION_IDLE_MS,
-  cursorSessionLost,
-  setCursorChatsRoot,
 } = await import("./funnel");
 
 const { readJobLog, setDebugLogRoot, setDebugOn } = await import("../debug/log");
 const { withUsageScope } = await import("./usage");
-const { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = await import("node:fs");
+const { mkdtempSync, rmSync } = await import("node:fs");
 const { tmpdir } = await import("node:os");
 const { join } = await import("node:path");
 
 beforeEach(() => {
-  // No Cursor folder on this machine decides a test; the tests of the check give it one.
-  setCursorChatsRoot(null);
   run.mockReset();
   closeSession.mockReset();
   setScratch("/scratch");
@@ -129,7 +124,7 @@ afterEach(() => {
 });
 
 describe("runTurn", () => {
-  it.each(["agent", "antigravity", "claude"] as const)(
+  it.each(["antigravity", "claude"] as const)(
     "runs %s with text-only access in the scratch folder",
     async (provider) => {
       run.mockResolvedValueOnce({ text: "ok" });
@@ -185,7 +180,7 @@ describe("runTurn", () => {
   it("keeps provider failures that were not cancelled", async () => {
     run.mockResolvedValueOnce({ error: new Error("quota") });
     await expect(
-      runTurn({ selection: { provider: "agent", model: "m" }, prompt: "hi" }),
+      runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi" }),
     ).rejects.toThrow("quota");
   });
 
@@ -237,7 +232,7 @@ describe("runTurn", () => {
 });
 
 describe("chat conversations", () => {
-  type Provider = "claude" | "codex" | "agent" | "antigravity";
+  type Provider = "claude" | "codex" | "antigravity";
   const chat = (
     followUp: string,
     options: { provider?: Provider; session?: { provider: string; id: string; cwd: string }; system?: string } = {},
@@ -258,7 +253,7 @@ describe("chat conversations", () => {
     expect(first).toMatchObject({ sessionId: "s-1", cwd: "/scratch", continued: false });
   });
 
-  it.each(["claude", "codex", "agent", "antigravity"] as const)(
+  it.each(["claude", "codex", "antigravity"] as const)(
     "continues the stored %s session by id, in the same folder, with only the new message",
     async (provider) => {
       run.mockResolvedValue({ text: "answer" });
@@ -272,20 +267,20 @@ describe("chat conversations", () => {
     },
   );
 
-  it("leaves the system prompt out of a turn in a session Cursor Agent or Antigravity holds, which got it in the first prompt", async () => {
+  it("leaves the system prompt out of a turn in a session Antigravity holds, which got it in the first prompt", async () => {
     run.mockResolvedValue({ text: "answer" });
-    for (const provider of ["agent", "antigravity", "claude", "codex"] as const) {
+    for (const provider of ["antigravity", "claude", "codex"] as const) {
       await runTurn(chat("next", { provider, session: stored(provider) }));
       await runTurn(chat("first", { provider }));
     }
     const systems = run.mock.calls.map(([request]) => (request as { system?: string }).system);
     // Continued, then new, for each provider in turn.
-    expect(systems).toEqual([undefined, "tutor", undefined, "tutor", "tutor", "tutor", "tutor", "tutor"]);
+    expect(systems).toEqual([undefined, "tutor", "tutor", "tutor", "tutor", "tutor"]);
   });
 
   it("goes on in the session it tracked for a caller that stores none, such as a lesson's tool rounds", async () => {
     run.mockResolvedValue({ text: "answer" });
-    for (const provider of ["claude", "agent"] as const) {
+    for (const provider of ["claude", "antigravity"] as const) {
       run.mockClear();
       const round = (followUp: string) => ({
         selection: { provider, model: "m" },
@@ -543,10 +538,10 @@ describe("API keys", () => {
 });
 
 describe("schema repairs", () => {
-  it("continue the session with only the error on Claude Code, and resend the prompt on Cursor Agent", async () => {
+  it("continue the session with only the error on Claude Code, and resend the prompt on Antigravity", async () => {
     const { generate } = await import("./generate");
     const { z } = await import("zod");
-    for (const provider of ["claude", "agent"] as const) {
+    for (const provider of ["claude", "antigravity"] as const) {
       run.mockReset();
       closeSession.mockReset();
       run
@@ -569,124 +564,6 @@ describe("schema repairs", () => {
         expect(repair.sessionId).toBeUndefined();
         expect(repair.prompt).toContain("name a colour");
       }
-    }
-  });
-});
-
-describe("a Cursor Agent chat that Cursor no longer holds", () => {
-  const recorded = JSON.parse(readFileSync("tests/fixtures/cursor-resume-unknown-id.json", "utf8")) as {
-    requested: string;
-    events: Array<{ session_id?: string }>;
-  };
-  const folder = () => mkdtempSync(join(tmpdir(), "pyxis-cursor-chats-"));
-  const chatTurn = (id: string) => ({
-    selection: { provider: "agent" as const, model: "m" },
-    prompt: "whole context, then second",
-    system: "tutor",
-    conversation: { key: "chat-1", followUp: "second", session: { provider: "agent", id, cwd: "/scratch" } },
-  });
-
-  it("gives no sign in the stream: Cursor answers an unknown id as a new chat under the same id", () => {
-    expect(new Set(recorded.events.map((event) => event.session_id))).toEqual(new Set([recorded.requested]));
-  });
-
-  it("is told from Cursor's chat folders: lost only when they hold other chats and not this one", () => {
-    const root = folder();
-    try {
-      setCursorChatsRoot(root);
-      // Nothing there, as with another layout: the chat counts as held.
-      expect(cursorSessionLost("chat-a")).toBe(false);
-      mkdirSync(join(root, "workspace-1", "chat-a"), { recursive: true });
-      expect(cursorSessionLost("chat-a")).toBe(false);
-      expect(cursorSessionLost("chat-b")).toBe(true);
-      expect(cursorSessionLost("../chat-a")).toBe(false);
-      setCursorChatsRoot(join(root, "missing"));
-      expect(cursorSessionLost("chat-b")).toBe(false);
-    } finally {
-      setCursorChatsRoot(null);
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("does not call a chat lost when the folder holds only files or empty workspaces", () => {
-    const root = folder();
-    try {
-      setCursorChatsRoot(root);
-      writeFileSync(join(root, "README"), "not a chat");
-      expect(cursorSessionLost("chat-a")).toBe(false);
-      mkdirSync(join(root, "workspace-1"), { recursive: true });
-      expect(cursorSessionLost("chat-a")).toBe(false);
-      mkdirSync(join(root, "workspace-1", "chat-b"));
-      expect(cursorSessionLost("chat-a")).toBe(true);
-    } finally {
-      setCursorChatsRoot(null);
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("sends the whole prompt, with no session id, when Cursor lost the chat, and goes on in the chat it held", async () => {
-    const root = folder();
-    try {
-      setCursorChatsRoot(root);
-      mkdirSync(join(root, "workspace-1", "held-chat"), { recursive: true });
-      run.mockResolvedValue({ text: "answer" });
-      const lost = await runTurn(chatTurn("lost-chat"));
-      expect(run.mock.calls[0]![0]).toMatchObject({ prompt: "whole context, then second" });
-      expect(run.mock.calls[0]![0].sessionId).toBeUndefined();
-      expect(lost.continued).toBe(false);
-      const held = await runTurn(chatTurn("held-chat"));
-      expect(run.mock.calls[1]![0]).toMatchObject({ prompt: "second", sessionId: "held-chat" });
-      expect(held.continued).toBe(true);
-    } finally {
-      setCursorChatsRoot(null);
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("a Cursor Agent chat once seen in Cursor's folder", () => {
-  const folder = () => mkdtempSync(join(tmpdir(), "pyxis-cursor-seen-"));
-  const turn = (id: string, seen: boolean) => ({
-    selection: { provider: "agent" as const, model: "m" },
-    prompt: "whole context",
-    conversation: { key: "chat-1", followUp: "second", session: { provider: "agent", id, cwd: "/scratch", seen } },
-  });
-
-  it("is lost when the folder is empty or gone and the chat was seen there, held when it never was", () => {
-    const root = folder();
-    try {
-      setCursorChatsRoot(root);
-      expect(cursorSessionLost("chat-a", false)).toBe(false);
-      expect(cursorSessionLost("chat-a", true)).toBe(true);
-      setCursorChatsRoot(join(root, "missing"));
-      expect(cursorSessionLost("chat-a", true)).toBe(true);
-      expect(cursorSessionLost("chat-a", false)).toBe(false);
-      setCursorChatsRoot(root);
-      mkdirSync(join(root, "workspace-1", "chat-a"), { recursive: true });
-      expect(cursorSessionLost("chat-a", true)).toBe(false);
-    } finally {
-      setCursorChatsRoot(null);
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("reports that the chat was seen after a turn that left it in the folder, and sends the whole prompt once it is gone", async () => {
-    const root = folder();
-    try {
-      setCursorChatsRoot(root);
-      mkdirSync(join(root, "workspace-1", "s-1"), { recursive: true });
-      run.mockResolvedValue({ text: "answer" });
-      const first = await runTurn({ ...turn("s-1", false), conversation: { key: "chat-1", followUp: "first", session: null } });
-      expect(first).toMatchObject({ sessionId: "s-1", seen: true });
-      // The student clears Cursor's history: nothing is left in its folder.
-      rmSync(join(root, "workspace-1"), { recursive: true, force: true });
-      const gone = await runTurn(turn("s-1", true));
-      expect(run.mock.calls[1]![0]).toMatchObject({ prompt: "whole context" });
-      expect(run.mock.calls[1]![0].sessionId).toBeUndefined();
-      expect(gone.continued).toBe(false);
-    } finally {
-      setCursorChatsRoot(null);
-      rmSync(root, { recursive: true, force: true });
     }
   });
 });

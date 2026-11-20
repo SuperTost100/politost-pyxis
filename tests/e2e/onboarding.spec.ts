@@ -182,14 +182,14 @@ test("First setup: you with crash reports off, the AI with its notice, the two w
     await expect(notice.getByText("ChatGPT li invia ad OpenAI.")).toBeVisible();
     await expect(
       page.getByRole("list", { name: "Le AI che Pyxis può usare" }).getByRole("listitem"),
-    ).toHaveCount(4);
+    ).toHaveCount(3);
     await expect(cardState(page, "Claude")).toHaveText("Collegato");
     await expect(cardState(page, "ChatGPT")).toHaveText("Collegato");
     // With one tool connected, the others are offered as a second.
-    await expect(cardState(page, "Cursor")).toHaveText("Collega anche questa");
-    await expect(card(page, "Gemini")).toContainText(
-      "Gratis per gli studenti universitari",
-    );
+    await expect(cardState(page, "Gemini")).toHaveText("Collega anche questa");
+    // The Gemini card promises no price, plan or duration: it says the offers depend on the country.
+    await expect(card(page, "Gemini")).toContainText("Google ha offerte per studenti che dipendono dal paese");
+    await expect(card(page, "Gemini")).not.toContainText(/gratis|AI Pro/i);
     await expect(button(page, "Continua")).toHaveCount(0);
     // One primary button per state: while the notice waits, it is "Ho capito".
     await expect(primaryButtons(page)).toHaveText(["Ho capito"]);
@@ -308,58 +308,55 @@ test("First setup: each tool shows its real state, an expired sign-in is never c
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
   const { bin, env } = fakeBins({ claude: true, codex: false });
-  // Cursor Agent says it is signed in, but its provider turns every call away with a 401, as Codex did after its token
-  // expired. Antigravity is not installed.
-  const agent = join(bin, "agent");
+  // Antigravity says it has a Gemini key, but its provider turns every call away with a 401, as Codex did after its token
+  // expired.
+  const agy = join(bin, "agy");
   writeFileSync(
-    agent,
+    agy,
     `#!/bin/sh
 case "$1" in
-  --version) echo "2026.09.28-64d2043";;
-  status) echo '{"isAuthenticated":true}';;
-  about) echo '{}';;
-  --list-models) printf 'grok-4.7-low - Grok 4.7  Low\\ngemini-3.8-flash - Gemini 3.8 Flash\\nclaude-sonnet-5-5 - Claude Sonnet 5.5\\n';;
+  --version) echo "1.3.0";;
+  models) printf 'gemini-3.8-flash\\tGemini 3.8 Flash\\n';;
   *) echo "Error: request failed with status 401 Unauthorized" >&2; exit 1;;
 esac
 `,
   );
-  chmodSync(agent, 0o755);
-  const app = await launch(userData, { ...env, CLI_FUNNEL_AGENT_BIN: agent });
+  chmodSync(agy, 0o755);
+  const app = await launch(userData, { ...env, CLI_FUNNEL_AGY_BIN: agy, GEMINI_API_KEY: "test-key" });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await button(page, "Continua").click();
-    await expect(cardState(page, "Cursor")).toHaveText("Collegato", { timeout: 30000 });
+    await expect(cardState(page, "Gemini")).toHaveText("Collegato", { timeout: 30000 });
     await expect(cardState(page, "Claude")).toHaveText("Collegato");
     await expect(cardState(page, "ChatGPT")).toHaveText("Serve l'accesso");
-    await expect(cardState(page, "Gemini")).toHaveText("Collega anche questa");
     await page
       .getByRole("region", { name: "Cosa esce da questo computer" })
       .getByRole("button", { name: "Ho capito" })
       .click();
     await advanced(page).click();
-    await expect(engineRow(page, "Cursor").locator(".px-engine-model")).not.toBeEmpty({
+    await expect(engineRow(page, "Gemini").locator(".px-engine-model")).not.toBeEmpty({
       timeout: 30000,
     });
 
     // The provider refuses a call: the card turns to an expired sign-in, offers Sign in, and the plan stops using it.
     const refused = await page.evaluate(() =>
       window.pyxis
-        .invoke("engines.test", { provider: "agent" })
+        .invoke("engines.test", { provider: "antigravity" })
         .then(() => "answered", (err: { code?: string }) => err.code),
     );
     expect(refused).toBe("not-logged-in");
-    await expect(cardState(page, "Cursor")).toHaveText("Accesso scaduto");
-    await expect(engineRow(page, "Cursor")).toContainText("Accesso scaduto");
-    await button(card(page, "Cursor"), "Cursor").click();
-    await expect(button(card(page, "Cursor"), "Accedi con Cursor")).toBeVisible();
+    await expect(cardState(page, "Gemini")).toHaveText("Accesso scaduto");
+    await expect(engineRow(page, "Gemini")).toContainText("Accesso scaduto");
+    await button(card(page, "Gemini"), "Gemini").click();
+    await expect(button(card(page, "Gemini"), "Accedi dal terminale")).toBeVisible();
     await expect
       .poll(async () =>
         Object.values(
           await page.evaluate(() => window.pyxis.invoke("engines.features", {})),
         ).map((selection) => selection.provider),
       )
-      .not.toContain("agent");
+      .not.toContain("antigravity");
     await noAxeViolations(page);
 
     // "I choose" starts from the engines that are ready: Claude, which cannot be unticked while it is the only one.
@@ -429,16 +426,16 @@ test("First setup: a signed-out tool offers sign-in first, with none installed n
     await expect(
       found(page, "Non ho trovato nessuna AI su questo computer."),
     ).toHaveCount(1, { timeout: 30000 });
-    // Nothing is picked for the student: four cards, none connected, and the step's one primary action is "later".
-    for (const name of ["Claude", "ChatGPT", "Gemini", "Cursor"])
+    // Nothing is picked for the student: three cards, none connected, and the step's one primary action is "later".
+    for (const name of ["Claude", "ChatGPT", "Gemini"])
       await expect(cardState(page, name)).toHaveText("Non collegato");
     await expect(button(page, "Installa e accedi")).toHaveCount(0);
     await expect(page.getByRole("region", { name: /^Configura / })).toHaveCount(0);
     await expect(primaryButtons(page)).toHaveText(["Lo faccio dopo"]);
     // Each card links to the plans, and each link names its tool for screen readers.
     await expect(
-      button(page, /^Vedi i piani di (Claude|ChatGPT|Gemini|Cursor)$/),
-    ).toHaveCount(4);
+      button(page, /^Vedi i piani di (Claude|ChatGPT|Gemini)$/),
+    ).toHaveCount(3);
     // Picking ChatGPT offers Install and sign in, with the command it runs shown first, never a GitHub page.
     await button(card(page, "ChatGPT"), "ChatGPT").click();
     const chatgpt = page.getByRole("region", { name: "Configura ChatGPT" });
@@ -938,5 +935,54 @@ test("First setup: a new profile starts in the computer's language, and a choice
     await app.close();
   } finally {
     removeTestFolder(userData);
+  }
+});
+
+test("First setup: the three tools sit in one row when they fit and in one column when they do not, never two and one", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-grid-"));
+  const { bin, env } = fakeBins({ claude: true, codex: false });
+  const app = await launch(userData, env);
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await button(page, "Continua").click();
+    await expect(cardState(page, "Claude")).toHaveText("Collegato", { timeout: 30000 });
+    const rows: Array<[string, number]> = [];
+    const scales = new Map<string, number>();
+    for (const textSize of ["md", "lg"] as const)
+      for (const width of [1440, 1280, 1100, 960, 800, 640]) {
+        await page.evaluate((size) => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: size }), textSize);
+        // The page reads the profile once and is not told about a save made through the bridge (the first large-text row
+        // was measured at normal text). The size goes on the root as the app's own effect puts it, which is what the
+        // styles read, and the test waits until the page really draws at it before it measures.
+        await page.evaluate((size) => {
+          document.documentElement.dataset.text = size;
+        }, textSize);
+        await expect.poll(() => page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--text-scale")) || 1)).toBe(textSize === "lg" ? 1.12 : 1);
+        await page.setViewportSize({ width, height: 900 });
+        const scale = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--text-scale")) || 1);
+        scales.set(textSize, scale);
+        // The three cards' own boxes: how many rows they make, and whether the ones in a row have the same width.
+        const layout = await page.locator(".px-tools > .px-tool").evaluateAll((nodes) => {
+          const boxes = nodes.map((node) => node.getBoundingClientRect());
+          return { tops: new Set(boxes.map((box) => Math.round(box.top))).size, widths: new Set(boxes.map((box) => Math.round(box.width))).size };
+        });
+        rows.push([`${textSize} ${width}`, layout.tops]);
+        // One row of three, or three rows of one; the cards share one width either way.
+        expect([1, 3], `${textSize}, ${width} px`).toContain(layout.tops);
+        expect(layout.widths, `${textSize}, ${width} px`).toBe(1);
+      }
+    // The large-text rows were drawn at a larger text: the scale the page uses is bigger than at normal text.
+    expect(scales.get("lg")!).toBeGreaterThan(scales.get("md")!);
+    // The wide windows hold the three in a row.
+    expect(rows.find(([key]) => key === "md 1280")![1]).toBe(1);
+    expect(rows.find(([key]) => key === "lg 1440")![1]).toBe(1);
+    expect(rows.find(([key]) => key === "md 640")![1]).toBe(3);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(bin, { recursive: true, force: true });
   }
 });

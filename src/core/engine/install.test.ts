@@ -9,8 +9,8 @@ describe("installCommand", () => {
     expect(installCommand("claude", "darwin")).toBe(
       "curl -fsSL 'https://claude.ai/install.sh' | bash",
     );
-    expect(installCommand("agent", "win32")).toBe(
-      "irm 'https://cursor.com/install?win32=true' | iex",
+    expect(installCommand("antigravity", "win32")).toBe(
+      "irm 'https://antigravity.google/cli/install.ps1' | iex",
     );
   });
 });
@@ -66,7 +66,7 @@ describe("runInstaller", () => {
 
   it("gives the installer no input, so a question cannot hang it", async () => {
     await expect(
-      runInstaller("agent", {
+      runInstaller("antigravity", {
         command: [
           node,
           [

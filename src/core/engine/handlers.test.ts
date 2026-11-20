@@ -345,9 +345,8 @@ describe("text-only engines", () => {
     capabilities: { effort: false, fast: false, access },
   });
 
-  it("enables Cursor Agent and Antigravity through the bundled CLI Funnel", () => {
+  it("enables Antigravity through the bundled CLI Funnel", () => {
     const { providers } = getFunnel();
-    expect(providers.agent.capabilities.access).toContain("none");
     expect(providers.antigravity.capabilities.access).toContain("none");
     const db = openDatabase(":memory:");
     engineHandlers(db, () => undefined).setFeature({
@@ -362,10 +361,7 @@ describe("text-only engines", () => {
   it("offers no sign-out for Antigravity and explains why instead of failing", async () => {
     const db = openDatabase(":memory:");
     const fake = {
-      overview: async () => [
-        row("agent", ["none"]),
-        row("antigravity", ["none"]),
-      ],
+      overview: async () => [row("claude", ["none"]), row("antigravity", ["none"])],
       providers: { antigravity: { capabilities: { access: ["none"] } } },
     } as unknown as ReturnType<typeof getFunnel>;
     const real = vi.mocked(getFunnel).getMockImplementation()!;
@@ -378,7 +374,7 @@ describe("text-only engines", () => {
           capabilities.signOut,
         ]),
       ).toEqual([
-        ["agent", true],
+        ["claude", true],
         ["antigravity", false],
       ]);
       await expect(
@@ -397,7 +393,7 @@ describe("text-only engines", () => {
     const db = openDatabase(":memory:");
     const fake = {
       overview: async () => [
-        row("agent", ["none", "auto", "full"]),
+        row("claude", ["none", "auto", "full"]),
         row("antigravity", ["accept-edits", "full"]),
         row("ollama", []),
       ],
@@ -410,7 +406,7 @@ describe("text-only engines", () => {
       expect(
         (await handlers.overview()).map(({ id, disabled }) => [id, disabled]),
       ).toEqual([
-        ["agent", false],
+        ["claude", false],
         ["antigravity", true],
       ]);
       await expect(
