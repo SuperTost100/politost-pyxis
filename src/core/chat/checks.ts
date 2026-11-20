@@ -7,6 +7,7 @@ import {
 } from "../../shared/math-check";
 import { generate, type GenerateInput } from "../engine/generate";
 import { systemPrompt } from "../engine/prompts";
+import { LOCAL_PROVIDER } from "../engine/local";
 import { selectionFor, selectionOn, type StoredSelection } from "../engine/selection";
 import type Database from "better-sqlite3";
 
@@ -39,13 +40,19 @@ const MATH = /=|∫|\\int(?![A-Za-z])/;
 const CHEAPEST_FIRST = ["claude", "codex", "antigravity"];
 
 /**
- * The engine of a separate check. The check is a call of its own with a short answer, so it goes to the cheapest ready
- * subscription tool, not necessarily the chat's. A chat on a local model or an API key stays where it is: its text never
- * goes to another provider for this, and an API call is paid by the token.
+ * The engine of a separate check. The check is a call of its own with a short answer, so an automatic chat sends it to the
+ * cheapest ready subscription tool, not necessarily the chat's. A pin is a pin: a chat the student pinned to a tool keeps
+ * its check there. A chat on a local model or an API key stays where it is too: its text never goes to another provider for
+ * this, and an API call is paid by the token. A local model's check also carries no fallback, so a failure of the local
+ * model ends the check and the text never reaches a cloud tool that way either.
  */
 export function checkSelection(db: Database.Database): StoredSelection {
   const own = selectionFor(db, "chat");
-  if (!CHEAPEST_FIRST.includes(own.provider)) return own;
+  if (own.provider === LOCAL_PROVIDER) {
+    const { chosenFor: _local, ...pinned } = own;
+    return pinned;
+  }
+  if (!own.chosenFor || !CHEAPEST_FIRST.includes(own.provider)) return own;
   for (const provider of CHEAPEST_FIRST) {
     if (provider === own.provider) break;
     const there = selectionOn(provider, "chat");

@@ -161,6 +161,35 @@ describe("the engine of a separate check", () => {
     for (const db of [claude, gemini, alone, unknown]) db.close();
   });
 
+  it("keeps the check of a pinned chat on the pinned tool, whatever else is ready", () => {
+    for (const [provider, model] of [
+      ["codex", "gpt-5.6-terra"],
+      ["antigravity", "gemini-4-argon"],
+    ] as const) {
+      const db = chatOn(provider, model, everyone, false);
+      expect(checkSelection(db), provider).toEqual({ provider, model });
+      db.close();
+    }
+  });
+
+  it("never sends the text of a chat on a local model to a cloud tool, not even when the local model fails", async () => {
+    const db = chatOn("ollama", "qwen3:8b", everyone);
+    const selection = checkSelection(db);
+    // The check has no fallback to move to another tool.
+    expect(selection).toEqual({ provider: "ollama", model: "qwen3:8b" });
+    const providers: string[] = [];
+    const checks = await solverChecks("Since $F = m a$ and $m = 2$, $a = F / 2$.", {
+      selection,
+      run: async (input) => {
+        providers.push(input.selection.provider);
+        throw Object.assign(new Error("You've hit your usage limit"), { code: "cli-failed", limit: { kind: "rate", detail: "usage limit" } });
+      },
+    });
+    expect(checks).toEqual([]);
+    expect(providers).toEqual(["ollama"]);
+    db.close();
+  });
+
   it("leaves a chat on a local model or an API key where it is, so its text goes nowhere else", () => {
     for (const [provider, model] of [
       ["ollama", "qwen3:8b"],

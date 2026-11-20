@@ -10,11 +10,13 @@ type ToolRow = {
   installed: boolean;
   loggedIn: boolean;
   disabled: boolean;
+  /** The installed program is older than Pyxis can run: not usable until it is updated. */
+  outdated?: boolean;
 };
 
 /** Signed in and usable: the tools the student can put in order. */
 export function isConnected(row: ToolRow): boolean {
-  return row.kind === "cli" && row.installed && row.loggedIn && !row.disabled;
+  return row.kind === "cli" && row.installed && row.loggedIn && !row.disabled && !row.outdated;
 }
 
 /**

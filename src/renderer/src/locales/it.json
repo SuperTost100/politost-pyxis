@@ -3140,6 +3140,7 @@
     "signedOut": "Disconnesso.",
     "removed": "Scelte dello strumento rimosse.",
     "unavailable": "Non disponibile",
+    "outdatedLine": "{{name}} richiede Antigravity 1.5 o successivo. Aggiorna il programma e Pyxis tornerà a usarlo.",
     "notInstalled": "Non installato",
     "install": "Installa",
     "cliDocs": "Istruzioni di CLI Funnel",
@@ -3333,7 +3334,8 @@
       "signedOut": "Serve l'accesso",
       "refused": "Accesso scaduto",
       "connected": "Collegato",
-      "outOfRequests": "Richieste finite"
+      "outOfRequests": "Richieste finite",
+      "outdated": "Da aggiornare"
     },
     "choice": {
       "title": "Quali strumenti può usare Pyxis",

@@ -1,5 +1,6 @@
 import { nearestEffort } from "../../shared/effort";
 import { readableModel } from "../../shared/model-names";
+import { variantsOf } from "./effort-variants";
 
 /**
  * The efforts each model lists, as last seen. Model lists are fetched
@@ -11,6 +12,33 @@ const seen = new Map<string, Map<string, string[]>>();
 const names = new Map<string, Map<string, string>>();
 /** Every id a tool reported at its last listing, the maker's own or not. */
 const reported = new Map<string, Set<string>>();
+
+/** The effort variants each tool listed as models of their own, by model and level (see `variantsOf`). */
+const variants = new Map<string, Map<string, string>>();
+
+/** The id a model runs as at an effort level, when the tool lists that level as a model of its own; else the model. */
+export function runsAs(provider: string, model: string, effort: string | undefined): string {
+  return (effort && variants.get(provider)?.get(`${model}|${effort}`)) || model;
+}
+
+/**
+ * A saved model id that an earlier build ran as a level of another model, as the model and the level: `gemini-4-neon-xhigh`
+ * is `gemini-4-neon` at `xhigh`. Only `xhigh` was ever listed as a model of its own (the other levels were grouped). A
+ * listing that is read and offers no such model with that level leaves the id alone; before any listing is read the id
+ * is unfolded anyway, since a job saved by the previous build may resume first.
+ */
+export function unfoldVariant(provider: string, model: string): { model: string; effort: string } | undefined {
+  if (provider !== "antigravity") return undefined;
+  const match = /^(.+)-xhigh$/.exec(model);
+  if (!match) return undefined;
+  const base = match[1]!;
+  const listed = seen.get(provider);
+  if (listed && listed.size > 0) {
+    const levels = listed.get(base);
+    if (!levels || !(levels.includes("xhigh") || variants.get(provider)?.has(`${base}|xhigh`))) return undefined;
+  }
+  return { model: base, effort: "xhigh" };
+}
 
 /** Whether the tool's last listing held this id, even though it is not one of its maker's models. */
 export function wasReported(provider: string, model: string): boolean {
@@ -32,6 +60,7 @@ export function rememberModels(
 ): void {
   if (reportedIds) {
     reported.set(provider, new Set(reportedIds.map((model) => model.id)));
+    variants.set(provider, variantsOf(reportedIds));
   }
   seen.set(
     provider,
@@ -103,4 +132,5 @@ export function forgetModels(): void {
   seen.clear();
   names.clear();
   reported.clear();
+  variants.clear();
 }

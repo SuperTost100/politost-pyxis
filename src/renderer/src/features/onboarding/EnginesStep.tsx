@@ -99,7 +99,7 @@ export function EnginesStep({
   const localOn = local.data?.enabled === true;
   const allowed = choice.data?.allowed ?? null;
   const rows = (overview.data ?? []).filter((row) => !row.disabled);
-  const readyRows = rows.filter((row) => row.installed && row.loggedIn);
+  const readyRows = rows.filter((row) => row.installed && row.loggedIn && !row.outdated);
   // The engines Pyxis will really use: ready, and left in by the student.
   const usable = readyRows.filter((row) => row.allowed);
   const cliRows = rows.filter(
@@ -128,7 +128,7 @@ export function EnginesStep({
   const engine =
     picked ?? (overview.isSuccess && usable.length === 0 ? signedOut : null);
   const connected = (row: Engine | undefined) =>
-    !!row && row.installed && row.loggedIn && !row.refused;
+    !!row && row.installed && row.loggedIn && !row.refused && !row.outdated;
   const connectedNames = tools
     .filter((tool) => connected(rows.find((row) => row.id === tool.engine)))
     .map((tool) => tool.name);
@@ -301,12 +301,16 @@ export function EnginesStep({
                       <EngineRow
                         kind={row.kind}
                         name={toolName(row)}
-                        model={engineNames.modelsLine(
-                          row.id,
-                          features.data,
-                          row.refusedModels,
-                          row.allowed,
-                        )}
+                        model={
+                          row.outdated
+                            ? t("engines.outdatedLine", { name: toolName(row) })
+                            : engineNames.modelsLine(
+                                row.id,
+                                features.data,
+                                row.refusedModels,
+                                row.allowed,
+                              )
+                        }
                         status={status.tone}
                         statusText={t(status.label)}
                         use={engineBox(
@@ -365,10 +369,11 @@ function ToolCard({
   const { t } = useTranslation();
   const status = row ? engineStatus(row) : null;
   // A tool that is installed but needs a sign-in, or whose sign-in expired, says so in the words of the engine list.
+  const outdated = !done && row?.outdated === true;
   const state = done
     ? t("onboarding.ai.state.connected")
-    : status && status.fix === "signIn"
-      ? t(status.label)
+    : outdated || (status && status.fix === "signIn")
+      ? t(status!.label)
       : others
         ? t("onboarding.ai.state.more")
         : t("onboarding.ai.state.off");
@@ -390,6 +395,7 @@ function ToolCard({
             type="button"
             className="px-tool-pick"
             aria-pressed={picked}
+            disabled={outdated}
             onClick={onPick}
           >
             {tool.name}
@@ -405,7 +411,11 @@ function ToolCard({
           </p>
         ) : (
           <>
-            <p>{t(`onboarding.ai.tools.${tool.copy}`)}</p>
+            <p>
+              {outdated
+                ? t("engines.outdatedLine", { name: tool.name })
+                : t(`onboarding.ai.tools.${tool.copy}`)}
+            </p>
             {tool.copy === "gemini" ? (
               <p className="px-tool-free">
                 {t("onboarding.ai.tools.geminiOffers")}

@@ -1838,7 +1838,7 @@ function fakeEngines(): Record<string, string> {
     CLI_FUNNEL_AGY_BIN: fake(
       "agy",
       `case "$1" in
-  --version) echo "1.3.0";;
+  --version) echo "1.5.13";;
   models) if [ -f "${on}" ]; then printf 'gemini-3.8-flash\\tGemini 3.8 Flash\\n'; else echo "Please sign in to continue." >&2; exit 1; fi;;
   *) if [ -f "${limit}" ]; then echo "Error: You have hit your usage limit." >&2; else echo "Error: request failed with status 401 Unauthorized" >&2; fi; exit 1;;
 esac`,

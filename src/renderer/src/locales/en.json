@@ -3140,6 +3140,7 @@
     "signedOut": "Signed out.",
     "removed": "AI tool choices cleared.",
     "unavailable": "Unavailable",
+    "outdatedLine": "{{name}} needs Antigravity 1.5 or newer. Update the program and Pyxis starts using it again.",
     "notInstalled": "Not installed",
     "install": "Install",
     "cliDocs": "CLI Funnel instructions",
@@ -3333,7 +3334,8 @@
       "signedOut": "Needs sign-in",
       "refused": "Sign-in expired",
       "connected": "Connected",
-      "outOfRequests": "Out of requests"
+      "outOfRequests": "Out of requests",
+      "outdated": "Needs an update"
     },
     "choice": {
       "title": "Which AI tools Pyxis may use",
