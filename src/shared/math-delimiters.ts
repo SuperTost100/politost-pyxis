@@ -170,9 +170,10 @@ const MATH_SYNTAX = /[=+*/^_\\{}<>-]/;
 
 /**
  * Whether the inline formula `node` that remark-math made is a price paired with the next dollar sign and some prose: it
- * starts with a number and then runs on in words (`$25 and the area is $`, `$5 and $`), or it opens after a number and a
- * space with a space of its own and holds words and nothing mathematical (`25 $ e l'area è $`, not `Step 2 $ x+1 $`), or it
- * runs over a line break and closes at the start of the next line, where a `$$` block or another formula begins.
+ * starts with a number and then runs on in words (`$25 and the area is $`, `$5 and $`), or it opens after a number with a
+ * space or a punctuation mark of its own and holds words and nothing mathematical (`25 $ e l'area è $`, `15 $, e $`, not
+ * `Step 2 $ x+1 $`), or it runs over a line break and closes at the start of the next line, where a `$$` block or another
+ * formula begins. Except in that last case, a space comes before its closing dollar sign.
  */
 function pairsAPrice(text: string, node: MdNode): boolean {
   const from = start(node);
@@ -181,12 +182,15 @@ function pairsAPrice(text: string, node: MdNode): boolean {
   const startsWithNumber = /^\s*\d/.test(value);
   const words = /\p{L}{2,}/u.test(value) && !MATH_SYNTAX.test(value);
   const next = /\n[ \t]*\$$/.test(text.slice(from, end(node)));
-  const afterNumber = /^\s/.test(text.slice(from + 1)) && /\d\s?$/.test(text.slice(Math.max(0, from - 8), from));
+  const afterNumber = /^[,.;:!?)]*\s/.test(text.slice(from + 1)) && /\d\s?$/.test(text.slice(Math.max(0, from - 8), from));
+  // A price's dollar sign pairs with the dollar sign that opens what comes next, so a space comes before the closing one.
+  // One right after the last character closes a formula, such as `$2 ab!$`.
+  const opensNext = /\s/.test(text[end(node) - 2] ?? "");
   return (
     next ||
-    (startsWithNumber && hasProse(value)) ||
-    (startsWithNumber && /\s/.test(value.trim()) && words) ||
-    (afterNumber && words)
+    (opensNext && startsWithNumber && hasProse(value)) ||
+    (opensNext && startsWithNumber && /\s/.test(value.trim()) && words) ||
+    (opensNext && afterNumber && words)
   );
 }
 
@@ -199,13 +203,17 @@ export function priceFormulas(text: string): number[] {
   return found;
 }
 
-/** The opening dollar sign of each price `pairsAPrice` finds, escaped, so the closing one opens the formula that follows. */
-function priceEdits(text: string, root: MdNode): Edit[] {
-  const edits: Edit[] = [];
-  walk(root, (node) => {
-    if (pairsAPrice(text, node)) edits.push({ from: start(node), to: start(node), text: "\\" });
+/**
+ * The opening dollar sign of the first price `pairsAPrice` finds, escaped. Its closing dollar sign is then paired anew, with
+ * a formula or with the next price (`7 $ fanno 12 $. Costa 12 $`), so the next price is looked for in the parse of that.
+ */
+function priceEdit(text: string): Edit | null {
+  let found: Edit | null = null;
+  walk(parseMarkdown(text), (node) => {
+    if (found) return false;
+    if (pairsAPrice(text, node)) found = { from: start(node), to: start(node), text: "\\" };
   });
-  return edits;
+  return found;
 }
 
 /** Whether a range lies in one text node. */
@@ -323,7 +331,14 @@ function prepared(input: string, unfinished = false): Rewritten {
   }
   text = rewrite(text, convertEdits(text.text));
   text = rewrite(text, dollarEdits(text.text, unfinished));
-  return rewrite(text, priceEdits(text.text, parseMarkdown(text.text)));
+  // Each round escapes one dollar sign and adds none, so there are never more rounds than dollar signs.
+  const dollars = text.text.split("$").length - 1;
+  for (let round = 0; round < dollars; round += 1) {
+    const edit = priceEdit(text.text);
+    if (!edit) break;
+    text = rewrite(text, [edit]);
+  }
+  return text;
 }
 
 /**
@@ -495,7 +510,7 @@ export function displayMathLines(input: string): string {
  * the text it was given. The last block of the text is an unfinished `$$` block, or ends in a delimiter the parser left as
  * text: a `\(`, a `\[` or a `$$`, or a `$` with a formula after it, which is a letter or a command or something
  * mathematical (a `^`, `_`, `=`, a brace, an operator). A dollar sign and a number, and then words, is a price and stays
- * text, and one with nothing after it yet may be either. Code is never held.
+ * text, as is one that ends a sentence (`12 $.`), and one with nothing after it yet may be either. Code is never held.
  */
 export function holdOpenMath(input: string): string {
   const fixed = prepared(input, true);
@@ -534,7 +549,8 @@ export function holdOpenMath(input: string): string {
       const from = start(node) - single.at - 1;
       after = after.slice(0, from) + " ".repeat(end(node) - start(node)) + after.slice(from + end(node) - start(node));
     });
-    const formula = /[\\^_={}<>+]/.test(after) || (!/^\s/.test(after) && /^[^\d\s]/.test(after));
+    // A punctuation mark and a space after it end a sentence, as in `fanno 12 $.`: no formula starts like that.
+    const formula = /[\\^_={}<>+]/.test(after) || (!/^[,.;:!?)]*(?:\s|$)/.test(after) && /^[^\d\s]/.test(after));
     if (formula) return hold(single.at, false, after.length);
   }
   // An equation alone on the last line, `\ce{C3H8 + 5O2 ->`, waits until its brace closes.
