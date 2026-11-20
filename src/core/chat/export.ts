@@ -127,7 +127,7 @@ function photoCounts(
   const rows = db
     .prepare(
       `SELECT a.message_id AS id, a.mime AS mime FROM attachments a
-       JOIN messages m ON m.id = a.message_id WHERE m.chat_id = ?`,
+       JOIN messages m ON m.id = a.message_id WHERE m.chat_id = ? AND a.kind IS NOT 'document'`,
     )
     .all(chatId) as Array<{ id: string; mime: string }>;
   const counts = new Map<string, number>();

@@ -42,13 +42,15 @@ for (const libraryCopy of [false, true]) {
         window.pyxis.showOpenDialog({ properties: ["openFile"] }),
       );
       await page.evaluate(
-        ({ chatId, path }) =>
-          window.pyxis.invoke("chats.ask", {
+        async ({ chatId, path }) => {
+          const file = await window.pyxis.invoke("chats.attach", { path });
+          return window.pyxis.invoke("chats.ask", {
             chatId,
             text: "What is velocity?",
             sourceIds: [],
-            files: [path],
-          }),
+            attachments: [file.id],
+          });
+        },
         { chatId: first.chatId, path: picked![0]! },
       );
       const held = await page.evaluate(

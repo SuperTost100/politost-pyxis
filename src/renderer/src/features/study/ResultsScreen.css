@@ -147,7 +147,7 @@
   display: grid;
   gap: 6px;
 }
-/* The place of Ripasso mirato and of the ghost button under it while the outcome is read, at their sizes. */
+/* The place of Rivedi gli errori and of the ghost button under it while the outcome is read, at their sizes. */
 .px-res-wait {
   gap: 6px;
 }

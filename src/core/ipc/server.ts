@@ -1,5 +1,4 @@
 import type Database from "better-sqlite3";
-import { MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES } from "../chat/attach";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { maxSourceBytes } from "../../shared/source-types";
@@ -215,6 +214,7 @@ async function dispatch(
   }
   let parsed: { path?: string; files?: string[] } | undefined;
   if (
+    name === "chats.attach" ||
     name === "sources.import" ||
     name === "sources.replace" ||
     name === "sources.preview" ||
@@ -222,27 +222,12 @@ async function dispatch(
     name === "study.ankiImport"
   )
     parsed = requests[name].input.parse(input);
-  if (name === "chats.ask" || name === "chats.regenerate")
-    parsed = requests[name].input.parse(input);
   const paths = parsed?.path ? [parsed.path] : (parsed?.files ?? []);
   if (!paths.length) return dispatchValidated(name, input, signal, emit);
   let temporary: string | undefined;
-  const attachment = name === "chats.ask" || name === "chats.regenerate";
   try {
-    if (attachment && paths.length > MAX_FILES)
-      throw new Error("attach-too-many");
     if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: file boundary read start", name);
-    let remaining = MAX_TOTAL_BYTES;
-    const bytes = paths.map((path) => {
-      const bytes = fileGrants.read(
-        path,
-        attachment
-          ? Math.min(MAX_FILE_BYTES, remaining)
-          : maxSourceBytes(extname(path)),
-      );
-      remaining -= bytes.length;
-      return bytes;
-    });
+    const bytes = paths.map((path) => fileGrants.read(path, maxSourceBytes(extname(path))));
     if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: file boundary snapshot start", name);
     temporary = mkdtempSync(join(fileScratch, "picked-"));
     const snapshots = paths.map((path, index) => {
@@ -259,13 +244,8 @@ async function dispatch(
   } catch (error) {
     if (error instanceof Error && error.message === "file-access-denied")
       throw new IpcError("file-access-denied", "errors.fileAccessDenied");
-    if (error instanceof Error && error.message === "attach-too-big" && !attachment)
+    if (error instanceof Error && error.message === "attach-too-big")
       throw new IpcError("source-too-big", "sources.tooBig");
-    if (
-      error instanceof Error &&
-      ["attach-too-big", "attach-too-many"].includes(error.message)
-    )
-      throw new IpcError("attach-too-big", "errors.attachTooBig");
     throw error;
   } finally {
     if (temporary) rmSync(temporary, { recursive: true, force: true });
@@ -452,6 +432,10 @@ const routes = {
   "chats.leave": ["chats", "leave"],
   "chats.clearContext": ["chats", "clearContext"],
   "chats.setSubject": ["chats", "setSubject"],
+  "chats.attach": ["chats", "attach"],
+  "chats.detach": ["chats", "detach"],
+  "chats.attachments": ["chats", "attachments"],
+  "chats.attachScan": ["chats", "attachScan"],
   "chats.rate": ["chats", "rate"],
   "chats.rename": ["chats", "rename"],
   "chats.delete": ["chats", "remove"],
@@ -879,8 +863,16 @@ export function bindChat(
   fixtureReply?: string,
   replyDelayMs = 0,
   figureFixes?: string,
+  runner?: Runner,
 ): void {
-  chats = chatHandlers(db, workspace, fixtureReply, replyDelayMs, figureFixes);
+  chats = chatHandlers(
+    db,
+    workspace,
+    fixtureReply,
+    replyDelayMs,
+    figureFixes,
+    runner ? { runner, emit: (view) => broadcast("chats.attachment", view) } : undefined,
+  );
   setChecksListener((event) => broadcast("chats.checks", event));
 }
 

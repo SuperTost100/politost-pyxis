@@ -55,6 +55,12 @@ export type GenerateInput = {
     mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
     data: string;
   }>;
+  /**
+   * The pictures for the engine that answers, when the caller can do without them and decides by the engine: a photo that
+   * was also read as text goes to an engine that reads images, and to none that cannot, however the call got there (a
+   * fallback after a limit included). It does not limit where the call may go; `attachments` does.
+   */
+  attachmentsFor?: (selection: Omit<Selection, "cwd" | "access">) => GenerateInput["attachments"];
   /** A chat turn: see `TurnInput.conversation`. */
   conversation?: TurnInput["conversation"];
   /** Use the provider's prompt cache for the system prompt and the conversation so far. */
@@ -418,7 +424,7 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
       system: input.system,
       responseSchema,
       signal: input.signal,
-      attachments: input.attachments,
+      attachments: input.attachmentsFor ? input.attachmentsFor(selection) : input.attachments,
       onDelta: input.onDelta,
       conversation:
         input.conversation && input.followUpFor

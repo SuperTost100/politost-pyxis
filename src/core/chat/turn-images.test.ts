@@ -7,6 +7,7 @@ import { putBlob } from "../blobs";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
 import * as attach from "./attach";
+import { heldFilesFor } from "./test-attach";
 import { askTurn } from "./turn";
 
 // Calls through to the real fitting, and lets a test see what the turn handed it.
@@ -95,8 +96,11 @@ it("records a photo once on a message whose turn is retried, so a retry cannot f
   const { workspace, db, png } = chatWithPhotos();
   const file = join(workspace, "board.png");
   writeFileSync(file, png);
-  const ask = (run: (input: { attachments?: unknown[] }) => Promise<EngineResult>) =>
-    askTurn(db, { chatId: "c", text: "cosa vedi?", allowGeneral: true, files: [file], workspace, run });
+  // The photo is attached once, as in the composer, and the retry sends the same one.
+  const files = heldFilesFor(db, workspace);
+  const attached = files.attach(file);
+  const ask = async (run: (input: { attachments?: unknown[] }) => Promise<EngineResult>) =>
+    askTurn(db, { chatId: "c", text: "cosa vedi?", allowGeneral: true, attachments: (await attached).ids, held: files.held, workspace, run });
   await expect(ask(async () => Promise.reject(new Error("engine down")))).rejects.toThrow("engine down");
   let sent: unknown[] = [];
   await ask(async (input) => {

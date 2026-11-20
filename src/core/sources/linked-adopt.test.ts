@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { blobSize, hasBlob } from "../blobs";
-import { commitStaged } from "../chat/attach";
+import { commitStaged } from "../chat/test-attach";
 import { openDatabase } from "../db/connection";
 import { createRunner } from "../jobs/runner";
 import { subjectPassages } from "../maps/subject-sources";

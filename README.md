@@ -131,7 +131,7 @@ To go through it again, open Settings → Profile and choose "Run setup again". 
 | Anthropic API | API key, encrypted with the OS key store  |
 | OpenAI API    | API key, encrypted with the OS key store  |
 
-Pyxis runs the CLIs in text-only mode, so they can't use their shell, file or web tools. It picks an engine and model for each job itself, and each tool runs only its maker's models: Claude, GPT, Gemini or Grok. Chat, maps and flashcards get a fast model, lessons and grading a mid-range one, and plans the strongest. With several CLIs signed in, it spreads the work across them. API keys come into play only when no CLI is ready, because they bill per token. To pin a different choice, open Settings → Engines. [Engines](docs/engines.md#automatic-choice) lists the defaults for each combination.
+Pyxis runs the CLIs in text-only mode, so they can't use their shell, file or web tools. It picks an engine and model for each job itself, and each tool runs only its maker's models: Claude, GPT or Gemini. Chat, maps and flashcards get a fast model, lessons and grading a mid-range one, and plans the strongest. With several CLIs signed in, it spreads the work across them. API keys come into play only when no CLI is ready, because they bill per token. To pin a different choice, open Settings → Engines. [Engines](docs/engines.md#automatic-choice) lists the defaults for each combination.
 
 ## Your data
 

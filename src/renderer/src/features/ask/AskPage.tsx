@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { usePlace } from "../../app/usePlace";
 import { ChatMessage, ThinkingMessage } from "../../components/ChatMessage";
+import { Chip } from "../../components/Chip";
 import { Composer } from "../../components/Composer";
 import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MathText } from "../../components/math/MathText";
@@ -27,19 +28,21 @@ import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
 import { invoke, onBroadcast } from "../../lib/ipc";
-import { MAX_DROPPED_FILES } from "@shared/source-types";
+import { MAX_ATTACHED_FILES, MAX_DROPPED_FILES } from "@shared/source-types";
+import type { AttachmentView } from "@shared/ipc";
 import {
   ATTACH_EXTENSIONS,
   attachable,
+  attachmentLine,
   draftKey,
-  fileName,
-  readPendingFiles,
+  isLocalFile,
+  type PickedFile,
   readPendingSubject,
   takeBoardAttachment,
-  writePendingFiles,
   writePendingSubject,
-  addPendingFiles,
 } from "./attachments";
+import { attachQueue, drafts, syncDraftFiles, useDraftFiles, useFilePreviews, useFileViews } from "./draftSession";
+import { mergeFiles, type Preview } from "./draftFiles";
 import { ChatHeader } from "./ChatHeader";
 import { pastedPng } from "./paste";
 import { replyPlainText } from "./replyText";
@@ -77,11 +80,12 @@ function errorParams(err: unknown): Record<string, unknown> {
 }
 
 type ChatRow = Awaited<ReturnType<typeof invoke<"chats.read">>>["messages"][number];
-/** An image staged for the next message, shown in its attachment chip. A pasted one is named for what it is. */
-type Preview = { src: string; alt: string; name?: string };
 /** A message taken out of the composer as it was sent, put back if its turn fails or is stopped. */
-type Held = { draft: string; files: string[]; previews: Record<string, Preview> };
+type Held = { draft: string; files: PickedFile[] };
 type Skipped = Array<"too-large" | "unreadable" | "over-limit">;
+/** The files a sent message carried, as the chat reads them, or as the composer held them before the reply arrived. */
+type SentFile = { id: string; name: string | null; kind: "document" | "photo"; sourceId?: string | null };
+type LeftOut = Array<{ name: string; kind: "document" | "photo"; error: AttachmentView["error"] & string }>;
 
 /** Whether each chat's latest question was asked with "Answer generally", which Try again and Regenerate keep. */
 const askedGeneral = new Map<string, boolean>();
@@ -97,7 +101,7 @@ type Screen = {
   composer: () => string;
   restore: (held: Held) => void;
   /** The reply was saved in `to`: the notices for it, and a move there from a new chat. */
-  replied: (to: string, uncovered: string | null, skipped: Skipped, announce: boolean) => void;
+  replied: (to: string, uncovered: string | null, skipped: Skipped, announce: boolean, leftOut?: LeftOut) => void;
   fail: (err: unknown) => void;
 };
 let screen: { current: Screen } | null = null;
@@ -117,10 +121,25 @@ function useStable<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) 
   return useCallback((...args: A) => latest.current(...args), []);
 }
 
-const Question = memo(function Question({ body }: { body: string }) {
+const Question = memo(function Question({ body, files }: { body: string; files?: readonly SentFile[] }) {
+  const { t } = useTranslation();
   return (
     <ChatMessage role="user">
       <MathText text={body} />
+      {files && files.length > 0 ? (
+        <ul className="ask-sent-files" aria-label={t("ask.attach.sent")}>
+          {files.map((file) => (
+            <li key={file.id}>
+              <Chip
+                icon={file.kind === "photo" ? "image" : "paperclip"}
+                onClick={file.sourceId ? () => openSourceViewer({ sourceId: file.sourceId! }) : undefined}
+              >
+                {file.name ?? t("ask.attach.photo")}
+              </Chip>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </ChatMessage>
   );
 });
@@ -217,7 +236,7 @@ const Reply = memo(function Reply({
 /** The question just sent, until the chat as read holds it. Core names a reused question only once the reply has begun. */
 function PendingQuestion({ turn, last }: { turn: Turn; last: ChatRow | undefined }) {
   useSyncExternalStore(turn.questionId.subscribe, turn.questionId.get);
-  return turn.question === null || questionStored(turn, last) ? null : <Question body={turn.question} />;
+  return turn.question === null || questionStored(turn, last) ? null : <Question body={turn.question} files={turn.files} />;
 }
 
 /** The reply being written. Only this component follows the stream, so the conversation above it does not re-render. */
@@ -281,37 +300,32 @@ export function AskPage() {
   const chatNow = useRef(chatId);
   chatNow.current = chatId;
   const arrived = useRef<string | null>(null);
-  const [files, setFiles] = useState<string[]>(() =>
-    readPendingFiles(sessionStorage, chatId),
-  );
-  // Images staged by the whiteboard's Attach or by a paste, keyed by the file they belong to.
-  const [previews, setPreviews] = useState<Record<string, Preview>>({});
-  // Picked files are kept by path, so opening the whiteboard or the graph and coming back does not lose them.
+  // The files of the draft on screen. They live in the session store, so an attach that finishes while another chat is on
+  // screen lands in the draft that started it, and each draft is attached to one batch at a time (see `draftFiles.ts`).
+  const files = useDraftFiles(chatId ?? "");
+  // What core says of each picked file, kept by its id: its reading, or why it failed. A chip refused before core held it
+  // has a `local-` id and a view made here.
+  const views = useFileViews();
+  const previews = useFilePreviews();
+  // Files the last question went without, because they could not be read.
+  const [leftOut, setLeftOut] = useState<LeftOut>([]);
+  useEffect(() => onBroadcast("chats.attachment", (view) => drafts.views.put(view)), []);
+  // Files kept for a chat that was left are asked about again, and the ones core no longer holds drop off.
   useEffect(() => {
-    writePendingFiles(sessionStorage, composerFor.current, files);
-  }, [files]);
+    void syncDraftFiles(chatId ?? "").catch(() => undefined);
+  }, [chatId]);
   // Moving to another chat shows that chat's own draft and files.
   useLayoutEffect(() => {
     if (composerFor.current === chatId) return;
     composerFor.current = chatId;
     setDraft(sessionStorage.getItem(draftKey(chatId)) ?? "");
-    setFiles(readPendingFiles(sessionStorage, chatId));
-    setPreviews({});
     // A new chat shows the subject kept for it, which is Pyxis's choice once its first question has gone.
     setNewSubject(readPendingSubject(sessionStorage));
   }, [chatId]);
   useEffect(() => {
     const board = takeBoardAttachment(sessionStorage);
     if (!board) return;
-    setFiles((current) =>
-      current.includes(board.path) ? current : [...current, board.path],
-    );
-    const { path, preview } = board;
-    if (preview)
-      setPreviews((current) => ({
-        ...current,
-        [path]: { src: preview, alt: t("tools.whiteboardTitle") },
-      }));
+    void attachPaths([board.path], board.preview ? { src: board.preview, alt: t("tools.whiteboardTitle") } : undefined);
   }, []);
   const [error, setError] = useState<string | null>(null);
   const [errorValues, setErrorValues] = useState<Record<string, unknown>>({});
@@ -353,6 +367,7 @@ export function AskPage() {
     }
     setUncovered(null);
     setSkipped([]);
+    setLeftOut([]);
     setError(null);
   }, [chatId]);
 
@@ -515,19 +530,30 @@ export function AskPage() {
     if (!trimmed || turns.get()) return;
     if (chatId && !thread.data) return;
     const startedIn = chatId ?? "";
-    const turn = turns.start(startedIn, trimmed, false, messages.at(-1)?.id ?? null);
+    // The turn starts now and belongs to the draft it was sent from: the composer shows it working (and offers Stop) while
+    // files still being registered with core, from a pick Enter caught half way, finish and go with this question.
+    const turn = turns.start(
+      startedIn,
+      trimmed,
+      false,
+      messages.at(-1)?.id ?? null,
+      options.textOnly
+        ? []
+        : drafts.files
+            .get(startedIn)
+            .filter((file) => !isLocalFile(file))
+            .map((file) => ({ id: file.id, name: file.name, kind: drafts.views.get()[file.id]?.kind ?? "document" })),
+    );
     if (!turn) return;
     setError(null);
     setAnnouncement("");
     setSkipped([]);
+    setLeftOut([]);
     following.current = true;
-    const attached = options.textOnly ? [] : files;
-    // The message leaves the composer as it is sent; a failed or stopped turn puts it back.
-    const held: Held = { draft, files, previews };
+    // The submitted text leaves the composer, which is not editable while the turn works; a failed or stopped turn puts it back.
+    const held: Held = { draft, files: drafts.files.get(startedIn) };
     if (!options.textOnly) {
       setDraft("");
-      setFiles([]);
-      setPreviews({});
       sessionStorage.removeItem(draftKey(chatId));
     }
     // A new chat's first question takes the subject chosen for it, which stays kept only until the question has gone.
@@ -538,14 +564,33 @@ export function AskPage() {
       if (sentSubject && readPendingSubject(sessionStorage).kind === "auto") writePendingSubject(sessionStorage, sentSubject);
       if (options.textOnly || turn.dropped) return;
       const from = startedIn || undefined;
+      // The files go back to the draft the question was sent from, whatever is on screen now.
+      drafts.files.set(startedIn, (current) => mergeFiles(held.files, current));
       const page = screen?.current;
       if (page && page.composer() === startedIn) page.restore(held);
-      else if (readPendingFiles(sessionStorage, from).length === 0) {
-        writePendingFiles(sessionStorage, from, held.files);
-      }
       if (held.draft && !sessionStorage.getItem(draftKey(from)))
         sessionStorage.setItem(draftKey(from), held.draft);
     };
+    if (!options.textOnly && attachQueue.busy(startedIn)) {
+      let stopped = false;
+      let wake = () => {};
+      turn.stop = () => {
+        stopped = true;
+        wake();
+      };
+      await Promise.race([attachQueue.idle(startedIn), new Promise<void>((resolve) => (wake = resolve))]);
+      if (stopped) {
+        restore();
+        turns.end(turn);
+        return;
+      }
+    }
+    // Only now are the draft's files known: the ones still being registered have been applied to it.
+    const picked = drafts.files.get(startedIn);
+    // A file refused before core held it never goes with the question.
+    const attached = options.textOnly ? [] : picked.filter((file) => !isLocalFile(file));
+    held.files = picked;
+    if (!options.textOnly) drafts.files.set(startedIn, []);
     if (startedIn) askedGeneral.set(startedIn, options.allowGeneral === true);
     const handle = window.pyxis.stream(
       "chats.ask",
@@ -554,7 +599,7 @@ export function AskPage() {
         text: trimmed,
         // A new chat's first question carries the subject chosen on its first page; a saved chat keeps its own.
         subject: chatId ? undefined : subjectToSend(newSubject),
-        files: attached.length > 0 ? attached : undefined,
+        attachments: attached.length > 0 ? attached.map((file) => file.id) : undefined,
         allowGeneral: options.allowGeneral === true,
       },
       turn.onEvent,
@@ -569,6 +614,14 @@ export function AskPage() {
         return;
       }
       askedGeneral.set(result.chatId, options.allowGeneral === true);
+      // A new chat's first question made the chat: the files picked meanwhile for its composer follow it, in core (`rehome`) and
+      // here, whether or not Chiedi is on screen.
+      if (!startedIn) {
+        drafts.files.set(result.chatId, (current) => [...current, ...drafts.files.get("")]);
+        drafts.files.set("", []);
+      }
+      // The files went with the question, so their previews are not needed any more.
+      drafts.previews.drop(attached.map((file) => file.id));
       // Store the new messages in the cache before the placeholder goes, so the reply replaces it without a gap.
       await client
         .fetchQuery({
@@ -583,6 +636,7 @@ export function AskPage() {
         result.covered ? null : trimmed,
         result.skippedImages ?? [],
         Boolean(result.message),
+        result.leftOut,
       );
     } catch (err) {
       restore();
@@ -608,14 +662,18 @@ export function AskPage() {
     composer: () => composerFor.current ?? "",
     restore(held) {
       setDraft((current) => current || held.draft);
-      setFiles((current) => (current.length > 0 ? current : held.files));
-      setPreviews((current) =>
-        Object.keys(current).length > 0 ? current : held.previews,
-      );
+      // Core kept the files while the send ran, so the chips come back as they are now, ready.
+      const ids = held.files.filter((file) => !isLocalFile(file)).map((file) => file.id);
+      if (ids.length > 0)
+        void invoke("chats.attachments", { ids }).then(
+          (list) => drafts.views.put(...list),
+          () => undefined,
+        );
     },
-    replied(to, notCovered, skippedImages, reply) {
+    replied(to, notCovered, skippedImages, reply, left = []) {
       setUncovered(notCovered);
       setSkipped(skippedImages);
+      setLeftOut(left);
       if (reply) announce();
       if (to === (chatNow.current ?? "")) return;
       arrived.current = to;
@@ -624,8 +682,6 @@ export function AskPage() {
         const typed = sessionStorage.getItem(draftKey());
         if (typed) sessionStorage.setItem(draftKey(to), typed);
         sessionStorage.removeItem(draftKey());
-        writePendingFiles(sessionStorage, to, readPendingFiles(sessionStorage));
-        writePendingFiles(sessionStorage, undefined, []);
         composerFor.current = to;
       }
       // The new chat takes the place of the empty page it was written on, which starts the trail as Nuova chat does: a
@@ -676,6 +732,8 @@ export function AskPage() {
           ReturnType<typeof invoke<"chats.regenerate">>
         >;
         await client.invalidateQueries({ queryKey: ["chat", chatId] });
+        // Answering a stored question lets its files go: the chips that came back to the composer with it go too.
+        void syncDraftFiles(chatId).catch(() => undefined);
         const last = client
           .getQueryData<Awaited<ReturnType<typeof invoke<"chats.read">>>>(["chat", chatId])
           ?.messages.at(-1);
@@ -767,17 +825,27 @@ export function AskPage() {
   const [attachNote, setAttachNote] = useState<string | null>(null);
   useEffect(() => setAttachNote(null), [chatId]);
   const [dropping, setDropping] = useState(false);
+  /**
+   * Attaches files to the draft on screen. Core reads each one at once and tells how it goes, so the chip shows the reading.
+   * The draft's queue runs one batch at a time and applies each result to this draft, so a switch to another chat meanwhile
+   * moves nothing, and a ninth file is marked as over the limit when it is picked.
+   */
+  function attachPaths(paths: string[], preview?: Preview): Promise<void> {
+    return attachQueue.attach(chatId ?? "", paths, preview);
+  }
+  /** Takes a file off the composer: core stops its reading and deletes what it made. */
+  function removeFile(file: PickedFile) {
+    drafts.files.set(chatId ?? "", (current) => current.filter((item) => item.id !== file.id));
+    drafts.previews.drop([file.id]);
+    if (!isLocalFile(file)) void invoke("chats.detach", { id: file.id }).catch(() => undefined);
+  }
   async function attachPasted(images: File[]) {
     setAttachNote(null);
     for (const image of images) {
       try {
         const src = await pastedPng(image);
         const staged = await invoke("tools.stagePng", { dataUrl: src });
-        setFiles((current) => addPendingFiles(current, [staged.path]));
-        setPreviews((current) => ({
-          ...current,
-          [staged.path]: { src, alt: t("ask.pastedImage"), name: t("ask.pastedImage") },
-        }));
+        await attachPaths([staged.path], { src, alt: t("ask.pastedImage"), name: t("ask.pastedImage") });
       } catch {
         setAttachNote("ask.pasteFailed");
       }
@@ -792,13 +860,14 @@ export function AskPage() {
     try {
       const granted = await window.pyxis.grantDroppedFiles(dropped);
       const usable = attachable(granted.paths);
-      if (usable.paths.length > 0)
-        setFiles((current) => addPendingFiles(current, usable.paths));
+      if (usable.paths.length > 0) await attachPaths(usable.paths);
       if (granted.skipped + usable.skipped > 0) setAttachNote("ask.dropSkipped");
     } catch (err) {
       fail(err);
     }
   }
+  // Scans among the picked files that wait for the OCR language data.
+  const waitingForData = files.filter((file) => views[file.id]?.state === "needs-data");
   const carriesFiles = (event: DragEvent) => event.dataTransfer.types.includes("Files");
 
   return (
@@ -890,7 +959,7 @@ export function AskPage() {
           ) : null}
           {shownMessages.slice(firstShown).map((row) =>
             row.role === "user" ? (
-              <Question key={row.id} body={row.body} />
+              <Question key={row.id} body={row.body} files={row.files} />
             ) : (
               <Reply
                 key={row.id}
@@ -954,6 +1023,7 @@ export function AskPage() {
             tone="danger"
             details={errorText || undefined}
             action={failure.action}
+            onClose={() => setError(null)}
           >
             {failure.text}
           </Notice>
@@ -961,7 +1031,7 @@ export function AskPage() {
         {(["too-large", "unreadable"] as const).map((reason) => {
           const count = skipped.filter((item) => item === reason).length;
           return count > 0 ? (
-            <Notice key={reason} tone="warning">
+            <Notice key={reason} tone="warning" onClose={() => setSkipped((now) => now.filter((item) => item !== reason))}>
               {t(
                 reason === "too-large"
                   ? "ask.skippedTooLarge"
@@ -972,7 +1042,9 @@ export function AskPage() {
           ) : null;
         })}
         {attachNote ? (
-          <Notice tone="warning">{t(attachNote, { max: MAX_DROPPED_FILES })}</Notice>
+          <Notice tone="warning" onClose={() => setAttachNote(null)}>
+            {t(attachNote, { max: MAX_DROPPED_FILES })}
+          </Notice>
         ) : null}
         {dropping ? (
           <p className="small ask-drop-hint" aria-hidden>
@@ -980,8 +1052,16 @@ export function AskPage() {
           </p>
         ) : null}
         {skipped.includes("over-limit") ? (
-          <Notice tone="warning">{t("ask.skippedOverLimit")}</Notice>
+          <Notice tone="warning" onClose={() => setSkipped((now) => now.filter((item) => item !== "over-limit"))}>
+            {t("ask.skippedOverLimit")}
+          </Notice>
         ) : null}
+        {leftOut.map((file, at) => (
+          <Notice key={`${at}-${file.name}`} tone="warning" onClose={() => setLeftOut((now) => now.filter((item) => item !== file))}>
+            {t("ask.attach.leftOut", { name: file.name })}{" "}
+            {t(attachmentLine({ id: "", name: file.name, kind: file.kind, size: 0, state: "failed", error: file.error })!.key, { max: MAX_ATTACHED_FILES })}
+          </Notice>
+        ))}
         {uncovered && !busy ? (
           <Notice
             tone="warning"
@@ -990,6 +1070,7 @@ export function AskPage() {
               onClick: () =>
                 void send(uncovered, { allowGeneral: true, textOnly: true }),
             }}
+            onClose={() => setUncovered(null)}
           >
             {t("ask.notCovered")}
           </Notice>
@@ -1031,13 +1112,33 @@ export function AskPage() {
             }}
           />
         ) : null}
+        {waitingForData.length > 0 ? (
+          // A scan that waits for its reading data: the card downloads it, and the button reads the scan once it is here.
+          <OcrDataCard
+            refusal={t("ask.attach.needsData")}
+            readyAction={
+              <Button
+                type="primary"
+                shape="round"
+                onClick={() => {
+                  for (const file of waitingForData)
+                    void invoke("chats.attachScan", { id: file.id }).catch(() => undefined);
+                }}
+              >
+                {t("ask.attach.readScan")}
+              </Button>
+            }
+          />
+        ) : null}
         {files.length > 0 ? (
-          <ul className="ask-attachments">
+          <ul className="ask-attachments" aria-live="polite">
             {files.map((file) => {
-              const preview = previews[file];
-              const label = preview?.name ?? fileName(file);
+              const preview = previews[file.id];
+              const label = preview?.name ?? file.name;
+              const view = views[file.id];
+              const line = view ? attachmentLine(view) : null;
               return (
-                <li key={file}>
+                <li key={file.id}>
                   {preview ? (
                     <img
                       alt={preview.alt}
@@ -1045,7 +1146,7 @@ export function AskPage() {
                       className="ask-attachment-preview"
                     />
                   ) : null}
-                  <span className="small">{label}</span>
+                  <span className="small">{line ? `${label} · ${t(line.key, line.values)}` : label}</span>
                   <Button
                     type="text"
                     shape="circle"
@@ -1056,18 +1157,7 @@ export function AskPage() {
                       name: label,
                       defaultValue: "Remove {{name}}",
                     })}
-                    onClick={() => {
-                      setFiles((current) =>
-                        current.filter((item) => item !== file),
-                      );
-                      setPreviews((current) =>
-                        Object.fromEntries(
-                          Object.entries(current).filter(
-                            ([key]) => key !== file,
-                          ),
-                        ),
-                      );
-                    }}
+                    onClick={() => removeFile(file)}
                   />
                 </li>
               );
@@ -1098,8 +1188,7 @@ export function AskPage() {
                 ],
               })
               .then((chosen) => {
-                if (chosen && chosen.length > 0)
-                  setFiles((current) => addPendingFiles(current, chosen));
+                if (chosen && chosen.length > 0) void attachPaths(chosen);
               }, fail);
           }}
         />

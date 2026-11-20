@@ -574,7 +574,7 @@ export function SimulationPage() {
           kind="simulation"
           attemptId={run.attemptId}
           planId={planId}
-          // Ripasso mirato: a drill on the gap this exam opened, or its wrong answers asked again.
+          // Rivedi gli errori: a drill on the gap this exam opened, or its wrong answers asked again.
           review={
             run.submitted && simMistakes
               ? {

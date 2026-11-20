@@ -63,10 +63,11 @@ type Outcome = RequestOutput<"study.attemptOutcome">;
 
 /**
  * The one results screen of quizzes and simulations. On the left the grade is the title, in words, with the count of
- * right and wrong answers, the topics it moved, what changes in the path and the one next step, Ripasso mirato when
- * something is to review. On the right every question in the order it was asked: the right ones folded to a line with
- * the quiet green "Giusta", the others open with the right answer, the explanation and its sources. While an AI tool
- * grades the answers, the title and each answer waiting for it show the work in place.
+ * right and wrong answers, the topics it moved, what changes in the path and the one next step, "Rivedi gli errori"
+ * when something is to review, and the way back to the exam quietly under it. On the right every question in the order
+ * it was asked: the right ones folded to a line with the quiet green "Giusta", the others open with the right answer,
+ * the explanation and its sources. While an AI tool grades the answers, the title and each answer waiting for it show
+ * the work in place.
  */
 export function ResultsScreen({
   kind,
@@ -85,6 +86,7 @@ export function ResultsScreen({
   primary,
   secondary,
   review,
+  toExam,
   extra,
   after,
   gapEnd,
@@ -112,8 +114,13 @@ export function ResultsScreen({
   /** The next step when nothing is to review, or while grading runs. */
   primary?: ReactNode;
   secondary?: ReactNode;
-  /** Something is to review: Ripasso mirato is the next step, and `onReview` asks the wrong ones again. */
+  /** Something is to review: "Rivedi gli errori" is the next step, and `onReview` asks the wrong ones again. */
   review?: { count: number; onReview: () => void };
+  /**
+   * "Torna all'esame": the quiet second action of a graded quiz, and its primary one when no step follows (nothing to
+   * review, an open gap's drill or the review of the mistakes were the step before). Without it the screen offers none.
+   */
+  toExam?: () => void;
   /** Quiet actions on the whole attempt, such as export and redo. */
   extra?: ReactNode;
   /** A line under the actions. */
@@ -136,7 +143,7 @@ export function ResultsScreen({
     queryFn: () => invoke("study.attemptOutcome", { attemptId }),
   });
   const exercise = kind === "simulation";
-  // Ripasso mirato opens the gap's drill or, without a gap, the wrong answers, and "Rifai solo le N" exists only with a
+  // "Rivedi gli errori" opens the gap's drill or, without a gap, the wrong answers, and "Rifai solo le N" exists only with a
   // gap. Until the outcome says which, neither is offered, so a click never lands on the other one and nothing that is
   // shown goes away. A read that failed leaves `gap` empty, and the page goes on without it.
   const deciding = graded && Boolean(review) && outcome.isPending;
@@ -144,6 +151,12 @@ export function ResultsScreen({
   const gap = graded && outcome.data ? drillGap(outcome.data.gaps) : undefined;
   const gapTopic = gap ? outcome.data?.topics.find((topic) => topic.id === gap.topicId)?.title : undefined;
   const parts = tally(items);
+  // The way back to the exam as a quiet second action, under the step that follows.
+  const exam = graded && toExam ? (
+    <Button variant="secondary" block onClick={toExam}>
+      {t("places.backToExam")}
+    </Button>
+  ) : null;
   const titleId = useId();
   const openDrill = (topicId: string) => navigate(`/plans/${planId}?drill=${encodeURIComponent(topicId)}`);
   return (
@@ -229,16 +242,22 @@ export function ResultsScreen({
         ) : null}
         <div className="px-res-actions" aria-busy={deciding || undefined}>
           {deciding ? (
-            <div className="px-skeleton px-res-wait" role="status">
-              <span className="visually-hidden">{t("results.reviewLoading")}</span>
-              <i className="px-skeleton-bar is-primary" aria-hidden />
-              <i className="px-skeleton-bar" aria-hidden />
-            </div>
+            <>
+              <div className="px-skeleton px-res-wait" role="status">
+                <span className="visually-hidden">{t("results.reviewLoading")}</span>
+                <i className="px-skeleton-bar is-primary" aria-hidden />
+              </div>
+              {exam}
+              <div className="px-skeleton px-res-wait" aria-hidden>
+                <i className="px-skeleton-bar" />
+              </div>
+            </>
           ) : graded && review ? (
             <>
               <Button size="lg" block onClick={() => (gap ? openDrill(gap.topicId) : review.onReview())}>
-                {t("results.targeted")}
+                {t("results.reviewMistakes", { count: review.count })}
               </Button>
+              {exam}
               {gap ? (
                 <Button variant="ghost" block onClick={review.onReview}>
                   {t("results.redoWrong", { count: review.count })}
@@ -248,13 +267,20 @@ export function ResultsScreen({
           ) : (
             <>
               {/* A review or a redo has no wrong answers to ask again, but a gap it left open still has its drill: the
-                  step the summary announces is offered here. */}
+                  step the summary announces is offered here, as the primary one when the screen can also go to the exam. */}
               {graded && gap ? (
-                <Button variant="secondary" size="lg" block onClick={() => openDrill(gap.topicId)}>
+                <Button variant={toExam ? "primary" : "secondary"} size="lg" block onClick={() => openDrill(gap.topicId)}>
                   {t("results.targeted")}
                 </Button>
               ) : null}
               {primary}
+              {graded && toExam && !gap ? (
+                <Button size="lg" block onClick={toExam}>
+                  {t("places.backToExam")}
+                </Button>
+              ) : (
+                exam
+              )}
             </>
           )}
           {secondary}

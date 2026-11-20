@@ -127,7 +127,8 @@ Current version is 32. A restored backup is migrated on a staging copy before it
 | chat_sessions     | The tool session a chat continues, one open row per chat. Ended rows count the sessions it opened.           |
 | messages          | One turn in a chat.                                                                                          |
 | message_passages  | Passages cited by a message.                                                                                 |
-| attachments       | A file attached to a message, stored as a blob hash.                                                         |
+| attachments       | A file a message carried: its stored file, name, kind, size and OCR text (migration 35).                     |
+| held_files        | A file attached in a composer and not sent yet (migration 35). Cleanups count it.                            |
 | whiteboards       | A whiteboard scene.                                                                                          |
 | flags             | A student flag on a generated item.                                                                          |
 | learning_events   | An append-only study event. Mastery is computed from these, not stored.                                      |

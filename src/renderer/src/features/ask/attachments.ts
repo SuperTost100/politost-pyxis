@@ -1,4 +1,5 @@
-import { DOCUMENT_EXTENSIONS, IMAGE_EXTENSIONS } from "../../../../shared/source-types";
+import type { AttachmentError, AttachmentView } from "../../../../shared/ipc";
+import { DOCUMENT_EXTENSIONS, IMAGE_EXTENSIONS, MAX_ATTACHED_FILES } from "../../../../shared/source-types";
 import { lastChat, parseTrail, TRAIL_STORE } from "../../app/trail";
 import type { NewChatSubject } from "./scope";
 
@@ -48,22 +49,42 @@ function filesKey(chatId?: string): string {
   return chatId ? `pyxis-files:${chatId}` : "pyxis-files";
 }
 
-export function readPendingFiles(store: Pick<Storage, "getItem">, chatId?: string): string[] {
+/**
+ * A file waiting in the composer: core's id for it (`chats.attach`) and the name its chip shows until core says more.
+ * `path` is where the student picked it from, so picking the same file again adds nothing.
+ */
+export type PickedFile = { id: string; name: string; path?: string };
+
+/** The id of a chip that never reached core, because attaching the file was refused outright. */
+export const LOCAL_PREFIX = "local-";
+export const isLocalFile = (file: PickedFile): boolean => file.id.startsWith(LOCAL_PREFIX);
+
+export function readPendingFiles(store: Pick<Storage, "getItem">, chatId?: string): PickedFile[] {
   try {
     const value = JSON.parse(store.getItem(filesKey(chatId)) ?? "[]") as unknown;
-    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+    if (!Array.isArray(value)) return [];
+    return value.filter(
+      (item): item is PickedFile =>
+        item !== null &&
+        typeof item === "object" &&
+        typeof (item as PickedFile).id === "string" &&
+        typeof (item as PickedFile).name === "string" &&
+        ((item as PickedFile).path === undefined || typeof (item as PickedFile).path === "string"),
+    );
   } catch {
     return [];
   }
 }
 
+/** Only files core holds are kept: a chip refused before core knew it has nothing to come back to. */
 export function writePendingFiles(
   store: Pick<Storage, "setItem" | "removeItem">,
   chatId: string | undefined,
-  files: string[],
+  files: PickedFile[],
 ): void {
-  if (files.length === 0) store.removeItem(filesKey(chatId));
-  else store.setItem(filesKey(chatId), JSON.stringify(files));
+  const kept = files.filter((file) => !isLocalFile(file));
+  if (kept.length === 0) store.removeItem(filesKey(chatId));
+  else store.setItem(filesKey(chatId), JSON.stringify(kept));
 }
 
 const SUBJECT_KEY = "pyxis-subject";
@@ -101,16 +122,6 @@ export function lastAskChat(store: Pick<Storage, "getItem">): string | undefined
   }
 }
 
-/**
- * Adds picked files to the pending list once each. Pending files survive leaving the chat, so picking a file that is
- * already waiting would otherwise attach it twice.
- */
-export function addPendingFiles(current: string[], chosen: string[]): string[] {
-  const next = [...current];
-  for (const file of chosen) if (!next.includes(file)) next.push(file);
-  return next;
-}
-
 /** What a chat message can carry, without the dot. The picker uses it, and a drop leaves out anything else. */
 export const ATTACH_EXTENSIONS = [...IMAGE_EXTENSIONS, ...DOCUMENT_EXTENSIONS] as const;
 
@@ -119,4 +130,36 @@ export function attachable(paths: string[]): { paths: string[]; skipped: number 
   const allowed = new Set<string>(ATTACH_EXTENSIONS);
   const kept = paths.filter((path) => allowed.has(fileName(path).split(".").pop()?.toLowerCase() ?? ""));
   return { paths: kept, skipped: paths.length - kept.length };
+}
+
+/** The reason an `attach` request that failed gives, from its error code. */
+export function attachFailure(err: unknown): AttachmentError {
+  const code = err && typeof err === "object" && "code" in err ? String((err as { code: unknown }).code) : "";
+  if (code === "source-too-big") return "too-large";
+  if (code === "file-access-denied") return "denied";
+  return "unreadable";
+}
+
+/** The chip of a file that was refused before core held it, so its reason shows like any other. */
+export function refusedFile(id: string, path: string, error: AttachmentError): AttachmentView {
+  const name = fileName(path);
+  const photo = IMAGE_EXTENSIONS.includes(name.split(".").pop()?.toLowerCase() as never);
+  return { id, name, kind: photo ? "photo" : "document", size: 0, state: "failed", error };
+}
+
+/** The line a chip shows under a file's name: what the reading is doing, or why it failed. Null when the file is ready. */
+export function attachmentLine(view: AttachmentView): { key: string; values?: Record<string, unknown> } | null {
+  if (view.state === "failed") {
+    const error = view.error ?? "unreadable";
+    return {
+      key: error === "too-large" ? `ask.attach.error.tooLarge${view.kind === "photo" ? "Photo" : "Document"}` : `ask.attach.error.${error === "too-many" ? "tooMany" : error}`,
+      values: { max: MAX_ATTACHED_FILES },
+    };
+  }
+  if (view.state === "needs-data") return { key: "ask.attach.needsData" };
+  if (view.state === "ready") return null;
+  if (view.phase === "scan")
+    return view.pages ? { key: "ask.attach.scanPage", values: { page: view.page, pages: view.pages } } : { key: "ask.attach.scan" };
+  const percent = Math.round((view.progress ?? 0) * 100);
+  return percent > 0 ? { key: "ask.attach.readingPercent", values: { percent } } : { key: "ask.attach.reading" };
 }
