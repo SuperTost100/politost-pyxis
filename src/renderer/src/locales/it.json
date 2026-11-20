@@ -889,6 +889,8 @@
       "none": "Questi file non hanno ancora una materia: scegli tu.",
       "noneSome": "Alcuni file non hanno ancora una materia: scegli tu.",
       "stopped": "Hai fermato la scelta della materia: riprendila da Attività, oppure sceglila tu.",
+      "failedLine": "Non sono riuscito a scegliere la materia: lo strumento AI ha dato un errore. Riprova da Attività, oppure sceglila tu.",
+      "interrupted": "La scelta della materia si è interrotta con la chiusura di Pyxis: riprendila da Attività, oppure sceglila tu.",
       "choose": "Scegli la materia",
       "chooseFor": "Materia di {{title}}",
       "failed": "Non sono riuscito a scegliere la materia. Riprova da Attività, oppure sceglila tu.",
@@ -1459,7 +1461,6 @@
     "finishPrompt": "Hai finito di leggere?",
     "recapPrompt": "Rispondi al ripasso finale per completare la lezione, oppure segnala che hai finito.",
     "doneTitle": "Lezione completata",
-    "backToPath": "Torna al percorso",
     "continue": "Continua",
     "sources": "Fonti usate",
     "page": "p. {{n}}",
@@ -1702,8 +1703,6 @@
     "outOf": "su {{scale}}"
   },
   "results": {
-    "points_one": "{{points}} punto su {{total}}.",
-    "points_other": "{{points}} punti su {{total}}.",
     "result": "Risultato",
     "resultOn": "Risultato · {{date}}",
     "gradingCount_one": "{{done}} su {{total}} risposta valutata.",
@@ -1741,6 +1740,8 @@
     "reviewMistakes_one": "Rivedi l'errore",
     "reviewMistakes_other": "Rivedi i {{count}} errori",
     "reviewLoading": "Preparo il ripasso",
+    "preparing": "Preparo gli errori da rivedere",
+    "stopPreparing": "Ferma la preparazione",
     "redoWrong_one": "Rifai solo quella da rivedere",
     "redoWrong_other": "Rifai solo le {{count}} da rivedere",
     "questionsCount_one": "La domanda",
@@ -2583,6 +2584,11 @@
     },
     "wipeBackupsLeftConfirm": "Ho capito"
   },
+  "activity": {
+    "starting": "Avvio lo strumento AI · {{time}}",
+    "thinking": "Ci sto ragionando · {{time}}",
+    "writing": "Sto scrivendo · {{time}}"
+  },
   "jobs": {
     "topicsMore_one": "{{first}} e un altro argomento",
     "topicsMore_other": "{{first}} e altri {{count}} argomenti",
@@ -2981,8 +2987,7 @@
       "run": "Esegui",
       "verified": "Verificato",
       "failed": "Non verificato",
-      "checking": "Verifico il calcolo…",
-      "uncheckable": "Non verificabile"
+      "checking": "Verifico il calcolo…"
     },
     "lesson": {
       "recommended": "Consigliato"
@@ -4091,6 +4096,9 @@
     "examHint": "Con l’esame contano anche nel suo percorso.",
     "topic": "Argomento",
     "topicPlaceholder": "Scegli un argomento",
+    "examNoSubject": "Questo esame non ha una materia: le flashcard restano nell'esame e non compaiono tra quelle di una materia.",
+    "topicNeeded": "Scegli l'argomento dell'esame per salvarle qui, oppure togli l'esame.",
+    "subjectNeeded": "Scegli la materia: senza, le flashcard non hanno dove andare.",
     "noSubjects": "Le flashcard stanno in una materia, e non ne hai ancora nessuna. Aggiungi del materiale in Libreria o crea un esame.",
     "hint": "Pyxis scrive flashcard brevi a partire da questo testo. Le controlli tu prima di salvarle.",
     "make": "Crea flashcard",

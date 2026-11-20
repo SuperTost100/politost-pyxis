@@ -507,6 +507,20 @@ describe("where the cards go", () => {
     db.close();
   });
 
+  it("reports no subject for an exam that has none, since its cards are saved with the exam's subject, which is none", () => {
+    const db = fixture();
+    db.prepare("INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('free', NULL, 'Free', 'ready', 1, 4)").run();
+    db.prepare("INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('t1', 'free', 'First', 0, 1)").run();
+    db.prepare("INSERT INTO plan_sources (plan_id, source_id) VALUES ('free', 'src')").run();
+    // The exam's files belong to a subject, but a card of the exam takes the exam's own subject (`cards_take_plan_subject`),
+    // so naming the files' subject would promise a place the cards do not go to.
+    db.prepare("UPDATE sources SET subject_id = 'chem' WHERE id = 'src'").run();
+    expect(cardPlaces(db, { planId: "free", topicId: "t1" })).toMatchObject({ subjectId: null, planId: "free", topicId: "t1" });
+    // An exam that has a subject reports it, which is the subject its cards are saved with.
+    expect(cardPlaces(db, { planId: "mech", topicId: "dyn" })).toMatchObject({ subjectId: "phys" });
+    db.close();
+  });
+
   it("takes a chat's plan, then the topic its cited passages belong to", () => {
     const db = fixture();
     expect(

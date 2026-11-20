@@ -137,6 +137,9 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     await expect(working(page, "Sto dividendo il capitolo in parti")).toBeVisible();
     await expect(page.locator(".px-part-working-status > p")).toBeFocused();
     await expect(parts(page)).toHaveCount(0);
+    // The block says what the tool is doing and for how long, outside the status line, so the seconds are not announced.
+    await expect(page.locator(".px-part-working-actions .px-activity-note")).toHaveText(/^Ci sto ragionando · 0:\d\d$/);
+    await expect(working(page, /Ci sto ragionando/)).toHaveCount(0);
     await saveShot(page, "lesson-parts/planning-it-light.png");
     // The plan is saved: the column fills in with every part, and the block says which part is written.
     await expect(working(page, "Sto scrivendo la parte 1")).toBeVisible();

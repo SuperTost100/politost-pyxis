@@ -16,6 +16,7 @@ import {
   modelFileSchema,
   ownModels,
   resetModelFile,
+  lowEffortOn,
   type ModelFile,
 } from "./model-roles";
 import { fallbackSelection, rememberReady, selectionFor } from "./selection";
@@ -299,6 +300,35 @@ describe("a tool only runs its maker's models", () => {
     adoptModelFile(file);
     const provider: AutoProvider = { id: "codex", kind: "cli", effort: true, models: [model("gpt-6-luna")] };
     expect(planAuto([provider]).map).toEqual({ provider: "codex", model: "gpt-6-luna", effort: "high" });
+  });
+});
+
+describe("the calls that run at the lowest effort, as data", () => {
+  it("gives the outline to every tool and the quiz to Antigravity, as the shipped file says", () => {
+    for (const tool of ["claude", "codex", "antigravity", "anthropic-api", "openai-api", "ollama"]) expect(lowEffortOn(tool, "outline")).toBe(true);
+    expect(modelFile().tools.antigravity!.lowEffort).toEqual(["outline", "quiz"]);
+    expect(lowEffortOn("antigravity", "quiz")).toBe(true);
+    for (const tool of ["claude", "codex", "anthropic-api", "openai-api", "ollama"]) expect(lowEffortOn(tool, "quiz")).toBe(false);
+    expect(lowEffortOn("antigravity", "chat")).toBe(false);
+  });
+
+  it("follows a newer copy of the file, with no change to the code", () => {
+    const file = copy();
+    file.updatedAt = "2099-01-01T00:00:00Z";
+    file.tools.antigravity!.lowEffort = ["outline"];
+    file.tools.claude!.lowEffort = ["outline", "quiz", "a-call-this-build-does-not-know"];
+    expect(adoptModelFile(file)).toBe(true);
+    expect(lowEffortOn("antigravity", "quiz")).toBe(false);
+    expect(lowEffortOn("claude", "quiz")).toBe(true);
+  });
+
+  it("falls back to the outline alone for a copy that does not say", () => {
+    const file = copy();
+    file.updatedAt = "2099-01-01T00:00:00Z";
+    for (const rule of Object.values(file.tools)) delete rule.lowEffort;
+    expect(adoptModelFile(file)).toBe(true);
+    expect(lowEffortOn("antigravity", "outline")).toBe(true);
+    expect(lowEffortOn("antigravity", "quiz")).toBe(false);
   });
 });
 

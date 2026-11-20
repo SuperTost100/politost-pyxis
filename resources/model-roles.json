@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-20T16:00:00Z",
+  "updatedAt": "2026-11-20T18:00:00Z",
   "tools": {
     "claude": {
       "own": "^claude-",
@@ -48,6 +48,7 @@
     },
     "antigravity": {
       "own": "^gemini-\\d",
+      "lowEffort": ["outline", "quiz"],
       "roles": {
         "fast": {
           "effort": "low",

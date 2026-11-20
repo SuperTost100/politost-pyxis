@@ -6,18 +6,15 @@ export function CheckBadge({
   reason,
   verifiedLabel,
   failedLabel,
-  uncheckableLabel,
 }: {
   state: "verified" | "failed" | "none";
   reason?: string;
   verifiedLabel: string;
   failedLabel: string;
-  uncheckableLabel?: string;
 }) {
-  if (state === "none")
-    return uncheckableLabel ? (
-      <span className="px-check-badge is-uncheckable">{uncheckableLabel}</span>
-    ) : null;
+  // A claim the checker cannot evaluate says nothing to the student, so it shows no badge: one appears only when it tells
+  // them something, that the step holds or that it does not.
+  if (state === "none") return null;
   if (state === "verified") {
     return (
       <span className="px-check-badge is-verified" title={verifiedLabel}>

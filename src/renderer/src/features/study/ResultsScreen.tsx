@@ -1,17 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
 import { Button } from "../../components/Button";
 import { Icon, type IconName } from "../../components/Icon";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { Logo } from "../../components/Logo";
 import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MarkdownView } from "../../components/MarkdownView";
+import { Notice } from "../../components/Notice";
 import { openSourceViewer } from "../../components/SourceViewer";
 import type { RequestOutput } from "@shared/ipc";
 import { currentToolLabel } from "@shared/tool-names";
 import { invoke } from "../../lib/ipc";
+import { useGapDrill } from "../plans/useGapDrill";
 import { useGradeScale, type GradeFormat } from "../../lib/useGradeScale";
 import { questionPoints, stemText, type AnswerSource, type Citation } from "./quizText";
 import { drillGap, statusWordKey, tally, type ResultMark } from "./resultsSummary";
@@ -24,6 +25,8 @@ export type ResultItem = {
   id: string;
   stem: string;
   topic?: string;
+  /** The topic's id, so a flashcard made from the answer is filed under it. */
+  topicId?: string;
   mark: ResultMark;
   /** The answer's credit from 0 to 1, once graded: "0,5/1" beside its word. */
   value?: number;
@@ -133,7 +136,6 @@ export function ResultsScreen({
 }) {
   const { t } = useTranslation();
   const scale = useGradeScale();
-  const navigate = useNavigate();
   const graded = grade !== undefined;
   const outcome = useQuery({
     // Asked again as grading moves (an engine may answer instead) and once the grade is in. Marked stale by the key's first
@@ -158,7 +160,23 @@ export function ResultsScreen({
     </Button>
   ) : null;
   const titleId = useId();
-  const openDrill = (topicId: string) => navigate(`/plans/${planId}?drill=${encodeURIComponent(topicId)}`);
+  // The drill is prepared here, on the results, which stay on screen with the button at work; the quiz opens from here.
+  const drill = useGapDrill(planId);
+  const preparing = drill.preparing !== null;
+  const openDrill = (topicId: string) => void drill.start(topicId);
+  /** The button of the step while its drill is written, with the way to stop it under it. */
+  const working = (
+    <>
+      {/* A status region, which a screen reader announces as it appears: a disabled button would be passed over. */}
+      <div className="px-res-busy" role="status" aria-live="polite">
+        <Logo working decorative size={18} />
+        {t("results.preparing")}
+      </div>
+      <Button variant="ghost" block onClick={drill.stop}>
+        {t("results.stopPreparing")}
+      </Button>
+    </>
+  );
   return (
     <div className="px-res">
       <aside className="px-res-summary" aria-labelledby={titleId}>
@@ -254,9 +272,13 @@ export function ResultsScreen({
             </>
           ) : graded && review ? (
             <>
-              <Button size="lg" block onClick={() => (gap ? openDrill(gap.topicId) : review.onReview())}>
-                {t("results.reviewMistakes", { count: review.count })}
-              </Button>
+              {preparing ? (
+                working
+              ) : (
+                <Button size="lg" block onClick={() => (gap ? openDrill(gap.topicId) : review.onReview())}>
+                  {t("results.reviewMistakes", { count: review.count })}
+                </Button>
+              )}
               {exam}
               {gap ? (
                 <Button variant="ghost" block onClick={review.onReview}>
@@ -269,9 +291,13 @@ export function ResultsScreen({
               {/* A review or a redo has no wrong answers to ask again, but a gap it left open still has its drill: the
                   step the summary announces is offered here, as the primary one when the screen can also go to the exam. */}
               {graded && gap ? (
-                <Button variant={toExam ? "primary" : "secondary"} size="lg" block onClick={() => openDrill(gap.topicId)}>
-                  {t("results.targeted")}
-                </Button>
+                preparing ? (
+                  working
+                ) : (
+                  <Button variant={toExam ? "primary" : "secondary"} size="lg" block onClick={() => openDrill(gap.topicId)}>
+                    {t("results.targeted")}
+                  </Button>
+                )
               ) : null}
               {primary}
               {graded && toExam && !gap ? (
@@ -285,6 +311,11 @@ export function ResultsScreen({
           )}
           {secondary}
         </div>
+        {drill.stopped !== null ? (
+          <Notice tone="danger" action={{ label: t("components.notice.retry"), onClick: drill.retry }}>
+            {t(drill.readFailed ? "examPage.reviewReadFailed" : "examPage.reviewFailed")}
+          </Notice>
+        ) : null}
         {extra ? <div className="px-res-extra">{extra}</div> : null}
         {after ? <p className="small px-res-after">{after}</p> : null}
         {topics.length ? (
@@ -548,6 +579,7 @@ function Answer({ id, item, planId }: { id: string; item: ResultItem; planId: st
                     .join("\n\n"),
                   origin: "reply",
                   planId,
+                  topicId: item.topicId,
                   passageIds: citations.map((cite) => cite.passageId),
                 })
               }

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { QUIZ_MAX_QUESTIONS, quizMinutes } from "@shared/quiz";
 import { spokenText } from "@shared/spoken-math";
+import { ActivityNote } from "../../components/ActivityNote";
 import { ToggleChips } from "../../components/Controls";
 import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
@@ -844,7 +845,6 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   // The results screen: the score counts every answer not marked wrong by the student.
   const points = new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 });
   const countedResults = finalResult?.results.filter((row) => !row.flagged) ?? [];
-  const resultPoints = countedResults.reduce((sum, row) => sum + row.score, 0);
   const excludedResults = (finalResult?.results.length ?? 0) - countedResults.length;
   const hasMistakes = !review && !redo && countedResults.some((row) => row.score < 1);
   // Only the saved session knows each question's topic; a quiz just started has not read it back yet.
@@ -886,6 +886,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       id: row.id,
       stem: item?.stem ?? "",
       topic: topicTitle(row.id),
+      topicId: topicOf(row.id),
       mark,
       value: row.score,
       ...(mark === "partial" ? { score: t("quiz.questionPoints", { points: questionPoints(row.score, i18n.language) }) } : {}),
@@ -967,6 +968,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
             ? t("quiz.available", { available: questions.length, total: requestedCount, count: requestedCount })
             : undefined
         }
+        busyActivity={generating && questions.length ? session.data?.activity : undefined}
         handIn={{
           disabled: !canFinish || gradingStarted || submit.isPending || loadingAttempt,
           note:
@@ -1232,8 +1234,8 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   return (
     <StudyLayout
       wide={sheet}
-      // On the answer sheet the question card's "Domanda 3 di 8" is the page's heading.
-      heading={!sheet}
+      // On the answer sheet the question card's "Domanda 3 di 8" is the page's heading, once there is a question.
+      heading={!sheet || !question}
       back={back}
       title={
         // The intro's own headline names the topic or the test; the bar says what kind of page this is.
@@ -1456,7 +1458,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                 {buildFailed}
               </>
             ) : (
-              <Working slot line={t("quiz.preparing")} />
+              <Working slot line={t("quiz.preparing")} action={<ActivityNote activity={session.data?.activity} />} />
             )}
           </div>,
         )
@@ -1508,11 +1510,6 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           detail={
             finalResult
               ? [
-                  t("results.points", {
-                    count: resultPoints,
-                    points: points.format(resultPoints),
-                    total: countedResults.length,
-                  }),
                   excludedResults
                     ? `${t("quiz.excludedCount", { count: excludedResults })}.`
                     : "",

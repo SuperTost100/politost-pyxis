@@ -615,6 +615,8 @@ export async function planParts(db: Database.Database, input: PlanPartsInput): P
     try {
       result = await generate({
         selection,
+        // A split of numbered passages that `checkOutline` checks, and the fallback covers: thinking only costs time.
+        lowEffort: "outline",
         run: input.run,
         signal: input.signal,
         schema: outlineReply,
@@ -768,9 +770,15 @@ function takeawayText(body: string): string | null {
   return typeof text === "string" && text.trim() ? text.replace(/\s+/g, " ").trim() : null;
 }
 
-/** A summary cut to `SUMMARY_CHARS` at a word, for a second reply whose takeaway is too long. */
+/**
+ * A summary cut to `SUMMARY_CHARS`: after the last sentence that fits, when that keeps more than half of it, else at a
+ * word with an ellipsis.
+ */
 function cutSummary(text: string): string {
   if (text.length <= SUMMARY_CHARS) return text;
+  const ends = [...text.slice(0, SUMMARY_CHARS + 1).matchAll(/[.!?](?=\s)/g)];
+  const end = ends.at(-1)?.index;
+  if (end !== undefined && end + 1 > SUMMARY_CHARS / 2) return text.slice(0, end + 1);
   const cut = text.slice(0, SUMMARY_CHARS - 1);
   const space = cut.lastIndexOf(" ");
   return `${(space > SUMMARY_CHARS / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
@@ -783,10 +791,10 @@ function cutSummary(text: string): string {
  * Rejected, with one line per broken rule for the second ask: the wrong number of ## sections (2 or 3, the recap 1), a
  * part that does not end with its question (a pyxis-check, or a pyxis-recap of 3 questions), a teaching part under 250
  * or any part over 1,400 words, a heading another written part already has (case, accents and punctuation ignored), and
- * a missing takeaway or one over 300 characters. The second reply (`last`) is accepted when it has 1 to 4 sections and
- * at most 2,000 words, with no question or with its question as the last block (a recap of any number of questions);
- * its takeaway is cut to 300 characters. A question followed by more text is refused on either reply, since the
- * question is what finishes the part.
+ * a missing takeaway. A takeaway over 300 characters is cut on either reply, after its last whole sentence that fits when
+ * that keeps more than half of it. The second reply (`last`) is accepted when it has 1 to 4 sections and at most 2,000
+ * words, with no question or with its question as the last block (a recap of any number of questions). A question
+ * followed by more text is refused on either reply, since the question is what finishes the part.
  */
 export function partShape(reply: string, context: PartShapeContext): PartShape {
   const lines = lessonText(reply).replace(/\r\n?/g, "\n").split("\n");
@@ -864,10 +872,10 @@ export function partShape(reply: string, context: PartShapeContext): PartShape {
       problems.push(
         `The section "${section.title}" has the heading of a section of another part. Teach this part's own step, under a heading of its own.`,
       );
+  // A takeaway over the limit is cut, not sent back: a model counts characters badly, and a rewrite of the whole part
+  // takes as long as the part did.
   if (summary === null) problems.push('The pyxis-takeaway block is missing. End the part with {"text": "..."} in it.');
-  else if (summary.length > SUMMARY_CHARS)
-    problems.push(`The pyxis-takeaway has ${summary.length} characters. Keep it within ${SUMMARY_CHARS}, in two sentences.`);
-  return problems.length > 0 ? { ok: false, problems } : { ok: true, markdown, summary, words, question };
+  return problems.length > 0 || summary === null ? { ok: false, problems } : { ok: true, markdown, summary: cutSummary(summary), words, question };
 }
 
 /** The ## headings of a saved lesson item, in order. */

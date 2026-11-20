@@ -1,6 +1,7 @@
 import { nearestEffort } from "../../shared/effort";
 import { readableModel } from "../../shared/model-names";
 import { variantsOf } from "./effort-variants";
+import { lowEffortOn } from "./model-roles";
 
 /**
  * The efforts each model lists, as last seen. Model lists are fetched
@@ -126,6 +127,26 @@ export function resolveEffort(
   if (!wanted) return undefined;
   const listed = effortsOf(provider, model);
   return listed ? nearestEffort(wanted, listed) : wanted;
+}
+
+/**
+ * The selection for `call` (`outline`, `quiz`) at the lowest effort its model lists when the model file says that tool
+ * runs that call so (`lowEffortOn()`), else as it is. These are calls that reshape what they are given and whose reply
+ * code checks. Measured on Gemini 3.8 Flash at medium, the thinking took 37 of the 45 seconds of an outline, and 4,900
+ * of its 5,100 output tokens; at low the same call took 8 seconds. A model that lists no level runs with none.
+ */
+export function atLowEffort<T extends { provider: string; model: string; effort?: string }>(selection: T, call: string): T {
+  if (!lowEffortOn(selection.provider, call)) return selection;
+  // A level carried by the model id (`gemini-4-neon-xhigh`) is the model at that level, which is replaced here.
+  const unfolded = unfoldVariant(selection.provider, selection.model);
+  const model = unfolded?.model ?? selection.model;
+  // A selection with no effort of its own runs at the tool's default, which can be its highest: it is lowered when the
+  // model lists levels, and left when it is not known to list any.
+  if (!unfolded && !selection.effort && !effortsOf(selection.provider, model)?.length) return selection;
+  const effort = resolveEffort(selection.provider, model, "low");
+  const runs = runsAs(selection.provider, model, effort);
+  const { effort: _stored, ...rest } = selection;
+  return { ...rest, model: runs, ...(effort && runs === model ? { effort } : {}) } as T;
 }
 
 export function forgetModels(): void {

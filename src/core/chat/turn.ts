@@ -48,6 +48,9 @@ import {
   contextHash,
   currentSession,
   markOutOfStep,
+  withdrawQuestion,
+  withdrawnNote,
+  forgetWithdrawn,
   recordSession,
   keepSession,
   rewindSession,
@@ -712,6 +715,8 @@ export function seedChat(
     title,
     body: input.body,
   };
+  // The row is stored now, so a file, a subject or a title works as for any chat. The lists leave it out until it holds a
+  // message (`listChats`, `searchChats`), and `removeEmptyChat` removes it when the student leaves it unsent.
   db.prepare(
     `INSERT INTO chats (id, title, scope_json, subject, context_json, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -839,8 +844,8 @@ export async function askTurn(
   const stopChecks = () => cancelChecks(chat.id);
   input.signal?.addEventListener("abort", stopChecks, { once: true });
   generating.add(chat.id);
+  const report: { leftOut?: TakenFiles["leftOut"]; question?: string; inserted?: boolean; scopeBefore?: string[] } = {};
   try {
-    const report: { leftOut?: TakenFiles["leftOut"]; question?: string } = {};
     const result = await answer(db, input, replacing, chat.id, now, report);
     // The question is answered, so the files tied to it let go: the chat holds the ones its rows name, and a copy it already
     // had or a file that could not be read goes. Until now a send that failed kept every chip as it was.
@@ -860,11 +865,66 @@ export async function askTurn(
     )
       // The files still held in the composer stay, with the copies they made, for the retry: their rows name them.
       deleteChat(db, input.workspace ?? "", chat.id);
+    // A question this turn stored that the student stopped before any answer text came is taken back: the window puts its
+    // text and files back in the composer, so the chat must not keep it too, or sending again would store it twice.
+    if (
+      !chat.created &&
+      report.inserted &&
+      report.question &&
+      (isAbort(err) || (err instanceof Error && err.name === "AbortError"))
+    )
+      takeBackQuestion(db, input.workspace ?? "", chat.id, report.question, input.held, report.scopeBefore ?? []);
     throw err;
   } finally {
     input.signal?.removeEventListener("abort", stopChecks);
     generating.delete(chat.id);
   }
+}
+
+/**
+ * Takes a stored question back out of a chat: its row and its file rows go, the documents it brought leave the chat's
+ * scope (only the ones this turn added: a source the chat already held stays, and so does one an earlier question names),
+ * a photo copy nothing else names is removed, and the files it was sent with go back to the composer's, tied to no
+ * question. The turn stopped before any answer text, so nothing on screen refers to it. A tool's session may still hold
+ * the question, so the next turn that resumes it is told to disregard it (`withdrawQuestion`).
+ */
+function takeBackQuestion(
+  db: Database.Database,
+  workspace: string,
+  chatId: string,
+  messageId: string,
+  held: AskInput["held"],
+  scopeBefore: string[],
+): void {
+  const shas = db.transaction(() => {
+    const text = db.prepare(`SELECT body FROM messages WHERE id = ? AND chat_id = ? AND role = 'user'`).pluck().get(messageId, chatId) as
+      | string
+      | undefined;
+    if (text === undefined) return [];
+    const rows = db
+      .prepare(`SELECT blob_sha AS sha, source_id AS source, name FROM attachments WHERE message_id = ?`)
+      .all(messageId) as Array<{ sha: string; source: string | null; name: string | null }>;
+    db.prepare(`DELETE FROM attachments WHERE message_id = ?`).run(messageId);
+    db.prepare(`DELETE FROM messages WHERE id = ?`).run(messageId);
+    const named = db.prepare(
+      `SELECT 1 FROM attachments a JOIN messages m ON m.id = a.message_id WHERE m.chat_id = ? AND a.source_id = ?`,
+    );
+    const leaving = new Set(
+      rows.flatMap((row) => (row.source && !scopeBefore.includes(row.source) && !named.get(chatId, row.source) ? [row.source] : [])),
+    );
+    if (leaving.size > 0) {
+      const scope = readScope(db, chatId);
+      db.prepare(`UPDATE chats SET scope_json = ? WHERE id = ?`).run(
+        scopeJson({ ...scope, ids: scope.ids.filter((id) => !leaving.has(id)) }),
+        chatId,
+      );
+    }
+    withdrawQuestion(db, chatId, text, rows.flatMap((row) => (row.name ? [row.name] : [])));
+    return rows.map((row) => row.sha);
+  })();
+  held?.untie(messageId);
+  // A file the system will not remove stays for the sweep: the stop must still reach the window.
+  if (workspace) removeUnreferencedBlobs(db, workspace, shas);
 }
 
 async function answer(
@@ -873,7 +933,7 @@ async function answer(
   replacing: { assistantId: string; userId: string } | undefined,
   chatId: string,
   now: number,
-  report: { leftOut?: TakenFiles["leftOut"]; question?: string },
+  report: { leftOut?: TakenFiles["leftOut"]; question?: string; inserted?: boolean; scopeBefore?: string[] },
 ): Promise<AskResult> {
   const prior = readScope(db, chatId);
   const planId = input.planId === undefined ? prior.planId : input.planId;
@@ -959,9 +1019,8 @@ async function answer(
     // The chat's own hidden documents stay in its scope whatever the client sends: a picker that lists only library
     // sources, or a `picked` list loaded before an earlier turn attached one, cannot remove them. The scope is read
     // again here, in the transaction, so a turn stored since `prior` was read is not overwritten either.
-    const hidden = readScope(db, chatId).ids.filter((id) =>
-      db.prepare(`SELECT 1 FROM sources WHERE id = ? AND library = 0`).get(id),
-    );
+    const before = readScope(db, chatId).ids;
+    const hidden = before.filter((id) => db.prepare(`SELECT 1 FROM sources WHERE id = ? AND library = 0`).get(id));
     const picked = [...new Set([...picked0, ...hidden, ...attachedIds])];
     const sourceIds = effectiveSources(db, { planId, ids: picked });
     const current = readScope(db, chatId);
@@ -992,8 +1051,10 @@ async function answer(
     let userMessageId =
       replacing?.userId ||
       (pending?.role === "user" && pending.body === userBody ? pending.id : "");
+    let inserted = false;
     if (!userMessageId) {
       userMessageId = uuidv7(now + 1);
+      inserted = true;
       db.prepare(
         `INSERT INTO messages (id, chat_id, role, body, created_at) VALUES (?, ?, 'user', ?, ?)`,
       ).run(userMessageId, chatId, userBody, now);
@@ -1041,13 +1102,15 @@ async function answer(
       ).run(uuidv7(now + 5), userMessageId, source.sha, source.mime, now, doc.name, doc.size, doc.use);
     }
     db.prepare(`UPDATE chats SET updated_at = ? WHERE id = ?`).run(now, chatId);
-    return { sourceIds, subject, subjectBy, userMessageId, attachedIds };
+    return { sourceIds, subject, subjectBy, userMessageId, attachedIds, inserted, before };
   };
-  const { sourceIds, subject, subjectBy, userMessageId, attachedIds } = commitStaged(db, input.workspace ?? "", blobs, () =>
+  const { sourceIds, subject, subjectBy, userMessageId, attachedIds, inserted, before } = commitStaged(db, input.workspace ?? "", blobs, () =>
     persist(reused),
   );
   // The files are tied to the question they went with, whatever the send does next.
   report.question = userMessageId;
+  report.inserted = inserted;
+  report.scopeBefore = before;
   input.held?.tie([...(taken?.order ?? []), ...(taken?.leftOut.map((file) => file.id) ?? [])], userMessageId);
   input.onQuestion?.(userMessageId, chatId);
 
@@ -1218,9 +1281,11 @@ async function answer(
         ? `<instructions>\n${system}\n</instructions>\nThese instructions replace any you were given before.\n\n`
         : "";
     const replay = outOfStep ? historyText(db, chatId, exclude, handoverChars(provider), session!.syncedTo) : "";
-    const replayBlock = replay
-      ? `The conversation as the student sees it, since the last turn you completed. This, not anything you remember differently, is the conversation. A reply marked stopped was cut off, and the student saw only the text shown.\n${replay}\n\n`
-      : "";
+    const withdrawn = outOfStep && session ? withdrawnNote(db, session.id) : "";
+    const replayBlock =
+      replay || withdrawn
+        ? `The conversation as the student sees it, since the last turn you completed. This, not anything you remember differently, is the conversation. A reply marked stopped was cut off, and the student saw only the text shown.\n${[replay, withdrawn].filter(Boolean).join("\n")}\n\n`
+        : "";
     return `${newInstructions}${outOfStep || session?.told !== told ? `${header}\n\n` : ""}${replayBlock}${replacing && !resume ? ASKED_AGAIN : ""}${newQuestion}`;
   };
   // The conversation handed to a new session is sized to the window of the engine that answers, which an automatic choice
@@ -1711,6 +1776,12 @@ export function renameChat(
   if (info.changes === 0) throw new Error("chat-missing");
 }
 
+/** A chat's title, undefined for a chat that does not exist. The lists leave out a chat with no message, so the open chat reads it here. */
+export function chatTitle(db: Database.Database, chatId: string): string | null | undefined {
+  const row = db.prepare(`SELECT title FROM chats WHERE id = ?`).get(chatId) as { title: string | null } | undefined;
+  return row ? row.title : undefined;
+}
+
 /**
  * Deletes a chat for good: its messages and citations, the hidden documents it attached (unless another chat, a plan or
  * anything built from them still uses one, or the student promoted it to the library), and the photo and document
@@ -1718,6 +1789,7 @@ export function renameChat(
  */
 export function deleteChat(db: Database.Database, workspace: string, chatId: string) {
   cancelChecks(chatId);
+  forgetWithdrawn(db, chatId);
   const hashes = db.transaction(() => {
     const mine = readScope(db, chatId).ids;
     const shared = chatListedSources(db, chatId);
@@ -1750,12 +1822,35 @@ export function deleteChat(db: Database.Database, workspace: string, chatId: str
   removeUnreferencedBlobs(db, workspace, hashes);
 }
 
+/** A chat with a message. One that was only opened (seeded by "Chiedi") is not part of any list until its first message. */
+const CHAT_HAS_MESSAGE = `EXISTS (SELECT 1 FROM messages WHERE messages.chat_id = chats.id)`;
+
 export function listChats(db: Database.Database) {
   const rows = db
-    .prepare(`SELECT id, title, subject, updated_at FROM chats ORDER BY updated_at DESC`)
+    .prepare(`SELECT id, title, subject, updated_at FROM chats WHERE ${CHAT_HAS_MESSAGE} ORDER BY updated_at DESC`)
     .all() as Array<{ id: string; title: string | null; subject: string | null; updated_at: number }>;
   // Chats named before titles were written as plain text still hold the TeX of a selection.
   return rows.map((row) => ({ ...row, title: row.title?.includes("$") ? plainTitle(row.title, 200) : row.title }));
+}
+
+/**
+ * Removes a chat that was opened and never sent (one seeded by "Chiedi") when the student leaves it. It stays when it has a
+ * message, when a turn is running on it, when a file is attached in its composer (read or not) and when the window says
+ * its composer holds text.
+ */
+export function removeEmptyChat(db: Database.Database, workspace: string, chatId: string, kept: { draft?: boolean } = {}): boolean {
+  if (kept.draft || generating.has(chatId)) return false;
+  if (!db.prepare(`SELECT 1 FROM chats WHERE id = ?`).get(chatId)) return false;
+  if (db.prepare(`SELECT 1 FROM messages WHERE chat_id = ?`).get(chatId)) return false;
+  if (db.prepare(`SELECT 1 FROM held_files WHERE draft = ?`).get(chatId)) return false;
+  deleteChat(db, workspace, chatId);
+  return true;
+}
+
+/** At start no composer is open, so every chat with no message and no held file goes. Run after the held files are swept. */
+export function removeEmptyChats(db: Database.Database, workspace: string): number {
+  const ids = db.prepare(`SELECT id FROM chats WHERE NOT ${CHAT_HAS_MESSAGE}`).pluck().all() as string[];
+  return ids.filter((id) => removeEmptyChat(db, workspace, id)).length;
 }
 
 export function heldSources(

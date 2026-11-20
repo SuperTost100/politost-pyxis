@@ -4,6 +4,7 @@ import type { GenerateInput } from "../engine/generate";
 import { planLanguage } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
+import { activityOf, type JobActivity } from "../jobs/activity";
 import type { FigureRunner } from "../math/figures";
 import { aboutPlan } from "./jobAbout";
 import { loadLessonById } from "./lesson";
@@ -373,6 +374,8 @@ export type PartRewriteView = {
   /** The job's error as the runner stored it; null while writing, and for a rewrite stopped by a quit. */
   error: string | null;
   jobId: string;
+  /** The model call of the rewrite's job while it runs; null otherwise. */
+  activity: JobActivity | null;
 };
 
 function rewriteView(db: Database.Database, topicId: string, position: number): PartRewriteView | null {
@@ -381,7 +384,14 @@ function rewriteView(db: Database.Database, topicId: string, position: number): 
   // A rewrite stopped by a quit shows as failed, and Riprova resumes it; one the student cancelled shows nothing.
   const state = LIVE.has(job.state) ? "writing" : job.state === "failed" || job.state === "interrupted" ? "failed" : null;
   if (!state) return null;
-  return { state, rewrite: job.rewrite, wording: job.wording, error: state === "failed" ? job.error : null, jobId: job.id };
+  return {
+    state,
+    rewrite: job.rewrite,
+    wording: job.wording,
+    error: state === "failed" ? job.error : null,
+    jobId: job.id,
+    activity: state === "writing" ? activityOf(job.id) : null,
+  };
 }
 
 export type PartView = {
@@ -549,6 +559,8 @@ export type PartResult =
       lesson: PartLesson | null;
       summary: string | null;
       next: PartView | null;
+      /** The model call of the part's job while it runs; null otherwise. */
+      activity: JobActivity | null;
       /** The lesson written before parts that this lesson in parts rewrites, or is about to. */
       replaces: { itemId: string } | null;
       /** The part written again, or a rewrite of it that failed; null otherwise. */
@@ -624,6 +636,7 @@ export function openPart(
     next: after && view ? (view.parts.find((entry) => entry.position === after.position) ?? null) : null,
     replaces,
     rewrite: part?.itemId ? rewriteView(db, input.topicId, position) : null,
+    activity: null as JobActivity | null,
   };
   if (saved)
     return {
@@ -639,7 +652,8 @@ export function openPart(
         ...(saved.grounding === "general" ? { general: true } : {}),
       },
     };
-  if (job && LIVE.has(job.state)) return { ...base, state: outline ? "writing" : "planning", error: null, lesson: null };
+  if (job && LIVE.has(job.state))
+    return { ...base, activity: activityOf(job.id), state: outline ? "writing" : "planning", error: null, lesson: null };
   const error = job?.state === "failed" ? job.error : null;
   if (error?.includes("engine-missing")) {
     const own = new Set(part?.passageIds ?? []);

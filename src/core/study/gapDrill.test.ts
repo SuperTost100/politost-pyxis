@@ -209,6 +209,11 @@ describe("knowledge gap misconceptions and drill", () => {
     expect(prompts[1]!.prompt).toContain("Velocity is displacement per time.");
     // The explanation call saw the same focus and passages.
     expect(prompts[0]!.system).toContain("short explanation");
+    // The explanation is read in a card above the questions, so it asks for short paragraphs and formulas the page can draw.
+    expect(prompts[0]!.system).toContain("short paragraphs");
+    expect(prompts[0]!.system).toContain("blank line");
+    expect(prompts[0]!.system).toContain("LaTeX between $...$");
+    expect(prompts[0]!.system).toContain("Keep it under 120 words");
     expect(JSON.parse(prompts[0]!.prompt)).toMatchObject({ topic: "Motion", focus: { misconception: focus.misconception } });
   });
 

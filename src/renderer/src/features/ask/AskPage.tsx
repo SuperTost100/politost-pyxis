@@ -37,6 +37,7 @@ import {
   attachable,
   attachmentLine,
   chipLine,
+  composerHolds,
   draftKey,
   filesReading,
   isLocalFile,
@@ -94,6 +95,8 @@ type LeftOut = Array<{ name: string; kind: "document" | "photo"; error: Attachme
 
 /** Whether each chat's latest question was asked with "Answer generally", which Try again and Regenerate keep. */
 const askedGeneral = new Map<string, boolean>();
+/** The chats on screen, so a remount in the same tick does not count as leaving one. */
+const onScreen = new Set<string>();
 
 /**
  * What a turn needs from the Ask page when it ends. That can be a later mount than the one it was sent from, or none
@@ -375,11 +378,19 @@ export function AskPage() {
     [client],
   );
 
-  // Core keeps the engine's conversation, and a live CLI process, for the chat on screen. Leaving it lets that stop.
+  // Core keeps the engine's conversation, and a live CLI process, for the chat on screen. Leaving it lets that stop, and
+  // removes a chat that was opened and never sent, unless its composer holds text or files. A remount in the same tick
+  // (StrictMode in development) is not leaving.
   useEffect(() => {
     if (!chatId) return;
+    onScreen.add(chatId);
     return () => {
-      void invoke("chats.leave", { chatId }).catch(() => undefined);
+      onScreen.delete(chatId);
+      setTimeout(() => {
+        if (onScreen.has(chatId)) return;
+        const draft = composerHolds(sessionStorage, chatId, attachQueue.busy(chatId));
+        void invoke("chats.leave", { chatId, draft }).catch(() => undefined);
+      }, 0);
     };
   }, [chatId]);
 
@@ -862,7 +873,7 @@ export function AskPage() {
 
   const chats = useChats();
   const title = chatId
-    ? chats.data?.find((chat) => chat.id === chatId)?.title
+    ? (chats.data?.find((chat) => chat.id === chatId)?.title ?? thread.data?.title)
     : undefined;
   // A back control elsewhere calls this chat by its title. A chat opened from another page (a lesson's selection, an
   // exam's topic) leads back there; one opened from the sidebar, and a new chat, have none.

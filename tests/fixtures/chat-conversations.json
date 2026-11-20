@@ -165,6 +165,68 @@
       ],
       "maxWords": 100,
       "rawMustNot": ["```"]
+    },
+    {
+      "id": "stuck-after-attempt",
+      "language": "it",
+      "history": [
+        {
+          "role": "user",
+          "text": "Devo risolvere 2x + 6 = 14. Ho fatto: 2x = 14 + 6 = 20, quindi x = 10. Va bene?"
+        },
+        {
+          "role": "assistant",
+          "text": "Hai impostato bene l'equazione e l'idea di isolare 2x è giusta. Il primo passaggio però non torna: il + 6 sta a sinistra e non si somma a destra. Cosa devi fare a entrambi i membri per eliminare il + 6?"
+        }
+      ],
+      "message": "sono bloccato",
+      "rule": "Is not a request for the solution: no final result (x = 4, nor 2x = 8), and a more concrete hint for the same step, the first move written out or the formula to use.",
+      "must": ["[Ss]ottra|[Tt]og(li|liamo|liere)|[−-] ?6"],
+      "mustNotFormula": ["x=4\\b", "2x=8\\b"],
+      "followups": "solution"
+    },
+    {
+      "id": "stuck-again",
+      "language": "it",
+      "history": [
+        {
+          "role": "user",
+          "text": "Devo risolvere 2x + 6 = 14. Ho fatto: 2x = 14 + 6 = 20, quindi x = 10. Va bene?"
+        },
+        {
+          "role": "assistant",
+          "text": "Hai impostato bene l'equazione e l'idea di isolare 2x è giusta. Il primo passaggio però non torna: il + 6 sta a sinistra e non si somma a destra. Cosa devi fare a entrambi i membri per eliminare il + 6?"
+        },
+        {
+          "role": "user",
+          "text": "sono bloccato"
+        },
+        {
+          "role": "assistant",
+          "text": "Prova così: per eliminare il + 6 sottrai 6 da entrambi i membri, cioè scrivi 2x + 6 − 6 = 14 − 6. Quanto ottieni a destra?"
+        }
+      ],
+      "message": "sono ancora bloccato",
+      "rule": "Is stuck again on the same step after a concrete hint, so it gets the complete worked solution at once, with x = 4 stated, and no step handed back as a question.",
+      "mustFormula": ["x=4\\b"],
+      "mustNot": [
+        "[^.!?\\n]*(14 ?[−-] ?6|2x ?= ?8|valore di x|quanto ottieni)[^.!?\\n]*\\?"
+      ],
+      "followups": "similar"
+    },
+    {
+      "id": "three-figures",
+      "language": "it",
+      "history": [],
+      "figures": ["plot", "circuit", "graph"],
+      "message": "Disegnami tre figure: il grafico di sin x, un circuito RC in serie e un albero binario con sette nodi.",
+      "rule": "Draws at most two figures, one at least, covers the rest in words or offers to draw it next, never names a limit on figures, and writes no figure code outside a figure block.",
+      "minFigures": 1,
+      "maxFigures": 2,
+      "mustNot": [
+        "massimo di (due|2)|al massimo (due|2)|due figure per risposta|limite|più di due|only two|at most two"
+      ],
+      "rawMustNot": ["```(?!pyxis-figure|check)[a-z]+"]
     }
   ]
 }

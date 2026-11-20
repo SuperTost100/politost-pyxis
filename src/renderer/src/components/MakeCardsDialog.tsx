@@ -142,6 +142,13 @@ export function MakeCardsDialog() {
   // Somewhere to file the cards: an exam's topic, or the subject alone.
   const placed = planId ? Boolean(topicId) : Boolean(subjectId);
   const nowhere = places !== null && places.subjects.length === 0 && places.plans.length === 0;
+  // What the student still has to choose before the cards can be made, said next to the field that asks for it.
+  const asking = places !== null && step !== "working" && !saving;
+  // An exam and its topic are somewhere to file them without a subject, so only a card with no exam needs one.
+  const needSubject = asking && !nowhere && !subjectFixed && !subjectId && !planId;
+  const needTopic = asking && Boolean(plan) && !topicId;
+  // An exam with no subject keeps its cards to itself: they have no subject to be found under, and the dialog says so.
+  const examHasNoSubject = places !== null && Boolean(plan) && !plan?.subjectId;
 
   async function make() {
     if (!source || !placed) return;
@@ -299,6 +306,7 @@ export function MakeCardsDialog() {
                     value: item.id,
                     label: item.name,
                   }))}
+                  aria-describedby={needSubject ? "mc-subject-need" : undefined}
                   onChange={(value: string) => {
                     setSubjectId(value);
                     // An exam of another subject cannot hold them any more.
@@ -308,6 +316,11 @@ export function MakeCardsDialog() {
                     }
                   }}
                 />
+                {needSubject ? (
+                  <p id="mc-subject-need" className="small px-mc-need">
+                    {t("makeCards.subjectNeeded")}
+                  </p>
+                ) : null}
               </div>
             )}
             {exams.length ? (
@@ -349,12 +362,22 @@ export function MakeCardsDialog() {
                     value: item.id,
                     label: item.title,
                   }))}
+                  aria-describedby={needTopic ? "mc-topic-need" : undefined}
                   onChange={setTopicId}
                 />
+                {needTopic ? (
+                  <p id="mc-topic-need" className="small px-mc-need">
+                    {t("makeCards.topicNeeded")}
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>
-          {exams.length ? <p className="small px-mc-hint">{t("makeCards.examHint")}</p> : null}
+          {exams.length ? (
+            <p className="small px-mc-hint">
+              {t(examHasNoSubject ? "makeCards.examNoSubject" : "makeCards.examHint")}
+            </p>
+          ) : null}
           {nowhere ? <Notice tone="info">{t("makeCards.noSubjects")}</Notice> : null}
           {error ? (
             <Notice

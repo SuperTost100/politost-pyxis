@@ -424,6 +424,9 @@ const EducationLevelSchema = z.enum([
 /** Grades, goals and mastery shown out of 30 or out of 100. */
 const GradeScaleSchema = z.union([z.literal(30), z.literal(100)]);
 
+/** What a job's model call is doing now (`src/core/jobs/activity.ts`), for the page that waits on it. */
+const JobActivity = z.object({ phase: z.enum(["starting", "thinking", "writing"]), since: z.number() });
+
 const engineFeature = z.enum([
   "default",
   "chat",
@@ -1038,6 +1041,8 @@ export const requests = {
         /** The part's two-line "what you learned". */
         summary: z.string().nullable(),
         next: PartView.nullable(),
+        /** The model call of the part's job while it runs; null otherwise. */
+        activity: JobActivity.nullable(),
         /** The lesson written before parts that this lesson in parts rewrites, or is about to: "Leggi la versione di prima". */
         replaces: z.object({ itemId: z.string() }).nullable(),
         /**
@@ -1051,6 +1056,8 @@ export const requests = {
             wording: z.enum(["simple", "balanced", "technical"]),
             error: z.string().nullable(),
             jobId: z.string(),
+            /** The model call of the rewrite's job while it runs; null otherwise. */
+            activity: JobActivity.nullable(),
           })
           .nullable(),
       }),
@@ -1249,6 +1256,8 @@ export const requests = {
         quizQuestionSchema.extend({ topicId: z.string().optional() }),
       ),
       jobId: z.string().optional(),
+      /** The model call of the job that writes the questions, while it runs. */
+      activity: JobActivity.optional(),
       review: z.boolean().optional(),
       state: z.string(),
       error: z.string().optional(),
@@ -2973,10 +2982,10 @@ export const requests = {
         subjectId: z.string().nullable(),
         /**
          * Where Pyxis is with the subject of a file added from the Library: `working` while a sort will place it,
-         * `stopped` when that sort stopped, `created` when it made the subject (until the subject is renamed), `unsure`
+         * `stopped`, `failed` or `interrupted` when that sort ended that way, `created` when it made the subject (until the subject is renamed), `unsure`
          * and `no-ai` when the student has to choose. Null otherwise.
          */
-        sort: z.enum(["working", "stopped", "created", "unsure", "no-ai"]).nullable(),
+        sort: z.enum(["working", "stopped", "failed", "interrupted", "created", "unsure", "no-ai"]).nullable(),
         /** What the file is (a book, slides, an exam paper...): the student's choice, or the rule's (`file-kind.ts`). */
         fileKind: z.enum(FILE_KINDS),
         /** The student chose `fileKind` from the file's menu, so Pyxis keeps it whatever the file's name says. */
@@ -3182,6 +3191,8 @@ export const requests = {
   "chats.read": {
     input: z.object({ chatId: z.string() }),
     output: z.object({
+      /** The chat's title; a chat that was only seeded has one before it is stored. Undefined for a chat that does not exist. */
+      title: z.string().nullable().optional(),
       sourceIds: z.array(z.string()),
       planId: z.string().nullable(),
       subject: z.string().nullable(),
@@ -3259,9 +3270,13 @@ export const requests = {
     input: z.object({ chatId: z.string() }),
     output: z.object({ ok: z.literal(true) }),
   },
-  // The chat left the screen, so core can stop the engine conversation it kept for it.
+  // The chat left the screen, so core can stop the engine conversation it kept for it, and remove it when it holds no message.
   "chats.leave": {
-    input: z.object({ chatId: z.string() }),
+    input: z.object({
+      chatId: z.string(),
+      /** The composer still holds text, so a chat with no message is kept for it. */
+      draft: z.boolean().optional(),
+    }),
     output: z.object({ ok: z.literal(true) }),
   },
   "chats.ask": {

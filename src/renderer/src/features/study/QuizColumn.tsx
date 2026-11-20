@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { ActivityNote, type Activity } from "../../components/ActivityNote";
 import { Button } from "../../components/Button";
 import { Reveal } from "../../components/Controls";
 import { Icon } from "../../components/Icon";
@@ -36,6 +37,7 @@ export function QuizColumn({
   nav,
   hint,
   busyLine,
+  busyActivity,
 }: {
   items: SheetItem[];
   current: number;
@@ -59,6 +61,8 @@ export function QuizColumn({
   hint?: string;
   /** Work going on for the quiz, such as questions still being written, with the working mark in the card. */
   busyLine?: string;
+  /** What the tool is doing for that work, with how long: under the line, outside its live region. */
+  busyActivity?: Activity | null;
 }) {
   const { t } = useTranslation();
   const given = items.filter((item) => item.given !== "none").length;
@@ -103,10 +107,13 @@ export function QuizColumn({
             ))}
           </nav>
           {busyLine ? (
-            <p className="px-qz-busy" role="status">
-              <Logo working decorative size={16} />
-              {busyLine}
-            </p>
+            <>
+              <p className="px-qz-busy" role="status">
+                <Logo working decorative size={16} />
+                {busyLine}
+              </p>
+              <ActivityNote activity={busyActivity} className="px-qz-busy-note" />
+            </>
           ) : null}
           <div className="px-qz-handin">
             <Button

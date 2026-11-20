@@ -13,7 +13,7 @@ import { chatUsage } from "../engine/usage";
 import { removeBlobLeftovers } from "../share/usage";
 import { sessionsOpened } from "./sessions";
 import type { FigureEvent } from "../math/figures";
-import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, chatSubjectBy, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat, setChatSubject } from "./turn";
+import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, chatSubjectBy, chatTitle, clearChatContext, deleteChat, heldSources, listChats, rateMessage, removeEmptyChat, removeEmptyChats, readChat, regenerateTurn, renameChat, seedChat, setChatSubject } from "./turn";
 
 /** Recorded reply for tests. With a delay it waits, then streams the words, so the thinking and streaming states can be seen. */
 function recordedReply(text: string, delayMs: number) {
@@ -85,6 +85,8 @@ export function chatHandlers(
   setHeldFiles(held);
   // Files attached before the last quit and never sent have nothing left to send them.
   held?.sweep();
+  // A chat opened and never sent has nothing to come back to either.
+  removeEmptyChats(db, workspace);
   // And the files a removal could not delete (the system held them) stay under a temporary name until now.
   if (workspace) removeBlobLeftovers(workspace);
   const needHeld = () => {
@@ -95,8 +97,16 @@ export function chatHandlers(
     async attach(input: { path: string; draft?: string }) {
       // A draft is a chat's composer or a new chat's (empty). A pick still registering when its chat was deleted is refused,
       // so no hidden copy is made for a chat that is gone.
-      if (input.draft && !db.prepare(`SELECT 1 FROM chats WHERE id = ?`).get(input.draft)) throw new IpcError("chat-missing", "errors.internal");
-      return needHeld().attach(input.path, input.draft ?? "");
+      const gone = () => Boolean(input.draft) && !db.prepare(`SELECT 1 FROM chats WHERE id = ?`).get(input.draft);
+      if (gone()) throw new IpcError("chat-missing", "errors.internal");
+      const view = await needHeld().attach(input.path, input.draft ?? "");
+      // The chat was removed while the file was being registered (an empty chat the student left): the file belongs to
+      // nobody, so what it made goes and the pick is refused.
+      if (gone()) {
+        needHeld().detach(view.id);
+        throw new IpcError("chat-missing", "errors.internal");
+      }
+      return view;
     },
     detach(input: { id: string }) {
       needHeld().detach(input.id);
@@ -121,6 +131,7 @@ export function chatHandlers(
     },
     read(input: { chatId: string }) {
       return {
+        title: chatTitle(db, input.chatId),
         sourceIds: chatPickedSources(db, input.chatId),
         planId: chatPlan(db, input.chatId),
         subject: chatSubject(db, input.chatId),
@@ -152,8 +163,10 @@ export function chatHandlers(
       return { ok: true as const };
     },
     /** The student left the chat: its engine conversation, and a live CLI process with it, can stop. */
-    leave(input: { chatId: string }) {
+    leave(input: { chatId: string; draft?: boolean }) {
       endConversation(input.chatId);
+      // A chat opened with "Chiedi" and left unsent is not kept, unless its composer holds text or a file.
+      removeEmptyChat(db, workspace, input.chatId, { draft: input.draft });
       return { ok: true as const };
     },
     rate(input: { messageId: string; reaction: "up" | "down" }) {

@@ -37,7 +37,7 @@ test("a right-click opens the same menu as the three dots, at the pointer, and s
     });
     db.exec(`
       INSERT INTO chats(id,title,created_at,updated_at) VALUES('c-termo','Termodinamica',1,2),('c-analisi','Analisi',1,1);
-      INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('m1','c-termo','user','Perché il calore passa?',1);
+      INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('m1','c-termo','user','Perché il calore passa?',1),('m2','c-analisi','user','Come calcolo un limite?',1);
     `);
     db.close();
 
