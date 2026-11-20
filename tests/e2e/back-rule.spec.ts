@@ -1087,6 +1087,83 @@ test("the first page of a window goes back to its parent", async () => {
   expect(await page.evaluate(() => (history.state as { idx?: number } | null)?.idx ?? 0)).toBe(0);
 });
 
+/** The label and the address of the back control, and one press of it. */
+async function expectBackToExam(page: Page) {
+  await expect(backControl(page)).toHaveAccessibleName(`Torna a ${EXAM}`);
+  await expect(backControl(page)).toHaveText(EXAM);
+}
+
+test("a study session of an exam is left in one step, however many pages it went through", async () => {
+  test.setTimeout(120_000);
+  const { page, app } = walk;
+  await start(page, `#${exam}`, EXAM);
+  await page.getByRole("button", { name: /^Successioni e serie di funzioni/ }).click();
+  await page.getByRole("button", { name: "Lezione, da fare" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Successioni e serie di funzioni" })).toBeVisible();
+  await expectBackToExam(page);
+  // The lesson's exercises, then the quiz of the topic: each opens from the one before it.
+  await page.getByRole("button", { name: "Scegli altro" }).click();
+  await page.getByRole("menuitem", { name: /^Esercizi/ }).click();
+  await expect(page).toHaveURL(/#\/plans\/p-an2\/practice\/t-serie$/);
+  await expectBackToExam(page);
+  await page.getByRole("button", { name: "Fai il quiz" }).click();
+  await expect(page).toHaveURL(/#\/plans\/p-an2\/quiz\/t-serie$/);
+  await expectBackToExam(page);
+  // One press leaves all three, and Vai > Indietro does the same from the same place.
+  await backControl(page).click();
+  await expect(page).toHaveURL(new RegExp(`#${exam}$`));
+  await page.getByRole("button", { name: /^Successioni e serie di funzioni/ }).click();
+  await page.getByRole("button", { name: "Lezione, da fare" }).click();
+  await page.getByRole("button", { name: "Scegli altro" }).click();
+  await page.getByRole("menuitem", { name: /^Esercizi/ }).click();
+  await page.getByRole("button", { name: "Fai il quiz" }).click();
+  await expect(page).toHaveURL(/#\/plans\/p-an2\/quiz\/t-serie$/);
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("back")?.click());
+  await expect(page).toHaveURL(new RegExp(`#${exam}$`));
+});
+
+test("the results, the review of their mistakes and its cards are left in one step, to the exam", async () => {
+  test.setTimeout(120_000);
+  const { page, app } = walk;
+  await start(page, `#${exam}`, EXAM);
+  await page.getByRole("button", { name: /^Funzioni di più variabili/ }).click();
+  // "Già creati": the quiz made earlier, answered wrong and handed in, which shows its results on the same page.
+  await page.getByRole("button", { name: /^Quiz · / }).click();
+  await expect(page).toHaveURL(/#\/plans\/p-an2\/quiz\/t-fun\?attempt=/);
+  await page.getByRole("button", { name: "A Vero" }).click();
+  await page.getByRole("button", { name: "Consegna" }).first().click();
+  await expect(page.locator(".px-res-title")).toBeVisible();
+  await expectBackToExam(page);
+  // The results offer the review of the mistake as the one primary action, and the exam under it.
+  await expect(page.locator(".px-res .ant-btn-primary")).toHaveText("Rivedi l'errore");
+  await expect(page.getByRole("button", { name: "Torna all'esame", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Rivedi l'errore", exact: true }).click();
+  await expect(page).toHaveURL(/#\/plans\/p-an2\/review\?from=/);
+  await expect(page.getByRole("heading", { level: 2, name: "Rivedi gli errori" })).toBeVisible();
+  await expectBackToExam(page);
+  await page.getByRole("button", { name: "Inizia il ripasso" }).click();
+  await expect(page).toHaveURL(/#\/plans\/p-an2\/review\/(cards|questions)/);
+  await expectBackToExam(page);
+  // Three pages deep, one press of the control, the menu's Indietro or the mouse's back button lands on the exam.
+  await backControl(page).click();
+  await expect(page).toHaveURL(new RegExp(`#${exam}$`));
+  // The steps stay ahead in the window's history, so Avanti returns to the first of them.
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("forward")?.click());
+  await expect(page).toHaveURL(/#\/plans\/p-an2\/quiz\/t-fun\?attempt=/);
+});
+
+test("a study page opened from outside the exam goes back to where it was opened from", async () => {
+  test.setTimeout(120_000);
+  const { page } = walk;
+  // Flashcard lists the exam's topics, and each opens the exam's cards for it: a study page, but not reached from the exam.
+  await start(page, "#/flashcards", "Flashcard");
+  await page.getByRole("link", { name: /^Funzioni di più variabili/ }).click();
+  await expect(page).toHaveURL(/#\/plans\/p-an2\/cards\/t-fun$/);
+  await expect(backControl(page)).toHaveAccessibleName("Torna a Flashcard");
+  await backControl(page).click();
+  await expect(page).toHaveURL(/#\/flashcards$/);
+});
+
 test("every page with a back control has a row", () => {
   const router = readFileSync(join(process.cwd(), "src/renderer/src/app/router.tsx"), "utf8");
   const routes = [...router.matchAll(/\bpath: "([^"]+)"/g)]

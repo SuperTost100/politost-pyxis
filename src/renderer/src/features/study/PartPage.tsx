@@ -290,10 +290,14 @@ export function PartPage({
         })
       : t(`plans.path.activity.${pathNext.activity}`)
     : null;
+  // The lesson's last part, when the quiz of this topic is what comes next: Continua says so in words of its own.
+  const quizNext = !data.next && pathNext?.activity === "quiz" && (!pathNext.topicId || pathNext.topicId === topicId);
   const continueLabel = data.next ? (
     <InlineMarkdown>
       {t("lesson.partContinue", { title: data.next.kind === "recap" ? t("lesson.recapTitle") : data.next.title })}
     </InlineMarkdown>
+  ) : quizNext ? (
+    t("lesson.doQuiz")
   ) : pathNextTitle ? (
     t("lesson.partContinue", { title: pathNextTitle })
   ) : (
@@ -597,6 +601,7 @@ export function PartPage({
                 }}
                 onOther={onOther}
                 onEnough={() => (back ? back.go() : navigate(`/plans/${planId}`))}
+                lastStep={!data.next && Boolean(pathNext)}
                 continueRef={continueRef}
                 failed={finish.isError}
               />

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { UNSAFE_DataRouterContext, useLocation, useNavigate, type NavigateFunction } from "react-router";
 import { changed, registerBack, type BackTarget } from "./back-slot";
 import { goingBackToParent, nameVisit, readTrail, watchTrail } from "./history";
-import { placeOf } from "./places";
+import { placeOf, studyExam } from "./places";
 import { origin, pageOf, wayBack, type PlaceName } from "./trail";
 
 export type { BackTarget };
@@ -49,7 +49,7 @@ export function usePlace(input: {
       const text = "key" in place ? t(place.key, place.values) : place.text;
       return { name: text, label: t("places.backTo", { place: text }), to: location.pathname + location.search, busy: false, saves: false, leave: (then) => then(), go };
     }
-    const from = origin(trail, key);
+    const from = origin(trail, key, studyExam);
     const table = placeOf(location.pathname + location.search).parent;
     const parent = input.parent === null || !table ? null : { ...table, ...input.parent };
     if (!from && !parent) return null;
@@ -86,7 +86,7 @@ export function usePlace(input: {
           if (router && router.state.navigation.state !== "idle") return;
           // Read when leaving, which can come after `beforeLeave`: by then the student may be on another page, which
           // this page's way back must not move.
-          const step = wayBack(readTrail(), key, parent !== null);
+          const step = wayBack(readTrail(), key, parent !== null, studyExam);
           if (step === "parent" && parent) {
             goingBackToParent(parent.to);
             void navigate(parent.to, { replace: true });

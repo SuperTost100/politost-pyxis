@@ -6,7 +6,7 @@ import { useStillHere } from "../../lib/useStillHere";
 import { drillQuizPath, drillStatus, readDrillRequest, stoppedTopic } from "./gapDrillRequest";
 
 /**
- * Ripasso mirato: a targeted drill on a topic's gaps, built by a durable job. The page watches the job and opens the
+ * Rivedi gli errori: a targeted drill on a topic's gaps, built by a durable job. The page watches the job and opens the
  * quiz once it is ready. `?drill=<topicId>` in the address starts one, as a step on the path asks for it; the request
  * is spent once read, so Back from the drill's quiz does not start another. The exam page uses it for the path's rows
  * and opens the quiz as a new page; a gap's own page (`GapPage`) starts the drill of one gap and, with `replace`, opens

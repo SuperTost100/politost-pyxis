@@ -132,7 +132,7 @@ test("results list every question in order, right ones folded in green, the othe
     await expect(page.locator(".px-res-rises")).toContainText(/^Cinematica sale da \d+\/30 a \d+\/30$/);
     const changes = page.locator(".px-res-changes");
     await expect(changes).toContainText("confondi lo spostamento con la distanza percorsa");
-    await expect(changes).toContainText("Nuovo passo: ripasso mirato");
+    await expect(changes).toContainText("Nuovo passo: rivedi gli errori");
     await expectNoAxeViolations(page);
 
     // Every question, in the order it was asked.
@@ -186,10 +186,13 @@ test("results list every question in order, right ones folded in green, the othe
     await expect(rows(page).nth(7)).toContainText("Esclusa dal punteggio");
     await shoot(page, "results");
 
-    // Ripasso mirato drills the gap this quiz opened, from the exam's path.
+    // Rivedi gli errori drills the gap this quiz opened, from the exam's path.
     await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
+    await expect(page.locator(".px-res .ant-btn-primary")).toHaveText("Rivedi i 4 errori");
+    // Going to the exam is the quiet second action, between the step and the ghost button.
+    await expect(page.getByRole("button", { name: "Torna all'esame", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Rifai solo le 4 da rivedere" })).toBeVisible();
-    await page.getByRole("button", { name: "Ripasso mirato", exact: true }).click();
+    await page.getByRole("button", { name: "Rivedi i 4 errori", exact: true }).click();
     // The exam page first takes the request out of the address (`?drill=`) and starts the drill. Leaving before it has
     // would let its cleanup of the address land on the page opened next, and drop that page's `?attempt=`.
     await expect(page).toHaveURL(/#\/plans\/p-fis$/);
@@ -211,19 +214,19 @@ test("the next steps wait for the read that decides them, and stay once they are
     await open(page);
     await expect(rows(page)).toHaveCount(8);
     const actions = page.locator(".px-res-actions");
-    // Until the gap is known, Ripasso mirato would open the wrong answers instead of the gap's drill, so it is not
+    // Until the gap is known, Rivedi gli errori would open the wrong answers instead of the gap's drill, so it is not
     // offered yet: the place of both buttons is held by a placeholder.
     await expect(actions).toHaveAttribute("aria-busy", "true");
-    await expect(page.getByRole("button", { name: "Ripasso mirato", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Rivedi (l'errore|i \d+ errori)$/ })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Rifai solo le/ })).toHaveCount(0);
     // Once the read is in, both buttons are there, and from then on none of them is removed or relabelled.
-    const targeted = page.getByRole("button", { name: "Ripasso mirato", exact: true });
+    const targeted = page.getByRole("button", { name: /^Rivedi (l'errore|i \d+ errori)$/ });
     await expect(targeted).toBeVisible({ timeout: 10_000 });
     await expect(actions).not.toHaveAttribute("aria-busy", "true");
     await expect(page.getByRole("button", { name: "Rifai solo le 4 da rivedere" })).toBeVisible();
     const handle = await targeted.elementHandle();
     await page.waitForTimeout(1500);
-    expect(await handle!.evaluate((element) => element.isConnected), "Ripasso mirato stays in the page").toBe(true);
+    expect(await handle!.evaluate((element) => element.isConnected), "Rivedi gli errori stays in the page").toBe(true);
     await expect(page.getByRole("button", { name: "Rifai solo le 4 da rivedere" })).toBeVisible();
     // The first click lands on the gap's drill, from the exam's path.
     await targeted.click();
@@ -289,7 +292,7 @@ test("the exam page's cleanup of `?drill=` never lands on the page opened right 
         push(...args);
       };
     });
-    await page.getByRole("button", { name: "Ripasso mirato", exact: true }).click();
+    await page.getByRole("button", { name: /^Rivedi (l'errore|i \d+ errori)$/ }).click();
     await expect(page.locator(".px-res-title")).toBeVisible();
     // Give a late cleanup time to land. It would drop `?attempt=` and show the intro of a new quiz in place of the results.
     await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1000)));
@@ -300,7 +303,7 @@ test("the exam page's cleanup of `?drill=` never lands on the page opened right 
   }
 });
 
-test("a redo with an open gap offers the Ripasso mirato its summary announces, and the foot has no second way back", async () => {
+test("a redo with an open gap offers the Rivedi gli errori its summary announces, and the exam as the quiet second action", async () => {
   test.setTimeout(120_000);
   const { page, done } = await launch();
   try {
@@ -310,12 +313,14 @@ test("a redo with an open gap offers the Ripasso mirato its summary announces, a
       location.hash = "/plans/p-fis/redo?attempt=a-quiz";
     });
     await expect(page.locator(".px-res-title")).toBeVisible();
-    await expect(page.locator(".px-res-changes")).toContainText("Nuovo passo: ripasso mirato");
+    await expect(page.locator(".px-res-changes")).toContainText("Nuovo passo: rivedi gli errori");
     await expect(page.getByRole("button", { name: /^Rifai solo le \d+ da rivedere$/ })).toHaveCount(0);
-    // The announced step has its button, and the bar's control is the only way back: the foot has no primary action.
-    await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(0);
+    // The announced step is the one primary action, and going to the exam sits under it as a secondary one.
+    await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
+    await expect(page.locator(".px-res .ant-btn-primary")).toHaveText("Rivedi gli errori");
+    await expect(page.getByRole("button", { name: "Torna all'esame", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continua", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Ripasso mirato", exact: true }).click();
+    await page.getByRole("button", { name: "Rivedi gli errori", exact: true }).click();
     // The exam page takes the request (`?drill=`) out of the address as it starts the drill.
     await expect(page).toHaveURL(/#\/plans\/p-fis$/);
   } finally {

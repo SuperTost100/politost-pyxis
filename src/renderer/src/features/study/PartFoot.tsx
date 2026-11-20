@@ -10,8 +10,9 @@ export type OtherChoice = "practice" | "cards" | "reread";
 /**
  * The end of a lesson part: what it was about ("Fine della parte 3" and its two-line summary), then one primary
  * Continua that names where it goes, a quiet "Scegli altro" with the topic's exercises, its flashcards and a part to
- * reread, and "Per oggi basta" back to the exam. Until the part is done its buttons stay quiet; a part with no question
- * offers "Fatto" first. The page moves the focus to Continua after the answer (`continueRef`).
+ * reread, and "Per oggi basta" back to the exam. At the end of the lesson, when a step follows it, the way to the exam
+ * is a quiet button of its own, "Torna all'esame", right after Continua. Until the part is done its buttons stay quiet;
+ * a part with no question offers "Fatto" first. The page moves the focus to Continua after the answer (`continueRef`).
  */
 export function PartFoot({
   heading,
@@ -25,6 +26,7 @@ export function PartFoot({
   other,
   onOther,
   onEnough,
+  lastStep,
   continueRef,
   failed,
 }: {
@@ -42,6 +44,8 @@ export function PartFoot({
   other: { topic: string; practice: number | null; cardsDue: number | null; cardsNone: boolean; reread: boolean };
   onOther: (choice: OtherChoice) => void;
   onEnough: () => void;
+  /** The end of the lesson with a step after it: "Torna all'esame" replaces "Per oggi basta" and follows Continua. */
+  lastStep?: boolean;
   continueRef: RefObject<HTMLDivElement | null>;
   failed?: boolean;
 }) {
@@ -114,12 +118,19 @@ export function PartFoot({
             ) : null}
           </Button>
         </div>
+        {lastStep ? (
+          <Button variant="secondary" size="lg" onClick={onEnough}>
+            {t("places.backToExam")}
+          </Button>
+        ) : null}
         <div className="px-part-foot-other">
           <ChoiceMenu label={t("lesson.chooseOther")} items={items} onSelect={(key) => onOther(key as OtherChoice)} />
         </div>
-        <Button variant="ghost" className="px-part-enough" onClick={onEnough}>
-          {t("lesson.enough")}
-        </Button>
+        {lastStep ? null : (
+          <Button variant="ghost" className="px-part-enough" onClick={onEnough}>
+            {t("lesson.enough")}
+          </Button>
+        )}
       </div>
       {failed ? (
         <p className="small px-reader-error" role="alert">
