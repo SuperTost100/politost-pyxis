@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { IpcError, isAbort } from "../../shared/ipc";
 import { repairModelStrings } from "../../shared/latex-repair";
@@ -19,7 +18,6 @@ import { modelName } from "./efforts";
 import { isRetiredProvider } from "../../shared/limits";
 import { engineIpcError, fallbackReason } from "./errors";
 import {
-  endConversation,
   providerName,
   runTurn,
   type EngineResult,
@@ -405,80 +403,79 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
   const responseSchema = input.schema
     ? { name: "response", schema: jsonSchema(input.schema) }
     : undefined;
-  // A structured answer may need repairs. Engines that keep the conversation already hold the prompt, so a repair sends
-  // them only the validation error and the invalid answer; engines that keep none get the whole prompt again.
-  const repairs =
-    input.schema && !input.conversation
-      ? `generate:${randomUUID()}`
-      : undefined;
   // `chosenFor` is Pyxis's own bookkeeping, not part of the engine's selection.
   const { chosenFor, ...selection } = input.selection;
   void chosenFor;
-  try {
-    let result = await run({
+  // The prompt for a call that starts the conversation, or runs outside one, on the engine that answers.
+  const whole = () => input.promptFor?.(selection.provider) ?? input.prompt;
+  // The pictures of this selection, resolved once: the request and every repair of it carry the same ones, even when the
+  // caller decides them by the engine (`attachmentsFor`).
+  const attachments = input.attachmentsFor ? input.attachmentsFor(selection) : input.attachments;
+  let result = await run({
+    selection,
+    // Read only when the engine sends a prompt: a chat turn that resumes a session sends its follow-up instead.
+    get prompt() {
+      return whole();
+    },
+    system: input.system,
+    responseSchema,
+    signal: input.signal,
+    attachments,
+    onDelta: input.onDelta,
+    conversation:
+      input.conversation && input.followUpFor
+        ? {
+            ...input.conversation,
+            // Read only when the engine resumes the session, and for the engine that does.
+            get followUp() {
+              return input.followUpFor!(selection.provider);
+            },
+          }
+        : input.conversation,
+    cache: input.cache,
+  });
+  if (!input.schema) return result;
+  let data = parsed(input.schema, result, input.verbatim);
+  for (let repair = 0; data == null && repair < 2; repair += 1) {
+    const issues =
+      result.structuredError ??
+      input.schema.safeParse(withoutOptionalNulls(tryJson(result.text, input.verbatim), plainSchema(input.schema))).error
+        ?.message ??
+      result.text;
+    // A call outside a conversation is not saved by the tool, so it cannot be continued: the repair sends the whole
+    // prompt again. A call that is part of a conversation continues the session that answered it, which holds the prompt
+    // and the invalid reply. One answered by an engine that keeps no session (an API provider, a local model) left no such
+    // session, and the one the conversation stored never saw this request: the repair starts over with the whole prompt.
+    const session = input.conversation
+      ? result.sessionId && result.cwd
+        ? { provider: result.provider, id: result.sessionId, cwd: result.cwd }
+        : null
+      : undefined;
+    result = await run({
       selection,
-      // Read only when the engine sends a prompt: a chat turn that resumes a session sends its follow-up instead.
-      get prompt() {
-        return input.promptFor?.(selection.provider) ?? input.prompt;
-      },
+      prompt: `${whole()}\n\nThe previous answer failed validation.\n${result.text}\n${issues}\nReturn corrected JSON only.`,
       system: input.system,
       responseSchema,
       signal: input.signal,
-      attachments: input.attachmentsFor ? input.attachmentsFor(selection) : input.attachments,
-      onDelta: input.onDelta,
-      conversation:
-        input.conversation && input.followUpFor
-          ? {
-              ...input.conversation,
-              // Read only when the engine resumes the session, and for the engine that does.
-              get followUp() {
-                return input.followUpFor!(selection.provider);
-              },
-            }
-          : (input.conversation ??
-            (repairs ? { key: repairs, followUp: input.prompt } : undefined)),
-      cache: input.cache,
+      // A repair of a reply about a picture still needs the picture.
+      attachments,
+      conversation: input.conversation
+        ? {
+            ...input.conversation,
+            followUp: `Your answer failed validation against the JSON schema.\n\nValidation error:\n${issues}\n\nYour answer:\n${result.text}\n\nReturn the corrected JSON only.`,
+            session,
+          }
+        : undefined,
     });
-    if (!input.schema) return result;
-    let data = parsed(input.schema, result, input.verbatim);
-    for (let repair = 0; data == null && repair < 2; repair += 1) {
-      const issues =
-        result.structuredError ??
-        input.schema.safeParse(withoutOptionalNulls(tryJson(result.text, input.verbatim), plainSchema(input.schema))).error
-          ?.message ??
-        result.text;
-      result = await run({
-        selection,
-        prompt: `${input.prompt}\n\nThe previous answer failed validation.\n${result.text}\n${issues}\nReturn corrected JSON only.`,
-        system: input.system,
-        responseSchema,
-        signal: input.signal,
-        // A repair of a reply about a picture still needs the picture.
-        attachments: input.attachments,
-        conversation: repairs
-          ? {
-              key: repairs,
-              followUp: `Your answer failed validation against the JSON schema.\n\nValidation error:\n${issues}\n\nYour answer:\n${result.text}\n\nReturn the corrected JSON only.`,
-              // Claude Code and Codex go on in the session the first answer ran in. The others get the whole prompt again.
-              session:
-                result.sessionId && result.cwd && (result.provider === "claude" || result.provider === "codex")
-                  ? { provider: result.provider, id: result.sessionId, cwd: result.cwd }
-                  : null,
-            }
-          : undefined,
-      });
-      data = parsed(input.schema, result, input.verbatim);
-    }
-    if (data == null) {
-      throw new IpcError(
-        "invalid-output",
-        "errors.invalidOutput",
-        {},
-        result.text.slice(0, 500),
-      );
-    }
-    return { ...result, data };
-  } finally {
-    if (repairs) endConversation(repairs);
+    data = parsed(input.schema, result, input.verbatim);
   }
+  if (data == null) {
+    throw new IpcError(
+      "invalid-output",
+      "errors.invalidOutput",
+      {},
+      result.text.slice(0, 500),
+    );
+  }
+  return { ...result, data };
 }

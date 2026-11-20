@@ -7,6 +7,9 @@ import {
 } from "../../shared/math-check";
 import { generate, type GenerateInput } from "../engine/generate";
 import { systemPrompt } from "../engine/prompts";
+import { LOCAL_PROVIDER } from "../engine/local";
+import { selectionFor, selectionOn, type StoredSelection } from "../engine/selection";
+import type Database from "better-sqlite3";
 
 /** Store metadata separately from the visible answer, using the existing message body envelope. */
 export function splitChecks(text: string): {
@@ -25,6 +28,38 @@ export function splitChecks(text: string): {
 
 /** What a reply states that can be checked: an equation or an integral. Maths that only names things (a variable, a power) states nothing to check. `\\int` ends at the first character that is not a letter, so `\\int_0^1` counts and `\\intercal` does not. */
 const MATH = /=|∫|\\int(?![A-Za-z])/;
+
+/**
+ * The subscription tools, cheapest first for a call that stands alone. Every call on a tool carries the tool's own prompt
+ * and tool list, and that overhead differs more than the check does: a check of two stated equations measured 2,191 input
+ * tokens on Claude Code (1,516 of them from its cache), 17,340 on Codex and 12,565 on Antigravity, with a short system
+ * prompt of 960 characters on each. Antigravity comes last although it measured below Codex, because it cannot skip being
+ * saved: every check there would be a chat in the student's Gemini history.
+ * shortcut: a ranking measured on three tools on one day (2026-11-20); measure again when a tool or model changes.
+ */
+const CHEAPEST_FIRST = ["claude", "codex", "antigravity"];
+
+/**
+ * The engine of a separate check. The check is a call of its own with a short answer, so an automatic chat sends it to the
+ * cheapest ready subscription tool, not necessarily the chat's. A pin is a pin: a chat the student pinned to a tool keeps
+ * its check there. A chat on a local model or an API key stays where it is too: its text never goes to another provider for
+ * this, and an API call is paid by the token. A local model's check also carries no fallback, so a failure of the local
+ * model ends the check and the text never reaches a cloud tool that way either.
+ */
+export function checkSelection(db: Database.Database): StoredSelection {
+  const own = selectionFor(db, "chat");
+  if (own.provider === LOCAL_PROVIDER) {
+    const { chosenFor: _local, ...pinned } = own;
+    return pinned;
+  }
+  if (!own.chosenFor || !CHEAPEST_FIRST.includes(own.provider)) return own;
+  for (const provider of CHEAPEST_FIRST) {
+    if (provider === own.provider) break;
+    const there = selectionOn(provider, "chat");
+    if (there) return { ...there, chosenFor: "chat" };
+  }
+  return own;
+}
 
 /** True when `solverChecks` would ask a model: an answer with math and no check blocks of its own, not too long. */
 export function needsSolverChecks(body: string): boolean {

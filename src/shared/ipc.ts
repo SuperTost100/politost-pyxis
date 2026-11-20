@@ -704,6 +704,8 @@ export const requests = {
         version: z.string(),
         path: z.string(),
         withinTestedRange: z.boolean(),
+        /** The installed program is older than Pyxis can run (Antigravity before 1.5): the tool is left out until it is updated. */
+        outdated: z.boolean().optional(),
         /** The student has seen what this provider receives. Pyxis sends it nothing until then. */
         acknowledged: z.boolean(),
         /** The student lets Pyxis use this engine (always true in automatic mode). */
@@ -1947,7 +1949,7 @@ export const requests = {
           totalBytes: z.number(),
           size: z.number(),
           version: z.string(),
-          outdated: z.boolean(),
+          outdated: z.boolean().optional(),
           error: z.string().optional(),
         }),
       ),

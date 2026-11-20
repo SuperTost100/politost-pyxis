@@ -374,15 +374,15 @@
     "attach": {
       "sent": "File allegati",
       "photo": "Foto",
-      "reading": "Lettura in corso…",
-      "readingPercent": "Lettura, {{percent}}%",
-      "scan": "Lettura della scansione…",
-      "scanPage": "Lettura della scansione, pagina {{page}} di {{pages}}",
+      "reading": "Leggo…",
+      "readingPercent": "{{size}} · letto il {{percent}}%",
+      "scan": "Leggo la scansione…",
+      "scanPage": "Leggo la scansione, pagina {{page}} di {{pages}}",
       "needsData": "Per leggere questa scansione Pyxis deve scaricare i dati di lettura.",
       "readScan": "Leggi la scansione",
       "leftOut": "Ho mandato la domanda senza {{name}}.",
       "error": {
-        "password": "Il file è protetto da password. Toglila e allegalo di nuovo.",
+        "password": "È protetto da password: non posso leggerlo.",
         "unreadable": "Pyxis non riesce a leggere questo file. Potrebbe essere danneggiato.",
         "empty": "Non ho trovato testo in questo file.",
         "tooLargeDocument": "Il file supera i 256 MB che Pyxis legge per un documento.",
@@ -392,7 +392,12 @@
         "denied": "Pyxis non ha il permesso di aprire questo file.",
         "cancelled": "La lettura è stata fermata. Togli il file e allegalo di nuovo.",
         "data": "Non sono riuscito a leggere la scansione, perché mancano i dati di lettura."
-      }
+      },
+      "waiting_one": "Leggo {{count}} file…",
+      "waiting_other": "Leggo {{count}} file…",
+      "photoViewer": "Foto ingrandita",
+      "photoCaption": "{{name}}, dal tuo messaggio",
+      "openPhoto": "Ingrandisci {{name}}"
     },
     "replied": "Pyxis ha risposto.",
     "loadingChat": "Apertura della chat…",
@@ -409,7 +414,12 @@
     "groupToday": "Oggi",
     "groupYesterday": "Ieri",
     "groupWeek": "Questa settimana",
-    "groupOlder": "Prima"
+    "groupOlder": "Prima",
+    "outline": {
+      "label": "Indice della conversazione",
+      "mark": "Domanda {{number}} di {{total}}: {{question}}",
+      "card": "Domanda {{number}} di {{total}}"
+    }
   },
   "exams": {
     "more": "Altro su Esami",
@@ -3040,7 +3050,29 @@
       "lessons": "Preparo introduzione e test diagnostico",
       "metaRead": "3 fonti · 212 brani"
     },
-    "loading": "Carico…"
+    "loading": "Carico…",
+    "figure": {
+      "open": "Ingrandisci la figura: {{caption}}",
+      "menu": "Azioni sulla figura",
+      "zoom": "Ingrandisci",
+      "download": "Scarica PNG",
+      "copy": "Copia immagine",
+      "copied": "Copiata",
+      "saved": "Salvata",
+      "failed": "Non è riuscito",
+      "viewer": "Figura ingrandita",
+      "fileName": "figura"
+    },
+    "viewer": {
+      "zoomIn": "Aumenta lo zoom",
+      "zoomOut": "Riduci lo zoom",
+      "zoom": "Zoom {{percent}}%",
+      "download": "Scarica PNG",
+      "close": "Chiudi",
+      "saved": "Salvata",
+      "saveFailed": "Non è stato possibile salvare l'immagine.",
+      "stage": "Immagine: scorrila con le frecce"
+    }
   },
   "math": {
     "toggle": "Inserisci formula",
@@ -3140,6 +3172,7 @@
     "signedOut": "Disconnesso.",
     "removed": "Scelte dello strumento rimosse.",
     "unavailable": "Non disponibile",
+    "outdatedLine": "{{name}} richiede Antigravity 1.5 o successivo. Aggiorna il programma e Pyxis tornerà a usarlo.",
     "notInstalled": "Non installato",
     "install": "Installa",
     "cliDocs": "Istruzioni di CLI Funnel",
@@ -3333,7 +3366,8 @@
       "signedOut": "Serve l'accesso",
       "refused": "Accesso scaduto",
       "connected": "Collegato",
-      "outOfRequests": "Richieste finite"
+      "outOfRequests": "Richieste finite",
+      "outdated": "Da aggiornare"
     },
     "choice": {
       "title": "Quali strumenti può usare Pyxis",

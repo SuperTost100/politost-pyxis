@@ -6,42 +6,43 @@ One SQLite file, `pyxis.db`, in the workspace. WAL and foreign keys are on. `syn
 
 Migrations after the initial schema, applied in one transaction by `src/core/db/migrate.ts`:
 
-| `user_version` | Change                                                                                      |
-| -------------- | ------------------------------------------------------------------------------------------- |
-| 2              | `chats.scope_json`                                                                          |
-| 3              | `cards.passage_id`                                                                          |
-| 4              | `plans.exam_at`, `plans.target` (default 0.75), `plans.style` (default `decide`)            |
-| 5              | `messages.reaction` (`up`, `down`, or empty)                                                |
-| 6              | `cards.suspended` (`0` or `1`). A suspended card stays out of the due queue                 |
-| 7              | `cards.seed_key` and `cards.removed`. A removed generated card is not created again         |
-| 8              | Source `origin_url`/`fetched_at` and stale citation state in `item_passages`                |
-| 9              | Stopped message state and chat subject                                                      |
-| 10             | Saved chat context and source library visibility                                            |
-| 11             | Reorderable subject position                                                                |
-| 12             | Topic `tree_json` and dismissible jobs                                                      |
-| 13             | `topics.archived_at`. A rebuild archives unmatched topics instead of deleting them          |
-| 14             | `gaps.misconception` and `gaps.severity` (`severe` or `minor`), from the model analysis     |
-| 15             | `gaps.origin`, `gaps.comparison`, `gaps.merged_into` and the `gap_answers` table            |
-| 16             | `sources.catalog_id` and `sources.catalog_version`, the free book a smartbook is            |
-| 17             | Indexes for hot lookups and for every foreign-key child column                              |
-| 18             | `cards.search_text`, the folded text the card browser searches                              |
-| 19             | `messages.figures_json`, the images of the figures an answer drew                           |
-| 20             | `plan_sources.role` (`material` or `past_paper`) and `plan_sources.paper_json`              |
-| 21             | `messages.error`, `messages.passages_json` and the `engine_usage` table                     |
-| 22             | `plan_sessions`, the exam sessions of a plan, and `plans.archived_at`                       |
-| 23             | `jobs.fallback_json`, the engine that answered when the chosen one refused                  |
-| 24             | `linked_folders`, `linked_subfolders` and `linked_files`, for folders read in place         |
-| 25             | `linked_files.pending` and `sorted_at`, for linked folders read in full                     |
-| 26             | `maps.subject_id`, and `maps.plan_id` becomes optional, for maps of a whole subject         |
-| 27             | The partial index `linked_files_hash`, which finds a file already read by its hash          |
-| 28             | `cards.subject_id`, and `cards.plan_id` becomes optional, for flashcards with no exam       |
-| 29             | `sources.subject_sort`, the subject Pyxis chose for a file added from the Library           |
-| 30             | The partial index `sources_blob_sha`, which finds an imported file by its hash              |
-| 31             | `sources.chosen_kind`, the kind of file the student picked from its menu                    |
-| 32             | `lesson_outlines` and `lesson_parts`, a topic's lesson planned as short parts               |
-| 33             | `card_reviews.seconds`, the time a review took, and an index on `card_reviews(reviewed_at)` |
-| 34             | `chat_sessions`, the tool session each chat continues                                       |
-| 35             | `chat_sessions.instructions`, the system prompt a session was opened under                  |
+| `user_version` | Change                                                                                          |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| 2              | `chats.scope_json`                                                                              |
+| 3              | `cards.passage_id`                                                                              |
+| 4              | `plans.exam_at`, `plans.target` (default 0.75), `plans.style` (default `decide`)                |
+| 5              | `messages.reaction` (`up`, `down`, or empty)                                                    |
+| 6              | `cards.suspended` (`0` or `1`). A suspended card stays out of the due queue                     |
+| 7              | `cards.seed_key` and `cards.removed`. A removed generated card is not created again             |
+| 8              | Source `origin_url`/`fetched_at` and stale citation state in `item_passages`                    |
+| 9              | Stopped message state and chat subject                                                          |
+| 10             | Saved chat context and source library visibility                                                |
+| 11             | Reorderable subject position                                                                    |
+| 12             | Topic `tree_json` and dismissible jobs                                                          |
+| 13             | `topics.archived_at`. A rebuild archives unmatched topics instead of deleting them              |
+| 14             | `gaps.misconception` and `gaps.severity` (`severe` or `minor`), from the model analysis         |
+| 15             | `gaps.origin`, `gaps.comparison`, `gaps.merged_into` and the `gap_answers` table                |
+| 16             | `sources.catalog_id` and `sources.catalog_version`, the free book a smartbook is                |
+| 17             | Indexes for hot lookups and for every foreign-key child column                                  |
+| 18             | `cards.search_text`, the folded text the card browser searches                                  |
+| 19             | `messages.figures_json`, the images of the figures an answer drew                               |
+| 20             | `plan_sources.role` (`material` or `past_paper`) and `plan_sources.paper_json`                  |
+| 21             | `messages.error`, `messages.passages_json` and the `engine_usage` table                         |
+| 22             | `plan_sessions`, the exam sessions of a plan, and `plans.archived_at`                           |
+| 23             | `jobs.fallback_json`, the engine that answered when the chosen one refused                      |
+| 24             | `linked_folders`, `linked_subfolders` and `linked_files`, for folders read in place             |
+| 25             | `linked_files.pending` and `sorted_at`, for linked folders read in full                         |
+| 26             | `maps.subject_id`, and `maps.plan_id` becomes optional, for maps of a whole subject             |
+| 27             | The partial index `linked_files_hash`, which finds a file already read by its hash              |
+| 28             | `cards.subject_id`, and `cards.plan_id` becomes optional, for flashcards with no exam           |
+| 29             | `sources.subject_sort`, the subject Pyxis chose for a file added from the Library               |
+| 30             | The partial index `sources_blob_sha`, which finds an imported file by its hash                  |
+| 31             | `sources.chosen_kind`, the kind of file the student picked from its menu                        |
+| 32             | `lesson_outlines` and `lesson_parts`, a topic's lesson planned as short parts                   |
+| 33             | `card_reviews.seconds`, the time a review took, and an index on `card_reviews(reviewed_at)`     |
+| 34             | `chat_sessions`, the tool session each chat continues                                           |
+| 35             | `chat_sessions.instructions`, the system prompt a session was opened under                      |
+| 37             | `tool_sessions` replaces `chat_sessions`, keyed by an owner: a chat, a lesson or a quiz hand-in |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -51,7 +52,7 @@ Migration 17 indexes the latest review of a card (`card_reviews(card_id, reviewe
 
 Migration 18 adds `cards.search_text`: the card's front (a cloze as its text) and back, lower case, without accents or emphasis marks. The card browser fills it for every card where it is NULL before it searches, and the trigger `cards_search_stale` sets it back to NULL when the front or back changes. A new card and every card after the migration start at NULL.
 
-Migration 19 stores the figures of an Ask answer. A model can ask for a figure as a fenced `pyxis-figure` block with a caption, code and a `kind`: `plot` for matplotlib code, which is also what a block without a kind is, or `circuit` for schemdraw code. Core runs the code once in the Pyodide sandbox and keeps the PNG as a data URL in `messages.figures_json`. The key is a hash of the code for a plot, as it was before figures had kinds, and a hash of the kind and the code for the others. The block stays in `body`; a block whose code failed is removed before the message is saved. A lesson keeps its figures the same way, in `figures` inside the item's `body_json`, so they are cached with the lesson and its rewrites.
+Migration 19 stores the figures of an Ask answer. A model can ask for a figure as a fenced `pyxis-figure` block with a caption, code and a `kind`: `plot` for matplotlib code, which is also what a block without a kind is, or `circuit` for schemdraw code. Core runs the code once in the Pyodide sandbox and keeps the PNG as a data URL in `messages.figures_json`. The key is a hash of the code for a plot, as it was before figures had kinds, and a hash of the kind and the code for the others. The block stays in `body`; a block whose code failed is removed before the message is saved. An answer's figures also have a picture for the dark theme under the same key with `-dark`, when it could be made. A figure has none when it was stored before the dark pictures, when its light PNG is not 8-bit RGB or RGBA or is interlaced, or when the turned picture would pass the image size limit; the light picture then shows on its white card in both themes. A lesson keeps its figures the same way, in `figures` inside the item's `body_json`, so they are cached with the lesson and its rewrites.
 
 Migration 20 lets a source be attached to a plan as a past exam (appello). `plan_sources.role` is `material` for everything that existed before and for every source the plan studies from, and `past_paper` for an old exam. A past paper is a role on the link, not a source kind, because the same PDF or photo goes through the same import, OCR and vision steps as any source, and because one file can be a past paper in one plan and study material in another. Every query that builds a plan from its sources (topics, rebuilds, syllabus checks, the tutor's scope, the plan view and plan file export) reads `role = 'material'` only, so a past paper never becomes a topic, a lesson or a citation. `paper_json` holds what the `paper.read` prompt read from the paper: its title, printed duration and total points, and per question the text, type (`open`, `choice`, `numeric` or `proof`), printed points, time in minutes, difficulty and a reference answer (the printed solution, or one the model wrote), plus the provider, model and prompt version of the reading. It is NULL while the paper has not been read; the `paper-read` job and its error say why. Photos of one exam are several sources: the first file's row holds the result, and each other file's row holds `{"partOf": <first source id>}` instead. Removing a paper, or removing its first file from the Library, removes all of its rows.
 
@@ -87,59 +88,61 @@ Migration 32 adds two tables for a topic's lesson in short parts and changes no 
 
 Migration 33 adds `card_reviews.seconds`, how long the card was on screen before the student rated it, and an index on `card_reviews(reviewed_at)` that serves "the reviews of today". The column is NULL for every review made before the migration and for every review that an Anki or plan-file import brings in, and a `CHECK` refuses a negative value. The flashcard page measures from the moment a card appears to the rating, and `rateCard` keeps at most `MAX_REVIEW_SECONDS` (60) of it, so a card left open for ten minutes counts one minute. Oggi adds the seconds of today's reviews to the minutes of the day, for cards with or without an exam (see [exam rings](mastery.md#exam-rings)); a review with no time counts as no minutes. Taking a rating back deletes its review and its time with it.
 
-Migration 34 adds `chat_sessions` and changes no row. A chat has at most one open row (`ended_at` NULL): `provider`, `session_id` (the tool's own id), `cwd` (the folder the tool keyed the session by), the last `model` and `effort`, `told` (the hash of the context block the session last received), `chars` (what has gone into it, for the tools that need a bound), `in_step` (1 after a turn that completed normally on the session, 0 from the start of any turn until one does), `synced_to` (the last message the session holds in full, from which a session out of step is replayed what the student sees), `seen` (read only by builds that offered Cursor, now unused), `turns`, and the times it was opened and last used. A row ends with `tool` when the chat moved to another tool, `gone` when the tool no longer held the session and `long` when an Antigravity session passed its size bound. A chat saved before the migration has no row and gets one at its next turn. Deleting a chat deletes its rows. See [chat sessions](engines.md#chat-sessions-and-prompt-caching).
+Migration 34 adds `chat_sessions` (migration 37 renames it, see below) and changes no row. A chat has at most one open row (`ended_at` NULL): `provider`, `session_id` (the tool's own id), `cwd` (the folder the tool keyed the session by), the last `model` and `effort`, `told` (the hash of the context block the session last received), `chars` (what has gone into it), `in_step` (1 after a turn that completed normally on the session, 0 from the start of any turn until one does), `synced_to` (the last message the session holds in full, from which a session out of step is replayed what the student sees), `seen` (read only by builds that offered Cursor, now unused), `turns`, and the times it was opened and last used. A row ends with `tool` when the chat moved to another tool, `gone` when the tool no longer held the session and `long` when a session passed a size bound (no longer used). A chat saved before the migration has no row and gets one at its next turn. Deleting a chat deletes its rows. See [chat sessions](engines.md#chat-sessions-and-prompt-caching).
 
-Migration 35 adds `chat_sessions.instructions`, a hash of the chat's system prompt when the session was opened (NULL for a session opened before it was kept, which counts as another prompt and is delivered the current one once). Antigravity carries the system text inside the first prompt, so a session keeps it for good, and a turn on a session with another hash delivers the current instructions.
+Migration 35 adds `chat_sessions.instructions`, a hash of the chat's system prompt when the session was opened (NULL for a session opened before it was kept, which is taken to hold the current prompt). A tool goes on answering by the system prompt a session was opened under, so a chat turn on a session with another hash delivers the current instructions in its message, and a lesson's part asked under other rules opens a new session and ends the old row with `instructions`.
 
-Current version is 32. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Migration 37 makes the session table serve more than chats. `tool_sessions` has the columns of `chat_sessions`, with `chat_id` renamed `owner`, and `ended_reason` also allowing `instructions`. An owner is a chat's id, `lesson:<topic id>` for a topic's lesson (its parts are written in one session) or `quiz:<attempt id>` for a quiz hand-in (its open answers are graded in one). The migration copies every row of `chat_sessions` unchanged, checks the copy against the original row by row and column by column, and only then drops `chat_sessions`, all in the migration's one transaction, so a copy that differs rolls the migration back. The foreign key from a chat is replaced by one trigger each on `chats`, `topics` and `attempts`, which delete the owner's rows with it, and a call that finishes after its owner was deleted records nothing (`recordSession`). The index `tool_sessions_owner` serves the lookup of an owner's open row. `seen` stays in the table, unused. `chars` is kept for the record only: no session is started over for its size. See [lessons and hand-ins in one session](engines.md#lessons-and-hand-ins-in-one-session).
 
-| Table             | A row is                                                                                                     |
-| ----------------- | ------------------------------------------------------------------------------------------------------------ |
-| profile           | The student's profile. The renderer writes it.                                                               |
-| settings          | One app setting, keyed by name.                                                                              |
-| engines           | A configured model provider.                                                                                 |
-| feature_engines   | Which engine a feature uses.                                                                                 |
-| subjects          | A school subject.                                                                                            |
-| sources           | An imported file or link. A link keeps `origin_url` and `fetched_at` of its saved copy.                      |
-| source_documents  | One extraction version of a source.                                                                          |
-| passages          | An immutable chunk of a document.                                                                            |
-| passages_fts      | The full-text index of passages.                                                                             |
-| passages_vec      | The embedding index of passages.                                                                             |
-| smartbooks        | Metadata for a PoliTost smartbook source.                                                                    |
-| exercises         | An exercise from a smartbook or a model.                                                                     |
-| plans             | A study plan. `exam_at` (the next exam date), `target`, `content_language` and `style` come from the wizard. |
-| plan_sessions     | One exam sitting of a plan: a day, an optional time and place.                                               |
-| plan_sources      | A source attached to a plan, as study material or as a past exam.                                            |
-| topics            | A node in a plan's topic tree.                                                                               |
-| topic_passages    | Passages that support a topic.                                                                               |
-| path_nodes        | One step on a plan's path.                                                                                   |
-| items             | A generated lesson, question, or explanation.                                                                |
-| item_passages     | Passages cited by an item. Deleting a passage is restricted.                                                 |
-| cards             | A flashcard of a subject, and optionally of an exam. `passage_id` is the source passage shown on the back.   |
-| card_reviews      | One rating of a card, with the seconds it took.                                                              |
-| attempts          | A quiz or exercise attempt.                                                                                  |
-| attempt_answers   | One answer inside an attempt.                                                                                |
-| gaps              | An open or closed knowledge gap. A topic can have several, one per misconception.                            |
-| gap_items         | The drill quiz built for a gap.                                                                              |
-| gap_answers       | A wrong answer (attempt and question) that counts for a gap.                                                 |
-| maps              | The concept maps of one exam topic or of one whole subject.                                                  |
-| chats             | A tutor conversation.                                                                                        |
-| chat_sessions     | The tool session a chat continues, one open row per chat. Ended rows count the sessions it opened.           |
-| messages          | One turn in a chat.                                                                                          |
-| message_passages  | Passages cited by a message.                                                                                 |
-| attachments       | A file a message carried: its stored file, name, kind, size and OCR text (migration 35).                     |
-| held_files        | A file attached in a composer and not sent yet (migration 35). Cleanups count it.                            |
-| whiteboards       | A whiteboard scene.                                                                                          |
-| flags             | A student flag on a generated item.                                                                          |
-| learning_events   | An append-only study event. Mastery is computed from these, not stored.                                      |
-| jobs              | A long task: extraction, plan build, download.                                                               |
-| job_steps         | One named step of a job. A retry skips steps that already stored output.                                     |
-| engine_usage      | The tokens of one model call, with the chat message or job it was for.                                       |
-| lesson_outlines   | The plan of a topic's lesson in short parts. One live outline per topic.                                     |
-| lesson_parts      | One part of an outline, in reading order, with the `lesson` item that holds its text once written.           |
-| linked_folders    | A folder of the student's that Pyxis reads in place.                                                         |
-| linked_subfolders | A subfolder of a linked folder and the subject it maps to, or skipped.                                       |
-| linked_files      | A file read from a linked folder, with its size, time and hash, and the source holding its text.             |
+Current version is 37. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+
+| Table             | A row is                                                                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| profile           | The student's profile. The renderer writes it.                                                                                  |
+| settings          | One app setting, keyed by name.                                                                                                 |
+| engines           | A configured model provider.                                                                                                    |
+| feature_engines   | Which engine a feature uses.                                                                                                    |
+| subjects          | A school subject.                                                                                                               |
+| sources           | An imported file or link. A link keeps `origin_url` and `fetched_at` of its saved copy.                                         |
+| source_documents  | One extraction version of a source.                                                                                             |
+| passages          | An immutable chunk of a document.                                                                                               |
+| passages_fts      | The full-text index of passages.                                                                                                |
+| passages_vec      | The embedding index of passages.                                                                                                |
+| smartbooks        | Metadata for a PoliTost smartbook source.                                                                                       |
+| exercises         | An exercise from a smartbook or a model.                                                                                        |
+| plans             | A study plan. `exam_at` (the next exam date), `target`, `content_language` and `style` come from the wizard.                    |
+| plan_sessions     | One exam sitting of a plan: a day, an optional time and place.                                                                  |
+| plan_sources      | A source attached to a plan, as study material or as a past exam.                                                               |
+| topics            | A node in a plan's topic tree.                                                                                                  |
+| topic_passages    | Passages that support a topic.                                                                                                  |
+| path_nodes        | One step on a plan's path.                                                                                                      |
+| items             | A generated lesson, question, or explanation.                                                                                   |
+| item_passages     | Passages cited by an item. Deleting a passage is restricted.                                                                    |
+| cards             | A flashcard of a subject, and optionally of an exam. `passage_id` is the source passage shown on the back.                      |
+| card_reviews      | One rating of a card, with the seconds it took.                                                                                 |
+| attempts          | A quiz or exercise attempt.                                                                                                     |
+| attempt_answers   | One answer inside an attempt.                                                                                                   |
+| gaps              | An open or closed knowledge gap. A topic can have several, one per misconception.                                               |
+| gap_items         | The drill quiz built for a gap.                                                                                                 |
+| gap_answers       | A wrong answer (attempt and question) that counts for a gap.                                                                    |
+| maps              | The concept maps of one exam topic or of one whole subject.                                                                     |
+| chats             | A tutor conversation.                                                                                                           |
+| tool_sessions     | The tool session a chat, a lesson or a quiz hand-in continues, one open row per owner. Ended rows count the sessions it opened. |
+| messages          | One turn in a chat.                                                                                                             |
+| message_passages  | Passages cited by a message.                                                                                                    |
+| attachments       | A file a message carried: its stored file, name, kind, size and OCR text (migration 35).                                        |
+| held_files        | A file attached in a composer and not sent yet (migration 35). Cleanups count it.                                               |
+| whiteboards       | A whiteboard scene.                                                                                                             |
+| flags             | A student flag on a generated item.                                                                                             |
+| learning_events   | An append-only study event. Mastery is computed from these, not stored.                                                         |
+| jobs              | A long task: extraction, plan build, download.                                                                                  |
+| job_steps         | One named step of a job. A retry skips steps that already stored output.                                                        |
+| engine_usage      | The tokens of one model call, with the chat message or job it was for.                                                          |
+| lesson_outlines   | The plan of a topic's lesson in short parts. One live outline per topic.                                                        |
+| lesson_parts      | One part of an outline, in reading order, with the `lesson` item that holds its text once written.                              |
+| linked_folders    | A folder of the student's that Pyxis reads in place.                                                                            |
+| linked_subfolders | A subfolder of a linked folder and the subject it maps to, or skipped.                                                          |
+| linked_files      | A file read from a linked folder, with its size, time and hash, and the source holding its text.                                |
 
 ## Saved content and history
 

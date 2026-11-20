@@ -2,7 +2,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
 import type { FigureRunner } from "../math/figures";
-import { figureKey } from "../../shared/smart-text";
+import { darkFigureKey, figureKey } from "../../shared/smart-text";
+import { darkFigure } from "../math/dark-figure";
 import { isFigureFixCall } from "../engine/recorded-plan";
 import { setUsageRecorder, storeUsage } from "../engine/usage";
 import { askTurn, readChat, regenerateTurn } from "./turn";
@@ -10,6 +11,10 @@ import { visibleText } from "./visible";
 
 const PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+/** What a turn stores for figures drawn with these keys: each picture and its dark one. */
+const figuresWithDark = (...keys: string[]) =>
+  Object.fromEntries(keys.flatMap((key) => [[key, PNG], [darkFigureKey(key), darkFigure(PNG)!]]));
+const withDark = (...keys: string[]) => keys.flatMap((key) => [key, darkFigureKey(key)]);
 const figure = (caption: string, code: string) =>
   ["```pyxis-figure", JSON.stringify({ caption, code }), "```"].join("\n");
 const sine = "x = np.linspace(0, 6.3)\nplt.plot(x, np.sin(x))";
@@ -99,7 +104,7 @@ it("draws an answer's figures, leaves out the one that fails and cannot be fixed
   expect(calls[0]!.system).toContain("pyxis-figure");
   expect(calls[0]!.prompt).toContain("Figures you can draw: plot, circuit, graph.");
   const message = result.message!;
-  expect(message.figures).toEqual({ [figureKey(sine)]: PNG });
+  expect(message.figures).toEqual(figuresWithDark(figureKey(sine)));
   // The figure block stays as the model wrote it; the failed one is gone.
   expect(message.body).toContain(figure("Il grafico di $\\sin x$.", sine));
   expect(message.body).not.toContain("raise ValueError");
@@ -178,7 +183,7 @@ it("corrects a figure that failed with one call on this turn's engine, shows the
   expect(fixCalls[0]!.prompt).not.toContain("Il seno oscilla");
   // Both figures are drawn and stored, the second under the corrected code, and the saved block carries it.
   const message = result.message!;
-  expect(message.figures).toEqual({ [figureKey(sine)]: PNG, [figureKey(mended)]: PNG });
+  expect(message.figures).toEqual(figuresWithDark(figureKey(sine), figureKey(mended)));
   expect(message.body).toContain(figure("Un circuito che non si disegna.", mended));
   expect(message.body).not.toContain("raise ValueError");
   expect(readChat(db, result.chatId).at(-1)!.figures).toEqual(message.figures);
@@ -194,7 +199,7 @@ it("drops a figure whose fix fails or fails again, and the answer around it is s
     const result = await askTurn(db, { text: "Com'è fatto il seno?", allowGeneral: true, run, python });
     expect(fixCalls).toHaveLength(1);
     const message = result.message!;
-    expect(message.figures).toEqual({ [figureKey(sine)]: PNG });
+    expect(message.figures).toEqual(figuresWithDark(figureKey(sine)));
     expect(message.body).not.toContain("raise ValueError");
     expect(message.body).not.toContain("Un circuito che non si disegna.");
     expect(message.body).toContain("Il periodo è $2\\pi$.");
@@ -227,7 +232,7 @@ it("draws the code of a figure as written, and the corrected code as the fix cal
   // and the n of their Python strings, which a line break in their place would break.
   expect(programs.some((program) => program.includes("plt.title('Primo\\nSecondo')")), "the code as the model wrote it").toBe(true);
   expect(programs.some((program) => program.includes("plt.ylabel('Voltage\\n(V)')")), "the corrected code").toBe(true);
-  expect(Object.keys(result.message!.figures ?? {})).toEqual([figureKey(titled), figureKey(label)]);
+  expect(Object.keys(result.message!.figures ?? {})).toEqual(withDark(figureKey(titled), figureKey(label)));
   expect(result.message!.body).toContain(figure("Un circuito che non si disegna.", label));
 });
 
@@ -243,7 +248,7 @@ it("keeps the whole answer when Stop is pressed while a figure is being correcte
   expect(message.body).toContain("Il periodo è $2\\pi$.");
   expect(message.body).toContain(figure("Il grafico di $\\sin x$.", sine));
   expect(message.body).not.toContain("raise ValueError");
-  expect(message.figures).toEqual({ [figureKey(sine)]: PNG });
+  expect(message.figures).toEqual(figuresWithDark(figureKey(sine)));
   const saved = readChat(db, result.chatId);
   expect(saved.at(-1)!.body).toBe(message.body);
   expect(db.prepare("SELECT COUNT(*) FROM chats WHERE id = ?").pluck().get(result.chatId)).toBe(1);
@@ -307,7 +312,7 @@ it("tells the chat each figure as it is drawn, and a stop keeps the ones already
   const result = await asking;
   const message = result.message!;
   expect(message.stopped).toBe(true);
-  expect(message.figures).toEqual({ [figureKey(first)]: PNG, [figureKey(last)]: PNG });
+  expect(message.figures).toEqual(figuresWithDark(figureKey(first), figureKey(last)));
   expect(message.body).toContain(figure("La prima.", first));
   expect(message.body).toContain(figure("L'ultima.", last));
   expect(message.body).not.toContain("raise ValueError");
@@ -340,7 +345,7 @@ async function stoppedWithTwoFigures() {
   stop.abort();
   const stopped = await asking;
   expect(stopped.message!.stopped).toBe(true);
-  expect(Object.keys(stopped.message!.figures ?? {}).sort()).toEqual([figureKey(first), figureKey(last)].sort());
+  expect(Object.keys(stopped.message!.figures ?? {}).sort()).toEqual(withDark(figureKey(first), figureKey(last)).sort());
   return { db, chatId: stopped.chatId, first, last, saved: stopped.message! };
 }
 const savedFigures = (db: ReturnType<typeof setup>["db"], chatId: string) => {
@@ -350,7 +355,7 @@ const savedFigures = (db: ReturnType<typeof setup>["db"], chatId: string) => {
 
 it("keeps the figures of a stopped reply when its continuation is stopped or fails, and when it finishes", async () => {
   const { db, chatId, first, last } = await stoppedWithTwoFigures();
-  const kept = { [figureKey(first)]: PNG, [figureKey(last)]: PNG };
+  const kept = figuresWithDark(figureKey(first), figureKey(last));
   // Continua, and the continuation streams a little and is stopped again.
   const stopAgain = new AbortController();
   const stopping: ReturnType<typeof setup>["run"] = async (input) => {
@@ -405,5 +410,5 @@ it("keeps the earlier reply, figures included, when a regenerated one is stopped
   await expect(regenerateTurn(db, { chatId, run: stopping, python, signal: stopAgain.signal })).rejects.toMatchObject({ name: "AbortError" });
   const kept = savedFigures(db, chatId);
   expect(kept.count).toBe(1);
-  expect(kept.last.figures).toEqual({ [figureKey(first)]: PNG, [figureKey(last)]: PNG });
+  expect(kept.last.figures).toEqual(figuresWithDark(figureKey(first), figureKey(last)));
 });

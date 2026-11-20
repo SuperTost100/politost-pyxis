@@ -5,6 +5,8 @@ type Request = {
   selection: { provider: string; model: string };
   prompt: string;
   sessionId?: string;
+  persist?: false;
+  workspaceName?: string;
   cache?: boolean;
   signal?: AbortSignal;
   verbose?: boolean;
@@ -28,11 +30,11 @@ const apiBuilds = vi.fn();
 
 // A stand-in for CLI Funnel: it streams what `run` returns, with a session event first, like the real providers.
 function fakeFunnel(options: { providers?: Record<string, unknown> }) {
-  const caps = (cache: boolean) => ({ access: ["none"], cache });
+  const caps = (cache: boolean, ephemeral?: true) => ({ access: ["none"], cache, ephemeral });
   return {
     providers: {
-      claude: { capabilities: caps(false), openSession: () => undefined },
-      codex: { capabilities: caps(false), openSession: () => undefined },
+      claude: { capabilities: caps(false, true), openSession: () => undefined },
+      codex: { capabilities: caps(false, true), openSession: () => undefined },
       antigravity: { capabilities: caps(false) },
       ...options.providers,
     },
@@ -86,7 +88,7 @@ vi.mock("cli-funnel", async (original) => ({
     const provider = (id: string, cache: boolean) => ({
       id,
       displayName: id,
-      capabilities: { access: [], cache, effort: true },
+      capabilities: { access: [], cache, effort: true, ephemeral: true },
     });
     return {
       "anthropic-api": provider("anthropic-api", true),
@@ -100,7 +102,6 @@ const {
   endConversation,
   getFunnel,
   runTurn,
-  SCHEMA_REPLY,
   setApiKeys,
   setScratch,
   CONVERSATION_IDLE_MS,
@@ -138,29 +139,62 @@ describe("runTurn", () => {
     },
   );
 
-  it("asks Antigravity for JSON in the prompt instead of its schema flag", async () => {
+  it("hands the schema to every tool as it is, Antigravity included, which asks for it in the prompt itself", async () => {
     run.mockResolvedValue({ text: '{"score":0.4,"explanation":"Manca il fattore $2x$."}' });
     const schema = { type: "object", properties: { score: { type: "number" } }, required: ["score"] };
-    const result = await runTurn({
-      selection: { provider: "antigravity", model: "claude-sonnet-4-6" },
-      prompt: "Grade this.",
-      responseSchema: { name: "response", schema },
-    });
-    // With --json-schema, agy 1.4 fills the schema with a report on its own run: Sonnet graded its own work 1 and
-    // narrated it, and Gemini returned nothing.
-    const sent = run.mock.calls[0]![0] as Request & { responseSchema?: unknown };
-    expect(sent.responseSchema).toBeUndefined();
-    expect(sent.prompt).toBe(`Grade this.\n\n${SCHEMA_REPLY}\n${JSON.stringify(schema)}`);
-    expect(result.text).toBe('{"score":0.4,"explanation":"Manca il fattore $2x$."}');
-    // Every other engine keeps its native structured output.
+    for (const provider of ["antigravity", "claude"] as const) {
+      const result = await runTurn({
+        selection: { provider, model: "m" },
+        prompt: "Grade this.",
+        responseSchema: { name: "response", schema },
+      });
+      const sent = run.mock.calls.at(-1)![0] as Request & { responseSchema?: unknown };
+      expect(sent.prompt, provider).toBe("Grade this.");
+      expect(sent.responseSchema, provider).toEqual({ name: "response", schema });
+      expect(result.text).toBe('{"score":0.4,"explanation":"Manca il fattore $2x$."}');
+    }
+  });
+
+  it("asks the tool not to keep a call that is not part of a conversation, where the tool can do that", async () => {
+    run.mockResolvedValue({ text: "ok" });
+    const ephemeral = new Map<string, unknown>();
+    for (const provider of ["claude", "codex", "antigravity"] as const) {
+      await runTurn({ selection: { provider, model: "m" }, prompt: "hi" });
+      ephemeral.set(provider, run.mock.calls.at(-1)![0].persist);
+    }
+    // Antigravity cannot skip saving, and cli-funnel refuses the run when asked to.
+    expect(Object.fromEntries(ephemeral)).toEqual({ claude: false, codex: false, antigravity: undefined });
+    // A call that is part of a conversation is kept, since the next turn resumes it.
     await runTurn({
       selection: { provider: "claude", model: "m" },
-      prompt: "Grade this.",
-      responseSchema: { name: "response", schema },
+      prompt: "whole",
+      conversation: { key: "lesson:t1", followUp: "next", session: null },
     });
-    const native = run.mock.calls[1]![0] as Request & { responseSchema?: unknown };
-    expect(native.prompt).toBe("Grade this.");
-    expect(native.responseSchema).toEqual({ name: "response", schema });
+    expect(run.mock.calls.at(-1)![0].persist).toBeUndefined();
+  });
+
+  it("gives every call Pyxis's own folder name, so its chats stay apart in the tool's history", async () => {
+    run.mockResolvedValue({ text: "ok" });
+    await runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi" });
+    expect(run.mock.calls[0]![0].workspaceName).toBe("pyxis");
+  });
+
+  it("keeps a conversation that only a subscription tool holds off an API or local provider", async () => {
+    run.mockResolvedValue({ text: "ok" });
+    const call = (provider: "anthropic-api" | "claude") => ({
+      selection: { provider, model: "m" },
+      prompt: "whole",
+      conversation: { key: "lesson:t1", followUp: "next", session: null, cliOnly: true as const },
+    });
+    await runTurn(call("anthropic-api"));
+    await runTurn(call("anthropic-api"));
+    // The API provider answers each call on its own: nothing continues, and the call is not kept either.
+    expect(run.mock.calls.map(([request]) => [request.prompt, request.sessionId, request.persist])).toEqual([
+      ["whole", undefined, false],
+      ["whole", undefined, false],
+    ]);
+    await runTurn(call("claude"));
+    expect(run.mock.calls.at(-1)![0].persist).toBeUndefined();
   });
 
   it("reports a provider failure raised by cancellation as an abort", async () => {
@@ -267,15 +301,16 @@ describe("chat conversations", () => {
     },
   );
 
-  it("leaves the system prompt out of a turn in a session Antigravity holds, which got it in the first prompt", async () => {
+  it("sends the system prompt on every turn, in a new session and in one the tool holds, on every tool", async () => {
     run.mockResolvedValue({ text: "answer" });
     for (const provider of ["antigravity", "claude", "codex"] as const) {
       await runTurn(chat("next", { provider, session: stored(provider) }));
       await runTurn(chat("first", { provider }));
     }
     const systems = run.mock.calls.map(([request]) => (request as { system?: string }).system);
-    // Continued, then new, for each provider in turn.
-    expect(systems).toEqual([undefined, "tutor", "tutor", "tutor", "tutor", "tutor"]);
+    // Continued, then new, for each provider in turn. A resumed Antigravity session gets the system prompt in its system
+    // slot, as Claude Code and Codex do.
+    expect(systems).toEqual(["tutor", "tutor", "tutor", "tutor", "tutor", "tutor"]);
   });
 
   it("goes on in the session it tracked for a caller that stores none, such as a lesson's tool rounds", async () => {
@@ -538,7 +573,7 @@ describe("API keys", () => {
 });
 
 describe("schema repairs", () => {
-  it("continue the session with only the error on Claude Code, and resend the prompt on Antigravity", async () => {
+  it("resend the whole prompt with the bad answer, in a call the tool does not keep", async () => {
     const { generate } = await import("./generate");
     const { z } = await import("zod");
     for (const provider of ["claude", "antigravity"] as const) {
@@ -553,18 +588,34 @@ describe("schema repairs", () => {
         schema: z.object({ colour: z.string() }),
       });
       expect(output.data).toEqual({ colour: "blue" });
+      // A call the tool does not keep cannot be resumed, so the repair is a call of its own with the whole prompt.
       const repair = run.mock.calls[1]![0];
-      if (provider === "claude") {
-        expect(repair.sessionId).toBe("s-1");
-        expect(repair.prompt).not.toContain("name a colour");
-        expect(repair.prompt).toContain("blue");
-        // The process the repair used stops once the answer is valid.
-        expect(closeSession).toHaveBeenCalledWith("s-1", "claude");
-      } else {
-        expect(repair.sessionId).toBeUndefined();
-        expect(repair.prompt).toContain("name a colour");
-      }
+      expect(repair.sessionId, provider).toBeUndefined();
+      expect(repair.prompt, provider).toContain("name a colour");
+      expect(repair.prompt, provider).toContain("blue");
+      expect(repair.persist, provider).toBe(provider === "claude" ? false : undefined);
     }
+  });
+
+  it("continue the session of a conversation they belong to, with only the error", async () => {
+    const { generate } = await import("./generate");
+    const { z } = await import("zod");
+    run
+      .mockResolvedValueOnce({ text: "blue" })
+      .mockResolvedValueOnce({ text: '{"colour":"blue"}' });
+    const output = await generate({
+      selection: { provider: "claude", model: "m" },
+      prompt: "name a colour",
+      followUpFor: () => "name a colour, again",
+      schema: z.object({ colour: z.string() }),
+      conversation: { key: "lesson:t1", followUp: "", session: null },
+    });
+    expect(output.data).toEqual({ colour: "blue" });
+    const repair = run.mock.calls[1]![0];
+    expect(repair.sessionId).toBe("s-1");
+    expect(repair.prompt).not.toContain("name a colour");
+    expect(repair.prompt).toContain("blue");
+    expect(repair.persist).toBeUndefined();
   });
 });
 

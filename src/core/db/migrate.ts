@@ -1,6 +1,45 @@
 import type Database from "better-sqlite3";
 import initSql from "./migrations/0001_init.sql?raw";
 
+/** The columns of `tool_sessions`, in the order the copy lists them; `owner` is `chat_sessions.chat_id`. */
+const TOOL_SESSION_COLUMNS = [
+  "id",
+  "owner",
+  "provider",
+  "session_id",
+  "model",
+  "effort",
+  "cwd",
+  "told",
+  "chars",
+  "in_step",
+  "synced_to",
+  "seen",
+  "turns",
+  "opened_at",
+  "last_used_at",
+  "ended_at",
+  "ended_reason",
+  "instructions",
+];
+
+/**
+ * Migration 37's check that `tool_sessions` holds exactly what `chat_sessions` held: as many rows, and no row of the
+ * original without an identical one in the copy (a missing value equals a missing value). Throws otherwise, which rolls
+ * the migration back before the old table is dropped.
+ */
+export function verifyToolSessionsCopy(db: Database.Database): void {
+  const original = TOOL_SESSION_COLUMNS.map((column) => (column === "owner" ? "chat_id" : column)).join(", ");
+  const copy = TOOL_SESSION_COLUMNS.join(", ");
+  const before = db.prepare("SELECT COUNT(*) FROM chat_sessions").pluck().get() as number;
+  const after = db.prepare("SELECT COUNT(*) FROM tool_sessions").pluck().get() as number;
+  const missing = db
+    .prepare(`SELECT COUNT(*) FROM (SELECT ${original} FROM chat_sessions EXCEPT SELECT ${copy} FROM tool_sessions)`)
+    .pluck()
+    .get() as number;
+  if (before !== after || missing > 0) throw new Error("migrate-tool-sessions-copy");
+}
+
 const steps = [
   { version: 1, sql: initSql },
   {
@@ -487,7 +526,58 @@ CREATE TABLE held_files (
 );
 CREATE INDEX held_files_draft ON held_files(draft);`,
   },
-] satisfies Array<{ version: number; sql: string; foreignKeysOff?: { check: string[] } }>;
+  // The tool session a chat continues is now also the session of a lesson's parts and of a quiz hand-in, so the table is
+  // keyed by an owner that is not always a chat: a chat's id, `lesson:<topic id>` or `quiz:<attempt id>`. The rows of
+  // `chat_sessions` are copied into `tool_sessions` (`chat_id` becomes `owner`), the copy is checked against the original
+  // row by row and column by column (`verify`), and only then is the old table dropped (`then`), all in the migration's
+  // one transaction, so a copy that is not the same rolls everything back with `chat_sessions` as it was. A trigger on each
+  // owner's table takes the place of the chat's foreign key.
+  {
+    version: 37,
+    sql: `CREATE TABLE tool_sessions (
+  id TEXT PRIMARY KEY,
+  owner TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  model TEXT,
+  effort TEXT,
+  cwd TEXT NOT NULL,
+  told TEXT,
+  chars INTEGER NOT NULL DEFAULT 0,
+  in_step INTEGER NOT NULL DEFAULT 1,
+  synced_to TEXT,
+  seen INTEGER NOT NULL DEFAULT 0,
+  turns INTEGER NOT NULL DEFAULT 0,
+  opened_at INTEGER NOT NULL,
+  last_used_at INTEGER NOT NULL,
+  ended_at INTEGER,
+  ended_reason TEXT CHECK (ended_reason IS NULL OR ended_reason IN ('tool', 'gone', 'long', 'instructions')),
+  instructions TEXT
+);
+INSERT INTO tool_sessions (${TOOL_SESSION_COLUMNS.join(", ")})
+  SELECT ${TOOL_SESSION_COLUMNS.map((column) => (column === "owner" ? "chat_id" : column)).join(", ")} FROM chat_sessions;`,
+    verify: verifyToolSessionsCopy,
+    then: `DROP TABLE chat_sessions;
+CREATE INDEX tool_sessions_owner ON tool_sessions(owner, opened_at);
+CREATE TRIGGER chats_drop_sessions AFTER DELETE ON chats BEGIN
+  DELETE FROM tool_sessions WHERE owner = OLD.id;
+END;
+CREATE TRIGGER topics_drop_sessions AFTER DELETE ON topics BEGIN
+  DELETE FROM tool_sessions WHERE owner = 'lesson:' || OLD.id;
+END;
+CREATE TRIGGER attempts_drop_sessions AFTER DELETE ON attempts BEGIN
+  DELETE FROM tool_sessions WHERE owner = 'quiz:' || OLD.id;
+END;`,
+  },
+] satisfies Array<{
+  version: number;
+  sql: string;
+  /** Runs after `sql` and before `then`, in the same transaction; throws to roll the whole migration back. */
+  verify?: (db: Database.Database) => void;
+  /** Runs after `verify`: what must not happen until the copy `sql` made is known to be whole. */
+  then?: string;
+  foreignKeysOff?: { check: string[] };
+}>;
 
 /** The newest schema version this build knows. */
 export const SCHEMA_VERSION = steps.at(-1)!.version;
@@ -554,6 +644,8 @@ export function migrate(db: Database.Database, target = SCHEMA_VERSION): void {
         const tables = "foreignKeysOff" in step && step.foreignKeysOff ? step.foreignKeysOff.check : [];
         const before = violationsOf(db, tables);
         db.exec(step.sql);
+        if ("verify" in step) step.verify?.(db);
+        if ("then" in step && step.then) db.exec(step.then);
         const known = new Set(before.map(violationKey));
         const added = violationsOf(db, tables).find((violation) => !known.has(violationKey(violation)));
         if (added) throw new Error(`migrate-broken-references:${added.table}`);

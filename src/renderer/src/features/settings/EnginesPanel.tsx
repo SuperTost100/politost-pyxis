@@ -127,7 +127,7 @@ export function EnginesIntro() {
   const local = useQuery({ queryKey: localQueryKey, queryFn: () => invoke("engines.local", {}) });
   const allowed = choice.data?.allowed ?? null;
   const ready = (overview.data ?? []).filter(
-    (row) => row.installed && row.loggedIn && !row.disabled && (allowed === null || allowed.includes(row.id)),
+    (row) => row.installed && row.loggedIn && !row.disabled && !row.outdated && (allowed === null || allowed.includes(row.id)),
   );
   const listed = !!choice.data?.order && ready.filter(isConnected).length > 1;
   const text = listed
@@ -245,7 +245,7 @@ export function EnginesPanel() {
   // the keys are read the list cannot know the keyed ones, so turning a tool off waits: a pick without them would drop
   // them and their tasks.
   const manual = manualChoice(rows, keyStatus(keys));
-  const readyRows = rows.filter((row) => row.installed && row.loggedIn && !row.disabled);
+  const readyRows = rows.filter((row) => row.installed && row.loggedIn && !row.disabled && !row.outdated);
   const ready = readyRows.map((row) => row.id);
   const inUse = (row: Engine) => allowed === null || allowed.includes(row.id);
   // The connected tools in the order Pyxis uses them, and the rest of the CLIs, still to install or sign in to.
@@ -747,6 +747,8 @@ export function EnginesPanel() {
                           {t("engines.cliDocs")}
                         </a>
                       </>
+                    ) : row.outdated ? (
+                      t("engines.outdatedLine", { name: row.name })
                     ) : isInstallable(row.id) ? (
                       [t(`setup.plan.${row.id}`), usesLine(row.id)].filter(Boolean).join(" ")
                     ) : undefined
@@ -758,7 +760,7 @@ export function EnginesPanel() {
                       {t(status.label)}
                     </span>
                   ) : null}
-                  {row.disabled ? null : (
+                  {row.disabled || row.outdated ? null : (
                     <Button
                       variant="secondary"
                       size="sm"

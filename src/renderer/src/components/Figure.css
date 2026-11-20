@@ -1,25 +1,113 @@
-/* Figures are drawn by matplotlib on white, so the image keeps a white ground in both themes. */
+/* A figure is drawn by matplotlib on white, so its image keeps a white ground in both themes; one drawn for the dark
+   theme has its own dark ground and shows in its place there. */
 .px-figure {
   display: grid;
   gap: var(--space-2);
-  justify-items: center;
-  margin: var(--space-6) 0;
+  justify-items: start;
+  margin: var(--space-4) 0;
 }
 
-.px-figure img {
+.px-figure-frame {
+  position: relative;
+  width: min(520px, 100%);
+}
+
+.px-figure-open {
   display: block;
   box-sizing: border-box;
-  max-width: 100%;
-  height: auto;
-  padding: var(--space-2);
-  border: 1px solid var(--border);
+  width: 100%;
+  padding: var(--space-3);
+  border: 0;
   border-radius: var(--radius-md);
   background: #ffffff;
+  box-shadow: var(--shadow-card);
+  cursor: zoom-in;
+  transition: box-shadow var(--duration-micro) var(--ease-out);
+}
+.px-figure-open:hover {
+  box-shadow: var(--shadow-raised);
+}
+.px-figure-open:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.px-figure-open img {
+  display: block;
+  max-width: 100%;
+  width: 100%;
+  height: auto;
+}
+
+.px-figure-dark {
+  display: none !important;
+}
+[data-theme="dark"] .px-figure-frame:has(.px-figure-dark) .px-figure-open {
+  background: #171b22;
+}
+[data-theme="dark"] .px-figure-frame:has(.px-figure-dark) .px-figure-light {
+  display: none;
+}
+[data-theme="dark"] .px-figure-frame:has(.px-figure-dark) .px-figure-dark {
+  display: block !important;
+}
+
+/* The three dots show with the pointer over the figure or the focus in it, and always where there is no hover. */
+.px-figure-dots.px-btn {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: 30px;
+  height: 30px;
+  background: var(--surface-raised);
+  color: var(--ink-muted);
+  box-shadow: var(--shadow-card);
+  opacity: 0;
+  transition:
+    opacity var(--duration-micro) var(--ease-out),
+    background-color var(--duration-micro) var(--ease-out),
+    color var(--duration-micro) var(--ease-out);
+}
+.px-figure:hover .px-figure-dots.px-btn,
+.px-figure:focus-within .px-figure-dots.px-btn,
+.px-figure-dots.px-btn[aria-expanded="true"] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .px-figure-dots.px-btn {
+    opacity: 1;
+  }
+}
+
+/* What a copy or a download did, beside the dots. */
+.px-figure-said {
+  position: absolute;
+  top: 11px;
+  right: 46px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  box-shadow: var(--shadow-card);
+  font: 600 calc(12.5px * var(--text-scale, 1)) / 1.2 var(--font-sans);
+  transform-origin: 100% 50%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .px-figure-said {
+    animation: px-figure-said 160ms var(--ease-out);
+  }
+}
+@keyframes px-figure-said {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
 }
 
 .px-figure figcaption {
-  max-width: 60ch;
-  color: var(--ink-muted);
+  width: min(520px, 100%);
+  box-sizing: border-box;
+  color: var(--ink-subtle);
   text-align: center;
 }
 

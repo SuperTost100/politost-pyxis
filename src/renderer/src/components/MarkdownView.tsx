@@ -17,7 +17,7 @@ import { CheckBadge } from "./CheckBadge";
 import { CitationChip } from "./CitationChip";
 import { PythonBlock, RunnablePython } from "./PythonBlock";
 import { Figure } from "./Figure";
-import { figureKey, parseFigure } from "@shared/smart-text";
+import { darkFigureKey, figureKey, parseFigure } from "@shared/smart-text";
 import "./MarkdownView.css";
 
 export type { CitationResolver };
@@ -83,10 +83,12 @@ const components: Components = {
     // Figure code is for the sandbox, never shown: the image, a placeholder while it is drawn, or nothing.
     if (lang === "pyxis-figure") {
       const figure = parseFigure(codeText);
-      const image = figure ? figures?.[figureKey(figure.code, figure.figureKind)] : undefined;
+      const key = figure ? figureKey(figure.code, figure.figureKind) : undefined;
+      const image = key ? figures?.[key] : undefined;
+      const darkImage = key ? figures?.[darkFigureKey(key)] : undefined;
       // While the reply is being drawn each figure shows its picture the moment it is there, and keeps its working state
       // until then. One left out is told as an empty picture, and its place goes.
-      return <Figure caption={figure?.caption ?? ""} image={image} drawing={drawing && image === undefined} />;
+      return <Figure caption={figure?.caption ?? ""} image={image} darkImage={darkImage} drawing={drawing && image === undefined} />;
     }
     return (
       <div className="px-code-block">

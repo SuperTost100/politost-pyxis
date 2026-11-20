@@ -21,6 +21,25 @@ export function runsAs(provider: string, model: string, effort: string | undefin
   return (effort && variants.get(provider)?.get(`${model}|${effort}`)) || model;
 }
 
+/**
+ * A saved model id that an earlier build ran as a level of another model, as the model and the level: `gemini-4-neon-xhigh`
+ * is `gemini-4-neon` at `xhigh`. Only `xhigh` was ever listed as a model of its own (the other levels were grouped). A
+ * listing that is read and offers no such model with that level leaves the id alone; before any listing is read the id
+ * is unfolded anyway, since a job saved by the previous build may resume first.
+ */
+export function unfoldVariant(provider: string, model: string): { model: string; effort: string } | undefined {
+  if (provider !== "antigravity") return undefined;
+  const match = /^(.+)-xhigh$/.exec(model);
+  if (!match) return undefined;
+  const base = match[1]!;
+  const listed = seen.get(provider);
+  if (listed && listed.size > 0) {
+    const levels = listed.get(base);
+    if (!levels || !(levels.includes("xhigh") || variants.get(provider)?.has(`${base}|xhigh`))) return undefined;
+  }
+  return { model: base, effort: "xhigh" };
+}
+
 /** Whether the tool's last listing held this id, even though it is not one of its maker's models. */
 export function wasReported(provider: string, model: string): boolean {
   return reported.get(provider)?.has(model) ?? false;

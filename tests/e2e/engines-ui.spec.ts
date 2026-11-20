@@ -375,7 +375,7 @@ test("Settings: a test the provider refuses turns the engine to an expired sign-
     CLI_FUNNEL_AGY_BIN: fake(
       "agy",
       `case "$1" in
-  --version) echo "1.3.0";;
+  --version) echo "1.5.13";;
   models) printf 'gemini-3.8-flash\\tGemini 3.8 Flash\\n';;
   *) echo "Error: request failed with status 401 Unauthorized" >&2; exit 1;;
 esac`,
@@ -799,6 +799,50 @@ test("Settings: a workspace whose only allowed tool was Cursor keeps Claude and 
   } finally {
     // The app holds the workspace open: it closes before the folder is removed, whichever step failed.
     await app?.close();
+    removeTestFolder(userData);
+    rmSync(tools.bin, { recursive: true, force: true });
+  }
+});
+
+test("Settings: an Antigravity program older than 1.5 is left out, and its row says it needs an update", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-old-agy-"));
+  const tools = standInTools(["claude", "antigravity"], "1.4.0");
+  const app = await launchPyxis({ userData, env: tools.env });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(async () => {
+      await window.pyxis.invoke("engines.acknowledge", { providers: ["claude", "antigravity"] });
+      localStorage.setItem("pyxis.lang", "en");
+      localStorage.removeItem("pyxis.engines.advanced");
+      location.hash = "/settings/engines";
+    });
+    await page.reload();
+    // Only Claude is connected; Gemini waits under "To connect" with the line that says why, and has no sign-in button.
+    await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(1, { timeout: 30000 });
+    await expect(tool(page, "claude")).toBeVisible();
+    const toConnect = page.locator(".px-ctl-row", { has: page.locator("#engines-connect-antigravity") });
+    await expect(toConnect).toContainText("Gemini needs Antigravity 1.5 or newer. Update the program and Pyxis starts using it again.");
+    await expect(toConnect).toContainText("Needs an update");
+    await expect(toConnect.getByRole("button")).toHaveCount(0);
+    // No task goes to it.
+    const features = (await page.evaluate(() => window.pyxis.invoke("engines.autoConfigure", {}))) as {
+      features: Record<string, { provider: string }>;
+    };
+    expect(Object.values(features.features).map((feature) => feature.provider)).not.toContain("antigravity");
+    await saveShot(page, "engines-old-agy-en.png");
+    // The same in Italian.
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "it"));
+    await page.reload();
+    const row = page.locator(".px-ctl-row", { has: page.locator("#engines-connect-antigravity") });
+    await expect(row).toContainText("Gemini richiede Antigravity 1.5 o successivo", { timeout: 30000 });
+    await expect(row).toContainText("Da aggiornare");
+  } finally {
+    await app.close();
     removeTestFolder(userData);
     rmSync(tools.bin, { recursive: true, force: true });
   }

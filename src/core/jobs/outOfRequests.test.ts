@@ -5,6 +5,7 @@ import { openDatabase } from "../db/connection";
 import type { AutoProvider } from "../engine/auto";
 import { benchEngine, clearBench, clearLimitBefore, engineClock } from "../engine/bench";
 import { generate, setFallbackListener } from "../engine/generate";
+import { refuseImages } from "../engine/test-images";
 import { rememberReady } from "../engine/selection";
 import { currentUsageScope } from "../engine/usage";
 import { tempDir } from "../test-temp";
@@ -139,6 +140,7 @@ describe("a job whose tool ran out of requests", () => {
   });
 
   it("does not send a photo's job to a tool that cannot see it, and lets it go on with one that can", async () => {
+    refuseImages("antigravity");
     const database = db();
     rememberReady(ready("claude", "antigravity", "codex"));
     const { runner } = asking(database, pinned, outOfRequests);
