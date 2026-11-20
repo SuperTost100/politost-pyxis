@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
-import { forgetModels, modelName, rememberModels, setModelNamesListener } from "./efforts";
+import { atLowEffort, forgetModels, modelName, rememberModels, setModelNamesListener } from "./efforts";
 import { generate } from "./generate";
 import { engineHandlers } from "./handlers";
 import { planAuto, type AutoProvider } from "./auto";
@@ -517,5 +517,72 @@ describe("model names core learns", () => {
     // A list that had no names and still has none changes nothing a screen shows.
     rememberModels("antigravity", []);
     expect(heard).toEqual(["antigravity", "antigravity"]);
+  });
+});
+
+describe("atLowEffort", () => {
+  it("runs a call at the lowest effort its model lists when the model file says the tool does", () => {
+    rememberModels("antigravity", [{ id: "gemini-3.8-flash", efforts: levels("medium", "high", "low") }]);
+    for (const call of ["outline", "quiz"])
+      expect(atLowEffort({ provider: "antigravity", model: "gemini-3.8-flash", effort: "high" }, call)).toEqual({
+        provider: "antigravity",
+        model: "gemini-3.8-flash",
+        effort: "low",
+      });
+  });
+
+  it("leaves a call the tool does not run so at its level: only the outline on Claude and Codex", () => {
+    rememberModels("claude", [{ id: "m", efforts: levels("low", "medium", "high") }]);
+    rememberModels("codex", [{ id: "m", efforts: levels("low", "medium", "high") }]);
+    for (const provider of ["claude", "codex"]) {
+      expect(atLowEffort({ provider, model: "m", effort: "medium" }, "outline").effort).toBe("low");
+      expect(atLowEffort({ provider, model: "m", effort: "medium" }, "quiz").effort).toBe("medium");
+    }
+  });
+
+  it("takes the outline at low on a tool the file does not know, and nothing else", () => {
+    rememberModels("ollama", [{ id: "local", efforts: levels("low", "high") }]);
+    expect(atLowEffort({ provider: "ollama", model: "local", effort: "high" }, "outline").effort).toBe("low");
+    expect(atLowEffort({ provider: "ollama", model: "local", effort: "high" }, "quiz").effort).toBe("high");
+  });
+
+  it("uses the nearest level when the model has no low one, and none when it lists none", () => {
+    rememberModels("codex", [{ id: "has-medium", efforts: levels("medium", "high") }]);
+    rememberModels("claude", [{ id: "lists-none", efforts: [] }]);
+    expect(atLowEffort({ provider: "codex", model: "has-medium", effort: "high" }, "outline").effort).toBe("medium");
+    expect(atLowEffort({ provider: "claude", model: "lists-none", effort: "medium" }, "outline")).toEqual({ provider: "claude", model: "lists-none" });
+  });
+
+  it("leaves a selection with no effort alone when the model's list is not known, and asks for low before it is read", () => {
+    const plain = { provider: "ollama", model: "local" };
+    expect(atLowEffort(plain, "outline")).toBe(plain);
+    expect(atLowEffort({ provider: "antigravity", model: "unread", effort: "medium" }, "quiz").effort).toBe("low");
+  });
+
+  it("gives low to a model that lists levels when the selection names none", () => {
+    rememberModels("antigravity", [{ id: "gemini-3.8-flash", efforts: levels("low", "medium", "high") }]);
+    expect(atLowEffort({ provider: "antigravity", model: "gemini-3.8-flash" }, "quiz")).toEqual({
+      provider: "antigravity",
+      model: "gemini-3.8-flash",
+      effort: "low",
+    });
+  });
+
+  it("reads a level carried by the model id: gemini-4-neon-xhigh is gemini-4-neon at xhigh, and runs at low", () => {
+    rememberModels("antigravity", [{ id: "gemini-4-neon", efforts: levels("low", "medium", "high", "xhigh") }]);
+    expect(atLowEffort({ provider: "antigravity", model: "gemini-4-neon-xhigh" }, "quiz")).toEqual({
+      provider: "antigravity",
+      model: "gemini-4-neon",
+      effort: "low",
+    });
+    // Before any listing is read the id is unfolded anyway, as it is for a saved job.
+    forgetModels();
+    expect(atLowEffort({ provider: "antigravity", model: "gemini-4-neon-xhigh" }, "outline")).toEqual({
+      provider: "antigravity",
+      model: "gemini-4-neon",
+      effort: "low",
+    });
+    // A tool that does not run the call so keeps the id.
+    expect(atLowEffort({ provider: "codex", model: "gemini-4-neon-xhigh" }, "quiz").model).toBe("gemini-4-neon-xhigh");
   });
 });

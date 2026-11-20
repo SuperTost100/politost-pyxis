@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { GenerateInput } from "../engine/generate";
+import { forgetActivity, trackCall } from "../jobs/activity";
 import { createRunner } from "../jobs/runner";
 import { exportPlan } from "../plans/file";
 import { planFootprint } from "../plans/settings";
@@ -156,6 +157,20 @@ async function readToPartTwo(db: Db, runner: ReturnType<typeof createRunner>, no
 }
 
 describe("the level of a part", () => {
+  it("shows what the model call of a rewrite is doing while it runs", async () => {
+    const { db, runner } = setUp();
+    await readToPartTwo(db, runner);
+    const writing = read(db, runner, 2, { wording: "simple" });
+    expect(writing.rewrite).toMatchObject({ state: "writing", activity: null });
+    const call = trackCall(writing.rewrite!.jobId, 99);
+    call.event("reasoning.delta");
+    expect(read(db, runner, 2).rewrite).toMatchObject({ state: "writing", activity: { phase: "thinking", since: 99 } });
+    call.end();
+    expect(read(db, runner, 2).rewrite).toMatchObject({ activity: null });
+    forgetActivity();
+    await settle(db);
+  });
+
   it("writes the part again at the level chosen, and the parts after it follow that level", async () => {
     const { db, runner, engine } = setUp();
     await readToPartTwo(db, runner);

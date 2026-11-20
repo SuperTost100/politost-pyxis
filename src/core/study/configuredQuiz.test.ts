@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
+import { forgetModels, rememberModels } from "../engine/efforts";
+import { currentUsageScope } from "../engine/usage";
+import type { ProviderId } from "../engine/funnel";
+import { trackCall } from "../jobs/activity";
 import { createRunner } from "../jobs/runner";
 import {
   enqueueQuiz,
@@ -8,7 +12,7 @@ import {
   saveQuizDraft,
 } from "./quizJobs";
 import { generateQuiz, prepareQuiz, saveQuizSnapshot, startConfiguredQuiz } from "./configuredQuiz";
-import { gradeConfiguredAttempt, gradeQuizQuestion } from "./quizGrading";
+import { gradeConfiguredAttempt, gradeQuizQuestion, readQuizGrading, registerQuizGradingJobs, submitQuiz } from "./quizGrading";
 import { submitAttempt } from "./attempt";
 import { flagTarget } from "./flags";
 import type { GenerateInput } from "../engine/generate";
@@ -181,6 +185,85 @@ describe("configured quizzes", () => {
       expect(question.options![question.answer.correct!]).toBe("right");
     db.close();
   });
+  it("grades a hand-in at once while a quiz is still being written beside a part written ahead", async () => {
+    const db = fixture();
+    // A quiz handed in: ten open questions, written in one go.
+    const earlier = await startConfiguredQuiz(db, { planId: "plan", topicId: "topic", count: 10, types: ["open"] }, async () =>
+      reply({
+        questions: Array.from({ length: 10 }, (_, i) => ({
+          kind: "open",
+          stem: `Define velocity ${i}`,
+          explanation: "Displacement per time.",
+          reference: "Displacement per time",
+          rubric: ["Defines displacement", "Includes time"],
+          passageIds: ["p"],
+        })),
+      }),
+    );
+    const runner = createRunner(db, () => {});
+    // The part written ahead of the one being read is an interactive job, and it holds one of the two places.
+    runner.register("part-ahead", {
+      jobClass: "model-cli",
+      interactive: true,
+      steps: [{ name: "call", label: "call", run: () => new Promise<void>(() => undefined) }],
+    });
+    runner.start("part-ahead");
+    // A second quiz, written in batches of 2, 4 and 4: the third batch never comes, a long build.
+    let calls = 0;
+    registerQuizJobs(db, runner, async (input) => {
+      if (++calls >= 2) await new Promise<void>(() => undefined);
+      return tfRun!(input);
+    });
+    registerQuizGradingJobs(db, runner, async () => reply({ score: 1, explanation: "Right." }));
+    const build = enqueueQuiz(db, runner, { planId: "plan", topicId: "topic", count: 10, types: ["tf"] });
+    for (let i = 0; i < 200 && readQuiz(db, build.attemptId).questions.length === 0; i++)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(readQuiz(db, build.attemptId).questions.length).toBeGreaterThan(0);
+    // The first questions are playable, so the student no longer waits on the build, and grading does not wait behind it.
+    const picks = Object.fromEntries(readQuiz(db, earlier.attemptId).questions.map((row) => [row.id, "Displacement per time"]));
+    submitQuiz(db, runner, earlier.attemptId, picks);
+    for (let i = 0; i < 200 && readQuizGrading(db, earlier.attemptId).state !== "succeeded"; i++)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(readQuizGrading(db, earlier.attemptId).state).toBe("succeeded");
+    expect(readQuiz(db, build.attemptId).state).toBe("running");
+    db.close();
+  });
+
+  it("starts the build next to background work that fills the model slots, instead of queueing behind it", async () => {
+    const db = fixture();
+    const runner = createRunner(db, () => {});
+    // Two background jobs, a plan being built and the like, hold the two slots of the AI tools.
+    const held = [{ name: "call", label: "call", run: () => new Promise<void>(() => undefined) }];
+    runner.register("background", { jobClass: "model-cli", steps: held });
+    runner.start("background");
+    runner.start("background");
+    registerQuizJobs(db, runner, tfRun!);
+    const started = enqueueQuiz(db, runner, { planId: "plan", topicId: "topic", count: 10, types: ["tf"] });
+    await until(db, started.attemptId, "succeeded");
+    expect(readQuiz(db, started.attemptId).questions).toHaveLength(10);
+    db.close();
+  });
+
+  it("reports what the question writer is doing while a build runs, and nothing after", async () => {
+    const db = fixture();
+    const runner = createRunner(db, () => {});
+    let started: { attemptId: string } | undefined;
+    let seen: unknown;
+    registerQuizJobs(db, runner, async (input) => {
+      await Promise.resolve();
+      const call = trackCall(currentUsageScope()?.jobId);
+      call.event("reasoning.delta");
+      seen = readQuiz(db, started!.attemptId).activity;
+      call.end();
+      return tfRun!(input);
+    });
+    started = enqueueQuiz(db, runner, { planId: "plan", topicId: "topic", count: 10, types: ["tf"] });
+    await until(db, started.attemptId, "succeeded");
+    expect(seen).toMatchObject({ phase: "thinking" });
+    expect(readQuiz(db, started.attemptId).activity).toBeUndefined();
+    db.close();
+  });
+
   it("keeps the attempt of a failed build and fills it on retry", async () => {
     const db = fixture();
     const runner = createRunner(db, () => {});
@@ -458,6 +541,29 @@ it("marks a quiz written without the plan's sources as general knowledge", async
     }),
   );
   expect(readQuiz(db, general.attemptId).general).toBe(true);
+  db.close();
+});
+
+it.each([
+  ["antigravity", "low"],
+  // The model file gives the lowest effort for a quiz to Antigravity only: the other tools keep the lesson's level.
+  ["claude", "medium"],
+  ["codex", "medium"],
+])("writes every batch on %s at effort %s", async (provider, expected) => {
+  rememberModels(provider, [{ id: "model-A", efforts: [{ id: "low" }, { id: "medium" }] }]);
+  const db = fixture();
+  const snapshot = prepareQuiz(db, { planId: "plan", topicId: "topic", count: 10, types: ["tf" as const] });
+  snapshot.selection = { provider: provider as ProviderId, model: "model-A", effort: "medium" };
+  const efforts: Array<string | undefined> = [];
+  await generateQuiz(snapshot, async (turn) => {
+    efforts.push(turn.selection.effort);
+    return tfRun(turn);
+  });
+  expect(efforts.length).toBeGreaterThan(0);
+  expect(new Set(efforts)).toEqual(new Set([expected]));
+  // The snapshot keeps the engine as it was chosen, so a retry and the saved quiz record the student's selection.
+  expect(snapshot.selection.effort).toBe("medium");
+  forgetModels();
   db.close();
 });
 

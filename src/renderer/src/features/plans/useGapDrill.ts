@@ -68,6 +68,8 @@ export function useGapDrill(planId: string, { replace = false }: { replace?: boo
 
   // The start that is the latest: a start that is still on its way when another begins has nothing left to say.
   const latestStart = useRef(0);
+  // The latest start the student stopped before its job was known: the job is stopped as soon as the start returns it.
+  const stoppedStart = useRef(0);
   async function start(topicId: string, gapId?: string) {
     if (preparing) return;
     const mine = (latestStart.current += 1);
@@ -80,6 +82,7 @@ export function useGapDrill(planId: string, { replace = false }: { replace?: boo
         topicId,
         ...(gapId ? { gapId } : {}),
       });
+      if (stoppedStart.current >= mine) return void invoke("jobs.cancel", { jobId }).catch(() => undefined);
       // Only the drill this start made: the student may have asked for another one, or dismissed it, in the meantime.
       setDrill((current) => (current && current.topicId === topicId && current.gapId === gapId ? { ...current, jobId } : current));
       await client.invalidateQueries({ queryKey: ["gap-drill", planId] });
@@ -126,6 +129,14 @@ export function useGapDrill(planId: string, { replace = false }: { replace?: boo
       setFailedTopic(null);
       setDrill(null);
       if (stopped) void start(stopped, lastGap.current);
+    },
+    /** Stops the drill being prepared, so the page that asked for it is as it was; its job is stopped and can be resumed from Attività. */
+    stop: () => {
+      stoppedStart.current = latestStart.current;
+      const jobId = drill?.jobId;
+      setFailedTopic(null);
+      setDrill(null);
+      if (jobId) void invoke("jobs.cancel", { jobId }).catch(() => undefined);
     },
     dismiss: () => {
       setFailedTopic(null);

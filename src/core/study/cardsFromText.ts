@@ -138,8 +138,9 @@ export function cardPlaces(
         .pluck()
         .get(cited) as string | undefined
     ) ?? null;
-  const subjectId =
-    fixedSubject ?? plan?.subjectId ?? (input.passageIds?.length ? sourceSubject() : null);
+  // A card of an exam takes the exam's own subject (`cards_take_plan_subject`), so an exam that has none has none to
+  // report: a subject read from its files or its cited passages would name a place the cards do not go to.
+  const subjectId = fixedSubject ?? plan?.subjectId ?? (plan || !input.passageIds?.length ? null : sourceSubject());
   return {
     subjects,
     plans,

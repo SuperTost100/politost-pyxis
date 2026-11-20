@@ -364,6 +364,9 @@ export async function generateQuiz(
       });
     const result = await generate({
       selection,
+      // Questions grounded in the passages given and checked against the schema above: where the model file says a tool
+      // is slow to think, they are asked at its lowest effort.
+      lowEffort: "quiz",
       run,
       signal,
       schema,

@@ -60,6 +60,12 @@ const tool = z.object({
    * ones. Only the model and the effort follow; which tool does the task is still decided by the tier's own order.
    */
   featureRoles: z.record(z.string().min(1).max(40), z.enum(["fast", "mid", "strong"])).optional(),
+  /**
+   * The calls that run at the lowest effort the model lists on this tool, whatever the task's level (`outline`, `quiz`).
+   * They give code something to check, so reasoning only costs time where it is long. Without it the tool runs the
+   * outline that way and the rest at their level.
+   */
+  lowEffort: z.array(z.string().min(1).max(40)).max(20).optional(),
   roles: z.object({ fast: role, mid: role, strong: role }),
 });
 
@@ -209,4 +215,12 @@ export function automaticEffortOn(
 ): string | undefined {
   const wanted = active.tools[provider] ? roleEffort(provider, roleOn(provider, feature)) : taskEffort(feature);
   return nearestEffort(wanted, listed);
+}
+
+/** Calls that run at the lowest effort on a tool that does not say (and on the local model and unknown tools). */
+const LOW_EFFORT_BY_DEFAULT: readonly string[] = ["outline"];
+
+/** Whether `call` runs at the lowest effort its model lists on this tool: the tool's `lowEffort` in the file. */
+export function lowEffortOn(provider: string, call: string): boolean {
+  return (active.tools[provider]?.lowEffort ?? LOW_EFFORT_BY_DEFAULT).includes(call);
 }

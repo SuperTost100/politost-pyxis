@@ -46,7 +46,8 @@ export function PartFoot({
   done?: () => void;
   other: { topic: string; practice: number | null; cardsDue: number | null; cardsNone: boolean; reread: boolean };
   onOther: (choice: OtherChoice) => void;
-  onEnough: () => void;
+  /** "Per oggi basta"; absent when Continua already goes to the exam, so the foot has one way out. */
+  onEnough?: () => void;
   /** The end of the lesson with a step after it: "Torna all'esame" replaces "Per oggi basta" and follows Continua. */
   onExam?: () => void;
   continueRef: RefObject<HTMLDivElement | null>;
@@ -131,7 +132,7 @@ export function PartFoot({
         <div className="px-part-foot-other">
           <ChoiceMenu label={t("lesson.chooseOther")} items={items} onSelect={(key) => onOther(key as OtherChoice)} />
         </div>
-        {onExam ? null : (
+        {onExam || !onEnough ? null : (
           <Button variant="ghost" className="px-part-enough" onClick={onEnough}>
             {t("lesson.enough")}
           </Button>

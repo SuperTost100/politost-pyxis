@@ -14,7 +14,7 @@ import {
   markMissing,
   markSignedOut,
 } from "./bench";
-import { modelName } from "./efforts";
+import { atLowEffort, modelName } from "./efforts";
 import { isRetiredProvider } from "../../shared/limits";
 import { engineIpcError, fallbackReason } from "./errors";
 import {
@@ -65,6 +65,11 @@ export type GenerateInput = {
   cache?: boolean;
   /** What the call's tokens are counted for, on top of the scope it runs in (a job step sets its job). */
   usage?: UsageScope;
+  /**
+   * The name of a call that reshapes what it is given (`outline`, `quiz`). Each attempt, on the engine that answers
+   * instead included, runs it at the lowest effort the model file gives that tool for it (`atLowEffort()`).
+   */
+  lowEffort?: string;
   /** Called with the engine that answers instead when the selected one is out, before it starts. */
   onEngine?: (selection: Omit<Selection, "cwd" | "access">) => void;
   run?: typeof runTurn;
@@ -404,8 +409,9 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
     ? { name: "response", schema: jsonSchema(input.schema) }
     : undefined;
   // `chosenFor` is Pyxis's own bookkeeping, not part of the engine's selection.
-  const { chosenFor, ...selection } = input.selection;
+  const { chosenFor, ...chosen } = input.selection;
   void chosenFor;
+  const selection = input.lowEffort ? atLowEffort(chosen, input.lowEffort) : chosen;
   // The prompt for a call that starts the conversation, or runs outside one, on the engine that answers.
   const whole = () => input.promptFor?.(selection.provider) ?? input.prompt;
   // The pictures of this selection, resolved once: the request and every repair of it carry the same ones, even when the

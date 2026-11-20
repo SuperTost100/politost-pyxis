@@ -109,6 +109,7 @@ const {
 
 const { readJobLog, setDebugLogRoot, setDebugOn } = await import("../debug/log");
 const { withUsageScope } = await import("./usage");
+const { activityOf } = await import("../jobs/activity");
 const { mkdtempSync, rmSync } = await import("node:fs");
 const { tmpdir } = await import("node:os");
 const { join } = await import("node:path");
@@ -663,5 +664,35 @@ describe("runTurn in debug mode", () => {
     await runTurn({ selection: { provider: "claude", model: "m" }, prompt: "b" });
     expect(run.mock.calls.map((call) => call[0].verbose)).toEqual([undefined, undefined]);
     expect(await readJobLog(job)).toBeNull();
+  });
+});
+
+describe("runTurn and the job's activity", () => {
+  const job = "0190c8a2-0000-7000-8000-0000000000bb";
+
+  it("makes the call the job's current one while the engine works, and clears it when the call ends", async () => {
+    let during: unknown;
+    run.mockImplementationOnce(() => {
+      during = activityOf(job);
+      return { text: "risposta" };
+    });
+    await withUsageScope({ jobId: job }, () => runTurn({ selection: { provider: "claude", model: "m" }, prompt: "a" }));
+    expect(during).toMatchObject({ phase: "starting" });
+    expect(activityOf(job)).toBeNull();
+  });
+
+  it("clears it when the call fails, and tracks nothing outside a job", async () => {
+    run.mockImplementationOnce(() => ({ error: new Error("offline") }));
+    await expect(
+      withUsageScope({ jobId: job }, () => runTurn({ selection: { provider: "claude", model: "m" }, prompt: "a" })),
+    ).rejects.toThrow("offline");
+    expect(activityOf(job)).toBeNull();
+    let outside: unknown = "unset";
+    run.mockImplementationOnce(() => {
+      outside = activityOf(undefined);
+      return { text: "ok" };
+    });
+    await runTurn({ selection: { provider: "claude", model: "m" }, prompt: "b" });
+    expect(outside).toBeNull();
   });
 });
