@@ -1,5 +1,5 @@
 import { Button } from "antd";
-import { CircleX, Info, TriangleAlert } from "lucide-react";
+import { CircleX, Info, TriangleAlert, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import "./Notice.css";
@@ -16,6 +16,7 @@ export function Notice({
   action,
   secondary,
   details,
+  onClose,
   title,
   titleLevel = 2,
 }: {
@@ -26,6 +27,8 @@ export function Notice({
   /** A second, quieter choice beside the main action, such as going on without it or dismissing the notice. */
   secondary?: { label: string; onClick: () => void; disabled?: boolean };
   details?: string;
+  /** Puts a close control at the end of the notice, for one that stays on the page until the student dismisses it. */
+  onClose?: () => void;
   /** A short heading above the sentence, for a message that stands for the whole page. */
   title?: ReactNode;
   /** The heading level of `title`; 1 when the message is the whole page. */
@@ -66,7 +69,7 @@ export function Notice({
           </pre>
         ) : null}
       </div>
-      {action || secondary ? (
+      {action || secondary || onClose ? (
         <span className="px-notice-line px-notice-actions">
           {action ? (
             <Button type="text" size="small" disabled={action.disabled} onClick={action.onClick}>
@@ -77,6 +80,16 @@ export function Notice({
             <Button type="text" size="small" disabled={secondary.disabled} onClick={secondary.onClick}>
               {secondary.label}
             </Button>
+          ) : null}
+          {onClose ? (
+            <Button
+              type="text"
+              size="small"
+              shape="circle"
+              icon={<X size={14} aria-hidden />}
+              aria-label={t("components.notice.close")}
+              onClick={onClose}
+            />
           ) : null}
         </span>
       ) : null}

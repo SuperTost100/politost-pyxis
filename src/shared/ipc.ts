@@ -6,6 +6,7 @@ import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
 import { MAX_EXAM_AT, PLAN_FILE_PARTS, PLAN_TITLE_MAX, planFileSchema } from "./plan-file";
 import { examSessionsSchema } from "./exam-sessions";
 import { installableProviders } from "./installers";
+import { MAX_ATTACHED_FILES } from "./source-types";
 
 import {
   conceptGraphSchema as conceptGraph,
@@ -443,6 +444,54 @@ const engineSelection = z.object({
   effortChoice: z.string().optional(),
 });
 /** Tokens counted over some model calls. `inputTokens` includes the ones read from and written to the prompt cache. */
+/** Why a file attached to a chat is not usable. Each has its own text, shown on the file's own chip. */
+export const ATTACHMENT_ERRORS = [
+  "password",
+  "unreadable",
+  "empty",
+  "too-large",
+  "too-many",
+  "unsupported",
+  "denied",
+  "cancelled",
+  "data",
+] as const;
+export type AttachmentError = (typeof ATTACHMENT_ERRORS)[number];
+
+/**
+ * A file attached to the composer, as core reads it. A document is read as the Library reads one (and a scan page by
+ * page); a photo is fitted for the model. `needs-data` is a scan that waits for the OCR language data.
+ */
+export const AttachmentView = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: z.enum(["document", "photo"]),
+  size: z.number(),
+  state: z.enum(["reading", "ready", "failed", "needs-data"]),
+  /** What the reading is doing: the file as a whole, or a scan page by page. */
+  phase: z.enum(["read", "scan"]).optional(),
+  /** How far the reading is, from 0 to 1, when core knows. */
+  progress: z.number().optional(),
+  /** For a scan: the page being read and the number of pages. */
+  page: z.number().optional(),
+  pages: z.number().optional(),
+  error: z.enum(ATTACHMENT_ERRORS).optional(),
+});
+export type AttachmentView = z.infer<typeof AttachmentView>;
+
+/** A file a sent message carried. `sourceId` is the hidden copy of a document; a photo has `sha` and `mime` to show it again. */
+const messageFile = z.object({
+  id: z.string(),
+  /** Null for a photo sent before names were kept. */
+  name: z.string().nullable(),
+  kind: z.enum(["document", "photo"]),
+  size: z.number().nullable(),
+  sourceId: z.string().nullable(),
+  sha: z.string().nullable(),
+  mime: z.string().nullable(),
+});
+export type MessageFile = z.infer<typeof messageFile>;
+
 const usageTotals = z.object({
   calls: z.number().int(),
   inputTokens: z.number().int(),
@@ -3100,7 +3149,6 @@ export const requests = {
       /** Continue the last reply, which was cut short, instead of replacing it. */
       resume: z.boolean().optional(),
       allowGeneral: z.boolean().optional(),
-      files: z.array(z.string()).optional(),
     }),
     output: z.object({
       chatId: z.string(),
@@ -3156,6 +3204,8 @@ export const requests = {
           /** Images of the answer's figure blocks, by figure key. */
           figures: z.record(z.string(), z.string()).optional(),
           body: z.string(),
+          /** The files this question carried, in the order they were attached. */
+          files: z.array(messageFile).optional(),
           modelId: z.string().nullable(),
           provider: z.string().nullable(),
           /** `wider`: the chat's subject had nothing, so the cited material comes from elsewhere in the Library. */
@@ -3221,11 +3271,14 @@ export const requests = {
       allowGeneral: z.boolean().optional(),
       /** The subject the student chose on a new chat's first page, null for the whole Library. Absent lets Pyxis pick. */
       subject: z.string().max(200).nullable().optional(),
-      files: z.array(z.string()).optional(),
+      /** The files attached in the composer (`chats.attach`). The turn waits until each is read. */
+      attachments: z.array(z.string()).max(MAX_ATTACHED_FILES).optional(),
     }),
     output: z.object({
       chatId: z.string(),
       covered: z.boolean(),
+      /** Attached files that could not be read and were sent without. */
+      leftOut: z.array(z.object({ name: z.string(), kind: z.enum(["document", "photo"]), error: z.enum(ATTACHMENT_ERRORS) })).optional(),
       message: z
         .object({
           id: z.string(),
@@ -3258,6 +3311,34 @@ export const requests = {
         .array(z.enum(["too-large", "unreadable", "over-limit"]))
         .optional(),
     }),
+  },
+  /**
+   * Attaches a file the student picked or dropped. A document is read now, as the Library reads one, and a scan page
+   * by page; a photo is fitted for the model. The answer comes at once and the reading goes on in core: each change
+   * arrives as `chats.attachment`. Sending waits until every attached file is read.
+   */
+  "chats.attach": {
+    input: z.object({
+      path: z.string(),
+      /** The composer draft the file belongs to: a chat id, or absent for a new chat's. Deleting the chat takes its files off. */
+      draft: z.string().max(100).optional(),
+    }),
+    output: AttachmentView,
+  },
+  /** Takes a file off the composer: its reading stops and what it made is deleted. Unknown ids are ignored. */
+  "chats.detach": {
+    input: z.object({ id: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  /** The attached files among `ids` that core still holds, for a composer that was left and came back. */
+  "chats.attachments": {
+    input: z.object({ ids: z.array(z.string()).max(64) }),
+    output: z.array(AttachmentView),
+  },
+  /** Starts reading an attached scan once its OCR data is on this computer. Errors: `ocr-data-*`. */
+  "chats.attachScan": {
+    input: z.object({ id: z.string() }),
+    output: AttachmentView,
   },
   "sources.ocr": {
     input: z.object({ sourceId: z.string() }),
@@ -3672,6 +3753,8 @@ const broadcasts = {
   "engine.names": z.object({ provider: z.string() }),
   // A saved reply's math check ended: its badges, if any, are in the message now.
   "chats.checks": z.object({ chatId: z.string(), messageId: z.string() }),
+  // A file attached in the composer changed: its reading moved on, ended or failed.
+  "chats.attachment": AttachmentView,
   // The automatic engine hit a usage limit, was signed out or was not installed, and another engine answered.
   "engine.fallback": z.object({
     from: z.string(),

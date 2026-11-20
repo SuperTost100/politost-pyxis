@@ -1,5 +1,5 @@
 /**
- * What the address asks of Ripasso mirato: `?drill=<topicId>` starts a drill once. `started` is the request already
+ * What the address asks of Rivedi gli errori: `?drill=<topicId>` starts a drill once. `started` is the request already
  * acted on. It is cleared when the parameter is gone, so asking for the same topic again later starts another drill,
  * while the same request seen twice (the effect running again before the parameter is removed) starts only one.
  */

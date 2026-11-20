@@ -41,6 +41,11 @@ export type JobSpec = {
   ref?: (params: unknown) => string | null;
   /** How many things the job works on, such as the files of one sort, for the list's wording (`JobView.count`). */
   count?: (params: unknown) => number;
+  /**
+   * Work the student never sees in the jobs list, such as the reading of a file attached to a chat, which its own chip
+   * shows. The job runs, stops and resumes as any other, and its updates still go to `onChange`.
+   */
+  unlisted?: (params: unknown) => boolean;
   /** The request the job came from, when it made several jobs of this kind (`JobView.group`, without `waiting`). */
   group?: (params: unknown) => { id: string; folder?: string } | null;
   /**
@@ -109,7 +114,7 @@ type StepRow = {
  * The `dismissed` value of a job given up for good (`discard`). Any other non-zero value is a Chiudi, which a retry or a
  * resume may still undo; this one is refused by both, so a build of a deleted map cannot store it again.
  */
-const GIVEN_UP = 2;
+export const GIVEN_UP = 2;
 
 export const trackedJob: JobSpec = { jobClass: "local", steps: [], about: (params) => params as JobAbout };
 
@@ -289,6 +294,14 @@ export function createRunner(
       ...(job.state === "failed" && heldBy(job.id) ? { waitingUntil: heldBy(job.id)!.until } : {}),
       ...(group ? { group: { id: group.id, ...(group.folder ? { folder: group.folder } : {}) } } : {}),
     };
+  }
+
+  /** Whether the job's kind keeps its jobs out of the list (`JobSpec.unlisted`). */
+  function isUnlisted(view: JobView): boolean {
+    const spec = specs.get(view.kind);
+    if (!spec?.unlisted) return false;
+    const row = paramsStmt.get(view.id) as { params_json: string } | undefined;
+    return row ? spec.unlisted(JSON.parse(row.params_json)) : false;
   }
 
   /**
@@ -778,7 +791,7 @@ export function createRunner(
         .all(midnight.getTime()) as Array<{ id: string }>;
       return rows.flatMap((row) => {
         const view = viewOf(row.id);
-        return view ? [view] : [];
+        return view && !isUnlisted(view) ? [view] : [];
       });
     },
     list() {
@@ -791,7 +804,7 @@ export function createRunner(
         .all() as Array<{ id: string }>;
       const views = rows.flatMap((row) => {
         const view = viewOf(row.id);
-        return view ? [view] : [];
+        return view && !isUnlisted(view) ? [view] : [];
       });
       const waiting = views.some((view) => view.group) ? countWaiting?.() : undefined;
       for (const view of views) {

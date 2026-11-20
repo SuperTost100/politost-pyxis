@@ -14,6 +14,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  truncateSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -145,7 +146,7 @@ const routes = [
   ["plan-dated", "/plans/audit-ready-plan"],
   // The same exam with hours set in the planner: its topic and simulation rows carry expected days.
   ["plan-dated-planner", "/plans/audit-ready-plan"],
-  // The exam page with finished steps on its open topic, and with an open gap that offers Ripasso mirato.
+  // The exam page with finished steps on its open topic, and with an open gap that offers Rivedi gli errori.
   ["plan-done", "/plans/audit-plan"],
   ["plan-gaps", "/plans/audit-plan"],
   // The block of open gaps in the side column with none, with eight folded and unfolded, and the page "Colma" opens: the
@@ -430,6 +431,9 @@ const routes = [
   ["ask-ocr-refused", "/ask"],
   ["ask-ocr-ready", "/ask"],
   ["ask-ocr-unreadable", "/ask"],
+  // Files attached to a message: the composer's chips, one read and one refused with its reason, and a question that carries its files.
+  ["ask-files", "/ask"],
+  ["ask-sent-files", "/ask/audit-files"],
   // The chat panel and search; the subject chip's menu on a chat with a very long subject, and on a new chat's first page.
   ["ask-panel", "/ask/audit-chat"],
   ["ask-search", "/ask/audit-chat"],
@@ -530,6 +534,16 @@ function seed(db: DatabaseSync) {
 
 Passo 1 di 2: quale legge lega le tre grandezze?','sources','chat.tutor',2);
     INSERT INTO message_passages(message_id,passage_id,label) VALUES('audit-guided-reply','audit-passage','P1');
+    INSERT INTO chats(id,title,created_at,updated_at) VALUES('audit-files','Appunti e lavagna',1,1);
+    INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-files-user','audit-files','user','Riassumi la dispensa e dimmi cosa c''è scritto sulla lavagna',1);
+    INSERT INTO attachments(id,message_id,blob_sha,mime,created_at,name,kind,size,source_id) VALUES
+      ('audit-files-a','audit-files-user','${"a".repeat(64)}','application/pdf',1,'Dispensa di fisica, capitolo 4.pdf','document',1048576,'audit-files-source'),
+      ('audit-files-b','audit-files-user','${"b".repeat(64)}','image/png',1,'Lavagna.png','photo',204800,NULL);
+    INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('audit-files-source','pdf','Dispensa di fisica, capitolo 4','ready',0,1,1);
+    INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('audit-files-document','audit-files-source',1,'{"kind":"pdf"}',1);
+    INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at) VALUES('audit-files-passage','audit-files-source','audit-files-document','La seconda legge di Newton lega la forza alla massa e all''accelerazione.','{"page":3}','p. 3',1);
+    INSERT INTO messages(id,chat_id,role,body,grounding,created_at) VALUES('audit-files-reply','audit-files','assistant','La dispensa spiega la seconda legge di Newton [P1]. Sulla lavagna c''è scritto $F=ma$.','sources',2);
+    INSERT INTO message_passages(message_id,passage_id,label) VALUES('audit-files-reply','audit-files-passage','P1');
     INSERT INTO chats(id,title,created_at,updated_at) VALUES('audit-general','Teorema di Bayes',1,1);
     INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-general-user','audit-general','user','Che cos''è il teorema di Bayes?',1);
     INSERT INTO messages(id,chat_id,role,body,grounding,prompt_template,passages_json,created_at) VALUES('audit-general-reply','audit-general','assistant','Il teorema di Bayes dice come cambia la probabilità di un''ipotesi dopo un fatto osservato: $P(A|B) = P(B|A)P(A)/P(B)$.','general','chat.solver','{"found":false,"where":"files"}',2);`);
@@ -3384,7 +3398,7 @@ async function openState(page: Page, name: string) {
       break;
     case "plan-gaps":
       await expect(
-        page.getByRole("button", { name: /^(Ripasso mirato|Targeted review)/ }).first(),
+        page.getByRole("button", { name: /^(Rivedi gli errori|Review the mistakes)/ }).first(),
       ).toBeVisible();
       await expect(page.locator(".px-exam-aside li.px-gap")).toHaveCount(1);
       break;
@@ -4305,6 +4319,49 @@ async function openState(page: Page, name: string) {
       }
       break;
     }
+    case "ask-files": {
+      // A note that is read, and a document past what the Library reads, which says why on its own chip.
+      // Files picked by an earlier language, theme or width of this audit are not this state's.
+      await page.evaluate(() => sessionStorage.removeItem("pyxis-files"));
+      await page.reload();
+      await expect(page.locator("h1:visible").first()).toBeVisible();
+      const note = join(auditUserData, "appunti-di-fisica.txt");
+      writeFileSync(note, "La forza è massa per accelerazione.");
+      const huge = join(auditUserData, "Registrazione della lezione.pdf");
+      writeFileSync(huge, "%PDF-1.7");
+      truncateSync(huge, 300 * 1024 * 1024);
+      for (const path of [note, huge]) {
+        await auditApp!.evaluate((_, selected) => {
+          process.env.PYXIS_E2E_FILE = selected;
+        }, path);
+        await page
+          .getByRole("button", { name: both("Aggiungi un file o una formula", "Add a file or a formula") })
+          .click();
+        await clickSettled(
+          page,
+          page.getByRole("menuitem", { name: both("Allega file o immagine", "Attach file or image") }),
+        );
+      }
+      await auditApp!.evaluate((_, path) => {
+        process.env.PYXIS_E2E_FILE = path;
+      }, auditPicked);
+      await expect(page.locator(".ask-attachments li").filter({ hasText: "appunti-di-fisica.txt" })).toBeVisible();
+      await expect(
+        page
+          .locator(".ask-attachments li")
+          .filter({ hasText: "Registrazione della lezione.pdf" })
+          .getByText(/256 MB/),
+      ).toBeVisible();
+      break;
+    }
+    case "ask-sent-files":
+      await expect(page.locator(".ask-sent-files").getByText("Lavagna.png")).toBeVisible();
+      // The reply cites the attached file, and says so.
+      await expect(page.getByText(/Ho usato il file che hai allegato|I used the file you attached/)).toBeVisible();
+      await expect(
+        page.locator(".ask-sent-files").getByRole("button", { name: "Dispensa di fisica, capitolo 4.pdf" }),
+      ).toBeVisible();
+      break;
     case "quiz-grading-failed":
       await expect(
         page.getByRole("button", {
@@ -4336,13 +4393,13 @@ async function openState(page: Page, name: string) {
       // What the exam changed comes from mastery before and after it and the gap its wrong answer counts for.
       const changes = page.locator(".px-res-changes");
       await expect(changes).toContainText("You leave the weight out");
-      await expect(changes).toContainText(/Nuovo passo: ripasso mirato|New step: targeted review/);
+      await expect(changes).toContainText(/Nuovo passo: rivedi gli errori|New step: review the mistakes/);
       await expect(changes).toContainText(/Force · (una lacuna seria|a serious gap)/);
       await expect(page.locator(".px-res-rises")).toContainText(/Energy (sale|rises)/);
       await expect(page.locator(".px-res-fallback")).toContainText("ChatGPT");
-      // One primary button, Ripasso mirato; every exercise in order, the one to review open.
+      // One primary button, Rivedi gli errori; every exercise in order, the one to review open.
       await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
-      await expect(page.locator(".px-res .ant-btn-primary")).toHaveText(/Ripasso mirato|Targeted review/);
+      await expect(page.locator(".px-res .ant-btn-primary")).toHaveText(/Rivedi (l'errore|i \d+ errori)|Review the (mistake|\d+ mistakes)/);
       await expect(page.locator(".px-res-q:not(.is-correct)")).toHaveCount(1);
       await expect(page.locator(".px-res-q:not(.is-correct)")).toContainText(/Sbagliata|Wrong/);
       break;

@@ -53,6 +53,7 @@ export function SessionEnd({
   onRetry,
   onStop,
   stopBusy,
+  onExam,
   review,
 }: {
   seen: SeenCard[];
@@ -63,6 +64,11 @@ export function SessionEnd({
   /** "Per oggi basta": leaves the way the bar's back control does. */
   onStop: () => void;
   stopBusy: boolean;
+  /**
+   * Set when the session belongs to an exam and began there: "Torna all'esame" takes the place of "Per oggi basta", and
+   * ends a finished session as its primary action, or as the quiet second one beside the step that follows.
+   */
+  onExam?: () => void;
   /** Set on the card phase of a Ripasso: what comes next, and the control for it. */
   review?: { next: "cards" | "questions" | "waiting" | "done"; action: ReactNode };
 }) {
@@ -188,8 +194,8 @@ export function SessionEnd({
         </ul>
         {phase === "waiting" ? (
           <div className="px-end-stop">
-            <Button shape="round" disabled={stopBusy} onClick={onStop}>
-              {t("cards.endStop")}
+            <Button shape="round" disabled={stopBusy} onClick={onExam ?? onStop}>
+              {t(onExam ? "places.backToExam" : "cards.endStop")}
             </Button>
             <p className="px-end-fine">{t("cards.endStopHint", { count: waiting.length })}</p>
           </div>
@@ -203,6 +209,18 @@ export function SessionEnd({
               onClick={onRetry}
             >
               {t("errors.retry")}
+            </Button>
+          </div>
+        ) : null}
+        {onExam && phase !== "waiting" ? (
+          <div className="px-end-stop">
+            <Button
+              type={review?.action || phase === "unknown" ? undefined : "primary"}
+              shape="round"
+              disabled={stopBusy}
+              onClick={onExam}
+            >
+              {t("places.backToExam")}
             </Button>
           </div>
         ) : null}

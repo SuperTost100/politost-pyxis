@@ -26,6 +26,11 @@ export function coreExited(child: CoreProcess): boolean {
   return exited.has(child);
 }
 
+/** The stop under way for this core, or undefined when nobody is stopping it. It settles when the core has exited. */
+export function coreStopping(child: CoreProcess): Promise<void> | undefined {
+  return stopping.get(child);
+}
+
 /**
  * Asks core to shut down and resolves once its process has exited. Core checkpoints and closes the database before it
  * exits, so the files copied next are complete. One still running after `graceMs` is killed, and the stop then waits for
