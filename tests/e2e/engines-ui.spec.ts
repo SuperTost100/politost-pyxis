@@ -714,3 +714,49 @@ test("Settings: a tool's row says its three roles with the model each one runs, 
     rmSync(tools.bin, { recursive: true, force: true });
   }
 });
+
+test("Settings: the model field of each kind of work shows the whole model name at narrow widths and at large text", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-fit-"));
+  const tools = standInTools(["claude", "codex"]);
+  const app = await launchPyxis({ userData, env: tools.env });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("engines.acknowledge", { providers: ["claude", "codex"] }));
+    for (const textSize of ["md", "lg"] as const)
+      for (const width of [975, 1100, 1280]) {
+        await page.evaluate(async (size) => {
+          localStorage.setItem("pyxis.lang", "it");
+          localStorage.removeItem("pyxis.engines.advanced");
+          await window.pyxis.invoke("profile.save", { dyslexia: false, textSize: size });
+          location.hash = "/settings/engines";
+        }, textSize);
+        await page.setViewportSize({ width, height: 900 });
+        await page.reload();
+        await expect(page.locator(".engines-feature-row")).toHaveCount(8, { timeout: 30000 });
+        await expect(page.locator("#engine-chat option").first()).toContainText("Automatico · oggi", { timeout: 30000 });
+        // The text of the selected option, as the browser draws it, fits inside the field it is in.
+        const clipped = await page.locator(".engines-feature-row select[id^='engine-']:not([id^='engine-effort'])").evaluateAll((nodes) => {
+          const canvas = document.createElement("canvas").getContext("2d")!;
+          return nodes.flatMap((node) => {
+            const select = node as HTMLSelectElement;
+            const style = getComputedStyle(select);
+            canvas.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+            const text = select.selectedOptions[0]?.label ?? "";
+            // Padding on both sides and the arrow the browser draws at the end.
+            const room = select.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 24;
+            return canvas.measureText(text).width > room ? [`${select.id}: "${text}" needs ${Math.ceil(canvas.measureText(text).width)} px of ${Math.floor(room)}`] : [];
+          });
+        });
+        expect(clipped, `${textSize}, ${width} px`).toEqual([]);
+      }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(tools.bin, { recursive: true, force: true });
+  }
+});

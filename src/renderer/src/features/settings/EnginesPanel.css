@@ -208,8 +208,10 @@
 .engines-feature-row,
 .engines-feature-head {
   display: grid;
+  /* The model field is wide enough for "Automatico · oggi GPT-6.1 Terra" at the largest text; a table too narrow for that
+     stacks instead (see the container query below). */
   grid-template-columns:
-    minmax(96px, 1fr) minmax(0, 2fr)
+    minmax(96px, 1fr) minmax(260px, 2fr)
     minmax(184px, 1.3fr);
   gap: var(--space-4);
   padding: var(--space-3) var(--space-4);
@@ -232,7 +234,6 @@
 .engines-feature-work > small {
   display: block;
   color: var(--ink-muted);
-  font-size: 12.5px;
 }
 /* A kind of work pinned to a model: the field takes the tint, and the model's name its colour. */
 select.px-ctl-field.is-pinned {
@@ -331,7 +332,7 @@ select.px-ctl-field.is-pinned {
 }
 /* A table too narrow for three columns, whatever the window: each kind of work stacks its name, model and effort, so
    the model's name is never cut. */
-@container (max-width: 520px) {
+@container (max-width: 680px) {
   .engines-feature-head {
     display: none;
   }
