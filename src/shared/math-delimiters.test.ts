@@ -210,8 +210,8 @@ describe("holdOpenMath", () => {
     expect(holdOpenMath("Dati:\n\\[\nm\\ddot")).toBe("Dati:\n[…](pyxis-math:display:7)");
   });
 
-  it("holds a dollar sign that ends the text, which may be the start of a formula", () => {
-    expect(holdOpenMath("Dati: $")).toBe("Dati: […](pyxis-math:inline:0)");
+  it("holds a double dollar sign that ends the text, and leaves a single one, which may be a price", () => {
+    expect(holdOpenMath("Dati: $")).toBe("Dati: $");
     expect(holdOpenMath("Dati: $$")).toBe("Dati: \n\n[…](pyxis-math:display:0)");
   });
 
@@ -294,7 +294,7 @@ describe("a price in prose beside \\( … \\) formulas", () => {
 
   it("is a plain dollar sign, so the formula after it is a formula", () => {
     expect(normalizeMathDelimiters(recorded)).toBe(
-      "# Bombola a 25 \\$ riempita al 90 %\n\nCon soli “25 \\$” e “90 %” non si può chiudere un calcolo. Se mi dici volume e cosa ti serve (costo per mole di $\\ce{CO2}$, contenuto netto, ecc.), lo risolvo.",
+      "# Bombola a 25 $ riempita al 90 %\n\nCon soli “25 \\$” e “90 %” non si può chiudere un calcolo. Se mi dici volume e cosa ti serve (costo per mole di $\\ce{CO2}$, contenuto netto, ecc.), lo risolvo.",
     );
   });
 
@@ -312,7 +312,7 @@ describe("a \\( that never closes", () => {
   it("stays in its paragraph, so the formulas after it are still formulas", () => {
     const recorded = "Se il prezzo di \\(25\\,\\$$ è completo:\n\n\\[\nx = 1\n\\]\n\nNon si possono convertire in moli di \\(\\ce{CO2}\\).";
     expect(normalizeMathDelimiters(recorded)).toBe(
-      "Se il prezzo di \\(25\\,\\$\\$ è completo:\n\n\n$$\nx = 1\n$$\n\n\nNon si possono convertire in moli di $\\ce{CO2}$.",
+      "Se il prezzo di \\(25\\,\\$$ è completo:\n\n\n$$\nx = 1\n$$\n\n\nNon si possono convertire in moli di $\\ce{CO2}$.",
     );
   });
 });

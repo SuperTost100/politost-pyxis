@@ -81,8 +81,10 @@
     "rehype-katex": "7.0.1",
     "remark-gfm": "4.0.1",
     "remark-math": "6.0.0",
+    "remark-parse": "11.0.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
+    "unified": "11.0.5",
     "vite": "^8.3.8",
     "vitest": "^5.0.5"
   },
@@ -120,7 +122,9 @@
     "recharts",
     "rehype-katex",
     "remark-gfm",
-    "remark-math"
+    "remark-math",
+    "remark-parse",
+    "unified"
   ],
   "repository": {
     "type": "git",
