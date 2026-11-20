@@ -10,9 +10,9 @@ import {
 import { createContext, isValidElement, memo, useContext, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
-import { citedPassage, linkCitations, type CitationResolver } from "../markdown/citations";
-import { displayMathLines, normalizeMathDelimiters } from "../../../shared/math-delimiters";
+import { citedPassage, type CitationResolver } from "../markdown/citations";
 import { rehypePlugins, remarkPlugins } from "../markdown/plugins";
+import { markdownSource } from "../markdown/source";
 import { CheckBadge } from "./CheckBadge";
 import { CitationChip } from "./CitationChip";
 import { PythonBlock, RunnablePython } from "./PythonBlock";
@@ -23,7 +23,10 @@ import "./MarkdownView.css";
 export type { CitationResolver };
 
 const urlTransform = (url: string) =>
-  /^(?:cite:p|mathcheck:)\d+$/.test(url) ? url : defaultUrlTransform(url);
+  /^(?:cite:p|mathcheck:)\d+$/.test(url) || HELD_MATH.test(url) ? url : defaultUrlTransform(url);
+
+/** The link `holdOpenMath` writes for a formula whose closing delimiter has not arrived: its kind and the characters so far. */
+const HELD_MATH = /^pyxis-math:(inline|display):(\d+)$/;
 
 /** What the shared renderers below need from the message they draw. */
 type MarkdownScope = {
@@ -39,6 +42,8 @@ const Scope = createContext<MarkdownScope>({ claims: [], canRun: false, drawing:
 const components: Components = {
   a: function Link({ href, children: linkChildren, node: _node, ...rest }) {
     const { claims, onCitationClick, citationResolver } = useContext(Scope);
+    const held = href?.match(HELD_MATH);
+    if (held) return <FormulaPending display={held[1] === "display"} size={Number(held[2])} />;
     const check = href?.match(/^mathcheck:(\d+)$/);
     if (check) {
       const claim = claims[Number(check[1])];
@@ -115,7 +120,10 @@ export const MarkdownView = memo(function MarkdownView({
   checks?: AnchoredCheck[];
   /** Images of the answer's ```pyxis-figure blocks, by `figureKey`. A block without one shows nothing. */
   figures?: Record<string, string>;
-  /** The answer is still being written, so a figure without an image is still to be drawn. */
+  /**
+   * The answer is still being written: a figure without an image is still to be drawn, and a formula whose closing
+   * delimiter has not arrived is a placeholder until it closes.
+   */
   drawing?: boolean;
   variant?: "reading" | "body";
   citationResolver?: CitationResolver;
@@ -129,24 +137,16 @@ export const MarkdownView = memo(function MarkdownView({
     () => anchoredChecks(children, checks ?? fencedChecks(children)),
     [children, checks],
   );
-  const source = useMemo(() => {
-    let body = stripCheckFences(children);
-    const inserts = new Map<number, string[]>();
-    claims.forEach((claim, index) => {
-      const start = body.indexOf(claim.step);
-      if (start < 0) return;
-      const next = body.indexOf("\n\n", start + claim.step.length);
-      const at = next < 0 ? body.length : next;
-      inserts.set(at, [
-        ...(inserts.get(at) ?? []),
-        `[check](mathcheck:${index})`,
-      ]);
-    });
-    for (const [at, markers] of [...inserts].sort((a, b) => b[0] - a[0])) {
-      body = `${body.slice(0, at)}\n\n${markers.join(" ")}\n\n${body.slice(at)}`;
-    }
-    return displayMathLines(normalizeMathDelimiters(linkCitations(body, citationResolver)));
-  }, [children, citationResolver, claims]);
+  const source = useMemo(
+    () =>
+      markdownSource(
+        stripCheckFences(children),
+        citationResolver,
+        drawing,
+        claims.map((claim) => claim.step),
+      ),
+    [children, citationResolver, claims, drawing],
+  );
   const scope = useMemo(
     () => ({ claims, canRun, onCitationClick, citationResolver, figures, drawing }),
     [claims, canRun, onCitationClick, citationResolver, figures, drawing],
@@ -173,6 +173,17 @@ export const MarkdownView = memo(function MarkdownView({
     </div>
   );
 });
+
+/** A formula still being written: a quiet bar of about its size, in the place the formula will be drawn. */
+function FormulaPending({ display, size }: { display: boolean; size: number }) {
+  return (
+    <span
+      className={display ? "px-formula-pending is-display" : "px-formula-pending"}
+      style={display ? undefined : { width: `${Math.min(2 + size * 0.5, 14)}em` }}
+      aria-hidden
+    />
+  );
+}
 
 function AsyncCheck({ claim }: { claim: MathCheck }) {
   const { t } = useTranslation();

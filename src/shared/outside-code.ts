@@ -1,86 +1,41 @@
-/** Where the block opened by a fence ends: just after the first line from `from` on that closes it, or -1. */
-function fenceClose(input: string, from: number, tick: string, width: number): number {
-  // `from` is the start of the first line after the opening fence, and that line may already be the closing one.
-  let start = from;
-  while (start <= input.length) {
-    let widthHere = 0;
-    while (input[start + widthHere] === tick) widthHere += 1;
-    if (widthHere >= width) {
-      let cursor = start + widthHere;
-      while (input[cursor] === " " || input[cursor] === "\t") cursor += 1;
-      // A line ends in LF or CRLF; the opening fence is found by its LF, so it needs no such care.
-      const lineEnd = input[cursor] === "\r" && input[cursor + 1] === "\n" ? 2 : input[cursor] === "\n" ? 1 : 0;
-      if (lineEnd > 0) return cursor + lineEnd;
-      if (input[cursor] === undefined) return input.length;
-    }
-    const line = input.indexOf("\n", start);
-    if (line === -1) return -1;
-    start = line + 1;
-  }
-  return -1;
-}
+import { end, parseMarkdown, start, walk } from "./markdown-tree";
 
-function inlineClose(input: string, from: number, width: number): number {
-  const marker = "`".repeat(width);
-  let at = from;
-  while (at < input.length) {
-    const found = input.indexOf(marker, at);
-    if (found === -1) return -1;
-    if (input[found + width] !== "`") return found + width;
-    at = found + 1;
-  }
-  return -1;
+/**
+ * Where the code of a Markdown text is, as the parser reads it: fenced and indented blocks, with the line end after
+ * them, and code spans. A fence inside a longer one, a backtick inside a formula or a fence after a line with a dollar
+ * sign, and an indented block after a quote or list marker, are what the parser says they are, not what a scan for
+ * backticks or for indented lines would guess. Every text is parsed: no line-based shortcut can tell where code is.
+ */
+export function codeRanges(input: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  walk(parseMarkdown(input), (node) => {
+    if (node.type === "inlineCode") ranges.push([start(node), end(node)]);
+    else if (node.type === "code") {
+      let to = end(node);
+      if (input[to] === "\r" && input[to + 1] === "\n") to += 2;
+      else if (input[to] === "\n") to += 1;
+      ranges.push([start(node), to]);
+    } else return;
+    return false;
+  });
+  return ranges.sort((a, b) => a[0] - b[0]);
 }
 
 /**
- * Applies `map` to Markdown outside fenced blocks and inline code. `map` also gets the chunk's `start` and `end`
- * offsets in `input`, for callers that must know whether a chunk edge is a real line edge.
+ * Applies `map` to Markdown outside code blocks and code spans. `map` also gets the chunk's `start` and `end` offsets in
+ * `input`, for callers that must know whether a chunk edge is a real line edge.
  */
 export function mapOutsideCode(
   input: string,
   map: (text: string, start: number, end: number) => string,
 ): string {
   let out = "";
-  let i = 0;
   let prose = 0;
-  const flush = (end: number) => {
-    if (end > prose) out += map(input.slice(prose, end), prose, end);
-    prose = end;
-  };
-  while (i < input.length) {
-    const atLine = i === 0 || input[i - 1] === "\n";
-    const tick = input[i];
-    if (atLine && (tick === "`" || tick === "~")) {
-      let width = 0;
-      while (input[i + width] === tick) width += 1;
-      if (width >= 3) {
-        const lineEnd = input.indexOf("\n", i);
-        const close =
-          lineEnd === -1
-            ? -1
-            : fenceClose(input, lineEnd + 1, tick, width);
-        flush(i);
-        const end = close === -1 ? input.length : close;
-        out += input.slice(i, end);
-        i = end;
-        prose = end;
-        continue;
-      }
-    }
-    if (tick === "`") {
-      let width = 0;
-      while (input[i + width] === "`") width += 1;
-      const close = inlineClose(input, i + width, width);
-      if (close !== -1) {
-        flush(i);
-        out += input.slice(i, close);
-        i = close;
-        prose = close;
-        continue;
-      }
-    }
-    i += 1;
+  for (const [from, to] of codeRanges(input)) {
+    if (from > prose) out += map(input.slice(prose, from), prose, from);
+    out += input.slice(from, to);
+    prose = to;
   }
-  flush(input.length);
+  if (input.length > prose) out += map(input.slice(prose), prose, input.length);
   return out;
 }
