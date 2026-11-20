@@ -3,7 +3,9 @@ import { App } from "antd";
 import { Info, Lock, LogIn, Pause, CircleAlert, Search } from "lucide-react";
 import { forwardRef, useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { isRetiredProvider } from "@shared/limits";
 import { currentToolLabel } from "@shared/tool-names";
+import { ENGINE_NAMES } from "../../lib/engineErrorView";
 import { useNavigate } from "react-router";
 import type { InstallableProvider } from "@shared/installers";
 import type { JobView } from "@shared/ipc";
@@ -438,13 +440,18 @@ function WaitingRow({
   const whenOf = useWhen();
   const until = job.waitingUntil!;
   const engine = jobErrorEngine(job.error ?? "");
-  const tool = tools.rows.find((row) => row.id === engine)?.name ?? engine ?? "";
+  // A tool Pyxis no longer offers lists no row: it is named as it was called, never by its internal id, and the job is
+  // said to go on with another tool.
+  const retired = !!engine && isRetiredProvider(engine);
+  const tool = tools.rows.find((row) => row.id === engine)?.name ?? (engine ? (ENGINE_NAMES[engine] ?? engine) : "");
   return (
     <li className="px-jobs-row px-jobs-waiting">
       <Icon name="clock" size={20} className="px-jobs-mark" />
       <div className="px-jobs-body">
         <p className="px-jobs-what">{nameOf(job)}</p>
-        <p className="px-jobs-sub">{t("jobs.out.waiting", { tool, when: whenOf(until).at })}</p>
+        <p className="px-jobs-sub">
+          {t(retired ? "jobs.out.waitingRetired" : "jobs.out.waiting", { tool, when: whenOf(until).at })}
+        </p>
       </div>
       <IconButton
         icon="square"

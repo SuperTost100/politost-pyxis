@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import tiers from "../../../../resources/model-tiers.json";
-import { roleExceptions, roleItems, roleModelName, rolesOfModel, sentenceTasks } from "./toolRoles";
+import { roleItems, roleModelName, roleSummary, rolesOfModel, sentenceTasks } from "./toolRoles";
 
 describe("a tool's roles in its row", () => {
   it("lists the three roles in order with the names a person knows", () => {
@@ -52,17 +52,62 @@ describe("a tool's roles in its row", () => {
     expect(rolesOfModel(models, "c")).toEqual([]);
   });
 
-  it("finds the tasks a tool runs in another role than the sentence under the list says", () => {
-    expect(roleExceptions({ chat: "fast", cards: "fast", map: "fast", lesson: "mid", grading: "mid", plan: "strong" })).toEqual([]);
-    expect(roleExceptions({ chat: "mid", map: "fast", plan: "strong" })).toEqual([{ feature: "chat", role: "mid" }]);
+  const base = { chat: "fast", cards: "fast", map: "fast", lesson: "mid", grading: "mid", plan: "strong" } as const;
+  const balancedChat = { ...base, chat: "mid" } as const;
+
+  it("says one role for a task when every tool agrees, and lists each role's tasks in the sentence's order", () => {
+    expect(
+      roleSummary([
+        { name: "Claude", tasks: balancedChat },
+        { name: "ChatGPT", tasks: balancedChat },
+      ]),
+    ).toEqual({
+      agreed: { fast: ["cards", "map"], mid: ["chat", "lesson", "grading"], strong: ["plan"] },
+      split: [],
+    });
   });
 
-  it("names in the sentence the tasks that model-tiers.json puts in each role", () => {
+  it("splits a task the tools do not agree on, naming the tools of each role, so no sentence is true of only one tool", () => {
+    expect(
+      roleSummary([
+        { name: "Claude", tasks: balancedChat },
+        { name: "ChatGPT", tasks: balancedChat },
+        { name: "Gemini", tasks: base },
+      ]),
+    ).toEqual({
+      agreed: { fast: ["cards", "map"], mid: ["lesson", "grading"], strong: ["plan"] },
+      split: [
+        {
+          task: "chat",
+          roles: [
+            { role: "mid", tools: ["Claude", "ChatGPT"] },
+            { role: "fast", tools: ["Gemini"] },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("follows the tiers of model-tiers.json for a tool with no data yet, and for no tool at all", () => {
+    expect(roleSummary([])).toEqual({ agreed: { fast: ["chat", "cards", "map"], mid: ["lesson", "grading"], strong: ["plan"] }, split: [] });
+    expect(roleSummary([{ name: "Gemini", tasks: {} }]).split).toEqual([]);
+  });
+
+  it("keeps the tasks of the sentence, each in exactly one place", () => {
+    const summary = roleSummary([
+      { name: "A", tasks: { ...base, plan: "mid", map: "strong" } },
+      { name: "B", tasks: base },
+    ]);
+    const placed = [...Object.values(summary.agreed).flat(), ...summary.split.map((item) => item.task)];
+    expect([...placed].sort()).toEqual([...sentenceTasks].sort());
+  });
+
+  it("names in the sentence the six tasks, and puts each in the role model-tiers.json gives it when no tool says otherwise", () => {
     const features = tiers.features as Record<string, { tier: string }>;
-    for (const [role, tasks] of Object.entries(sentenceTasks))
-      for (const task of tasks) expect(features[task]?.tier).toBe(role);
+    const { agreed } = roleSummary([]);
+    for (const [role, tasks] of Object.entries(agreed)) for (const task of tasks) expect(features[task]?.tier).toBe(role);
+    expect([...Object.values(agreed).flat()].sort()).toEqual([...sentenceTasks].sort());
     // Every task the sentence leaves out (the default tool and photos) runs in the mid role, as the sentence implies.
-    const named = new Set(Object.values(sentenceTasks).flat());
-    for (const [task, value] of Object.entries(features)) if (!named.has(task)) expect(value.tier).toBe("mid");
+    for (const [task, value] of Object.entries(features)) if (!sentenceTasks.includes(task)) expect(value.tier).toBe("mid");
   });
 });
