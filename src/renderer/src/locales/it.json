@@ -21,7 +21,8 @@
     "backTo": "Torna a {{place}}",
     "exam": "Esame",
     "chat": "Chat",
-    "practice": "Esercizi"
+    "practice": "Esercizi",
+    "backToExam": "Torna all'esame"
   },
   "stepper": {
     "label": "Avanzamento",
@@ -229,8 +230,7 @@
         "claude": "Serve un account Claude con il piano Pro, che è a pagamento.",
         "chatgpt": "Serve un account ChatGPT. Con il piano gratuito hai poche richieste al giorno, con Plus molte di più.",
         "gemini": "Serve un account Google.",
-        "geminiFree": "Gratis per gli studenti universitari, con il piano AI Pro.",
-        "cursor": "Serve un account Cursor. Quello gratuito basta per iniziare."
+        "geminiOffers": "Google ha offerte per studenti che dipendono dal paese: controlla la pagina di Google."
       },
       "plans": "Vedi i piani",
       "plansOf": "Vedi i piani di {{name}}",
@@ -1484,6 +1484,7 @@
     "chapterEnd": "Fine del capitolo",
     "lessonEnd": "Fine della lezione",
     "partContinue": "Continua: {{title}}",
+    "doQuiz": "Fai il quiz",
     "enough": "Per oggi basta",
     "chooseOther": "Scegli altro",
     "otherPractice": "Esercizi · {{topic}}",
@@ -1722,10 +1723,12 @@
     "rise": "{{topic}} sale da {{before}} a {{after}}",
     "fall": "{{topic}} scende da {{before}} a {{after}}",
     "riseReached": "{{topic}} raggiunge l'obiettivo, da {{before}} a {{after}}",
-    "newStep": "Nuovo passo: ripasso mirato",
+    "newStep": "Nuovo passo: rivedi gli errori",
     "gapShort": "una lacuna da colmare",
     "gapSevereShort": "una lacuna seria",
-    "targeted": "Ripasso mirato",
+    "targeted": "Rivedi gli errori",
+    "reviewMistakes_one": "Rivedi l'errore",
+    "reviewMistakes_other": "Rivedi i {{count}} errori",
     "reviewLoading": "Preparo il ripasso",
     "redoWrong_one": "Rifai solo quella da rivedere",
     "redoWrong_other": "Rifai solo le {{count}} da rivedere",
@@ -2016,7 +2019,7 @@
         "practice": "Esercizi",
         "quiz": "Quiz",
         "cards": "Flashcard",
-        "gaps": "Ripasso mirato"
+        "gaps": "Rivedi gli errori"
       },
       "hoursHint": "Con un obiettivo di studio, in ore a settimana, vedi quando studierai ogni argomento.",
       "hoursAction": "Imposta obiettivo di studio",
@@ -2631,8 +2634,8 @@
       "cardsPropose_topic": "Flashcard su {{topic}} proposte",
       "exerciseBuild": "Esercizi pronti",
       "exerciseBuild_topic": "Esercizi su {{topic}} pronti",
-      "gapDrill": "Ripasso mirato pronto",
-      "gapDrill_topic": "Ripasso mirato su {{topic}} pronto",
+      "gapDrill": "Errori da rivedere pronti",
+      "gapDrill_topic": "Errori su {{topic}} da rivedere pronti",
       "gapInsight": "Errori analizzati",
       "gapInsight_topic": "Errori su {{topic}} analizzati",
       "lessonWrite": "Lezione scritta",
@@ -2704,8 +2707,8 @@
       "quizCheck_reviewTopic": "Correggo una risposta del ripasso su {{topic}}",
       "quizReplace": "Scrivo una domanda nuova",
       "quizReplace_topic": "Scrivo una domanda nuova su {{topic}}",
-      "gapDrill": "Preparo un ripasso mirato",
-      "gapDrill_topic": "Preparo un ripasso mirato su {{topic}}",
+      "gapDrill": "Preparo gli errori da rivedere",
+      "gapDrill_topic": "Preparo gli errori su {{topic}} da rivedere",
       "gapInsight": "Analizzo gli errori",
       "gapInsight_topic": "Analizzo gli errori su {{topic}}",
       "cards": "Scrivo le flashcard",
@@ -3155,7 +3158,7 @@
     "removeKey": "Rimuovi chiave API",
     "clearChoices": "Rimuovi scelte di {{name}}",
     "effortDefault": "Automatico per ogni funzione",
-    "taskHeading": "Funzione",
+    "taskHeading": "Lavoro",
     "effortAuto": "Automatico · {{level}}",
     "effortNone": "Non regolabile",
     "effortFellBack": "Questo modello non offre il livello «{{level}}», quindi Pyxis usa quello automatico.",
@@ -3205,9 +3208,7 @@
       "intro": "Quando usi uno strumento, il testo, i brani recuperati e gli allegati escono da questo computer. Pyxis non invia nulla finché non confermi.",
       "item": "{{name}} li invia a {{vendor}}.",
       "item_vowel": "{{name}} li invia ad {{vendor}}.",
-      "later": "Non ora",
-      "itemRelay": "{{name}} li invia a {{vendor}}, che li passa al produttore del modello che usi (Anthropic, OpenAI o Google).",
-      "itemRelay_vowel": "{{name}} li invia ad {{vendor}}, che li passa al produttore del modello che usi (Anthropic, OpenAI o Google)."
+      "later": "Non ora"
     },
     "loading": "Cerco gli strumenti installati.",
     "loadFailed": "Non riesco a leggere gli strumenti.",
@@ -3255,10 +3256,10 @@
       "map": "Mappe",
       "vision": "Immagini"
     },
-    "perFeature": "Strumenti per funzione",
+    "perFeature": "Modello per tipo di lavoro",
     "advanced": "Avanzate",
     "automatic": "Automatico",
-    "backToAuto": "Torna alla scelta automatica",
+    "backToAuto": "Torna tutto ad Automatico",
     "installHelp": "Pyxis ha bisogno di uno strumento AI per rispondere. Collega qui sopra l'AI che paghi già: il modello lo sceglie Pyxis.",
     "auto": {
       "summary": "Pyxis sceglie da solo lo strumento adatto a ogni lavoro, tra {{names}}, e usa il modello più economico che basta.",
@@ -3356,7 +3357,7 @@
     "debug": "Mostra dettagli tecnici e debug",
     "debugHint": "Pyxis tiene su questo computer il registro di ogni chiamata all'AI dei lavori in Attività: quale AI e modello, quanto è durata, la richiesta e la risposta. Chiavi e token sono nascosti, e niente viene inviato.",
     "debugFailed": "Non è stato possibile salvare questa scelta. Riprova.",
-    "perFeatureHint": "Pyxis sceglie da solo lo strumento e il livello di ragionamento per ogni funzione. Qui puoi cambiarli una per una.",
+    "perFeatureHint": "Pyxis sceglie da solo il modello per ogni lavoro. Qui puoi fissarne uno per un solo tipo di lavoro: gli altri restano automatici.",
     "intro": {
       "listed": "Pyxis usa il primo della lista. Se finisce le richieste del giorno, passa al successivo."
     },
@@ -3367,7 +3368,8 @@
     "toConnect": {
       "title": "Da collegare",
       "install": "Installa e accedi",
-      "installNamed": "Installa e accedi a {{name}}"
+      "installNamed": "Installa e accedi a {{name}}",
+      "uses": "Usa {{models}}."
     },
     "order": {
       "hint": "Trascinali per cambiare l'ordine.",
@@ -3406,7 +3408,18 @@
     "key": {
       "hint": "Per chi paga un servizio a consumo. La chiave resta su questo computer.",
       "add": "Aggiungi una chiave"
-    }
+    },
+    "roles": {
+      "fast": "Veloce",
+      "mid": "Equilibrato",
+      "strong": "Forte",
+      "note": "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: <b>veloce</b> per chat, flashcard e mappe, <b>equilibrato</b> per lezioni e correzione, <b>forte</b> per il piano di studio.",
+      "exception": "Qui «{{task}}» usa il modello {{role}}."
+    },
+    "autoToday": "Automatico · oggi {{model}}",
+    "pinnedCount_one": "{{count}} fissato da te",
+    "pinnedCount_other": "{{count}} fissati da te",
+    "allAuto": "Tutto automatico"
   },
   "graph": {
     "title": "Grafico",
@@ -3741,10 +3754,10 @@
     "stepsDone_one": "{{count}} passo su {{total}} fatto",
     "stepsDone_other": "{{count}} passi su {{total}} fatti",
     "nowStep": "adesso",
-    "reviewTopic": "Ripasso mirato su {{topic}}",
+    "reviewTopic": "Rivedi gli errori su {{topic}}",
     "reviewPreparing": "Preparo il ripasso",
-    "reviewFailed": "Il ripasso mirato non è pronto: la preparazione si è fermata.",
-    "reviewReadFailed": "Il ripasso mirato potrebbe essere pronto, ma non riesco a controllare.",
+    "reviewFailed": "Gli errori da rivedere non sono pronti: la preparazione si è fermata.",
+    "reviewReadFailed": "Gli errori da rivedere potrebbero essere pronti, ma non riesco a controllare.",
     "simulationDone": "Ultima prova: {{result}}",
     "create": "Crea un'attività",
     "share": "Condividi l'esame",
@@ -3827,7 +3840,7 @@
       "count_one": "1 attività",
       "count_other": "{{count}} attività",
       "quizOn": "Quiz su {{topic}}",
-      "drill": "Ripasso mirato",
+      "drill": "Rivedi gli errori",
       "redo": "Domande da rifare",
       "progress_one": "{{answered}} di 1 domanda",
       "progress_other": "{{answered}} di {{count}} domande",
@@ -3912,7 +3925,6 @@
     "plan": {
       "claude": "Serve un piano Claude Pro o Max.",
       "codex": "Serve ChatGPT Plus o un piano superiore.",
-      "agent": "Funziona con il tuo account Cursor.",
       "antigravity": "Funziona con qualsiasi account Google. Gli account gratuiti hanno un limite settimanale."
     },
     "stepDone": "fatto",

@@ -307,6 +307,7 @@ const routes = {
   "engines.setEffort": ["engines", "setEffort"],
   "engines.features": ["engines", "features", "bare"],
   "engines.names": ["engines", "names", "bare"],
+  "engines.roles": ["engines", "roles"],
   "engines.usage": ["engines", "usage"],
   "engines.autoConfigure": ["engines", "autoConfigure"],
   "engines.capability": ["engines", "capability"],

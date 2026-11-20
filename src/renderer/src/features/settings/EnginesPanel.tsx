@@ -2,9 +2,9 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { KeyRound } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { studentEffort } from "@shared/effort";
+import { studentEffort, taskTier } from "@shared/effort";
 import type { RequestOutput } from "@shared/ipc";
 import { engineProviders as providers } from "@shared/limits";
 import { TOOL_PROGRAMS } from "@shared/tool-names";
@@ -19,9 +19,10 @@ import { Notice } from "../../components/Notice";
 import { ProviderSetup } from "../../components/ProviderSetup";
 import { Working } from "../../components/Working";
 import { engineStatus, keyStatus, manualChoice } from "../../lib/engineStatus";
-import { invoke } from "../../lib/ipc";
+import { invoke, onBroadcast } from "../../lib/ipc";
 import { engineChoiceQuery, engineFeaturesQuery, enginesQuery } from "../../lib/queries";
 import { isConnected, limitWhen, movedOrder, shownOrder, toggledUse } from "../../lib/toolOrder";
+import { roleExceptions, roleItems, roleModelName, rolesOfModel } from "../../lib/toolRoles";
 import { useEngineNames } from "../../lib/useEngineNames";
 import { useStillHere } from "../../lib/useStillHere";
 import { DebugSwitch, debugQuery } from "./DebugSwitch";
@@ -188,26 +189,6 @@ export function EnginesPanel() {
     queryKey: localQueryKey,
     queryFn: () => invoke("engines.local", {}),
   });
-  // Models of the engines the student lets Pyxis use, each named with its engine as the student knows it.
-  const choices = [
-    ...providers
-      .filter((provider) => allowed === null || allowed.includes(provider))
-      .flatMap((provider) =>
-        modelsByProvider[provider]!.map((model) => ({
-          value: JSON.stringify([provider, model.id]),
-          label: `${engineName(provider)} · ${model.name}`,
-        })),
-      ),
-    // The local model can be pinned to a task once its check passed and the student turned it on.
-    ...(local.data?.enabled && local.data.model
-      ? [
-          {
-            value: JSON.stringify(["ollama", local.data.model.id]),
-            label: `Ollama · ${local.data.model.name}`,
-          },
-        ]
-      : []),
-  ];
   // A Prova that answered is kept as data and worded when shown, so a model name core learns later, or a language
   // change, reaches the message. Every other result is already a sentence.
   const [result, setResult] = useState<string | { provider: string; model: string; ms: number; tokens: number } | null>(
@@ -271,9 +252,66 @@ export function EnginesPanel() {
   const connected = shownOrder(rows.filter(isConnected), order);
   const toConnect = rows.filter((row) => row.kind === "cli" && !isConnected(row));
   const keyed = rows.filter((row) => row.kind === "api" && keys.data?.configured.includes(vendorOf(row.id)));
+  // The model each role runs for every tool, read from the catalog core plans from, so the row says what the planner
+  // runs and cannot go stale when a tool's list or a refusal changes it: `engine.auto` and every refresh read it again.
+  // A tool still to connect gets the model file's preferred models. An API provider counts once its key is saved.
+  const roleProviders = providers.filter((provider) => !provider.endsWith("-api") || keys.data?.configured.includes(vendorOf(provider)));
+  const roleQueries = useQueries({
+    queries: roleProviders.map((provider) => ({
+      queryKey: ["engine-roles", provider],
+      queryFn: () => invoke("engines.roles", { provider }),
+    })),
+  });
+  const rolesByProvider = Object.fromEntries(roleProviders.map((provider, index) => [provider, roleQueries[index]?.data])) as Record<
+    string,
+    RequestOutput<"engines.roles"> | undefined
+  >;
+  // A newer model file changes the roles without any other change to the page.
+  useEffect(() => onBroadcast("engine.auto", () => void client.invalidateQueries({ queryKey: ["engine-roles"] })), [client]);
+  /** The engine's own name for a model, the way the student knows it. */
+  const modelLabel = (provider: string, id: string) =>
+    modelsByProvider[provider]?.find((model) => model.id === id)?.name ?? names.modelName(provider, id);
+  const shortName = (provider: string, id: string) => roleModelName(modelLabel(provider, id));
+  // Models of the connected tools the student lets Pyxis use, by tool, each with the roles it fills.
+  const choices = [
+    ...providers
+      .filter((provider) => {
+        // Connected tools only (an API provider counts once its key is saved, which is when its models are listed), and
+        // not one that is out of requests.
+        const row = rows.find((item) => item.id === provider);
+        return (
+          !!row &&
+          (row.kind === "api" || isConnected(row)) &&
+          (allowed === null || allowed.includes(provider)) &&
+          !((row.limitedUntil ?? 0) > Date.now())
+        );
+      })
+      .flatMap((provider) =>
+        modelsByProvider[provider]!.map((model) => {
+          const filled = rolesByProvider[provider] ? rolesOfModel(rolesByProvider[provider]!.roles, model.id) : [];
+          return {
+            value: JSON.stringify([provider, model.id]),
+            group: engineName(provider),
+            label: [shortName(provider, model.id), ...filled.map((role) => t(`engines.roles.${role}`).toLowerCase())].join(
+              " · ",
+            ),
+          };
+        }),
+      ),
+    // The local model can be pinned to a task once its check passed and the student turned it on.
+    ...(local.data?.enabled && local.data.model
+      ? [
+          {
+            value: JSON.stringify(["ollama", local.data.model.id]),
+            group: "Ollama",
+            label: local.data.model.name,
+          },
+        ]
+      : []),
+  ];
   function refresh() {
     engines.refresh();
-    for (const queryKey of [["engine-models"], ["engine-key-status"]]) void client.invalidateQueries({ queryKey });
+    for (const queryKey of [["engine-models"], ["engine-roles"], ["engine-key-status"]]) void client.invalidateQueries({ queryKey });
   }
   // A tool that has requests again changes its row without a broadcast: the row is read again when its limit ends.
   const nextReset = Math.min(...rows.flatMap((row) => (row.limitedUntil ? [row.limitedUntil] : [])));
@@ -524,10 +562,34 @@ export function EnginesPanel() {
   const tools: Tool[] = connected.map((row, index) => {
     const using = inUse(row);
     if (using) place += 1;
+    const roleData = rolesByProvider[row.id];
+    // The roles are named only once core has listed the tool's own models; until then the line below says what it can.
+    const roleList = roleData?.known
+      ? roleItems(roleData.roles, (id) => modelLabel(row.id, id)).map((item) => ({
+          ...item,
+          label: t(`engines.roles.${item.role}`),
+        }))
+      : [];
+    const limitedNow = using && isLimited(row);
+    const refused = row.refusedModels.map((id) => modelLabel(row.id, id));
     return {
       id: row.id,
       name: row.name,
       detail: detailOfTool(row),
+      roles: roleList.length ? roleList : undefined,
+      notes: [
+        ...(limitedNow ? [limitText(t, i18n.language, row.limitedUntil!)] : []),
+        ...(refused.length ? [t("engines.notIncluded", { count: refused.length, models: refused.join(", ") })] : []),
+        // A task the model file moves to another role on this tool makes the sentence under the list untrue for it.
+        ...(roleData
+          ? roleExceptions(roleData.tasks as Record<string, "fast" | "mid" | "strong">).map(({ feature, role }) =>
+              t("engines.roles.exception", {
+                task: t(`engines.feature.${feature}`),
+                role: t(`engines.roles.${role}`).toLowerCase(),
+              }),
+            )
+          : []),
+      ],
       position: order && using ? place : undefined,
       state: stateOf(row),
       working: workingOn(row),
@@ -604,6 +666,18 @@ export function EnginesPanel() {
       ) : null}
     </>
   );
+  /** The models a tool still to connect would use, from the model file: "Uses Gemini 4 Hydrogen and Gemini 4 Carbon." */
+  function usesLine(provider: string): string {
+    const data = rolesByProvider[provider];
+    if (!data) return "";
+    const used = [...new Set(roleItems(data.roles, (id) => modelLabel(provider, id)).map((item) => item.model))];
+    if (!used.length) return "";
+    const list = new Intl.ListFormat(i18n.language.startsWith("it") ? "it" : "en-GB", {
+      style: "long",
+      type: "conjunction",
+    }).format(used);
+    return t("engines.toConnect.uses", { models: list });
+  }
   const connectedTitle = useId();
   const toConnectTitle = useId();
   const keyRowId = useId();
@@ -630,6 +704,11 @@ export function EnginesPanel() {
           <ToolList tools={tools} disabled={reorder.isPending} onMove={(from, to) => void move(from, to)} />
         ) : overview.isSuccess ? (
           <p className="engines-empty">{t("engines.connected.none")}</p>
+        ) : null}
+        {connected.length > 0 ? (
+          <p className="small engines-hint engines-roles-note">
+            <Trans i18nKey="engines.roles.note" components={{ b: <b /> }} />
+          </p>
         ) : null}
         <p className="visually-hidden" role="status">
           {said}
@@ -669,7 +748,7 @@ export function EnginesPanel() {
                         </a>
                       </>
                     ) : isInstallable(row.id) ? (
-                      t(`setup.plan.${row.id}`)
+                      [t(`setup.plan.${row.id}`), usesLine(row.id)].filter(Boolean).join(" ")
                     ) : undefined
                   }
                 >
@@ -789,6 +868,12 @@ export function EnginesPanel() {
             modelsByProvider={modelsByProvider}
             choices={choices}
             labelOf={(provider, model) => `${engineName(provider)} · ${names.modelName(provider, model)}`}
+            autoLabel={shortName}
+            roleOf={(provider, feature) =>
+              (provider && (rolesByProvider[provider]?.tasks[feature] as "fast" | "mid" | "strong" | undefined)) ||
+              taskTier(feature)
+            }
+            pinned={pinnedCount}
             busy={configure.isPending || automatic.isPending || setEffortFor.isPending}
             customised={customised}
             visionWarning={visionCapability.data?.warning}

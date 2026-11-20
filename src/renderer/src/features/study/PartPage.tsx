@@ -28,6 +28,8 @@ import { PartFoot, type OtherChoice } from "./PartFoot";
 import { focusFollowsAnswer, lessonLine, oldLessonView, pageMove, startsOnOpen, stoppedTone, withAnswer, workingCopy, type PartData } from "./partView";
 import { PartsList } from "./PartsList";
 import { usePartRewrites, useRewriteArrival } from "./PartRewrite";
+import { unfinishedQuery } from "../plans/Unfinished";
+import { startedQuizSize } from "./lessonQuiz";
 import { ReaderEnd, ReaderLayout, ReaderLoading, SourcesFooter, useOpenNext } from "./Reader";
 import "./PartPage.css";
 
@@ -303,10 +305,17 @@ export function PartPage({
         })
       : t(`plans.path.activity.${pathNext.activity}`)
     : null;
+  // The lesson's last part, when the quiz of this topic is what comes next: Continua says so in words of its own.
+  const quizNext = !data.next && pathNext?.activity === "quiz" && (!pathNext.topicId || pathNext.topicId === topicId);
+  // How many questions that quiz has, once it was started and written: said beside the button, and nothing when unknown.
+  const started = useQuery({ ...unfinishedQuery(planId), enabled: quizNext });
+  const quizSize = quizNext ? startedQuizSize(started.data, topicId) : null;
   const continueLabel = data.next ? (
     <InlineMarkdown>
       {t("lesson.partContinue", { title: data.next.kind === "recap" ? t("lesson.recapTitle") : data.next.title })}
     </InlineMarkdown>
+  ) : quizNext ? (
+    t("lesson.doQuiz")
   ) : pathNextTitle ? (
     t("lesson.partContinue", { title: pathNextTitle })
   ) : (
@@ -598,6 +607,7 @@ export function PartPage({
                 active={active}
                 continueLabel={continueLabel}
                 continueMinutes={data.next?.minutes}
+                continueNote={quizSize ? t("quiz.factQuestions", { count: quizSize }) : undefined}
                 onContinue={goOn}
                 busy={finish.isPending ? "done" : undefined}
                 done={questions.length === 0 && part ? () => finish.mutate() : undefined}
@@ -610,11 +620,15 @@ export function PartPage({
                 }}
                 onOther={onOther}
                 onEnough={() => (back ? back.go() : navigate(`/plans/${planId}`))}
+                // Named for the exam, so it goes there whatever the lesson was opened from; "Per oggi basta" goes back.
+                onExam={!data.next && pathNext ? toPath : undefined}
                 continueRef={continueRef}
                 failed={finish.isError}
               />
             ) : (
               <ReaderEnd
+                planId={planId}
+                onExam={toPath}
                 state={!plan.data || !topic ? "other" : read ? "done" : "current"}
                 doneLabel={t("lesson.doneTitle")}
                 busy={markRead.isPending ? markRead.variables : undefined}

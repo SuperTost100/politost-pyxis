@@ -5,6 +5,8 @@ import {
   autoFeatures,
   pickModel,
   planAuto,
+  rolesOf,
+  taskRolesOf,
   type AutoProvider,
 } from "./auto";
 import {
@@ -12,7 +14,7 @@ import {
   providerSeesImages,
   type Need,
 } from "./capabilities";
-import { suggestedModel, translateEngineError } from "./errors";
+import { translateEngineError } from "./errors";
 import { offeredModels } from "./effort-variants";
 import { automaticEffortOn } from "./model-roles";
 import {
@@ -64,6 +66,7 @@ import {
   rememberReady,
   withoutRefusedModels,
   type StoredSelection,
+  plannedModels,
 } from "./selection";
 import { hardware as probeHardware, type Hardware } from "./hardware";
 import {
@@ -352,7 +355,7 @@ export async function autoConfigureEngines(
           .all() as StoredRow[]
       ).map((row) => [row.feature, JSON.parse(row.selection_json)]),
     ) as Map<string, StoredSelection>;
-    // A model pinned on a tool that is not its maker's, such as a Claude model on Cursor, goes back to automatic. The
+    // A model pinned on a tool that is not its maker's, such as a Claude model on Antigravity, or any model of a tool Pyxis no longer offers, goes back to automatic. The
     // student's effort pick stays, as with any task handed back.
     for (const [feature, selection] of before)
       if (selection.auto !== true && offLimits(selection.provider, selection.model))
@@ -616,6 +619,15 @@ export function engineHandlers(
       };
     },
     /**
+     * The model of each role of a tool and the role of each task on it, from the catalog the automatic choice plans
+     * from (`plannedModels`), so the row says what the planner runs. A tool the planner does not hold gets the file's preferred
+     * models, and `known` is false.
+     */
+    roles(input: { provider: string }) {
+      const models = plannedModels(input.provider);
+      return { roles: rolesOf(input.provider, models ?? null), tasks: taskRolesOf(input.provider), known: models !== undefined };
+    },
+    /**
      * The engines the student lets Pyxis use (null means automatic, every engine that is ready) and the order they put
      * their tools in (null while they never set one).
      */
@@ -672,7 +684,7 @@ export function engineHandlers(
         const reset = usage.limit?.resetAt ? Date.parse(usage.limit.resetAt) : NaN;
         if (Number.isFinite(reset)) refineLimit(provider, mark, reset);
       } catch {
-        // No usage report (Cursor, an API key) or it failed: the guess stands.
+        // No usage report (an API key) or it failed: the guess stands.
       }
     },
     /**
@@ -898,7 +910,7 @@ export function engineHandlers(
             fast: input.fast,
           },
           // Claude Code swaps its own long instructions for this line when tools are off, which takes a test from
-          // about 5,000 input tokens to under 2,000. Antigravity, Cursor Agent and Codex keep theirs whatever Pyxis sends.
+          // about 5,000 input tokens to under 2,000. Antigravity and Codex keep theirs whatever Pyxis sends.
           system: TEST_SYSTEM,
           prompt: TEST_PROMPT,
           signal: signal
@@ -948,7 +960,7 @@ export function engineHandlers(
           );
         // A model the subscription leaves out: the engine works, but the plan and the next test skip that model.
         if (translated.code === "model-not-included" && tested)
-          benchModel(input.provider, tested, Date.now(), suggestedModel(err));
+          benchModel(input.provider, tested);
         throw new IpcError(
           translated.code,
           translated.messageKey,

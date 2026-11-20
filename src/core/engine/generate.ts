@@ -16,7 +16,8 @@ import {
   markSignedOut,
 } from "./bench";
 import { modelName } from "./efforts";
-import { engineIpcError, fallbackReason, suggestedModel } from "./errors";
+import { isRetiredProvider } from "../../shared/limits";
+import { engineIpcError, fallbackReason } from "./errors";
 import {
   endConversation,
   providerName,
@@ -25,7 +26,7 @@ import {
   type Selection,
   type TurnInput,
 } from "./funnel";
-import { currentSelection, fallbackSelection, jobEngine, selectionOn, type FallbackReason } from "./selection";
+import { afterFirstPlan, currentSelection, fallbackSelection, jobEngine, selectionOn, type FallbackReason } from "./selection";
 import { currentUsageScope, reportUsage, withUsageScope, type UsageScope } from "./usage";
 
 export type GenerateInput = {
@@ -87,7 +88,7 @@ let onFallback: ((event: EngineFallback) => void) | undefined;
 
 /**
  * How many more models a call tries after the subscription refused the one it was on. A plan that refuses one model
- * often refuses its neighbours too (Cursor's weekly usage covers whole families), so one step is not enough, and an
+ * often refuses its neighbours too (some plans count usage by whole model families), so one step is not enough, and an
  * unbounded walk would keep the student waiting through every model the engine lists.
  */
 export const MODEL_STEPS = 3;
@@ -246,7 +247,9 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
     const { usage, ...rest } = input;
     return withUsageScope(usage, () => generate(rest));
   }
-  // A selection saved by an earlier build may name a model its tool may no longer run.
+  // A selection saved by an earlier build may name a model its tool may no longer run, or a tool Pyxis no longer offers;
+  // the latter is moved to the automatic choice, which needs the first plan.
+  if (isRetiredProvider(input.selection.provider)) await afterFirstPlan(input.signal);
   const current = currentSelection(input.selection);
   if (current !== input.selection) input = { ...input, selection: current };
   const start = startingMove(input);
@@ -288,7 +291,7 @@ function markFailure(
   if (input.signal?.aborted || isAbort(err)) return undefined;
   const reason = fallbackReason(err, selection.provider);
   if (reason === "model")
-    benchModel(selection.provider, selection.model, Date.now(), suggestedModel(err));
+    benchModel(selection.provider, selection.model);
   if (reason === "signed-out") markSignedOut(selection.provider);
   if (reason === "not-installed") markMissing(selection.provider);
   if (reason === "limit")

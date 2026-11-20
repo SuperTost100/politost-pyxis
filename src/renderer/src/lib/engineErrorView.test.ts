@@ -14,8 +14,8 @@ describe("engineErrorView", () => {
 
   it("names the engine before the engine list has loaded", () => {
     expect(
-      engineErrorView("engines.errors.not-logged-in", "agent").params,
-    ).toEqual({ name: "Cursor" });
+      engineErrorView("engines.errors.not-logged-in", "antigravity").params,
+    ).toEqual({ name: "Gemini" });
   });
 
   it("offers no sign-in for an API key, and keeps every other message", () => {
@@ -34,10 +34,10 @@ describe("engineErrorView", () => {
 
   it("names the engine whose subscription refused the model and offers another model", () => {
     expect(
-      engineErrorView("engines.errors.model-not-included", "agent", "Cursor Agent"),
+      engineErrorView("engines.errors.model-not-included", "antigravity", "Antigravity"),
     ).toEqual({
       key: "engines.errors.modelNotIncludedNamed",
-      params: { name: "Cursor Agent" },
+      params: { name: "Antigravity" },
       chooseModel: true,
     });
     // Without the engine it keeps the general message.

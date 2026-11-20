@@ -87,8 +87,6 @@ describe("interface languages", () => {
     // EngineNotice picks the `_vowel` string for Anthropic, OpenAI and Antigravity.
     expect(notice.item).toContain(" a {{vendor}}");
     expect(notice.item_vowel).toContain(" ad {{vendor}}");
-    expect(notice.itemRelay).toContain(" a {{vendor}}");
-    expect(notice.itemRelay_vowel).toContain(" ad {{vendor}}");
   });
 
   it('defines every key the interface asks for by a literal t("...") call', () => {

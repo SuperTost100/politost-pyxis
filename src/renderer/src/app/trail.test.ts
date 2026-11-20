@@ -18,6 +18,7 @@ import {
   type Trail,
   wayBack,
 } from "./trail";
+import { studyExam } from "./places";
 
 /** Plays navigations from an empty trail, as the router reports them. */
 function walk(...steps: Navigation[]): Trail {
@@ -193,6 +194,83 @@ describe("wayBack", () => {
     expect(wayBack(moved, "c", true)).toBeNull();
     const back = arrive(trail, pop("b", 1, "/plans/p"));
     expect(wayBack(back, "c", true)).toBeNull();
+  });
+});
+
+describe("a study session of an exam", () => {
+  // The walk from the owner's report: the exam, a lesson, its quiz, the results (the same page as the quiz), the review.
+  const examOf = studyExam;
+  const exam = "/plans/p";
+  const session = (from: string[]) =>
+    walk(
+      pop("a", 0, from[0]!),
+      push("b", 1, from[1] ?? exam),
+      push("c", 2, "/plans/p/lesson/t?part=3"),
+      push("d", 3, "/plans/p/quiz/t"),
+      push("e", 4, "/plans/p/quiz/t?attempt=x"),
+      push("f", 5, "/plans/p/review?from=x"),
+      push("g", 6, "/plans/p/review/questions?attempt=y"),
+    );
+
+  it("leaves from every step to the exam it began from, in one move", () => {
+    const trail = session(["/exams"]);
+    for (const key of ["c", "d", "e", "f", "g"]) {
+      expect(origin(trail, key, examOf)?.key, key).toBe("b");
+      expect(wayBack(trail, key, true, examOf) === null).toBe(key !== "g");
+    }
+    expect(wayBack(trail, "g", true, examOf)).toEqual({ delta: -5 });
+    // The exam's own page is not a step: it still goes back one page, to where the exam was opened from.
+    expect(origin(trail, "b", examOf)?.key).toBe("a");
+  });
+
+  it("goes back one page at a time for a page that is not a study step, as before", () => {
+    const trail = session(["/exams"]);
+    expect(origin(trail, "g")?.key).toBe("f");
+    expect(wayBack(trail, "g", true)).toEqual({ delta: -1 });
+  });
+
+  it("returns to the chat or the map a lesson was opened from, with the steps after it passed over", () => {
+    for (const outside of ["/ask/c1", "/maps/s", "/exams/library", "/plans/p/map/t"]) {
+      const trail = walk(
+        pop("a", 0, outside),
+        push("b", 1, "/plans/p/lesson/t?part=1"),
+        push("c", 2, "/plans/p/quiz/t"),
+        push("d", 3, "/plans/p/quiz/t?attempt=x"),
+      );
+      expect(origin(trail, "d", examOf)?.key, outside).toBe("a");
+      expect(wayBack(trail, "d", true, examOf)).toEqual({ delta: -3 });
+    }
+  });
+
+  it("passes over only the steps of the same exam", () => {
+    const trail = walk(pop("a", 0, "/plans/p"), push("b", 1, "/plans/q/lesson/t"), push("c", 2, "/plans/p/lesson/t"));
+    expect(origin(trail, "c", examOf)?.key).toBe("b");
+  });
+
+  it("goes to the parent when the session has nothing behind it, as a first page does", () => {
+    const first = walk(pop("a", 0, "/plans/p/lesson/t"), push("b", 1, "/plans/p/quiz/t"));
+    expect(origin(first, "b", examOf)).toBeNull();
+    expect(wayBack(first, "b", true, examOf)).toBe("parent");
+  });
+
+  it("keeps a move inside a page one step, and a replaced entry on the same way back", () => {
+    // The results' "Rivedi gli errori" opens the exam's address, which the exam page replaces with the gap's page, and that
+    // page replaces itself with its quiz: the whole walk leaves from the exam the session began at.
+    const trail = walk(
+      pop("a", 0, "/plans/p"),
+      push("b", 1, "/plans/p/quiz/t?attempt=x"),
+      push("c", 2, "/plans/p?drill=t"),
+      replace("d", 2, "/plans/p/gap/g"),
+      replace("e", 2, "/plans/p/quiz/t?gap=g&attempt=z"),
+    );
+    expect(origin(trail, "e", examOf)?.key).toBe("a");
+    expect(wayBack(trail, "e", true, examOf)).toEqual({ delta: -2 });
+  });
+
+  it("does not lead to a step that was deleted, nor past a gone origin", () => {
+    let trail = walk(pop("a", 0, "/ask/c1"), push("b", 1, "/plans/p/lesson/t"), push("c", 2, "/plans/p/quiz/t"));
+    trail = forget(trail, (path) => path.startsWith("/ask/c1"));
+    expect(origin(trail, "c", examOf)).toBeNull();
   });
 });
 

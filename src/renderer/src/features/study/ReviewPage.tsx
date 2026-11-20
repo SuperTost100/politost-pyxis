@@ -84,6 +84,8 @@ export function ReviewPage() {
   // An unfinished review of something else is not the one this quiz asked for; starting replaces it.
   const active = saved.data && (!from || saved.data.fromAttemptId === from) ? saved.data : null;
   const shown = active ?? start.data;
+  // A review that begins from a quiz's mistakes is called by what it does.
+  const heading = t(from || active?.fromAttemptId ? "results.targeted" : "cards.reviewTitle");
   const empty =
     start.isSuccess && start.data.next === "done" && !start.data.drills.length;
   // What a new review draws on: the flashcards due and the topics with open gaps. A review in progress counts its own.
@@ -122,12 +124,12 @@ export function ReviewPage() {
   return (
     <StudyLayout
       back={back}
-      title={plan.data?.title ?? t("cards.reviewTitle")}
-      subtitle={barLine([t("cards.reviewTitle"), plan.data?.subject])}
+      title={plan.data?.title ?? heading}
+      subtitle={barLine([heading, plan.data?.subject])}
     >
       <ActivityIntro
-        eyebrow={plan.data?.title ?? t("cards.reviewTitle")}
-        title={t("cards.reviewTitle")}
+        eyebrow={plan.data?.title ?? heading}
+        title={heading}
         sentence={t(
           from && !active
             ? "cards.reviewIntroMistakes"

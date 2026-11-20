@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { isRetiredProvider } from "../../shared/limits";
 import { putSetting } from "../settings";
 import type { SignOutStore } from "./bench";
 
@@ -15,10 +16,17 @@ export function readAllowed(db: Database.Database): string[] | null {
   const row = db
     .prepare("SELECT value_json FROM settings WHERE key = ?")
     .get(ALLOWED_KEY) as { value_json: string } | undefined;
-  const value: unknown = row ? JSON.parse(row.value_json) : null;
-  return Array.isArray(value)
-    ? value.filter((id): id is string => typeof id === "string")
-    : null;
+  return offered(row ? JSON.parse(row.value_json) : null);
+}
+
+/**
+ * A stored list of tools without the ones Pyxis no longer offers. A choice of tools that held only a retired one stays
+ * a choice, now of none: the tools the student left out stay out until they enable one themselves, so nothing starts
+ * to receive their material without their say. For an order the same list is no order.
+ */
+function offered(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.filter((id): id is string => typeof id === "string" && !isRetiredProvider(id));
 }
 
 export function writeAllowed(
@@ -45,10 +53,8 @@ export function readOrder(db: Database.Database): string[] | null {
   const row = db
     .prepare("SELECT value_json FROM settings WHERE key = ?")
     .get(ORDER_KEY) as { value_json: string } | undefined;
-  const value: unknown = row ? JSON.parse(row.value_json) : null;
-  return Array.isArray(value)
-    ? value.filter((id): id is string => typeof id === "string")
-    : null;
+  const order = offered(row ? JSON.parse(row.value_json) : null);
+  return order?.length ? order : null;
 }
 
 export function writeOrder(
@@ -68,7 +74,9 @@ export function signOutStore(db: Database.Database): SignOutStore {
             "SELECT key FROM settings WHERE key LIKE 'engine-signed-out:%' AND value_json = 'true'",
           )
           .all() as Array<{ key: string }>
-      ).map((row) => row.key.slice(signOutKey("").length)),
+      )
+        .map((row) => row.key.slice(signOutKey("").length))
+        .filter((provider) => !isRetiredProvider(provider)),
     save: (provider, signedOut) => {
       if (signedOut) putSetting(db, signOutKey(provider), true);
       else db.prepare("DELETE FROM settings WHERE key = ?").run(signOutKey(provider));
@@ -80,9 +88,8 @@ export function signOutStore(db: Database.Database): SignOutStore {
           .all() as Array<{ key: string; value_json: string }>
       ).flatMap((row) => {
         const until: unknown = JSON.parse(row.value_json);
-        return typeof until === "number"
-          ? [{ provider: row.key.slice(limitKey("").length), until }]
-          : [];
+        const provider = row.key.slice(limitKey("").length);
+        return typeof until === "number" && !isRetiredProvider(provider) ? [{ provider, until }] : [];
       }),
     saveLimit: (provider, until) => {
       if (until === null) db.prepare("DELETE FROM settings WHERE key = ?").run(limitKey(provider));

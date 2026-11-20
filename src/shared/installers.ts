@@ -1,7 +1,6 @@
 export const installableProviders = [
   "claude",
   "codex",
-  "agent",
   "antigravity",
 ] as const;
 export type InstallableProvider = (typeof installableProviders)[number];
@@ -29,11 +28,6 @@ export const installers: Record<InstallableProvider, Installer> = {
     posix: "https://chatgpt.com/codex/install.sh",
     windows: "https://chatgpt.com/codex/install.ps1",
     page: "https://developers.openai.com/codex/cli",
-  },
-  agent: {
-    posix: "https://cursor.com/install",
-    windows: "https://cursor.com/install?win32=true",
-    page: "https://cursor.com/cli",
   },
   antigravity: {
     posix: "https://antigravity.google/cli/install.sh",

@@ -12,7 +12,7 @@ import { stepPath } from "../plans/reopen";
 import "./Reader.css";
 import { StudyBar, type StudyTitleMenu } from "./StudyBar";
 import type { BackTarget } from "../../app/usePlace";
-import { recommendQuery } from "../../lib/queries";
+import { recommendQuery, useRecommend } from "../../lib/queries";
 import { renderedText, wordCount } from "../../lib/renderedText";
 
 /** About how many words a student reads a minute, for the time left in a lesson. */
@@ -326,19 +326,33 @@ export function useOpenNext(planId: string) {
   };
 }
 
+/** Whether the plan has a step to suggest after this page, which "Continua" would open. */
+function useHasNextStep(planId: string): boolean {
+  const guide = useRecommend(planId);
+  const { pathname } = useLocation();
+  const next = guide.data?.next;
+  const to = next ? stepPath(planId, next.activity, next.topicId) : null;
+  // Until the plan says, the next step is assumed, as the button was before it could be told.
+  return guide.isPending || Boolean(to && to.split("?")[0] !== pathname);
+}
+
 /**
  * The end of the reading. Not done yet: a hint, a quiet "Done" that stops here and a primary "Done, continue" that
- * opens the next step. Done: the same next step, or back to the path.
+ * opens the next step. Done: the next step as the primary action with "Torna all'esame" as the quiet second one, or
+ * "Torna all'esame" alone when no step follows.
  */
 export function ReaderEnd({
+  planId,
   state,
   doneLabel,
   pendingHint,
   onDone,
   onContinue,
+  onExam,
   busy,
   failed,
 }: {
+  planId: string;
   state: "done" | "current" | "other";
   doneLabel: string;
   /** Why the page is not done yet, such as the unanswered recap. */
@@ -347,11 +361,14 @@ export function ReaderEnd({
   onDone: () => void;
   /** Marks the page done if it is not yet, then opens the next step. */
   onContinue: () => void;
+  /** Goes to the exam: back through history when that is where the session began, else opens it. */
+  onExam: () => void;
   /** Which action is running. */
   busy?: "done" | "continue";
   failed?: boolean;
 }) {
   const { t } = useTranslation();
+  const hasNext = useHasNextStep(planId);
   if (state === "other") return null;
   const done = state === "done";
   return (
@@ -361,21 +378,32 @@ export function ReaderEnd({
         {done ? doneLabel : (pendingHint ?? t("lesson.finishPrompt"))}
       </p>
       <div className="px-reader-end-actions">
-        {/* A page already done has no button for the way back: the bar's back control is that. */}
+        {/* Done: the next step, if any, and the way to the exam. Not done: "Fatto" records it and goes to the exam. */}
         {done ? null : (
           <Button shape="round" loading={busy === "done"} disabled={busy === "continue"} onClick={onDone}>
             {t("lesson.done")}
           </Button>
         )}
-        <Button
-          type="primary"
-          shape="round"
-          loading={busy === "continue"}
-          disabled={busy === "done"}
-          onClick={onContinue}
-        >
-          {t(done ? "lesson.continue" : "lesson.doneContinue")}
-        </Button>
+        {done && !hasNext ? (
+          <Button type="primary" shape="round" disabled={busy === "done"} onClick={onExam}>
+            {t("places.backToExam")}
+          </Button>
+        ) : (
+          <Button
+            type="primary"
+            shape="round"
+            loading={busy === "continue"}
+            disabled={busy === "done"}
+            onClick={onContinue}
+          >
+            {t(done ? "lesson.continue" : "lesson.doneContinue")}
+          </Button>
+        )}
+        {done && hasNext ? (
+          <Button shape="round" onClick={onExam}>
+            {t("places.backToExam")}
+          </Button>
+        ) : null}
       </div>
       {failed ? (
         <p className="small px-reader-error" role="alert">

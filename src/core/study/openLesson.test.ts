@@ -103,7 +103,7 @@ describe("openLesson", () => {
     // The engine's own reason comes with the book text, so the student knows why there is no lesson.
     const refused = (async () => {
       throw new FunnelError(
-        "Claude Sonnet 5.5 is not included in your weekly usage Buy credits or switch to a Grok model to continue.",
+        "Claude Sonnet 5.5 is not included in your weekly usage Buy credits or switch to another model to continue.",
         "cli-failed",
       );
     }) as unknown as Parameters<typeof writeLesson>[3];

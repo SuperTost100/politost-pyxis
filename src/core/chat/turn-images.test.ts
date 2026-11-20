@@ -115,9 +115,9 @@ it("records a photo once on a message whose turn is retried, so a retry cannot f
 it("sends no photo to a provider that refuses images, so the chat reads text instead of failing", async () => {
   const { workspace, db, attach, good } = chatWithPhotos();
   attach.run("good", good(), 20);
-  // The model file says Grok models read images, but Cursor Agent's CLI takes no attachments.
+  // The model file says Gemini models read images, but Antigravity's CLI takes no attachments.
   db.prepare("UPDATE feature_engines SET selection_json = ? WHERE feature = 'default'").run(
-    JSON.stringify({ provider: "agent", model: "grok-4.7" }),
+    JSON.stringify({ provider: "antigravity", model: "gemini-4-hydrogen" }),
   );
   let sent: unknown[] | undefined;
   await askTurn(db, {

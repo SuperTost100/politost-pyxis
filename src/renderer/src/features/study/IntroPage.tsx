@@ -91,6 +91,8 @@ export function IntroPage() {
       ) : null}
       {intro.isSuccess ? (
         <ReaderEnd
+          planId={planId}
+          onExam={() => returnTo(back, `/plans/${planId}`, navigate)}
           state={
             !plan.data ? "other" : done ? "done" : "current"
           }
