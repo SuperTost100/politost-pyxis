@@ -39,6 +39,8 @@ import { radialFixtures, storedGraph } from "../fixtures/maps";
 import type Database from "better-sqlite3";
 import { partMarkdown, seedOutline, type SeedPart } from "../../src/core/study/test-parts";
 import { figureKey } from "../../src/shared/smart-text";
+import { seedFigureChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat, writeBlob } from "./chat-look-seed";
+import { photoPng } from "./pictures";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
 const routes = [
@@ -434,6 +436,13 @@ const routes = [
   // Files attached to a message: the composer's chips, one read and one refused with its reason, and a question that carries its files.
   ["ask-files", "/ask"],
   ["ask-sent-files", "/ask/audit-files"],
+  // The look of a conversation: a figure with its dots and its viewer, the outline of a long chat, an answer the student stopped,
+  // and a photo a message carried in the viewer.
+  ["ask-figure", "/ask/look-figure-one"],
+  ["ask-viewer", "/ask/look-figure-one"],
+  ["ask-outline", "/ask/look-outline"],
+  ["ask-stopped", "/ask/look-stopped"],
+  ["ask-photo-viewer", "/ask/look-files"],
   // The chat panel and search; the subject chip's menu on a chat with a very long subject, and on a new chat's first page.
   ["ask-panel", "/ask/audit-chat"],
   ["ask-search", "/ask/audit-chat"],
@@ -3555,6 +3564,32 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     }
+    case "ask-figure": {
+      // The pointer on the figure shows its three dots; the menu itself closes when the audit moves the focus, so the
+      // end-to-end spec of the look checks that.
+      const figure = page.locator("figure.px-figure").first();
+      await expect(figure.getByRole("img")).toBeVisible();
+      await figure.hover();
+      break;
+    }
+    case "ask-viewer":
+    case "ask-photo-viewer": {
+      const opener =
+        name === "ask-viewer"
+          ? page.locator("figure.px-figure").first().locator("button.px-figure-open")
+          : page.locator(".ask-sent-thumb").first();
+      await opener.click();
+      await expect(page.getByRole("dialog", { name: /Figura ingrandita|Figure enlarged|Foto ingrandita|Photo enlarged/ })).toBeVisible();
+      await page.waitForTimeout(400);
+      break;
+    }
+    case "ask-outline":
+      await expect(page.getByRole("navigation", { name: both("Indice della conversazione", "Conversation outline") })).toBeVisible();
+      break;
+    case "ask-stopped":
+      await expect(page.getByText(both("Interrotta", "Stopped"))).toBeVisible();
+      await expect(page.locator(".px-composer-bar").getByRole("button", { name: both("Continua", "Continue") })).toBeVisible();
+      break;
     case "ask-subject-menu":
     case "ask-new-subject-menu": {
       const chip = page.getByRole("button", { name: /^(Materia della chat|Chat subject|Materia: sceglie|Subject: Pyxis)/ });
@@ -4386,7 +4421,7 @@ async function openState(page: Page, name: string) {
       break;
     }
     case "ask-sent-files":
-      await expect(page.locator(".ask-sent-files").getByText("Lavagna.png")).toBeVisible();
+      await expect(page.locator(".ask-sent-files").getByRole("button", { name: /Lavagna\.png/ })).toBeVisible();
       // The reply cites the attached file, and says so.
       await expect(page.getByText(/Ho usato il file che hai allegato|I used the file you attached/)).toBeVisible();
       await expect(
@@ -5794,6 +5829,7 @@ test.beforeAll(async () => {
     timeout: 10000,
   });
   seed(db);
+  writeBlob(userData, "b".repeat(64), photoPng(), "image/png");
   db.close();
   page.on("pageerror", (error) => pageErrors.push(error.message));
 });
@@ -5810,6 +5846,26 @@ test.afterAll(async () => {
   removeTestFolder(auditUserData);
   for (const folder of [...auditFolders, updateFolder, auditEngines]) rmSync(folder, { recursive: true, force: true });
 });
+
+/**
+ * The chats of the look of a conversation are in the database only while their own state is walked: each one is a row more
+ * in the sidebar, and a few of them end the gallery's focus walk, which is cut at 99 Tab presses.
+ */
+function lookChats(name: string) {
+  const db = new DatabaseSync(join(auditUserData, "workspace", "pyxis.db"), { timeout: 10000 });
+  try {
+    db.exec(`DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE chat_id LIKE 'look-%');
+      DELETE FROM messages WHERE chat_id LIKE 'look-%';
+      DELETE FROM chats WHERE id LIKE 'look-%';
+      DELETE FROM sources WHERE id LIKE 'look-%';`);
+    if (name === "ask-figure" || name === "ask-viewer") seedFigureChat(db);
+    else if (name === "ask-outline") seedOutlineChat(db);
+    else if (name === "ask-stopped") seedStoppedChat(db);
+    else if (name === "ask-photo-viewer") seedSentFilesChat(db, auditUserData);
+  } finally {
+    db.close();
+  }
+}
 
 /** Every state of one part, in every language, theme and width asked for. A state that fails is named in the failure. */
 async function walk(slice: typeof auditRoutes) {
@@ -5847,6 +5903,7 @@ async function walk(slice: typeof auditRoutes) {
             auditNow = key;
             try {
               await resetPacks(page, name);
+              lookChats(name);
               await leaveQuiz(page);
               prepareState(name);
               await page.evaluate((route) => {

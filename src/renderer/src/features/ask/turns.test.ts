@@ -27,6 +27,17 @@ describe("the Ask page's turn", () => {
     expect(turns.start("chat-1", "Altra")!.figures.get()).toEqual({});
   });
 
+  it("keeps a figure's dark picture under its dark key, beside the picture", () => {
+    const turn = turns.start("chat-1", "Domanda")!;
+    turn.onEvent({ type: "figure", key: "figure-a", image: "data:image/png;base64,AAAA", dark: "data:image/png;base64,BBBB" });
+    turn.onEvent({ type: "figure", key: "figure-b", image: "data:image/png;base64,CCCC" });
+    expect(turn.figures.get()).toEqual({
+      "figure-a": "data:image/png;base64,AAAA",
+      "figure-a-dark": "data:image/png;base64,BBBB",
+      "figure-b": "data:image/png;base64,CCCC",
+    });
+  });
+
   it("runs one at a time and tells its subscribers when it starts and ends", () => {
     const seen: Array<string | null> = [];
     const off = turns.subscribe(() => seen.push(turns.get()?.from ?? null));

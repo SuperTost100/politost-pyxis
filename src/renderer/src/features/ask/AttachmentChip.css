@@ -1,0 +1,94 @@
+.px-att {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 52px;
+  padding: 8px 8px 9px 10px;
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.px-att-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--ink-muted);
+}
+.px-att-icon img {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.px-att-text b {
+  display: block;
+  overflow: hidden;
+  font: 600 calc(13.5px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.px-att-text small {
+  display: block;
+  color: var(--ink-subtle);
+  font: 400 calc(12.5px * var(--text-scale, 1)) / 1.35 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+.px-att-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-micro) var(--ease-out),
+    color var(--duration-micro) var(--ease-out);
+}
+.px-att-remove:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-att-remove:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+/* How far a long reading has come, along the chip's lower edge. */
+.px-att-bar {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 3px;
+  background: var(--surface-raised);
+}
+.px-att-bar i {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+  transition: width 400ms var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .px-att-bar i {
+    transition: none;
+  }
+}
+/* A file that failed keeps its chip, tinted with the reason. */
+.px-att.is-failed {
+  background: var(--danger-soft);
+  box-shadow: none;
+}
+.px-att.is-failed .px-att-icon,
+.px-att.is-failed .px-att-text small,
+.px-att.is-failed .px-att-remove {
+  color: var(--danger);
+}
+.px-att.is-failed .px-att-remove:hover {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}

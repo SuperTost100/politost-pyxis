@@ -1,6 +1,6 @@
 import { Button, Input, InputNumber, Switch } from "antd";
 import { Copy, Download, Paperclip, Plus } from "lucide-react";
-import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { toPng } from "html-to-image";
@@ -579,12 +579,14 @@ function GraphCurve({
   const ref = useRef<SVGSVGElement>(null);
   const clipId = useId().replaceAll(":", "");
   const [plotWidth, setPlotWidth] = useState(560);
-  useEffect(() => {
+  // The plot's width is read before the first paint: the svg scales its viewBox to the panel, so a plot drawn at the
+  // default width first is taller than the window for a frame, until the observer has reported the real one.
+  useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
-    const observer = new ResizeObserver((entries) =>
-      setPlotWidth(Math.max(240, Math.round(entries[0]!.contentRect.width))),
-    );
+    const fit = (width: number) => setPlotWidth(Math.max(240, Math.round(width)));
+    fit(element.getBoundingClientRect().width);
+    const observer = new ResizeObserver((entries) => fit(entries[0]!.contentRect.width));
     observer.observe(element);
     return () => observer.disconnect();
   }, []);

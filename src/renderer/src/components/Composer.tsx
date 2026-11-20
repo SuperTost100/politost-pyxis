@@ -24,6 +24,8 @@ export function Composer({
   onValueChange,
   onSend,
   onStop,
+  onContinue,
+  waiting,
   onAttach,
   onPasteImages,
   dropping,
@@ -35,6 +37,10 @@ export function Composer({
   onValueChange?: (value: string) => void;
   onSend?: () => void;
   onStop?: () => void;
+  /** The chat's last answer was stopped: Continua writes on from where it stopped, beside Invia. */
+  onContinue?: () => void;
+  /** What the message waits for, such as "Reading 3 files…": it shows beside Invia, which goes quiet. Sending still works and goes once the files are read. */
+  waiting?: string;
   onAttach?: () => void;
   /** Images pasted without text, such as a screenshot. Text pastes into the field as usual. */
   onPasteImages?: (images: File[]) => void;
@@ -163,14 +169,26 @@ export function Composer({
           onClick={() => navigate("/tools/graph")}
         />
         <span className="px-spacer" />
+        {waiting && !streaming ? (
+          <span className="px-composer-wait" role="status">
+            {waiting}
+          </span>
+        ) : null}
         {streaming ? (
           <Button variant="secondary" icon="square" onClick={onStop}>
             {t("components.composer.stop")}
           </Button>
         ) : (
-          <Button variant="primary" onClick={onSend}>
-            {t("components.composer.send")}
-          </Button>
+          <>
+            {onContinue ? (
+              <Button variant="secondary" iconEnd="arrow-right" onClick={onContinue}>
+                {t("components.chat.continue")}
+              </Button>
+            ) : null}
+            <Button variant={waiting ? "secondary" : "primary"} onClick={onSend}>
+              {t("components.composer.send")}
+            </Button>
+          </>
         )}
       </div>
     </div>

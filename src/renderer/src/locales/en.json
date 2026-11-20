@@ -375,14 +375,14 @@
       "sent": "Attached files",
       "photo": "Photo",
       "reading": "Reading…",
-      "readingPercent": "Reading, {{percent}}%",
+      "readingPercent": "{{size}} · {{percent}}% read",
       "scan": "Reading the scan…",
       "scanPage": "Reading the scan, page {{page}} of {{pages}}",
       "needsData": "To read this scan, Pyxis needs to download its reading data.",
       "readScan": "Read the scan",
       "leftOut": "Sent without {{name}}.",
       "error": {
-        "password": "The file is password-protected. Remove the password and attach it again.",
+        "password": "It is password-protected, so I can't read it.",
         "unreadable": "Pyxis can't read this file. It may be damaged.",
         "empty": "I found no text in this file.",
         "tooLargeDocument": "The file is larger than the 256 MB Pyxis reads for a document.",
@@ -392,7 +392,12 @@
         "denied": "Pyxis isn't allowed to open this file.",
         "cancelled": "The reading was stopped. Remove the file and attach it again.",
         "data": "The scan could not be read, because its reading data is missing."
-      }
+      },
+      "waiting_one": "Reading {{count}} file…",
+      "waiting_other": "Reading {{count}} files…",
+      "photoViewer": "Photo enlarged",
+      "photoCaption": "{{name}}, from your message",
+      "openPhoto": "Enlarge {{name}}"
     },
     "replied": "Pyxis replied.",
     "loadingChat": "Opening the chat…",
@@ -409,7 +414,12 @@
     "groupToday": "Today",
     "groupYesterday": "Yesterday",
     "groupWeek": "This week",
-    "groupOlder": "Earlier"
+    "groupOlder": "Earlier",
+    "outline": {
+      "label": "Conversation outline",
+      "mark": "Question {{number}} of {{total}}: {{question}}",
+      "card": "Question {{number}} of {{total}}"
+    }
   },
   "exams": {
     "more": "More for Exams",
@@ -3040,7 +3050,29 @@
       "lessons": "Preparing intro and diagnostic test",
       "metaRead": "3 sources · 212 passages"
     },
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "figure": {
+      "open": "Enlarge the figure: {{caption}}",
+      "menu": "Figure actions",
+      "zoom": "Enlarge",
+      "download": "Download PNG",
+      "copy": "Copy image",
+      "copied": "Copied",
+      "saved": "Saved",
+      "failed": "That didn't work",
+      "viewer": "Figure enlarged",
+      "fileName": "figure"
+    },
+    "viewer": {
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "zoom": "Zoom {{percent}}%",
+      "download": "Download PNG",
+      "close": "Close",
+      "saved": "Saved",
+      "saveFailed": "The picture couldn't be saved.",
+      "stage": "Picture: scroll it with the arrow keys"
+    }
   },
   "math": {
     "toggle": "Insert formula",

@@ -25,6 +25,8 @@ import {
   Copy,
   Cpu,
   FilePen,
+  FileText,
+  TriangleAlert,
   FilePlus,
   FolderPlus,
   Flag,
@@ -64,6 +66,9 @@ import {
   Undo2,
   Redo2,
   Download,
+  Maximize2,
+  ZoomIn,
+  ZoomOut,
   ExternalLink,
   Lock,
   Pencil,
@@ -93,6 +98,8 @@ export type IconName =
   | "square-split-horizontal"
   | "repeat"
   | "file-pen"
+  | "file-text"
+  | "triangle-alert"
   | "file-plus"
   | "folder-plus"
   | "paperclip"
@@ -145,6 +152,9 @@ export type IconName =
   | "undo-2"
   | "redo-2"
   | "download"
+  | "maximize-2"
+  | "zoom-in"
+  | "zoom-out"
   | "external-link"
   | "lock"
   | "pencil"
@@ -171,6 +181,8 @@ export const ICON_MAP: Record<IconName, LucideIcon> = {
   "square-split-horizontal": SquareSplitHorizontal,
   repeat: Repeat,
   "file-pen": FilePen,
+  "file-text": FileText,
+  "triangle-alert": TriangleAlert,
   "file-plus": FilePlus,
   "folder-plus": FolderPlus,
   paperclip: Paperclip,
@@ -223,6 +235,9 @@ export const ICON_MAP: Record<IconName, LucideIcon> = {
   "undo-2": Undo2,
   "redo-2": Redo2,
   download: Download,
+  "maximize-2": Maximize2,
+  "zoom-in": ZoomIn,
+  "zoom-out": ZoomOut,
   "external-link": ExternalLink,
   lock: Lock,
   pencil: Pencil,
