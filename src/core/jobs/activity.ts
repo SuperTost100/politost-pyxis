@@ -11,29 +11,37 @@ export type JobActivity = {
   since: number;
 };
 
-const live = new Map<string, JobActivity>();
+/** The calls a job has running, by the order they began: one job can make several at once (two figure repairs of a part). */
+const live = new Map<string, Map<symbol, JobActivity>>();
 
-/** The call a job is making now, or null between calls and for a job that makes none. */
+/** The call a job is making now, or null between calls and for a job that makes none. With several, the oldest one. */
 export function activityOf(jobId: string | undefined | null): JobActivity | null {
-  return (jobId && live.get(jobId)) || null;
+  const calls = jobId ? live.get(jobId) : undefined;
+  if (!calls) return null;
+  let oldest: JobActivity | null = null;
+  for (const call of calls.values()) if (!oldest || call.since < oldest.since) oldest = call;
+  return oldest;
 }
 
 /**
- * Follows one model call of `jobId` from its engine events. `end` clears it, and must run however the call ends. A phase
- * never goes back: text after reasoning is `writing`, and a late reasoning event does not undo it.
+ * Follows one model call of `jobId` from its engine events. `end` removes this call and no other, and must run however
+ * the call ends. A phase never goes back: text after reasoning is `writing`, and a late reasoning event does not undo it.
  */
 export function trackCall(jobId: string | undefined, now = Date.now()) {
   if (!jobId) return { event() {}, end() {} };
-  const since = now;
-  live.set(jobId, { phase: "starting", since });
+  const key = Symbol("call");
+  const calls = live.get(jobId) ?? new Map<symbol, JobActivity>();
+  live.set(jobId, calls);
+  calls.set(key, { phase: "starting", since: now });
   return {
     event(type: string) {
-      const phase = live.get(jobId)?.phase;
-      if (type === "reasoning.delta" && phase === "starting") live.set(jobId, { phase: "thinking", since });
-      else if (type === "text.delta" && phase !== "writing" && phase !== undefined) live.set(jobId, { phase: "writing", since });
+      const phase = calls.get(key)?.phase;
+      if (type === "reasoning.delta" && phase === "starting") calls.set(key, { phase: "thinking", since: now });
+      else if (type === "text.delta" && phase !== "writing" && phase !== undefined) calls.set(key, { phase: "writing", since: now });
     },
     end() {
-      live.delete(jobId);
+      calls.delete(key);
+      if (calls.size === 0 && live.get(jobId) === calls) live.delete(jobId);
     },
   };
 }

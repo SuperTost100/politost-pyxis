@@ -553,9 +553,36 @@ describe("atLowEffort", () => {
     expect(atLowEffort({ provider: "claude", model: "lists-none", effort: "medium" }, "outline")).toEqual({ provider: "claude", model: "lists-none" });
   });
 
-  it("leaves a selection with no effort alone, and asks for low before the model's list is read", () => {
+  it("leaves a selection with no effort alone when the model's list is not known, and asks for low before it is read", () => {
     const plain = { provider: "ollama", model: "local" };
     expect(atLowEffort(plain, "outline")).toBe(plain);
     expect(atLowEffort({ provider: "antigravity", model: "unread", effort: "medium" }, "quiz").effort).toBe("low");
+  });
+
+  it("gives low to a model that lists levels when the selection names none", () => {
+    rememberModels("antigravity", [{ id: "gemini-3.8-flash", efforts: levels("low", "medium", "high") }]);
+    expect(atLowEffort({ provider: "antigravity", model: "gemini-3.8-flash" }, "quiz")).toEqual({
+      provider: "antigravity",
+      model: "gemini-3.8-flash",
+      effort: "low",
+    });
+  });
+
+  it("reads a level carried by the model id: gemini-4-neon-xhigh is gemini-4-neon at xhigh, and runs at low", () => {
+    rememberModels("antigravity", [{ id: "gemini-4-neon", efforts: levels("low", "medium", "high", "xhigh") }]);
+    expect(atLowEffort({ provider: "antigravity", model: "gemini-4-neon-xhigh" }, "quiz")).toEqual({
+      provider: "antigravity",
+      model: "gemini-4-neon",
+      effort: "low",
+    });
+    // Before any listing is read the id is unfolded anyway, as it is for a saved job.
+    forgetModels();
+    expect(atLowEffort({ provider: "antigravity", model: "gemini-4-neon-xhigh" }, "outline")).toEqual({
+      provider: "antigravity",
+      model: "gemini-4-neon",
+      effort: "low",
+    });
+    // A tool that does not run the call so keeps the id.
+    expect(atLowEffort({ provider: "codex", model: "gemini-4-neon-xhigh" }, "quiz").model).toBe("gemini-4-neon-xhigh");
   });
 });

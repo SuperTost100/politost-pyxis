@@ -474,7 +474,7 @@ export function PartPage({
       still
     />
   ) : rewriting || rewriteArrived ? (
-    <WorkingBlock copy={rewrites.copy} still={!rewriting} />
+    <WorkingBlock copy={rewrites.copy} activity={data.rewrite?.activity} still={!rewriting} />
   ) : null;
 
   const error = data.error ?? "";

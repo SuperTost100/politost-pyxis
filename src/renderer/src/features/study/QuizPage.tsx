@@ -968,6 +968,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
             ? t("quiz.available", { available: questions.length, total: requestedCount, count: requestedCount })
             : undefined
         }
+        busyActivity={generating && questions.length ? session.data?.activity : undefined}
         handIn={{
           disabled: !canFinish || gradingStarted || submit.isPending || loadingAttempt,
           note:
@@ -1313,16 +1314,13 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       {!sheet && !fixed && attemptId && (generating || generationFailed) ? (
         <div className="px-quiz-generation">
           {generating && questions.length ? (
-            <p className="meta px-quiz-available">
-              <span role="status" className="px-quiz-available-count">
-                <Logo working decorative size={16} />
-                {t("quiz.available", {
-                  available: questions.length,
-                  total: requestedCount,
-                  count: requestedCount,
-                })}
-              </span>
-              <ActivityNote activity={session.data?.activity} />
+            <p className="meta px-quiz-available" role="status">
+              <Logo working decorative size={16} />
+              {t("quiz.available", {
+                available: questions.length,
+                total: requestedCount,
+                count: requestedCount,
+              })}
             </p>
           ) : null}
           {generating && timed ? <p className="small ink-muted">{t("quiz.timerWaiting")}</p> : null}

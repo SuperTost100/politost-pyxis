@@ -3,7 +3,6 @@ import { randomInt } from "node:crypto";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
-import { atLowEffort } from "../engine/efforts";
 import { generate, type GenerateInput } from "../engine/generate";
 import {
   languageName,
@@ -364,8 +363,10 @@ export async function generateQuiz(
         });
       });
     const result = await generate({
-      // Questions grounded in the passages given and checked against the schema above: thinking only costs time.
-      selection: atLowEffort(selection, "quiz"),
+      selection,
+      // Questions grounded in the passages given and checked against the schema above: where the model file says a tool
+      // is slow to think, they are asked at its lowest effort.
+      lowEffort: "quiz",
       run,
       signal,
       schema,

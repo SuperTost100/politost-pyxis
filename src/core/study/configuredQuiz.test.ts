@@ -12,7 +12,7 @@ import {
   saveQuizDraft,
 } from "./quizJobs";
 import { generateQuiz, prepareQuiz, saveQuizSnapshot, startConfiguredQuiz } from "./configuredQuiz";
-import { gradeConfiguredAttempt, gradeQuizQuestion } from "./quizGrading";
+import { gradeConfiguredAttempt, gradeQuizQuestion, readQuizGrading, registerQuizGradingJobs, submitQuiz } from "./quizGrading";
 import { submitAttempt } from "./attempt";
 import { flagTarget } from "./flags";
 import type { GenerateInput } from "../engine/generate";
@@ -185,6 +185,50 @@ describe("configured quizzes", () => {
       expect(question.options![question.answer.correct!]).toBe("right");
     db.close();
   });
+  it("grades a hand-in at once while a quiz is still being written beside a part written ahead", async () => {
+    const db = fixture();
+    // A quiz handed in: ten open questions, written in one go.
+    const earlier = await startConfiguredQuiz(db, { planId: "plan", topicId: "topic", count: 10, types: ["open"] }, async () =>
+      reply({
+        questions: Array.from({ length: 10 }, (_, i) => ({
+          kind: "open",
+          stem: `Define velocity ${i}`,
+          explanation: "Displacement per time.",
+          reference: "Displacement per time",
+          rubric: ["Defines displacement", "Includes time"],
+          passageIds: ["p"],
+        })),
+      }),
+    );
+    const runner = createRunner(db, () => {});
+    // The part written ahead of the one being read is an interactive job, and it holds one of the two places.
+    runner.register("part-ahead", {
+      jobClass: "model-cli",
+      interactive: true,
+      steps: [{ name: "call", label: "call", run: () => new Promise<void>(() => undefined) }],
+    });
+    runner.start("part-ahead");
+    // A second quiz, written in batches of 2, 4 and 4: the third batch never comes, a long build.
+    let calls = 0;
+    registerQuizJobs(db, runner, async (input) => {
+      if (++calls >= 2) await new Promise<void>(() => undefined);
+      return tfRun!(input);
+    });
+    registerQuizGradingJobs(db, runner, async () => reply({ score: 1, explanation: "Right." }));
+    const build = enqueueQuiz(db, runner, { planId: "plan", topicId: "topic", count: 10, types: ["tf"] });
+    for (let i = 0; i < 200 && readQuiz(db, build.attemptId).questions.length === 0; i++)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(readQuiz(db, build.attemptId).questions.length).toBeGreaterThan(0);
+    // The first questions are playable, so the student no longer waits on the build, and grading does not wait behind it.
+    const picks = Object.fromEntries(readQuiz(db, earlier.attemptId).questions.map((row) => [row.id, "Displacement per time"]));
+    submitQuiz(db, runner, earlier.attemptId, picks);
+    for (let i = 0; i < 200 && readQuizGrading(db, earlier.attemptId).state !== "succeeded"; i++)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(readQuizGrading(db, earlier.attemptId).state).toBe("succeeded");
+    expect(readQuiz(db, build.attemptId).state).toBe("running");
+    db.close();
+  });
+
   it("starts the build next to background work that fills the model slots, instead of queueing behind it", async () => {
     const db = fixture();
     const runner = createRunner(db, () => {});

@@ -141,6 +141,43 @@ describe("job runner", () => {
     await until(database, waiting, ["succeeded"]);
   });
 
+  it("lets a job give up its interactive place once the student no longer waits on it", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, { "model-cli": 2, "model-api": 1, local: 1, demo: 1 });
+    const release: Array<() => void> = [];
+    const steps: JobSpec["steps"][] = [];
+    const held: JobSpec["steps"] = [
+      { name: "call", label: "call", run: () => new Promise<void>((resolve) => release.push(resolve)) },
+    ];
+    let background: (() => void) | undefined;
+    const builds: JobSpec["steps"] = [
+      {
+        name: "build",
+        label: "build",
+        run: (ctx) => {
+          background = ctx.background;
+          return new Promise<void>((resolve) => release.push(resolve));
+        },
+      },
+    ];
+    void steps;
+    runner.register("part", { jobClass: "model-cli", interactive: true, steps: held });
+    runner.register("build", { jobClass: "model-cli", interactive: true, steps: builds });
+    runner.register("grade", { jobClass: "model-cli", interactive: true, steps: held });
+    const part = runner.start("part");
+    const build = runner.start("build");
+    await until(database, build, ["running"]);
+    const grade = runner.start("grade");
+    // The part and the build hold both interactive places, so the third interactive job waits.
+    expect(stateOf(database, part)).toBe("running");
+    expect(stateOf(database, grade)).toBe("queued");
+    background!();
+    await until(database, grade, ["running"]);
+    expect(stateOf(database, build)).toBe("running");
+    release.forEach((resolve) => resolve());
+    await until(database, grade, ["succeeded"]);
+  });
+
   it("treats dismissing an interrupted job as giving it up, and a finished one as not", async () => {
     const database = db();
     const seen: unknown[] = [];

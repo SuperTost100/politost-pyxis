@@ -164,6 +164,8 @@ test("a part's level, its rewrites and a section rewritten, with the earlier tex
     // the foot, where the answer left the student, and the button names the level being written.
     await expect(working(page, "Sto riscrivendo la parte 2")).toBeVisible();
     await expect(working(page, "Sto riscrivendo la parte 2")).toBeInViewport();
+    // The rewrite's block says what the tool is doing too, outside its status line.
+    await expect(page.locator(".px-part-working-actions .px-activity-note")).toHaveText(/^Ci sto ragionando · \d+:\d\d$/);
     await expect(levelButton(page)).toHaveText(/Semplice/);
     await expect(page.getByText("Al livello Semplice.", { exact: false })).toBeVisible();
     await expect(page.getByText("Frontiera: l'idea")).toBeVisible();

@@ -5,7 +5,6 @@ import { uuidv7 } from "../../shared/ids";
 import { IpcError } from "../../shared/ipc";
 import { parseLooseJson, parseSmartText, partQuestions, replaceSection, smartSections } from "../../shared/smart-text";
 import { contextHash } from "../chat/sessions";
-import { atLowEffort } from "../engine/efforts";
 import { generate, type GenerateInput } from "../engine/generate";
 import { withSession, type SessionHandle } from "../engine/session-call";
 import { planLanguage, promptProvenance, systemPrompt, templateVersion } from "../engine/prompts";
@@ -615,8 +614,9 @@ export async function planParts(db: Database.Database, input: PlanPartsInput): P
     let result: Awaited<ReturnType<typeof generate>>;
     try {
       result = await generate({
+        selection,
         // A split of numbered passages that `checkOutline` checks, and the fallback covers: thinking only costs time.
-        selection: atLowEffort(selection, "outline"),
+        lowEffort: "outline",
         run: input.run,
         signal: input.signal,
         schema: outlineReply,

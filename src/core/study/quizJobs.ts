@@ -40,7 +40,9 @@ export function registerQuizJobs(
     jobClass: "model-cli",
     // The student pressed Start and waits on the page for the first questions, so the build does not queue behind the
     // background work that fills the class's slots, a plan being built or the part written ahead of the one being read.
-    // Measured: a quiz asked while those two ran waited 45 seconds before its first call.
+    // Measured: a quiz asked while those two ran waited 45 seconds before its first call. Once the first questions are
+    // saved the student answers them and no longer waits (`ctx.background()`), so the rest of a long build never keeps a
+    // hand-in from being graded: grading is interactive too, and counts only the interactive jobs.
     interactive: true,
     steps: [
       {
@@ -48,6 +50,8 @@ export function registerQuizJobs(
         label: "quiz.generating",
         async run(ctx) {
           const params = ctx.params as Params;
+          // A build resumed with questions already saved has nobody waiting on it.
+          if (params.snapshot.questions.length > 0) ctx.background();
           await generateQuiz(
             params.snapshot,
             run,
@@ -62,6 +66,7 @@ export function registerQuizJobs(
                 );
                 ctx.setParams(params);
               })();
+              ctx.background();
             },
             QUIZ_BATCH,
             QUIZ_FIRST_BATCH,

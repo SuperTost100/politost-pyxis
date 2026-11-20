@@ -1056,6 +1056,8 @@ export const requests = {
             wording: z.enum(["simple", "balanced", "technical"]),
             error: z.string().nullable(),
             jobId: z.string(),
+            /** The model call of the rewrite's job while it runs; null otherwise. */
+            activity: JobActivity.nullable(),
           })
           .nullable(),
       }),

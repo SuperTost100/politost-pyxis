@@ -624,6 +624,51 @@ test("a topic quiz says what the tool is doing while its first questions are wri
   }
 });
 
+test("while the later batches of a quiz are written, the answer sheet says what the tool is doing beside its count", async () => {
+  test.setTimeout(120000);
+  // The first batch comes at once; the second waits for this file.
+  const release = join(mkdtempSync(join(tmpdir(), "pyxis-quiz-hold-")), "release");
+  const questions = Array.from({ length: 10 }, (_, i) => ({
+    kind: "tf",
+    stem: `La velocità descrive lo spostamento nel tempo. Affermazione {{question:${i}}}.`,
+    correct: true,
+    passageIds: ["{{passage:0}}"],
+    explanation: "La velocità è lo spostamento per unità di tempo.",
+  }));
+  const { page, planId, topics, done } = await launch({
+    markdown: { markdown: "## Il moto\nLa velocità descrive il moto [P1]." },
+    questions: diagnosticReply,
+    quizQuestions: [{ questions }, { questions, hold: release }],
+  });
+  try {
+    const quiz = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+      planId,
+      topicId: topics[0]!.id,
+      types: ["tf"],
+      timerMinutes: 10,
+    });
+    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
+    const count = sheet(page).locator(".px-qz-busy");
+    await expect(count).toContainText("2 domande pronte su 10");
+    const note = sheet(page).locator(".px-activity-note");
+    await expect(note).toHaveText(/^Ci sto ragionando · \d+:\d\d$/);
+    // The count is the live region; the seconds are not.
+    await expect(page.getByRole("status").filter({ hasText: "Ci sto ragionando" })).toHaveCount(0);
+    await saveShot(page, "quiz-later-batch-it-light.png", { animations: "disabled" });
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await expectNoAxeViolations(page);
+    }
+    await page.evaluate(() => window.pyxis.setAppearance("light"));
+    writeFileSync(release, "");
+    await expect(sheet(page).locator(".px-activity-note")).toHaveCount(0, { timeout: 30000 });
+  } finally {
+    writeFileSync(release, "");
+    await done();
+  }
+});
+
 test("open answer: written with formulas, graded by the AI tool after Consegna with the work shown in place", async () => {
   test.setTimeout(120000);
   const { page, planId, topics, done } = await launch(openReplies(), 1500);

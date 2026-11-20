@@ -374,6 +374,8 @@ export type PartRewriteView = {
   /** The job's error as the runner stored it; null while writing, and for a rewrite stopped by a quit. */
   error: string | null;
   jobId: string;
+  /** The model call of the rewrite's job while it runs; null otherwise. */
+  activity: JobActivity | null;
 };
 
 function rewriteView(db: Database.Database, topicId: string, position: number): PartRewriteView | null {
@@ -382,7 +384,14 @@ function rewriteView(db: Database.Database, topicId: string, position: number): 
   // A rewrite stopped by a quit shows as failed, and Riprova resumes it; one the student cancelled shows nothing.
   const state = LIVE.has(job.state) ? "writing" : job.state === "failed" || job.state === "interrupted" ? "failed" : null;
   if (!state) return null;
-  return { state, rewrite: job.rewrite, wording: job.wording, error: state === "failed" ? job.error : null, jobId: job.id };
+  return {
+    state,
+    rewrite: job.rewrite,
+    wording: job.wording,
+    error: state === "failed" ? job.error : null,
+    jobId: job.id,
+    activity: state === "writing" ? activityOf(job.id) : null,
+  };
 }
 
 export type PartView = {

@@ -44,4 +44,28 @@ describe("job activity", () => {
     call.event("text.delta");
     expect(activityOf("job")).toBeNull();
   });
+
+  it("keeps the calls of one job apart: the one that ends does not take the others with it", () => {
+    // Two figure repairs of one part run at once.
+    const first = trackCall("job", 100);
+    const second = trackCall("job", 200);
+    second.event("text.delta");
+    // The oldest call still running is the one shown.
+    expect(activityOf("job")).toEqual({ phase: "starting", since: 100 });
+    first.end();
+    expect(activityOf("job")).toEqual({ phase: "writing", since: 200 });
+    second.end();
+    expect(activityOf("job")).toBeNull();
+  });
+
+  it("does not let a call's events change the phase of another call of the job", () => {
+    const first = trackCall("job", 1);
+    const second = trackCall("job", 2);
+    second.event("reasoning.delta");
+    expect(activityOf("job")).toEqual({ phase: "starting", since: 1 });
+    first.event("text.delta");
+    expect(activityOf("job")).toEqual({ phase: "writing", since: 1 });
+    first.end();
+    expect(activityOf("job")).toEqual({ phase: "thinking", since: 2 });
+  });
 });
