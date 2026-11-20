@@ -367,9 +367,25 @@ export function figureImages(value: unknown): Record<string, string> {
   return images;
 }
 
+/** A fence of any indentation: a list item's blocks are indented by its marker's width, or by a tab. */
+const INDENTED_OPEN = /^([ \t]*)(`{3,}|~{3,})\s*([^\s`]*)\s*$/;
+
+/** `line` without up to `columns` columns of its leading spaces and tabs, a tab reaching the next multiple of four. */
+function outdent(line: string, columns: number): string {
+  let at = 0;
+  let column = 0;
+  while (at < line.length && column < columns && (line[at] === " " || line[at] === "\t")) {
+    column = line[at] === "\t" ? column + 4 - (column % 4) : column + 1;
+    at++;
+  }
+  return " ".repeat(Math.max(0, column - columns)) + line.slice(at);
+}
+
 /**
  * Rewrites every closed ```pyxis-figure block outside other code: `replace` gets the parsed figure (null when the block
- * is not valid) and returns the text to put in its place, or null to keep the block as it is.
+ * is not valid) and returns the text to put in its place, or null to keep the block. A block in a list item counts as
+ * one at the top level. An indented figure block, or the text put in its place, is written three columns in: there it
+ * stays in the list item that holds it, where two columns may end the item and four make it indented code.
  */
 export function mapFigureBlocks(
   markdown: string,
@@ -378,23 +394,27 @@ export function mapFigureBlocks(
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const out: string[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const open = OPEN.exec(lines[i]!);
+    const open = INDENTED_OPEN.exec(lines[i]!);
     if (!open) {
       out.push(lines[i]!);
       continue;
     }
-    const fence = open[1]!;
+    const fence = open[2]!;
     let close = i + 1;
     while (close < lines.length) {
       const line = lines[close]!.trim();
       if (/^[`~]+$/.test(line) && line[0] === fence[0] && line.length >= fence.length) break;
       close++;
     }
-    const block = lines.slice(i, Math.min(close, lines.length - 1) + 1);
-    const next = close < lines.length && open[2]!.toLowerCase() === "pyxis-figure"
-      ? replace(parseFigure(lines.slice(i + 1, close).join("\n")))
-      : null;
-    out.push(...(next == null ? block : next ? next.split("\n") : []));
+    let block = lines.slice(i, Math.min(close, lines.length - 1) + 1);
+    const figure = close < lines.length && open[3]!.toLowerCase() === "pyxis-figure";
+    const width = [...open[1]!].reduce((column, char) => (char === "\t" ? column + 4 - (column % 4) : column + 1), 0);
+    const next = figure ? replace(parseFigure(block.slice(1, -1).map((line) => outdent(line, width)).join("\n"))) : null;
+    // An indented block is three columns in, where it reads as a figure block in the list item that holds it.
+    if (figure && width > 3) block = block.map((line) => outdent(line, width - 3));
+    if (figure && width > 0 && width < 3) block = block.map((line) => (line.trim() ? " ".repeat(3 - width) + line : line));
+    const lead = width > 0 ? "   " : "";
+    out.push(...(next == null ? block : next ? next.split("\n").map((line) => (line ? lead + line : line)) : []));
     i = close;
     // A removed block between two paragraphs leaves one blank line, not two.
     if (next === "" && out.at(-1)?.trim() === "" && lines[i + 1]?.trim() === "") i++;

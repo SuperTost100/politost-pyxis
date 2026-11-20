@@ -36,12 +36,19 @@ export function anchoredChecks(
   });
 }
 
+/**
+ * A ```check or ```json block: its language, its content and its closing fence, which is empty for a block still open at
+ * the end of the text. The fences may be indented, as in a list item, by spaces or a tab.
+ */
+const checkFences = () => /^[ \t]*(`{3,})(check|json)[ \t]*\n([\s\S]*?)(\n[ \t]*\1`*[ \t]*$|$(?![\s\S]))/gm;
+
 export function fencedChecks(body: string): AnchoredCheck[] {
   const checks: AnchoredCheck[] = [];
-  for (const match of body.matchAll(/```(?:check|json)\s*\n([\s\S]*?)\n```/g)) {
+  for (const match of body.matchAll(checkFences())) {
     if (checks.length === 12) break;
+    if (!match[4]) continue;
     try {
-      const raw: unknown = JSON.parse(match[1]!);
+      const raw: unknown = JSON.parse(match[3]!);
       const claim = checkClaimSchema.safeParse(raw);
       if (!claim.success) continue;
       const before = body.slice(0, match.index).trimEnd();
@@ -71,7 +78,7 @@ export function fencedChecks(body: string): AnchoredCheck[] {
  * open is hidden to the end of the text; an open `json` block stays, since it may be an ordinary example.
  */
 export function stripCheckFences(body: string): string {
-  return body.replace(/```(check|json)\s*\n([\s\S]*?)(\n```|$)/g, (fence, language: string, content: string, close: string) => {
+  return body.replace(checkFences(), (fence, _ticks: string, language: string, content: string, close: string) => {
     if (language === "check") return "";
     if (!close) return fence;
     try {

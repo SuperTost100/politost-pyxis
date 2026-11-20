@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseMarkdown, walk } from "./markdown-tree";
 import {
   FIGURE_CODE_MAX,
   FIGURE_IMAGE_MAX,
@@ -408,6 +409,22 @@ describe("figure blocks", () => {
     );
     expect(mapFigureBlocks(text, () => null)).toBe(text);
     expect(mapFigureBlocks("```pyxis-figure\n{broken", () => "")).toBe("```pyxis-figure\n{broken");
+  });
+
+  it.each(["  ", "   ", "    ", "      ", "\t"])("finds a figure block inside a list item with %j before its fences", (indent) => {
+    // Gemini put a chat answer's figure inside the numbered step it illustrates.
+    const figure = JSON.stringify({ kind: "plot", caption: "Il piano inclinato", code: "plt.plot([0, 1], [0, 1])" });
+    for (const marker of ["1.", "-"]) {
+      const text = [`${marker} Primo passo.`, "", `${indent}\`\`\`pyxis-figure`, `${indent}${figure}`, `${indent}\`\`\``, "", `${marker} Dopo.`].join("\n");
+      expect(mapFigureBlocks(text, (found) => `*${found!.caption}*`), marker).not.toContain("pyxis-figure");
+      // A block that is kept is one the parser reads as a figure block, in the list item.
+      const kept = mapFigureBlocks(text, () => null);
+      const blocks: Array<{ lang: string | null | undefined; value: string | undefined }> = [];
+      walk(parseMarkdown(kept), (node) => {
+        if (node.type === "code") blocks.push({ lang: node.lang, value: node.value });
+      });
+      expect(blocks, `${marker} ${JSON.stringify(indent)}`).toEqual([{ lang: "pyxis-figure", value: figure }]);
+    }
   });
 
   it("keeps only PNG data URLs under figure keys", () => {
