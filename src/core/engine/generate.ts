@@ -249,7 +249,7 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
   }
   // A selection saved by an earlier build may name a model its tool may no longer run, or a tool Pyxis no longer offers;
   // the latter is moved to the automatic choice, which needs the first plan.
-  if (isRetiredProvider(input.selection.provider)) await afterFirstPlan();
+  if (isRetiredProvider(input.selection.provider)) await afterFirstPlan(input.signal);
   const current = currentSelection(input.selection);
   if (current !== input.selection) input = { ...input, selection: current };
   const start = startingMove(input);

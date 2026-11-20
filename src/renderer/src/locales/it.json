@@ -230,7 +230,7 @@
         "claude": "Serve un account Claude con il piano Pro, che è a pagamento.",
         "chatgpt": "Serve un account ChatGPT. Con il piano gratuito hai poche richieste al giorno, con Plus molte di più.",
         "gemini": "Serve un account Google.",
-        "geminiFree": "Gratis per gli studenti universitari, con il piano AI Pro."
+        "geminiOffers": "Google ha offerte per studenti che dipendono dal paese: controlla la pagina di Google."
       },
       "plans": "Vedi i piani",
       "plansOf": "Vedi i piani di {{name}}",

@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
@@ -760,14 +760,16 @@ test("Settings: a workspace whose only allowed tool was Cursor keeps Claude and 
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-retired-"));
   const tools = standInTools(["claude", "codex"]);
+  let app: ElectronApplication | undefined;
   try {
     // A first run makes the workspace; then the saved choice of tools is what an earlier build left: Cursor, alone.
-    let app = await launchPyxis({ userData, env: tools.env });
+    app = await launchPyxis({ userData, env: tools.env });
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     await expect(page).toHaveURL(/#\/ask$/);
     await page.evaluate(() => window.pyxis.invoke("engines.acknowledge", { providers: ["claude", "codex"] }));
     await app.close();
+    app = undefined;
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     db.prepare("INSERT OR REPLACE INTO settings(key,value_json,updated_at) VALUES('engines.allowed',?,?)").run(JSON.stringify(["agent"]), Date.now());
     db.prepare("INSERT OR REPLACE INTO settings(key,value_json,updated_at) VALUES('engines.order',?,?)").run(JSON.stringify(["agent"]), Date.now());
@@ -794,8 +796,9 @@ test("Settings: a workspace whose only allowed tool was Cursor keeps Claude and 
     await expect(tool(page, "claude").locator(".engines-tool-state")).toHaveText("Connected");
     await expect(tool(page, "codex").locator(".engines-tool-state")).toHaveText("Not in use");
     expect(await page.evaluate(() => window.pyxis.invoke("engines.choice", {}))).toEqual({ allowed: ["claude"], order: null });
-    await app.close();
   } finally {
+    // The app holds the workspace open: it closes before the folder is removed, whichever step failed.
+    await app?.close();
     removeTestFolder(userData);
     rmSync(tools.bin, { recursive: true, force: true });
   }

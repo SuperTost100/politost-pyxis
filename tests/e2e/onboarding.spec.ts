@@ -187,9 +187,9 @@ test("First setup: you with crash reports off, the AI with its notice, the two w
     await expect(cardState(page, "ChatGPT")).toHaveText("Collegato");
     // With one tool connected, the others are offered as a second.
     await expect(cardState(page, "Gemini")).toHaveText("Collega anche questa");
-    await expect(card(page, "Gemini")).toContainText(
-      "Gratis per gli studenti universitari",
-    );
+    // The Gemini card promises no price, plan or duration: it says the offers depend on the country.
+    await expect(card(page, "Gemini")).toContainText("Google ha offerte per studenti che dipendono dal paese");
+    await expect(card(page, "Gemini")).not.toContainText(/gratis|AI Pro/i);
     await expect(button(page, "Continua")).toHaveCount(0);
     // One primary button per state: while the notice waits, it is "Ho capito".
     await expect(primaryButtons(page)).toHaveText(["Ho capito"]);
@@ -950,10 +950,20 @@ test("First setup: the three tools sit in one row when they fit and in one colum
     await button(page, "Continua").click();
     await expect(cardState(page, "Claude")).toHaveText("Collegato", { timeout: 30000 });
     const rows: Array<[string, number]> = [];
+    const scales = new Map<string, number>();
     for (const textSize of ["md", "lg"] as const)
       for (const width of [1440, 1280, 1100, 960, 800, 640]) {
         await page.evaluate((size) => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: size }), textSize);
+        // The page reads the profile once and is not told about a save made through the bridge (the first large-text row
+        // was measured at normal text). The size goes on the root as the app's own effect puts it, which is what the
+        // styles read, and the test waits until the page really draws at it before it measures.
+        await page.evaluate((size) => {
+          document.documentElement.dataset.text = size;
+        }, textSize);
+        await expect.poll(() => page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--text-scale")) || 1)).toBe(textSize === "lg" ? 1.12 : 1);
         await page.setViewportSize({ width, height: 900 });
+        const scale = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--text-scale")) || 1);
+        scales.set(textSize, scale);
         // The three cards' own boxes: how many rows they make, and whether the ones in a row have the same width.
         const layout = await page.locator(".px-tools > .px-tool").evaluateAll((nodes) => {
           const boxes = nodes.map((node) => node.getBoundingClientRect());
@@ -964,6 +974,8 @@ test("First setup: the three tools sit in one row when they fit and in one colum
         expect([1, 3], `${textSize}, ${width} px`).toContain(layout.tops);
         expect(layout.widths, `${textSize}, ${width} px`).toBe(1);
       }
+    // The large-text rows were drawn at a larger text: the scale the page uses is bigger than at normal text.
+    expect(scales.get("lg")!).toBeGreaterThan(scales.get("md")!);
     // The wide windows hold the three in a row.
     expect(rows.find(([key]) => key === "md 1280")![1]).toBe(1);
     expect(rows.find(([key]) => key === "lg 1440")![1]).toBe(1);

@@ -106,12 +106,12 @@ let order: readonly string[] | null = null;
 
 /** Whether the automatic choice has made a plan since Pyxis started: before that the list above is empty by default. */
 let planned = false;
-const waitingForPlan: Array<() => void> = [];
+const waitingForPlan = new Set<() => void>();
 
 export function rememberReady(providers: AutoProvider[]): void {
   ready = providers;
   planned = true;
-  for (const resume of waitingForPlan.splice(0)) resume();
+  for (const resume of [...waitingForPlan]) resume();
 }
 
 /**
@@ -124,16 +124,29 @@ export const FIRST_PLAN_WAIT_MS = 60_000;
 /**
  * Resolves once the first plan exists, or after `FIRST_PLAN_WAIT_MS`. A job saved by an earlier build that names a
  * retired tool is moved to the automatic choice, which needs the plan: the runner starts before it, so such a job waits
- * here instead of failing with `engine-missing` on the first launch after an update.
+ * here instead of failing with `engine-missing` on the first launch after an update. A cancelled job stops waiting at
+ * once: the promise rejects with the signal's reason, and the timer and the waiter are removed.
  */
-export function afterFirstPlan(): Promise<void> {
+export function afterFirstPlan(signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
   if (planned) return Promise.resolve();
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, FIRST_PLAN_WAIT_MS);
-    waitingForPlan.push(() => {
+  return new Promise((resolve, reject) => {
+    const done = () => {
       clearTimeout(timer);
+      waitingForPlan.delete(resume);
+      signal?.removeEventListener("abort", cancelled);
+    };
+    const resume = () => {
+      done();
       resolve();
-    });
+    };
+    const cancelled = () => {
+      done();
+      reject(signal!.reason);
+    };
+    const timer = setTimeout(resume, FIRST_PLAN_WAIT_MS);
+    waitingForPlan.add(resume);
+    signal?.addEventListener("abort", cancelled, { once: true });
   });
 }
 

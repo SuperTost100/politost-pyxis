@@ -408,7 +408,7 @@ function ToolCard({
             <p>{t(`onboarding.ai.tools.${tool.copy}`)}</p>
             {tool.copy === "gemini" ? (
               <p className="px-tool-free">
-                {t("onboarding.ai.tools.geminiFree")}
+                {t("onboarding.ai.tools.geminiOffers")}
               </p>
             ) : null}
           </>

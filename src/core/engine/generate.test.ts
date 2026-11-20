@@ -943,6 +943,46 @@ describe("a chosen engine whose subscription refuses the model", () => {
       }
     });
 
+    it("ends a held job as cancelled when the student cancels it, at once, and leaves no timer or waiter behind", async () => {
+      vi.useFakeTimers();
+      try {
+        forgetFirstPlan();
+        const controller = new AbortController();
+        const stopped = generate({
+          selection: { provider: "agent", model: "grok-4.7", chosenFor: "plan" } as ReturnType<typeof selectionFor>,
+          prompt: "hi",
+          signal: controller.signal,
+          run: async () => result({ text: "never", provider: "agent" }),
+        }).catch((err: unknown) => err);
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(vi.getTimerCount()).toBe(1);
+        controller.abort();
+        const error = await stopped;
+        // The cancellation, not engine-missing 60 seconds later.
+        expect(error).toMatchObject({ name: "AbortError" });
+        expect(vi.getTimerCount()).toBe(0);
+        // A plan that arrives later finds nobody waiting and changes nothing.
+        rememberReady([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not wait at all for a job that was already cancelled", async () => {
+      forgetFirstPlan();
+      const controller = new AbortController();
+      controller.abort();
+      await expect(
+        generate({
+          selection: { provider: "agent", model: "grok-4.7", chosenFor: "plan" } as ReturnType<typeof selectionFor>,
+          prompt: "hi",
+          signal: controller.signal,
+          run: async () => result({ text: "never", provider: "agent" }),
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      rememberReady([]);
+    });
+
     it("stops with no engine when the tool the job named was the only one and nothing else is ready", async () => {
       const db = openDatabase(":memory:");
       rememberReady([]);
