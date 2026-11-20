@@ -143,6 +143,15 @@ export function hasBlob(workspace: string, sha: string): boolean {
  * again in that time. A file the system will not rename stays whole under its name, and the error is the caller's.
  */
 function takeOff(path: string): void {
+  let info: ReturnType<typeof lstatSync>;
+  try {
+    info = blobFs.lstat(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  // Only a file goes. A directory or a link where a blob should be is not ours to rename, and is left in place.
+  if (!info.isFile() || info.isSymbolicLink()) throw new Error("blob-unsafe-path");
   const gone = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`);
   try {
     blobFs.rename(path, gone);

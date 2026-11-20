@@ -1,8 +1,9 @@
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { blobFs, putBlob, readBlob, removeBlob } from "./blobs";
 import { openDatabase } from "./db/connection";
+import { chatHandlers } from "./chat/handlers";
 import { heldFilesFor } from "./chat/test-attach";
 import { tempDir } from "./test-temp";
 import type { AttachmentView } from "../shared/ipc";
@@ -82,6 +83,58 @@ describe("a blob deleted while the system still holds it", () => {
     expect(names.filter((name) => !/^\.[a-f0-9]{64}(?:\.json)?\.[a-f0-9-]{36}\.tmp$/.test(name))).toEqual([]);
     held.release();
     expect(readdirSync(folder)).toEqual([]);
+  });
+});
+
+describe("what a delete the system refuses leaves behind", () => {
+  const refuse = () =>
+    Object.assign(blobFs, {
+      rm: (path: string) => {
+        throw Object.assign(new Error(`EBUSY: resource busy or locked, unlink '${path}'`), { code: "EBUSY" });
+      },
+    });
+
+  it("is the file under its temporary name, which the next start removes, and a stored file is never touched", () => {
+    const workspace = tempDir("pyxis-blob-sweep-");
+    const db = openDatabase(join(workspace, "pyxis.db"));
+    try {
+      const gone = putBlob(workspace, new TextEncoder().encode("da togliere"), "text/plain", "txt");
+      const kept = putBlob(workspace, new TextEncoder().encode("da tenere"), "text/plain", "txt");
+      refuse();
+      removeBlob(workspace, gone);
+      Object.assign(blobFs, real);
+      const folder = (sha: string) => join(workspace, "blobs", sha.slice(0, 2));
+      const temporary = readdirSync(folder(gone)).filter((name) => name.endsWith(".tmp"));
+      // The delete failed outright: both files are still on disk, under temporary names, and nothing names them.
+      expect(temporary).toHaveLength(2);
+      // Names that are not the form `removeBlob` makes stay: a temporary name of another blob's folder, and a stray file.
+      const stray = join(folder(gone), "notes.tmp");
+      writeFileSync(stray, "x");
+      const misplaced = join(folder(kept), `.${gone}.${"0".repeat(8)}-0000-0000-0000-${"0".repeat(12)}.tmp`);
+      if (folder(kept) !== folder(gone)) writeFileSync(misplaced, "y");
+      chatHandlers(db, workspace);
+      expect(readdirSync(folder(gone)).filter((name) => /^\.[a-f0-9]{64}(?:\.json)?\.[a-f0-9-]{36}\.tmp$/.test(name))).toEqual([]);
+      expect(existsSync(stray)).toBe(true);
+      if (folder(kept) !== folder(gone)) expect(existsSync(misplaced)).toBe(true);
+      // The stored file and its metadata are as they were.
+      expect(readFileSync(readBlob(workspace, kept).file, "utf8")).toBe("da tenere");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("is nothing for an entry that is not a file: a directory where a blob should be stays in place, as it did before", () => {
+    const workspace = tempDir("pyxis-blob-dir-");
+    const sha = putBlob(workspace, new TextEncoder().encode("abc"), "text/plain", "txt");
+    const file = readBlob(workspace, sha).file;
+    // Make the blob's name a directory with something in it.
+    rmSync(file);
+    rmSync(`${file}.json`);
+    mkdirSync(file);
+    writeFileSync(join(file, "dentro.txt"), "non toccare");
+    expect(() => removeBlob(workspace, sha)).toThrow();
+    expect(readFileSync(join(file, "dentro.txt"), "utf8")).toBe("non toccare");
+    expect(readdirSync(join(workspace, "blobs", sha.slice(0, 2)))).toEqual([sha]);
   });
 });
 
