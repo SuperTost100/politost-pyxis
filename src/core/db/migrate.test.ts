@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { getLoadablePath } from "sqlite-vec";
 import { openDatabase } from "./connection";
-import { migrate, SCHEMA_VERSION } from "./migrate";
+import { migrate, SCHEMA_VERSION, verifyToolSessionsCopy } from "./migrate";
 import { uuidv7 } from "../../shared/ids";
 import { tempDir } from "../test-temp";
 
@@ -1094,36 +1094,105 @@ describe("files a message carried (migration 36)", () => {
 });
 
 describe("tool sessions of chats, lessons and quiz hand-ins (migration 37)", () => {
-  it("moves every chat's sessions across as they were, under the chat's id", () => {
-    const { db, file } = workspaceAt(36);
+  const COLUMNS = "id, chat_id AS owner, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at, last_used_at, ended_at, ended_reason, instructions";
+  const NEW_COLUMNS = "id, owner, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at, last_used_at, ended_at, ended_reason, instructions";
+
+  /** Chats with sessions in every state: each tool, in step and out of step, with and without the instructions hash, open and ended for each reason. */
+  function sessionsInEveryState(db: Database.Database) {
     db.exec(`
-      INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c1', 'uno', 1, 1), ('c2', 'due', 2, 2);
-      INSERT INTO chat_sessions (id, chat_id, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at, last_used_at, ended_at, ended_reason, instructions)
-        VALUES ('r1', 'c1', 'claude', 'sess-1', 'haiku', 'low', '/s', 'abc', 120, 1, 'm9', 0, 3, 10, 20, 30, 'tool', 'i1'),
-               ('r2', 'c1', 'antigravity', 'sess-2', 'flash', NULL, '/s', 'abc', 40, 0, NULL, 0, 1, 30, 31, NULL, NULL, 'i1'),
-               ('r3', 'c2', 'codex', 'sess-3', 'luna', 'low', '/s', NULL, 0, 1, NULL, 1, 0, 5, 5, NULL, NULL, NULL);
+      INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c1', 'uno', 1, 1), ('c2', 'due', 2, 2), ('c3', 'tre', 3, 3), ('c4', 'quattro', 4, 4);
+      INSERT INTO chat_sessions (id, chat_id, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at, last_used_at, ended_at, ended_reason, instructions) VALUES
+        ('r01', 'c1', 'claude', 'sess-1', 'claude-haiku-5-5', 'low', '/s', 'abc', 120, 1, 'm9', 0, 3, 10, 20, 30, 'tool', 'i1'),
+        ('r02', 'c1', 'codex', 'sess-2', 'gpt-6-luna', 'low', '/s', 'abc', 40, 0, NULL, 0, 1, 30, 31, 40, 'gone', 'i1'),
+        ('r03', 'c1', 'antigravity', 'sess-3', 'gemini-3.8-flash', NULL, '/s', NULL, 0, 1, 'm12', 0, 0, 40, 41, NULL, NULL, NULL),
+        ('r04', 'c2', 'agent', 'sess-4', 'grok-4.7', NULL, '/s2', 'def', 400000, 0, 'm1', 1, 9, 5, 6, 7, 'long', NULL),
+        ('r05', 'c2', 'agent', 'sess-5', NULL, NULL, '/s2', NULL, 5, 1, NULL, 1, 1, 8, 9, NULL, NULL, 'i2'),
+        ('r06', 'c3', 'claude', 'sess-6', 'claude-sonnet-5-5', 'high', '/with space/s', 'x', 99999, 0, NULL, 0, 50, 1, 2, NULL, NULL, 'older'),
+        ('r07', 'c3', 'codex', 'sess-7', 'gpt-6.1-terra', 'medium', '/s', NULL, 0, 0, 'm2', 0, 0, 3, 3, NULL, NULL, NULL),
+        ('r08', 'c4', 'antigravity', 'sess-8', 'gemini-4-argon', 'high', '/s', 'h', 1, 1, NULL, 0, 2, 11, 12, NULL, NULL, 'i3');
     `);
-    const before = db
-      .prepare(
-        `SELECT id, chat_id AS owner, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at,
-                last_used_at, ended_at, ended_reason, instructions FROM chat_sessions ORDER BY id`,
-      )
-      .all();
+  }
+
+  it("copies every session of every state across, row by row and column by column, under the chat's id", () => {
+    const { db, file } = workspaceAt(36);
+    sessionsInEveryState(db);
+    const before = db.prepare(`SELECT ${COLUMNS} FROM chat_sessions ORDER BY id`).all();
+    expect(before).toHaveLength(8);
     db.close();
     const again = openDatabase(file);
     opened.push(again);
     expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
-    expect(
-      again
-        .prepare(
-          `SELECT id, owner, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at,
-                  last_used_at, ended_at, ended_reason, instructions FROM tool_sessions ORDER BY id`,
-        )
-        .all(),
-    ).toEqual(before);
+    expect(again.prepare(`SELECT ${NEW_COLUMNS} FROM tool_sessions ORDER BY id`).all()).toEqual(before);
+    // The old table is gone, and nothing else was touched.
     expect(again.prepare("SELECT name FROM sqlite_master WHERE name = 'chat_sessions'").get()).toBeUndefined();
+    expect(again.prepare("SELECT COUNT(*) FROM chats").pluck().get()).toBe(4);
     expect(again.pragma("integrity_check", { simple: true })).toBe("ok");
     expect(again.pragma("foreign_key_check")).toEqual([]);
+  });
+
+  it("runs on an empty table, and a second run changes nothing", () => {
+    const { db, file } = workspaceAt(36);
+    expect(db.prepare("SELECT COUNT(*) FROM chat_sessions").pluck().get()).toBe(0);
+    db.close();
+    const again = openDatabase(file);
+    opened.push(again);
+    expect(again.prepare("SELECT COUNT(*) FROM tool_sessions").pluck().get()).toBe(0);
+    // Opening again, and calling migrate on the migrated database, runs nothing.
+    migrate(again);
+    migrate(again);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
+    again.close();
+    opened.pop();
+    const third = openDatabase(file);
+    opened.push(third);
+    expect(third.prepare("SELECT COUNT(*) FROM tool_sessions").pluck().get()).toBe(0);
+
+    const full = workspaceAt(36);
+    sessionsInEveryState(full.db);
+    full.db.close();
+    const once = openDatabase(full.file);
+    opened.push(once);
+    const rows = once.prepare(`SELECT ${NEW_COLUMNS} FROM tool_sessions ORDER BY id`).all();
+    migrate(once);
+    expect(once.prepare(`SELECT ${NEW_COLUMNS} FROM tool_sessions ORDER BY id`).all()).toEqual(rows);
+  });
+
+  it("leaves chat_sessions as it was, with the version, when the migration cannot finish", () => {
+    const { db, file } = workspaceAt(36);
+    sessionsInEveryState(db);
+    const before = db.prepare("SELECT * FROM chat_sessions ORDER BY id").all();
+    // Something already holds the new table's name, so the first statement of the step fails.
+    db.exec("CREATE TABLE tool_sessions (x)");
+    expect(() => migrate(db)).toThrow(/already exists/);
+    expect(db.pragma("user_version", { simple: true })).toBe(36);
+    expect(db.prepare("SELECT * FROM chat_sessions ORDER BY id").all()).toEqual(before);
+    db.close();
+    expect(file).toBeTruthy();
+  });
+
+  it("does not drop chat_sessions unless the copy is whole: the check throws for a missing row and for a changed column", () => {
+    const { db } = workspaceAt(36);
+    sessionsInEveryState(db);
+    const copy = () =>
+      db.exec(`CREATE TABLE tool_sessions AS SELECT ${COLUMNS} FROM chat_sessions`);
+    copy();
+    expect(() => verifyToolSessionsCopy(db)).not.toThrow();
+    db.exec("DELETE FROM tool_sessions WHERE id = 'r05'");
+    expect(() => verifyToolSessionsCopy(db)).toThrow("migrate-tool-sessions-copy");
+    db.exec("DROP TABLE tool_sessions");
+    copy();
+    db.exec("UPDATE tool_sessions SET instructions = 'changed' WHERE id = 'r03'");
+    expect(() => verifyToolSessionsCopy(db)).toThrow("migrate-tool-sessions-copy");
+    db.exec("DROP TABLE tool_sessions");
+    copy();
+    db.exec("UPDATE tool_sessions SET synced_to = 'x' WHERE id = 'r06'");
+    expect(() => verifyToolSessionsCopy(db)).toThrow("migrate-tool-sessions-copy");
+    db.exec("DROP TABLE tool_sessions");
+    copy();
+    db.exec("INSERT INTO tool_sessions SELECT * FROM tool_sessions WHERE id = 'r01'");
+    // An extra row is a copy that is not the original either.
+    expect(() => verifyToolSessionsCopy(db)).toThrow("migrate-tool-sessions-copy");
+    db.close();
   });
 
   it("drops a session with the chat, the topic or the attempt it belongs to, and with no other", () => {

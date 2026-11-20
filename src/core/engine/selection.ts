@@ -3,7 +3,7 @@ import type Database from "better-sqlite3";
 import { nearestEffort, studentEffort } from "../../shared/effort";
 import { planAuto, type AutoFeature, type AutoProvider } from "./auto";
 import { isBenched, isModelBenched, pointedModels } from "./bench";
-import { effortsOf, runsAs, wasReported } from "./efforts";
+import { effortsOf, wasReported } from "./efforts";
 import { automaticEffortOn, isForeignModel, isOwnModel } from "./model-roles";
 import type { ProviderId } from "./funnel";
 import { LOCAL_PROVIDER, localData, readLocal } from "./local";
@@ -75,12 +75,9 @@ export function selectionFor(
     : picked && listed.includes(picked)
       ? picked
       : automaticEffortOn(selection.provider, feature, listed);
-  // A level the tool lists as a model of its own (`gemini-4-neon-xhigh`) runs as that model, with no effort flag.
-  const model = runsAs(selection.provider, selection.model, effort);
   return {
     ...selection,
-    model,
-    ...(effort && model === selection.model ? { effort } : {}),
+    ...(effort ? { effort } : {}),
     ...(auto ? { chosenFor: feature } : {}),
   };
 }
@@ -121,17 +118,6 @@ export function jobEngine(jobId: string | undefined): string | undefined {
 }
 
 /**
- * A planner's choice as the tool runs it: a level the tool lists as a model of its own (`gemini-4-neon-xhigh`) runs as
- * that model with no effort flag, the same switch `selectionFor` makes for a stored row.
- */
-function runnable<T extends { provider: string; model: string; effort?: string }>(choice: T): T {
-  const model = runsAs(choice.provider, choice.model, choice.effort);
-  if (model === choice.model) return choice;
-  const { effort: _effort, ...rest } = choice;
-  return { ...rest, model } as unknown as T;
-}
-
-/**
  * The model of `provider` for a task, or undefined when that tool is not one the last automatic choice could use (not
  * signed in, turned off, out of requests). `feature` names the task whose tier picks the model; a task the student
  * pinned has none, so it takes the model of the default one.
@@ -144,7 +130,7 @@ export function selectionOn(
   const there = ready.find((candidate) => candidate.id === provider);
   if (!there || isBenched(provider)) return undefined;
   const choice = planAuto(withoutRefusedModels([there]), undefined, null)[feature as AutoFeature];
-  return choice ? runnable({ ...choice, provider: choice.provider as ProviderId }) : undefined;
+  return choice ? { ...choice, provider: choice.provider as ProviderId } : undefined;
 }
 
 /**
@@ -230,7 +216,7 @@ export function fallbackSelection(
     order,
   )[feature as AutoFeature];
   return choice
-    ? runnable({ ...choice, provider: choice.provider as ProviderId })
+    ? { ...choice, provider: choice.provider as ProviderId }
     : undefined;
 }
 

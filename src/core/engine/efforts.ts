@@ -1,6 +1,5 @@
 import { nearestEffort } from "../../shared/effort";
 import { readableModel } from "../../shared/model-names";
-import { variantsOf } from "./effort-variants";
 
 /**
  * The efforts each model lists, as last seen. Model lists are fetched
@@ -12,14 +11,6 @@ const seen = new Map<string, Map<string, string[]>>();
 const names = new Map<string, Map<string, string>>();
 /** Every id a tool reported at its last listing, the maker's own or not. */
 const reported = new Map<string, Set<string>>();
-
-/** The effort variants each tool listed as models of their own, by model and level (see `variantsOf`). */
-const variants = new Map<string, Map<string, string>>();
-
-/** The id a model runs as at an effort level, when the tool lists that level as a model of its own; else the model. */
-export function runsAs(provider: string, model: string, effort: string | undefined): string {
-  return (effort && variants.get(provider)?.get(`${model}|${effort}`)) || model;
-}
 
 /** Whether the tool's last listing held this id, even though it is not one of its maker's models. */
 export function wasReported(provider: string, model: string): boolean {
@@ -41,7 +32,6 @@ export function rememberModels(
 ): void {
   if (reportedIds) {
     reported.set(provider, new Set(reportedIds.map((model) => model.id)));
-    variants.set(provider, variantsOf(reportedIds));
   }
   seen.set(
     provider,
@@ -113,5 +103,4 @@ export function forgetModels(): void {
   seen.clear();
   names.clear();
   reported.clear();
-  variants.clear();
 }

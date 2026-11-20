@@ -15,8 +15,7 @@ import {
   type Need,
 } from "./capabilities";
 import { suggestedModel, translateEngineError } from "./errors";
-import { offeredModels } from "./effort-variants";
-import { automaticEffortOn } from "./model-roles";
+import { automaticEffortOn, ownModels } from "./model-roles";
 import {
   acknowledgeProviders,
   endConversations,
@@ -299,7 +298,7 @@ export async function autoConfigureEngines(
     try {
       const all = await getFunnel().models(row.id as ProviderId);
       // A tool offers only its maker's models, whatever else the account reports.
-      const models = offeredModels(row.id, all);
+      const models = ownModels(row.id, all);
       rememberModels(row.id, models, all);
       listed.push({
         id: row.id,
@@ -865,7 +864,7 @@ export function engineHandlers(
     async models(input: { provider: ProviderId }) {
       await shellPathReady();
       const all = await getFunnel().models(input.provider);
-      const list = offeredModels(input.provider, all);
+      const list = ownModels(input.provider, all);
       rememberModels(input.provider, list, all);
       return list.map((model) => ({
         id: model.id,
@@ -1242,7 +1241,7 @@ async function cheapestTest(
   provider: ProviderId,
 ): Promise<{ model: string; effort?: string }> {
   const all = await getFunnel().models(provider);
-  const models = offeredModels(provider, all);
+  const models = ownModels(provider, all);
   rememberModels(provider, models, all);
   const listed: AutoProvider = {
     id: provider,
