@@ -306,11 +306,11 @@ export function sourceHandlers(
   const addedBook = (catalogId: string) =>
     db
       .prepare(
-        `SELECT id, title, catalog_version AS version FROM sources
+        `SELECT id, title, catalog_version AS version, blob_sha AS sha FROM sources
          WHERE catalog_id = ? AND kind = 'smartbook' AND status = 'ready' AND library = 1
          ORDER BY created_at DESC, rowid DESC LIMIT 1`,
       )
-      .get(catalogId) as { id: string; title: string; version: string | null } | undefined;
+      .get(catalogId) as { id: string; title: string; version: string | null; sha: string | null } | undefined;
   /** The source holding this exact package once its read is over, so a reader of the book needs no package at all. */
   const storedBook = (book: CatalogBook): string | null => {
     const id = existingSourceFor(db, book.sha256);
@@ -326,9 +326,11 @@ export function sourceHandlers(
    * and that package is neither held nor stored, the book changed.
    */
   const resolveBook = async (id: string, signal?: AbortSignal, listed?: string | null) => {
+    // A reader that was shown the chapters of a package (`listed`) is answered from that package or not at all, so the
+    // Library copy answers only when it is that package (an update in place or a newer version added gives it another).
     const added = addedBook(id);
-    if (added) return { from: "library" as const, sourceId: added.id, title: added.title, version: added.version ?? "" };
-    // A reader that was shown the chapters of a package (`listed`) is answered from that package or not at all.
+    if (added && (!listed || !added.sha || added.sha === listed))
+      return { from: "library" as const, sourceId: added.id, title: added.title, version: added.version ?? "", sha: added.sha };
     const held = reading.heldFor(id);
     if (held && (!listed || held.sha === listed)) return { from: "held" as const, parsed: held.parsed, sha: held.sha };
     const book = await catalogBook(id, signal);
@@ -432,7 +434,7 @@ export function sourceHandlers(
       try {
         const found = await resolveBook(input.id, signal);
         if (found.from === "library")
-          return { title: found.title, subject: "", version: found.version, chapters: smartbookChapters(db, found.sourceId), package: null };
+          return { title: found.title, subject: "", version: found.version, chapters: smartbookChapters(db, found.sourceId), package: found.sha };
         if (found.from === "held") {
           const { config } = found.parsed;
           return {

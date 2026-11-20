@@ -236,6 +236,39 @@ describe("reading a free book before it is added", () => {
     ctx.db.close();
   });
 
+  it("reads a chapter of the listed version 1 from that package, not from a Library copy of version 2, and names the Library copy's package", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const ctx = setup();
+    // Version 1 is opened and held.
+    const first = await ctx.handlers.bookPreview({ id: "fisica-demo" });
+    // The catalog now lists version 2, with other chapters, and the student adds it to the Library.
+    const next = zipSync({
+      "smartbook.json": strToU8(
+        JSON.stringify({ id: "fisica-demo", title: "Fisica di prova", version: "2.0.0", access: "public", chapters: [{ id: "cinematica", number: 1, title: "Cinematica", file: "01.md" }] }),
+      ),
+      "chapters/01.md": strToU8("## p1 | Moto\nVERSIONE DUE del testo.\n"),
+    });
+    const nextSha = createHash("sha256").update(next).digest("hex");
+    writeFileSync(join(ctx.siteDir, "books", "fisica-demo@2.0.0.ptsb"), next);
+    const catalog = JSON.parse(readFileSync(join(ctx.siteDir, "catalog.json"), "utf8"));
+    Object.assign(catalog.books[0], { version: "2.0.0", chapters: 1, package: "books/fisica-demo@2.0.0.ptsb", bytes: next.byteLength, sha256: nextSha });
+    writeFileSync(join(ctx.siteDir, "catalog.json"), JSON.stringify(catalog));
+    vi.setSystemTime(Date.now() + 6 * 60_000);
+    const added = await ctx.handlers.importBook({ id: "fisica-demo" });
+    await expect.poll(() => (ctx.db.prepare("SELECT state FROM jobs WHERE id = ?").get(added.jobId!) as { state: string }).state, { timeout: 15_000 }).toBe("succeeded");
+    // The reader still shows version 1's list: its chapters come from version 1, while it is held.
+    expect((await ctx.handlers.bookChapter({ id: "fisica-demo", chapter: 1, package: first.package }))[0]?.text).toBe(SPEED);
+    expect((await ctx.handlers.bookChapter({ id: "fisica-demo", chapter: 2, package: first.package }))[0]?.text).toContain("massa per accelerazione");
+    // Once nothing holds version 1, the reader is told the book changed instead of getting version 2's text.
+    const later = sourceHandlers(ctx.db, ctx.workspace, ctx.runner, undefined, undefined, ctx.transport);
+    await expect(later.bookChapter({ id: "fisica-demo", chapter: 1, package: first.package })).rejects.toMatchObject({ messageKey: "sources.books.changed" });
+    // The Library copy's list names its own package, so a chapter read from it is checked the same way.
+    const library = await later.bookPreview({ id: "fisica-demo" });
+    expect(library.package).toBe(nextSha);
+    expect((await later.bookChapter({ id: "fisica-demo", chapter: 1, package: library.package }))[0]?.text).toContain("VERSIONE DUE");
+    ctx.db.close();
+  });
+
   it("reads a chapter from the package the preview listed, or says the book changed, and never reads the catalog's other version as if it were that one", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const ctx = setup();

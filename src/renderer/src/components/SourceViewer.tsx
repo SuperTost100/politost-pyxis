@@ -153,6 +153,7 @@ export function useSourceView(
       location={location}
       source={view}
       bookChapters={book.data?.chapters}
+      bookPackage={book.data?.package}
       onClose={props.onClose}
     />
   );
@@ -205,12 +206,15 @@ function SourceBody({
   location,
   source,
   bookChapters,
+  bookPackage,
   onClose,
 }: {
   location: SourceLocation;
   source: PanelSource;
   /** The chapters of a book read before it is added, which has no stored copy to ask. */
   bookChapters?: Array<{ number: number; title: string }>;
+  /** The package those chapters were listed from (`sources.bookPreview`). */
+  bookPackage?: string | null;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -341,7 +345,7 @@ function SourceBody({
         ) : body.show === "image" ? (
           <ImageView source={source} where={where} />
         ) : body.show === "text" ? (
-          <TextView location={location} source={source} plan={plan} page={page} onClose={onClose} />
+          <TextView location={location} source={source} plan={plan} page={page} bookPackage={bookPackage} onClose={onClose} />
         ) : (
           <Message reason={body.reason} source={source} />
         )}
@@ -522,7 +526,21 @@ function ImageView({ source, where }: { source: PanelSource; where: { sourceId?:
 }
 
 /** What Pyxis read, laid out on a sheet: a free book's chapter, a slide, a Word file, notes or a saved web page. */
-function TextView({ location, source, plan, page, onClose }: { location: SourceLocation; source: PanelSource; plan: PanelPlan; page: number; onClose: () => void }) {
+function TextView({
+  location,
+  source,
+  plan,
+  page,
+  bookPackage,
+  onClose,
+}: {
+  location: SourceLocation;
+  source: PanelSource;
+  plan: PanelPlan;
+  page: number;
+  bookPackage?: string | null;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
   const holder = useRef<HTMLDivElement>(null);
   const [markdownReady, setMarkdownReady] = useState(markdown != null);
@@ -533,14 +551,13 @@ function TextView({ location, source, plan, page, onClose }: { location: SourceL
   const bookId = location.bookId;
   const client = useQueryClient();
   const rows = useQuery({
-    queryKey: ["source-panel-text", source.sourceId, plan.unit, page, passageId, location.chapter, location.paragraph],
+    // A book's package is in the key, so a chapter cached from another version is never shown under this one's list.
+    queryKey: ["source-panel-text", source.sourceId, plan.unit, page, passageId, location.chapter, location.paragraph, bookPackage],
     queryFn: async () => {
       // A book not in the Library has no stored text: its chapter is read from the package core holds in memory, the one the
       // chapters were listed from (the preview names it), so a list and the text under it are of the same version.
-      if (bookId) {
-        const listed = client.getQueryData<{ package: string | null }>(["book-preview", bookId])?.package;
-        return (await invoke("sources.bookChapter", { id: bookId, chapter: page, package: listed })).map((row) => ({ ...row, current: false }));
-      }
+      if (bookId)
+        return (await invoke("sources.bookChapter", { id: bookId, chapter: page, package: bookPackage })).map((row) => ({ ...row, current: false }));
       if (plan.unit === "page" || plan.unit === "slide") {
         const lines = await invoke("sources.panelPage", { sourceId: passageId ? undefined : source.sourceId, passageId, unit: plan.unit, n: page });
         return lines.map((line) => ({ id: line.id, text: line.text, current: line.current }));

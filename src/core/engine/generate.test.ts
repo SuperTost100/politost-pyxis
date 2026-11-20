@@ -1099,6 +1099,25 @@ describe("a chosen engine whose subscription refuses the model", () => {
       db.close();
     });
 
+    it("does not send a job's picture to the tool that takes over from Cursor when that tool cannot see it", async () => {
+      refuseImages("antigravity");
+      const db = geminiOnly();
+      let calls = 0;
+      await expect(
+        generate({
+          selection: { provider: "agent", model: "cursor-grok-4.6" } as ReturnType<typeof selectionFor>,
+          prompt: "Transcribe this image.",
+          attachments: [{ type: "image", mediaType: "image/png", data: "aGk=" }],
+          run: async (input) => {
+            calls += 1;
+            return result({ text: "never", provider: input.selection.provider });
+          },
+        }),
+      ).rejects.toMatchObject({ code: "engine-missing" });
+      expect(calls).toBe(0);
+      db.close();
+    });
+
     it("keeps the job on its own tool, whatever order the student put their tools in", async () => {
       const db = geminiOnly();
       const codex: AutoProvider = {

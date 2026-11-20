@@ -254,7 +254,11 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
   // the latter is moved to the automatic choice, which needs the first plan.
   if (isRetiredProvider(input.selection.provider)) await afterFirstPlan(input.signal);
   const current = currentSelection(input.selection);
-  if (current !== input.selection) input = { ...input, selection: current };
+  if (current !== input.selection) {
+    // The replacement must read the pictures the call carries, as every other move does (`seenBy`).
+    if (!seenBy(input, current)) throw new IpcError("engine-missing", "engines.errors.engine-missing");
+    input = { ...input, selection: current };
+  }
   const start = startingMove(input);
   if (start) return moveOn(input, start.to, start.reason);
   // Where this call began among refusals: one that lands while it runs is newer, and its answer must not undo it.

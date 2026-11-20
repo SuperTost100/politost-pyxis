@@ -3420,7 +3420,7 @@ export const requests = {
       subject: z.string(),
       version: z.string(),
       chapters: z.array(z.object({ number: z.number(), title: z.string() })),
-      /** The checksum of the package the chapters were listed from, which a reader sends back with each chapter it reads. Null for a copy in the Library. */
+      /** The checksum of the package the chapters were listed from, which a reader sends back with each chapter it reads. Null for a Library copy imported before checksums were kept. */
       package: z.string().nullable(),
     }),
   },

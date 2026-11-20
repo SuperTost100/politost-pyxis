@@ -58,6 +58,7 @@ import {
   modelNames,
   rememberModels,
   resolveEffort,
+  runsAs,
 } from "./efforts";
 import { tooOld } from "./agy-version";
 import { isInstallable, runInstaller } from "./install";
@@ -1241,6 +1242,9 @@ function testEffort(
     : getFunnel().providers[provider]?.capabilities.effort
       ? nearestEffort("low", effortsOf(provider, model) ?? [])
       : undefined;
+  // A level the tool lists as a model of its own runs as that id with no effort flag, as `selectionFor` does.
+  const runs = runsAs(provider, model, effort);
+  if (runs !== model) return { model: runs };
   return { model, ...(effort ? { effort } : {}) };
 }
 
