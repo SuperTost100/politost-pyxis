@@ -7,6 +7,8 @@ import { launchPyxis, setUp } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import type Database from "better-sqlite3";
+import { partMarkdown, seedOutline } from "../../src/core/study/test-parts";
 import { seedPlan, seedSource } from "./seed";
 import { SHOTS, saveShot } from "./shots";
 
@@ -132,7 +134,7 @@ test("results list every question in order, right ones folded in green, the othe
     await expect(page.locator(".px-res-rises")).toContainText(/^Cinematica sale da \d+\/30 a \d+\/30$/);
     const changes = page.locator(".px-res-changes");
     await expect(changes).toContainText("confondi lo spostamento con la distanza percorsa");
-    await expect(changes).toContainText("Nuovo passo: ripasso mirato");
+    await expect(changes).toContainText("Nuovo passo: rivedi gli errori");
     await expectNoAxeViolations(page);
 
     // Every question, in the order it was asked.
@@ -186,10 +188,13 @@ test("results list every question in order, right ones folded in green, the othe
     await expect(rows(page).nth(7)).toContainText("Esclusa dal punteggio");
     await shoot(page, "results");
 
-    // Ripasso mirato drills the gap this quiz opened, from the exam's path.
+    // Rivedi gli errori drills the gap this quiz opened, from the exam's path.
     await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
+    await expect(page.locator(".px-res .ant-btn-primary")).toHaveText("Rivedi i 4 errori");
+    // Going to the exam is the quiet second action, between the step and the ghost button.
+    await expect(page.getByRole("button", { name: "Torna all'esame", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Rifai solo le 4 da rivedere" })).toBeVisible();
-    await page.getByRole("button", { name: "Ripasso mirato", exact: true }).click();
+    await page.getByRole("button", { name: "Rivedi i 4 errori", exact: true }).click();
     // The exam page first takes the request out of the address (`?drill=`) and starts the drill. Leaving before it has
     // would let its cleanup of the address land on the page opened next, and drop that page's `?attempt=`.
     await expect(page).toHaveURL(/#\/plans\/p-fis$/);
@@ -211,19 +216,19 @@ test("the next steps wait for the read that decides them, and stay once they are
     await open(page);
     await expect(rows(page)).toHaveCount(8);
     const actions = page.locator(".px-res-actions");
-    // Until the gap is known, Ripasso mirato would open the wrong answers instead of the gap's drill, so it is not
+    // Until the gap is known, Rivedi gli errori would open the wrong answers instead of the gap's drill, so it is not
     // offered yet: the place of both buttons is held by a placeholder.
     await expect(actions).toHaveAttribute("aria-busy", "true");
-    await expect(page.getByRole("button", { name: "Ripasso mirato", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Rivedi (l'errore|i \d+ errori)$/ })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Rifai solo le/ })).toHaveCount(0);
     // Once the read is in, both buttons are there, and from then on none of them is removed or relabelled.
-    const targeted = page.getByRole("button", { name: "Ripasso mirato", exact: true });
+    const targeted = page.getByRole("button", { name: /^Rivedi (l'errore|i \d+ errori)$/ });
     await expect(targeted).toBeVisible({ timeout: 10_000 });
     await expect(actions).not.toHaveAttribute("aria-busy", "true");
     await expect(page.getByRole("button", { name: "Rifai solo le 4 da rivedere" })).toBeVisible();
     const handle = await targeted.elementHandle();
     await page.waitForTimeout(1500);
-    expect(await handle!.evaluate((element) => element.isConnected), "Ripasso mirato stays in the page").toBe(true);
+    expect(await handle!.evaluate((element) => element.isConnected), "Rivedi gli errori stays in the page").toBe(true);
     await expect(page.getByRole("button", { name: "Rifai solo le 4 da rivedere" })).toBeVisible();
     // The first click lands on the gap's drill, from the exam's path.
     await targeted.click();
@@ -289,7 +294,7 @@ test("the exam page's cleanup of `?drill=` never lands on the page opened right 
         push(...args);
       };
     });
-    await page.getByRole("button", { name: "Ripasso mirato", exact: true }).click();
+    await page.getByRole("button", { name: /^Rivedi (l'errore|i \d+ errori)$/ }).click();
     await expect(page.locator(".px-res-title")).toBeVisible();
     // Give a late cleanup time to land. It would drop `?attempt=` and show the intro of a new quiz in place of the results.
     await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1000)));
@@ -300,7 +305,7 @@ test("the exam page's cleanup of `?drill=` never lands on the page opened right 
   }
 });
 
-test("a redo with an open gap offers the Ripasso mirato its summary announces, and the foot has no second way back", async () => {
+test("a redo with an open gap offers the Rivedi gli errori its summary announces, and the exam as the quiet second action", async () => {
   test.setTimeout(120_000);
   const { page, done } = await launch();
   try {
@@ -310,14 +315,74 @@ test("a redo with an open gap offers the Ripasso mirato its summary announces, a
       location.hash = "/plans/p-fis/redo?attempt=a-quiz";
     });
     await expect(page.locator(".px-res-title")).toBeVisible();
-    await expect(page.locator(".px-res-changes")).toContainText("Nuovo passo: ripasso mirato");
+    await expect(page.locator(".px-res-changes")).toContainText("Nuovo passo: rivedi gli errori");
     await expect(page.getByRole("button", { name: /^Rifai solo le \d+ da rivedere$/ })).toHaveCount(0);
-    // The announced step has its button, and the bar's control is the only way back: the foot has no primary action.
-    await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(0);
+    // The announced step is the one primary action, and going to the exam sits under it as a secondary one.
+    await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
+    await expect(page.locator(".px-res .ant-btn-primary")).toHaveText("Rivedi gli errori");
+    await expect(page.getByRole("button", { name: "Torna all'esame", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continua", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Ripasso mirato", exact: true }).click();
+    await page.getByRole("button", { name: "Rivedi gli errori", exact: true }).click();
     // The exam page takes the request (`?drill=`) out of the address as it starts the drill.
     await expect(page).toHaveURL(/#\/plans\/p-fis$/);
+  } finally {
+    await done();
+  }
+});
+
+test("the end of a lesson offers the quiz of its topic, with its size once the quiz exists", async () => {
+  test.setTimeout(120_000);
+  const { page, userData, done } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 832 });
+    const at = Date.now();
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    // Cinematica is read and well known except for what the plan still asks: its quiz is what comes after its lesson.
+    db.exec(
+      "DELETE FROM gap_answers; DELETE FROM gaps; DELETE FROM attempt_answers; DELETE FROM attempts; DELETE FROM learning_events; DELETE FROM items;",
+    );
+    seedOutline(db as unknown as Database.Database, {
+      planId: "p-fis",
+      topicId: "t-kin",
+      parts: [{ title: "Cinematica del punto", minutes: 8, markdown: partMarkdown("Cinematica del punto") }],
+    });
+    const event = db.prepare(
+      "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES(?,'answer_given','p-fis',?,?,?)",
+    );
+    for (const [i, topic] of ["t-din", "t-din", "t-kin"].entries())
+      event.run(`e-${i}`, topic, JSON.stringify({ score: 1, scores: [1, 1, 1, 1], evidenceKind: "quiz" }), at - 3_600_000 * (i + 1));
+    db.close();
+    await page.evaluate(() => window.pyxis.invoke("plans.complete", { planId: "p-fis", activity: "lesson", topicId: "t-din" }));
+    const endOfLesson = async () => {
+      await page.evaluate(() => {
+        location.hash = "/plans/p-fis/lesson/t-kin?part=1";
+      });
+      await expect(page.locator(".px-part-foot")).toBeVisible();
+      if (!(await page.locator(".px-part-foot.is-active").count())) {
+        await page.getByRole("group", { name: "Opzioni" }).getByRole("button").first().click();
+        await expect(page.locator(".px-part-foot.is-active")).toBeVisible();
+      }
+    };
+    await endOfLesson();
+    // The exercises came after the lesson, so the quiz is the step that follows.
+    await page.evaluate(() => window.pyxis.invoke("plans.complete", { planId: "p-fis", activity: "practice", topicId: "t-kin" }));
+    await page.reload();
+    const quiz = page.getByRole("button", { name: /^Fai il quiz/ });
+    await expect(quiz).toBeVisible();
+    // No quiz exists yet, so there is no size to say.
+    await expect(quiz).toHaveText("Fai il quiz");
+    await expect(page.getByRole("button", { name: "Torna all'esame", exact: true })).toBeVisible();
+    // A quiz started and left, written in full: its size is said beside the button.
+    const again = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    again
+      .prepare(
+        "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES('i-open','p-fis','t-kin','quiz',?,'fixture','sources',?)",
+      )
+      .run(JSON.stringify({ questions, config: { count: 8, feedback: true, types: ["mcq"] }, complete: true }), at);
+    again.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES('a-open','p-fis','i-open',?)").run(at);
+    again.close();
+    await page.reload();
+    await expect(page.getByRole("button", { name: /^Fai il quiz/ })).toHaveText(/^Fai il quiz\s*8 domande$/);
   } finally {
     await done();
   }

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { placeOf, placePaths } from "./places";
+import { placeOf, placePaths, studyExam } from "./places";
 
 /** Every route pattern in router.tsx, read as text: the shell's children are relative to "/". */
 function routePatterns(): string[] {
@@ -25,10 +25,43 @@ describe("places", () => {
     expect(placeOf("/plans/p1/sources").parent?.to).toBe("/plans/p1");
     expect(placeOf("/plans/p1/settings").parent?.to).toBe("/plans/p1");
     expect(placeOf("/plans/p1")).toEqual({ name: { key: "places.exam" }, parent: { to: "/exams", name: { key: "doors.exams" } } });
-    expect(placeOf("/plans/p1/review/questions?attempt=a").parent).toEqual({
-      to: "/plans/p1/review",
-      name: { key: "cards.reviewTitle" },
-    });
+    // The review's pages are study steps of the exam, so they lead to the exam and not to the review's start.
+    expect(placeOf("/plans/p1/review/questions?attempt=a").parent).toEqual({ to: "/plans/p1", name: { key: "places.exam" } });
+    expect(placeOf("/plans/p1/review/cards").parent?.to).toBe("/plans/p1");
+  });
+
+  it("names the exam a study page belongs to, and no other page", () => {
+    const study = [
+      "/plans/p1/lesson/t1?part=2",
+      "/plans/p1/practice/t1",
+      "/plans/p1/intro",
+      "/plans/p1/diagnostic",
+      "/plans/p1/quiz/t1?attempt=a",
+      "/plans/p1/gap/g1",
+      "/plans/p1/redo?attempt=a",
+      "/plans/p1/past",
+      "/plans/p1/cards/t1",
+      "/plans/p1/review",
+      "/plans/p1/review/cards",
+      "/plans/p1/review/questions?attempt=a",
+      "/cards/due?exam=p1&topic=none",
+    ];
+    for (const path of study) expect(studyExam(path), path).toBe("p1");
+    // The exam itself, its other pages, a simulation and every page of another section are not steps.
+    for (const path of [
+      "/plans/p1",
+      "/plans/p1/settings",
+      "/plans/p1/sources",
+      "/plans/p1/simulation",
+      "/plans/p1/exam/a",
+      "/plans/p1/map/t1",
+      "/exams/mistakes?exam=p1",
+      "/cards/due",
+      "/cards/due?exam=none",
+      "/ask/c1",
+      "/maps",
+    ])
+      expect(studyExam(path), path).toBeNull();
   });
 
   it("follows `?exam=` to the exam a page was narrowed to", () => {

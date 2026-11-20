@@ -146,7 +146,7 @@ const routes = [
   ["plan-dated", "/plans/audit-ready-plan"],
   // The same exam with hours set in the planner: its topic and simulation rows carry expected days.
   ["plan-dated-planner", "/plans/audit-ready-plan"],
-  // The exam page with finished steps on its open topic, and with an open gap that offers Ripasso mirato.
+  // The exam page with finished steps on its open topic, and with an open gap that offers Rivedi gli errori.
   ["plan-done", "/plans/audit-plan"],
   ["plan-gaps", "/plans/audit-plan"],
   // The block of open gaps in the side column with none, with eight folded and unfolded, and the page "Colma" opens: the
@@ -3399,7 +3399,7 @@ async function openState(page: Page, name: string) {
       break;
     case "plan-gaps":
       await expect(
-        page.getByRole("button", { name: /^(Ripasso mirato|Targeted review)/ }).first(),
+        page.getByRole("button", { name: /^(Rivedi gli errori|Review the mistakes)/ }).first(),
       ).toBeVisible();
       await expect(page.locator(".px-exam-aside li.px-gap")).toHaveCount(1);
       break;
@@ -4394,13 +4394,13 @@ async function openState(page: Page, name: string) {
       // What the exam changed comes from mastery before and after it and the gap its wrong answer counts for.
       const changes = page.locator(".px-res-changes");
       await expect(changes).toContainText("You leave the weight out");
-      await expect(changes).toContainText(/Nuovo passo: ripasso mirato|New step: targeted review/);
+      await expect(changes).toContainText(/Nuovo passo: rivedi gli errori|New step: review the mistakes/);
       await expect(changes).toContainText(/Force · (una lacuna seria|a serious gap)/);
       await expect(page.locator(".px-res-rises")).toContainText(/Energy (sale|rises)/);
       await expect(page.locator(".px-res-fallback")).toContainText("ChatGPT");
-      // One primary button, Ripasso mirato; every exercise in order, the one to review open.
+      // One primary button, Rivedi gli errori; every exercise in order, the one to review open.
       await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
-      await expect(page.locator(".px-res .ant-btn-primary")).toHaveText(/Ripasso mirato|Targeted review/);
+      await expect(page.locator(".px-res .ant-btn-primary")).toHaveText(/Rivedi (l'errore|i \d+ errori)|Review the (mistake|\d+ mistakes)/);
       await expect(page.locator(".px-res-q:not(.is-correct)")).toHaveCount(1);
       await expect(page.locator(".px-res-q:not(.is-correct)")).toContainText(/Sbagliata|Wrong/);
       break;

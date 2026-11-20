@@ -199,8 +199,8 @@ test("plan path: nothing locked, every activity is on the path, any topic's less
     await expect(page.getByRole("button", { name: /^Continua: / })).toBeFocused();
     expect((await read()).steps).toMatchObject([{ activity: "lesson", topicId: topics[0]!.id }]);
 
-    // After the first lesson Adesso suggests work on it.
-    await page.getByRole("button", { name: "Per oggi basta" }).click();
+    // After the first lesson Adesso suggests work on it. The lesson's end offers the way to the exam as its quiet second action.
+    await page.getByRole("button", { name: "Torna all'esame" }).click();
     await expect(next.getByText("Consigliato adesso", { exact: true })).toBeVisible();
     await expect(next.getByRole("heading")).toHaveText(`Esercizio assistito: ${topics[0]!.title}`);
     await expect(next.getByText("Fissa quello che hai appena letto.")).toBeVisible();

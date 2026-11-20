@@ -83,7 +83,7 @@ function sessionLine(
 
 /**
  * An exam's page at `/plans/:planId`. `/plans/:planId/sources` is all of its material; the older Path, Progress and
- * Topics tabs land on the page, and `?drill=<topicId>` there starts a Ripasso mirato.
+ * Topics tabs land on the page, and `?drill=<topicId>` there starts a Rivedi gli errori.
  */
 export function PlanPage() {
   const { planId = "", view } = useParams();
