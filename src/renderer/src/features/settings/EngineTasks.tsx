@@ -108,7 +108,7 @@ export function EngineTasks({
             <div className="engines-feature-row" key={feature}>
               <div className="engines-feature-work">
                 <label htmlFor={`engine-${feature}`}>{t(`engines.feature.${feature}`)}</label>
-                <small>{t(`engines.roles.${roleOf(selection?.provider, feature)}`)}</small>
+                <small className="small">{t(`engines.roles.${roleOf(selection?.provider, feature)}`)}</small>
               </div>
               <div className="engines-feature-model">
                 <select

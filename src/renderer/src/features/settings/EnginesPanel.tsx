@@ -252,33 +252,20 @@ export function EnginesPanel() {
   const connected = shownOrder(rows.filter(isConnected), order);
   const toConnect = rows.filter((row) => row.kind === "cli" && !isConnected(row));
   const keyed = rows.filter((row) => row.kind === "api" && keys.data?.configured.includes(vendorOf(row.id)));
-  // The model each role runs for every CLI, as `pickModel` gives it. A connected tool is asked with the list it reports,
-  // without the models its plan refused, so the row says what the automatic choice would run today. A tool still to
-  // connect has no list, and the model file's preferred models stand in.
+  // The model each role runs for every tool, read from the catalog core plans from, so the row says what the planner
+  // runs and cannot go stale when a tool's list or a refusal changes it: `engine.auto` and every refresh read it again.
+  // A tool still to connect gets the model file's preferred models. An API provider counts once its key is saved.
+  const roleProviders = providers.filter((provider) => !provider.endsWith("-api") || keys.data?.configured.includes(vendorOf(provider)));
   const roleQueries = useQueries({
-    queries: providers
-      .filter((provider) => !provider.endsWith("-api"))
-      .map((provider) => {
-        const row = rows.find((item) => item.id === provider);
-        const listed = modelQueries[providers.indexOf(provider)];
-        const models =
-          row && isConnected(row)
-            ? listed?.isSuccess
-              ? listed.data.map((model) => model.id).filter((id) => !row.refusedModels.includes(id))
-              : undefined
-            : null;
-        return {
-          queryKey: ["engine-roles", provider, models],
-          enabled: !!row && models !== undefined,
-          queryFn: () => invoke("engines.roles", { provider, models: models ?? null }),
-        };
-      }),
+    queries: roleProviders.map((provider) => ({
+      queryKey: ["engine-roles", provider],
+      queryFn: () => invoke("engines.roles", { provider }),
+    })),
   });
-  const rolesByProvider = Object.fromEntries(
-    providers
-      .filter((provider) => !provider.endsWith("-api"))
-      .map((provider, index) => [provider, roleQueries[index]?.data]),
-  ) as Record<string, RequestOutput<"engines.roles"> | undefined>;
+  const rolesByProvider = Object.fromEntries(roleProviders.map((provider, index) => [provider, roleQueries[index]?.data])) as Record<
+    string,
+    RequestOutput<"engines.roles"> | undefined
+  >;
   // A newer model file changes the roles without any other change to the page.
   useEffect(() => onBroadcast("engine.auto", () => void client.invalidateQueries({ queryKey: ["engine-roles"] })), [client]);
   /** The engine's own name for a model, the way the student knows it. */
@@ -576,7 +563,8 @@ export function EnginesPanel() {
     const using = inUse(row);
     if (using) place += 1;
     const roleData = rolesByProvider[row.id];
-    const roleList = roleData
+    // The roles are named only once core has listed the tool's own models; until then the line below says what it can.
+    const roleList = roleData?.known
       ? roleItems(roleData.roles, (id) => modelLabel(row.id, id)).map((item) => ({
           ...item,
           label: t(`engines.roles.${item.role}`),

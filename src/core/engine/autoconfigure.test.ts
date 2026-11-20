@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import { engineHandlers } from "./handlers";
-import { selectionFor } from "./selection";
+import { rememberReady, selectionFor } from "./selection";
 import { getFunnel } from "./funnel";
 import { benchModel, clearBench } from "./bench";
 vi.mock("./funnel", async (original) => {
@@ -295,6 +295,57 @@ describe("automatic engine choice", () => {
       await handlers.autoConfigure({});
       await vi.waitFor(() => expect(notified).toBe(2));
     });
+    db.close();
+  });
+});
+
+describe("the roles a tool's row names", () => {
+  type Features = Awaited<ReturnType<ReturnType<typeof engineHandlers>["autoConfigure"]>>["features"];
+  /** Every task the plan gave to this tool runs on the model the row names for the task's role on that tool. */
+  function agree(handlers: ReturnType<typeof engineHandlers>, features: Features) {
+    for (const provider of ["claude", "codex"]) {
+      const { roles, tasks, known } = handlers.roles({ provider });
+      expect(known, provider).toBe(true);
+      for (const [feature, row] of Object.entries(features))
+        if (row.provider === provider) expect(row.model, `${provider} ${feature}`).toBe(roles[(tasks as Record<string, "fast" | "mid" | "strong">)[feature]!]);
+    }
+  }
+
+  it("come from the catalog the plan was made with, so the row says what the planner runs", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    const { features } = await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
+    agree(handlers, features);
+    db.close();
+  });
+
+  it("leave out a refused model, and a model the refusal's own family left out, as the planner does", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
+    // Opus is refused and the refusal says to use a Sonnet model: only Claude's Sonnet models stay in the plan.
+    benchModel("claude", "claude-opus-5-5", Date.now(), "sonnet");
+    try {
+      const { features } = await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
+      const { roles } = handlers.roles({ provider: "claude" });
+      expect(roles.strong).toBe("claude-sonnet-5");
+      agree(handlers, features);
+    } finally {
+      clearBench();
+    }
+    db.close();
+  });
+
+  it("name the file's preferred models for a tool the planner does not hold, and flag that they are a guess", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    // Nothing is planned yet: the row has no catalog to name models from, whatever a listing read earlier held.
+    rememberReady([]);
+    const before = handlers.roles({ provider: "claude" });
+    expect(before.known).toBe(false);
+    expect(before.roles).toEqual({ fast: "claude-haiku-5-5", mid: "claude-sonnet-5-5", strong: "claude-opus-5-5" });
+    const { features } = await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
+    agree(handlers, features);
     db.close();
   });
 });

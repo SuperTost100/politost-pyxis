@@ -178,6 +178,16 @@ export function currentSelection<T extends { provider: string; model: string; ch
   return { ...choice, chosenFor: feature } as unknown as T;
 }
 
+/**
+ * The ids of a tool's models in the catalog the automatic choice plans from, without the ones its plan refused, so a
+ * screen that names the model of a role says what the planner runs. Undefined for a tool the planner does not hold: one
+ * still to connect, turned off or not yet confirmed.
+ */
+export function plannedModels(provider: string): string[] | undefined {
+  const there = ready.find((candidate) => candidate.id === provider);
+  return there && withoutRefusedModels([there])[0]!.models.map((model) => model.id);
+}
+
 /** The student's order, for the tool a failing task moves to. Set at launch and at once when the student changes it. */
 export function rememberOrder(next: readonly string[] | null): void {
   order = next;
