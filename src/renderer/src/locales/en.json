@@ -371,6 +371,29 @@
     "subjectDragCancelled": "Reordering cancelled.",
     "retry": "Try again",
     "attachFilter": "Photos and documents",
+    "attach": {
+      "sent": "Attached files",
+      "photo": "Photo",
+      "reading": "Reading…",
+      "readingPercent": "Reading, {{percent}}%",
+      "scan": "Reading the scan…",
+      "scanPage": "Reading the scan, page {{page}} of {{pages}}",
+      "needsData": "To read this scan, Pyxis needs to download its reading data.",
+      "readScan": "Read the scan",
+      "leftOut": "Sent without {{name}}.",
+      "error": {
+        "password": "The file is password-protected. Remove the password and attach it again.",
+        "unreadable": "Pyxis can't read this file. It may be damaged.",
+        "empty": "I found no text in this file.",
+        "tooLargeDocument": "The file is larger than the 256 MB Pyxis reads for a document.",
+        "tooLargePhoto": "The photo is larger than the 40 MB Pyxis reads.",
+        "tooMany": "A message carries up to {{max}} files. Remove one to attach this.",
+        "unsupported": "A message can carry photos, PDF, Word, PowerPoint, text and Markdown files.",
+        "denied": "Pyxis isn't allowed to open this file.",
+        "cancelled": "The reading was stopped. Remove the file and attach it again.",
+        "data": "The scan could not be read, because its reading data is missing."
+      }
+    },
     "replied": "Pyxis replied.",
     "loadingChat": "Opening the chat…",
     "loadFailed": "This chat couldn't be opened.",
@@ -2798,11 +2821,9 @@
     "unknownRequest": "Unknown request",
     "aborted": "Cancelled",
     "invalidOutput": "The answer was not in the expected shape",
-    "attachTooBig": "That file is too large. Keep each attachment under 15 MB, and eight files at most.",
     "invalidSubject": "Enter a subject name of 1 to 120 characters.",
     "subjectExists": "A subject with that name already exists.",
     "coreUnavailable": "The internal engine could not start. Retry, or open Settings to restore a backup.",
-    "attachScanned": "{{name}} is a scan, so I find no text in it to read here. Add it to the library and choose Read the scan.",
     "chatBusy": "Pyxis is still answering in this chat. Wait for the reply or stop it, then ask again."
   },
   "dev": {
@@ -2936,6 +2957,7 @@
       "use": "Use {{name}}"
     },
     "notice": {
+      "close": "Close",
       "details": "Details",
       "retry": "Try again",
       "loadFailed": "This could not be loaded."

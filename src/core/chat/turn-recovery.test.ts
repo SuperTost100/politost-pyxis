@@ -1,25 +1,12 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
-import * as attach from "./attach";
 import { extractPlain } from "../sources/documents";
+import { heldFilesFor } from "./test-attach";
 import { askTurn, deleteChat, readChat, regenerateTurn } from "./turn";
-
-// The real staging, with the document read done in-process instead of in the extract worker.
-vi.mock("./attach", async (original) => {
-  const actual = await original<typeof import("./attach")>();
-  return {
-    ...actual,
-    stageFiles: (...args: Parameters<typeof actual.stageFiles>) =>
-      actual.stageFiles(args[0], args[1], args[2], args[3], args[4], args[5], undefined, undefined, async (_path, _ext, bytes) =>
-        extractPlain(new TextDecoder().decode(bytes), false),
-      ),
-  };
-});
-void attach;
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -46,20 +33,24 @@ function setup() {
     return path;
   };
   const count = (sql: string) => (db.prepare(`SELECT COUNT(*) AS n FROM ${sql}`).get() as { n: number }).n;
-  return { workspace, db, file, count };
+  const files = heldFilesFor(db, workspace);
+  /** Attaches a file as the composer does, so a turn can send it and a retry can send the same one. */
+  const attached = async (path: string) => ({ attachments: (await files.attach(path)).ids, held: files.held });
+  return { workspace, db, file, count, attached };
 }
 
 describe("a failed or stopped first turn leaves no chat behind", () => {
-  it("removes the chat, its message and its attached document when the model call fails, so a retry makes one chat", async () => {
-    const { workspace, db, file, count } = setup();
-    const note = file("appunti.txt", "Il calore si trasmette per conduzione.");
+  it("removes the chat and its message when the model call fails, keeps the attached file held, so a retry makes one chat and one source", async () => {
+    const { workspace, db, file, count, attached } = setup();
+    const sent = await attached(file("appunti.txt", "Il calore si trasmette per conduzione."));
     const turn = (run: typeof down) =>
-      askTurn(db, { text: "spiega", allowGeneral: true, files: [note], workspace, run });
+      askTurn(db, { text: "spiega", allowGeneral: true, ...sent, workspace, run });
     await expect(turn(down)).rejects.toThrow("engine-down");
+    // The file was read when it was attached and stays in the composer for the retry, so its source is kept.
     expect({ chats: count("chats"), messages: count("messages"), sources: count("sources") }).toEqual({
       chats: 0,
       messages: 0,
-      sources: 0,
+      sources: 1,
     });
     const result = await turn(async () => reply);
     expect(count("chats")).toBe(1);
@@ -87,12 +78,12 @@ describe("a failed or stopped first turn leaves no chat behind", () => {
   });
 
   it("keeps an existing chat and stores the retried document once", async () => {
-    const { workspace, db, file, count } = setup();
+    const { workspace, db, file, count, attached } = setup();
     const first = await askTurn(db, { text: "ciao", allowGeneral: true, run: async () => reply });
     await tick();
-    const note = file("appunti.txt", "Il calore si trasmette per conduzione.");
+    const sent = await attached(file("appunti.txt", "Il calore si trasmette per conduzione."));
     const turn = (run: typeof down) =>
-      askTurn(db, { chatId: first.chatId, text: "spiega", allowGeneral: true, files: [note], workspace, run });
+      askTurn(db, { chatId: first.chatId, text: "spiega", allowGeneral: true, ...sent, workspace, run });
     await expect(turn(down)).rejects.toThrow("engine-down");
     await tick();
     // The question and its document stay with the chat, so it can be answered later.
@@ -101,6 +92,121 @@ describe("a failed or stopped first turn leaves no chat behind", () => {
     expect(count("sources")).toBe(1);
     expect(count("sources WHERE library = 0")).toBe(1);
     expect(readChat(db, first.chatId).map((row) => row.role)).toEqual(["user", "assistant", "user", "assistant"]);
+    db.close();
+  });
+});
+
+describe("a failed send keeps its files held, ready, for the retry", () => {
+  const NOTE = "Il calore si trasmette per conduzione.";
+
+  it("keeps a file the chat already held, instead of dropping the copy made for this send", async () => {
+    const { workspace, db, file, count, attached } = setup();
+    const first = await attached(file("appunti.txt", NOTE));
+    const opened = await askTurn(db, { text: "ciao", allowGeneral: true, ...first, workspace, run: async () => reply });
+    await tick();
+    // The same file again, in the same chat: its text is already there, so the new copy is only a duplicate.
+    const again = await attached(file("appunti-bis.txt", NOTE));
+    const turn = (run: typeof down) =>
+      askTurn(db, { chatId: opened.chatId, text: "spiega", allowGeneral: true, ...again, workspace, run });
+    await expect(turn(down)).rejects.toThrow("engine-down");
+    // The composer gets it back as a ready chip: core still knows it, and nothing is shown as failed.
+    expect(first.held.list(again.attachments)).toEqual([expect.objectContaining({ name: "appunti-bis.txt", state: "ready" })]);
+    await tick();
+    await turn(async () => reply);
+    // The retry sent it, the question lists it, and the chat holds one copy of the text, not two.
+    expect(first.held.list(again.attachments)).toEqual([]);
+    expect(count("sources WHERE library = 0")).toBe(1);
+    expect(readChat(db, opened.chatId).filter((row) => row.role === "user").at(-1)!.files).toEqual([
+      expect.objectContaining({ name: "appunti-bis.txt", kind: "document" }),
+    ]);
+    db.close();
+  });
+
+  it("keeps a file that could not be read held and failed, and names it once the send goes through", async () => {
+    const { workspace, db, file } = setup();
+    const files = heldFilesFor(db, workspace, {
+      extract: async ({ path }) => {
+        if (readFileSync(path, "utf8").includes("rotto")) throw new Error("pdf-password-required");
+        return { document: extractPlain(NOTE, false) };
+      },
+    });
+    const ok = await files.held.attach(file("buono.txt", "buono"));
+    const bad = await files.held.attach(file("chiuso.pdf", "rotto"));
+    await files.held.settle([ok.id, bad.id]);
+    const sent = { attachments: [ok.id, bad.id], held: files.held };
+    await expect(askTurn(db, { text: "spiega", allowGeneral: true, ...sent, workspace, run: down })).rejects.toThrow("engine-down");
+    expect(files.held.list([ok.id, bad.id]).map((view) => [view.name, view.state])).toEqual([
+      ["buono.txt", "ready"],
+      ["chiuso.pdf", "failed"],
+    ]);
+    const result = await askTurn(db, { text: "spiega", allowGeneral: true, ...sent, workspace, run: async () => reply });
+    expect(result.leftOut).toEqual([{ name: "chiuso.pdf", kind: "document", error: "password" }]);
+    expect(files.held.list([ok.id, bad.id])).toEqual([]);
+    db.close();
+  });
+});
+
+describe("taking off a chip that came back after a failed send", () => {
+  it("keeps the document the stored question already names, so the question still opens it and Try again still has it", async () => {
+    const { workspace, db, file, attached } = setup();
+    const opened = await askTurn(db, { text: "ciao", allowGeneral: true, run: async () => reply });
+    await tick();
+    const sent = await attached(file("appunti.txt", "Il calore si trasmette per conduzione."));
+    await expect(
+      askTurn(db, { chatId: opened.chatId, text: "spiega gli appunti", allowGeneral: true, ...sent, workspace, run: down }),
+    ).rejects.toThrow("engine-down");
+    await tick();
+    // The question and its document are stored. The student removes the chip that came back to the composer.
+    sent.held.detach(sent.attachments[0]!);
+    const question = readChat(db, opened.chatId).filter((row) => row.role === "user").at(-1)!;
+    expect(question.files).toEqual([expect.objectContaining({ name: "appunti.txt", sourceId: expect.any(String) })]);
+    expect(db.prepare(`SELECT COUNT(*) FROM passages WHERE source_id = ?`).pluck().get(question.files![0]!.sourceId)).toBeGreaterThan(0);
+    let prompt = "";
+    await regenerateTurn(db, {
+      chatId: opened.chatId,
+      allowGeneral: true,
+      workspace,
+      run: async (input) => {
+        prompt = input.prompt;
+        return reply;
+      },
+    });
+    expect(prompt).toContain("Il calore si trasmette per conduzione.");
+    db.close();
+  });
+});
+
+describe("Try again releases the files of the question it answers", () => {
+  it("lets go of the held files once the stored question is answered, and names none of them on the next question", async () => {
+    const { workspace, db, file, count } = setup();
+    const opened = await askTurn(db, { text: "ciao", allowGeneral: true, run: async () => reply });
+    await tick();
+    const files = heldFilesFor(db, workspace, {
+      extract: async ({ path }) => {
+        if (readFileSync(path, "utf8").includes("rotto")) throw new Error("pdf-password-required");
+        return { document: extractPlain("Il calore si trasmette per conduzione.", false) };
+      },
+    });
+    const ok = await files.held.attach(file("appunti.txt", "buono"));
+    const bad = await files.held.attach(file("chiuso.pdf", "rotto"));
+    await files.held.settle([ok.id, bad.id]);
+    const sent = { attachments: [ok.id, bad.id], held: files.held };
+    await expect(askTurn(db, { chatId: opened.chatId, text: "spiega", allowGeneral: true, ...sent, workspace, run: down })).rejects.toThrow("engine-down");
+    await tick();
+    expect(files.held.list([ok.id, bad.id])).toHaveLength(2);
+    // The student presses Try again: the stored question is answered with its file, and the composer lets both go.
+    await regenerateTurn(db, { chatId: opened.chatId, allowGeneral: true, workspace, held: files.held, run: async () => reply });
+    expect(files.held.list([ok.id, bad.id])).toEqual([]);
+    expect(count("held_files")).toBe(0);
+    // The copy that could not be read is gone; the readable one stays with the question that carries it.
+    expect(count("sources WHERE library = 0")).toBe(1);
+    expect(readChat(db, opened.chatId).filter((row) => row.role === "user").at(-1)!.files).toEqual([
+      expect.objectContaining({ name: "appunti.txt" }),
+    ]);
+    // The next question carries nothing from them.
+    await tick();
+    await askTurn(db, { chatId: opened.chatId, text: "e poi?", allowGeneral: true, attachments: [ok.id, bad.id], held: files.held, workspace, run: async () => reply });
+    expect(count("attachments WHERE kind = 'document'")).toBe(1);
     db.close();
   });
 });
@@ -261,11 +367,11 @@ describe("a chat deleted while its reply is written", () => {
 
 describe("a document attached to this turn", () => {
   it("is in the prompt even when the question shares no words with it", async () => {
-    const { workspace, db, file } = setup();
+    const { workspace, db, file, attached } = setup();
     let prompt = "";
     await askTurn(db, {
       text: "riassumi questo file",
-      files: [file("appunti.txt", "Il calore si trasmette per conduzione.")],
+      ...(await attached(file("appunti.txt", "Il calore si trasmette per conduzione."))),
       workspace,
       run: async (input) => {
         prompt = input.prompt;

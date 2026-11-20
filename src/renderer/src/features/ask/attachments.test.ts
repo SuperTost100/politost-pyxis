@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
+import type { AttachmentView } from "../../../../shared/ipc";
 import {
-  addPendingFiles,
+  attachFailure,
   attachable,
+  attachmentLine,
+  isLocalFile,
+  refusedFile,
   draftKey,
   fileName,
   keepUnsentQuestion,
@@ -57,13 +61,13 @@ describe("Ask attachments", () => {
     expect(takeBoardAttachment(s)).toEqual({ path: "/tmp/a.png" });
   });
 
-  it("keeps each chat's draft and picked files apart, as paths only", () => {
+  it("keeps each chat's draft and picked files apart, as core's ids and names only", () => {
     const s = store({});
-    writePendingFiles(s, "a", ["/tmp/uno.pdf"]);
-    writePendingFiles(s, undefined, ["/tmp/nuovo.png"]);
-    expect(readPendingFiles(s, "a")).toEqual(["/tmp/uno.pdf"]);
+    writePendingFiles(s, "a", [{ id: "f1", name: "uno.pdf" }]);
+    writePendingFiles(s, undefined, [{ id: "f2", name: "nuovo.png" }]);
+    expect(readPendingFiles(s, "a")).toEqual([{ id: "f1", name: "uno.pdf" }]);
     expect(readPendingFiles(s, "b")).toEqual([]);
-    expect(readPendingFiles(s)).toEqual(["/tmp/nuovo.png"]);
+    expect(readPendingFiles(s)).toEqual([{ id: "f2", name: "nuovo.png" }]);
     expect(draftKey("a")).not.toBe(draftKey("b"));
     expect(draftKey()).toBe("pyxis-draft");
     writePendingFiles(s, "a", []);
@@ -96,9 +100,22 @@ describe("Ask attachments", () => {
     expect(readPendingSubject(store({ "pyxis-subject": '{"kind":"subject"}' }))).toEqual({ kind: "auto" });
   });
 
-  it("reads no files from a value that is not a list of paths", () => {
+  it("reads no files from a value that is not a list of files, and drops the paths an older build kept", () => {
     expect(readPendingFiles(store({ "pyxis-files:a": "{" }), "a")).toEqual([]);
-    expect(readPendingFiles(store({ "pyxis-files:a": '[1,"/tmp/x.txt"]' }), "a")).toEqual(["/tmp/x.txt"]);
+    expect(readPendingFiles(store({ "pyxis-files:a": '[1,"/tmp/x.txt",{"id":"f","name":"x.txt"}]' }), "a")).toEqual([
+      { id: "f", name: "x.txt" },
+    ]);
+  });
+
+  it("does not keep a chip that never reached core", () => {
+    const s = store({});
+    writePendingFiles(s, "a", [
+      { id: "f1", name: "uno.pdf" },
+      { id: "local-1", name: "enorme.pdf" },
+    ]);
+    expect(readPendingFiles(s, "a")).toEqual([{ id: "f1", name: "uno.pdf" }]);
+    expect(isLocalFile({ id: "local-1", name: "x" })).toBe(true);
+    expect(isLocalFile({ id: "f1", name: "x" })).toBe(false);
   });
 
   it("names the chat the page was opened from, or none for a new chat", () => {
@@ -111,13 +128,50 @@ describe("Ask attachments", () => {
   });
 });
 
-describe("addPendingFiles", () => {
-  it("adds each picked file once, keeping the order", () => {
-    expect(
-      addPendingFiles(["/a/foto.png"], ["/a/foto.png", "/a/notes.pdf"]),
-    ).toEqual(["/a/foto.png", "/a/notes.pdf"]);
+describe("what a chip says", () => {
+  const view = (extra: Partial<AttachmentView>): AttachmentView => ({
+    id: "f",
+    name: "dispensa.pdf",
+    kind: "document",
+    size: 1,
+    state: "reading",
+    ...extra,
   });
 
+  it("says nothing for a file that is read, and how far the reading is while it goes", () => {
+    expect(attachmentLine(view({ state: "ready" }))).toBeNull();
+    expect(attachmentLine(view({}))).toEqual({ key: "ask.attach.reading" });
+    expect(attachmentLine(view({ progress: 0.4 }))).toEqual({ key: "ask.attach.readingPercent", values: { percent: 40 } });
+    expect(attachmentLine(view({ phase: "scan", page: 3, pages: 12 }))).toEqual({
+      key: "ask.attach.scanPage",
+      values: { page: 3, pages: 12 },
+    });
+    expect(attachmentLine(view({ phase: "scan" }))).toEqual({ key: "ask.attach.scan" });
+    expect(attachmentLine(view({ state: "needs-data" }))).toEqual({ key: "ask.attach.needsData" });
+  });
+
+  it("gives each cause of a failure its own text, and the size limit the one of its kind", () => {
+    const keys = (error: AttachmentView["error"], kind: AttachmentView["kind"] = "document") =>
+      attachmentLine(view({ state: "failed", error, kind }))!.key;
+    expect(keys("password")).toBe("ask.attach.error.password");
+    expect(keys("unreadable")).toBe("ask.attach.error.unreadable");
+    expect(keys("empty")).toBe("ask.attach.error.empty");
+    expect(keys("too-many")).toBe("ask.attach.error.tooMany");
+    expect(keys("cancelled")).toBe("ask.attach.error.cancelled");
+    expect(keys("too-large")).toBe("ask.attach.error.tooLargeDocument");
+    expect(keys("too-large", "photo")).toBe("ask.attach.error.tooLargePhoto");
+  });
+
+  it("makes a chip for a file core refused, with the reason its error code gives", () => {
+    expect(attachFailure({ code: "source-too-big" })).toBe("too-large");
+    expect(attachFailure({ code: "file-access-denied" })).toBe("denied");
+    expect(attachFailure(new Error("x"))).toBe("unreadable");
+    expect(refusedFile("local-1", "/a/Foto.JPG", "too-large")).toMatchObject({ name: "Foto.JPG", kind: "photo", state: "failed", error: "too-large" });
+    expect(refusedFile("local-2", "C:\\a\\dispensa.pdf", "too-many")).toMatchObject({ name: "dispensa.pdf", kind: "document" });
+  });
+});
+
+describe("what a message can carry", () => {
   it("keeps dropped files a message can carry and counts the rest", () => {
     expect(
       attachable(["/a/notes.PDF", "C:\\Users\\me\\shot.png", "/a/book.ptsb", "/a/README", "/a/x.md"]),

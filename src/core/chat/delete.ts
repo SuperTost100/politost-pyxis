@@ -1,10 +1,12 @@
 import type Database from "better-sqlite3";
 import { namedBlobs, removeBlob } from "../blobs";
+import { GIVEN_UP } from "../jobs/runner";
 
 /**
  * What deleting a chat or a plan takes with it besides its own rows: the hidden documents it brought and their files.
  * A document is permanently deleted only when nothing else uses it. It stays when a chat's scope lists it, a plan uses
- * it, it is a smartbook (unless the caller owns the book, see `books`), a job that may still run names it, any plan
+ * it, a composer holds it (`held_files`) or a stored question's file names it (`attachments.source_id`), it is a smartbook
+ * (unless the caller owns the book, see `books`), a job that may still run names it, any plan
  * item, card, exercise or chat citation points at its passages, or JSON elsewhere names it, its passages or its book's
  * exercises (see `jsonReferences`). A file is removed only when no source, attachment,
  * document version, whiteboard or job that may still run names its hash.
@@ -12,11 +14,12 @@ import { namedBlobs, removeBlob } from "../blobs";
 
 /**
  * Jobs that may still read what their params or finished steps name: unfinished ones, and failed or cancelled ones a
- * Retry starts again from the steps that succeeded. Only a succeeded job is done with its files.
+ * Retry starts again from the steps that succeeded. Only a succeeded job is done with its files, and so is one given up
+ * for good (`Runner.discard`), which no retry or resume can start again.
  */
-const OPEN_JOBS = `SELECT params_json AS text FROM jobs WHERE state != 'succeeded'
+const OPEN_JOBS = `SELECT params_json AS text FROM jobs WHERE state != 'succeeded' AND dismissed < ${GIVEN_UP}
   UNION ALL SELECT s.output_json FROM job_steps s JOIN jobs j ON j.id = s.job_id
-  WHERE j.state != 'succeeded' AND s.output_json IS NOT NULL`;
+  WHERE j.state != 'succeeded' AND j.dismissed < ${GIVEN_UP} AND s.output_json IS NOT NULL`;
 
 /**
  * Whether JSON without a foreign key names an ID: a lesson's citation order, a question's `sourceId`, an exercise
@@ -94,6 +97,9 @@ function relationallyInUse(db: Database.Database, sourceId: string, books: boole
       .prepare(
         [
           `SELECT 1 FROM plan_sources WHERE source_id = ?`,
+          // A file attached in a composer and not sent yet, and a file a stored question carries, name their source.
+          `SELECT 1 FROM held_files WHERE source_id = ?`,
+          `SELECT 1 FROM attachments WHERE source_id = ?`,
           // A smartbook row would cascade away with its source, and its exercises with it.
           books ? `SELECT 1 WHERE ? IS NULL` : `SELECT 1 FROM smartbooks WHERE source_id = ?`,
           `SELECT 1 FROM (${OPEN_JOBS}) WHERE instr(text, ?) > 0`,
@@ -104,7 +110,7 @@ function relationallyInUse(db: Database.Database, sourceId: string, books: boole
           }`,
         ].join(" UNION ALL ") + ` LIMIT 1`,
       )
-      .get(...Array.from({ length: 8 }, () => sourceId)) !== undefined
+      .get(...Array.from({ length: 10 }, () => sourceId)) !== undefined
   );
 }
 

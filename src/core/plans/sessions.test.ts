@@ -169,7 +169,7 @@ describe("migration 22", () => {
     const file = join(mkdtempSync(join(tmpdir(), "pyxis-sessions-")), "pyxis.db");
     const db = openDatabase(file);
     db.exec(
-      "DROP INDEX chat_sessions_chat; DROP TABLE chat_sessions; DROP INDEX card_reviews_day; ALTER TABLE card_reviews DROP COLUMN seconds; DROP TABLE lesson_parts; DROP TABLE lesson_outlines; DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at; ALTER TABLE jobs DROP COLUMN fallback_json; DROP TABLE linked_files; DROP TABLE linked_subfolders; DROP TABLE linked_folders; DROP TRIGGER plans_subject_to_maps; DROP TRIGGER plans_subject_to_cards; DROP INDEX sources_blob_sha; DROP INDEX sources_subject_sort; ALTER TABLE sources DROP COLUMN subject_sort; ALTER TABLE sources DROP COLUMN chosen_kind;",
+      "DROP TABLE held_files; ALTER TABLE attachments DROP COLUMN recognised; ALTER TABLE attachments DROP COLUMN source_id; ALTER TABLE attachments DROP COLUMN size; ALTER TABLE attachments DROP COLUMN kind; ALTER TABLE attachments DROP COLUMN name; DROP INDEX chat_sessions_chat; DROP TABLE chat_sessions; DROP INDEX card_reviews_day; ALTER TABLE card_reviews DROP COLUMN seconds; DROP TABLE lesson_parts; DROP TABLE lesson_outlines; DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at; ALTER TABLE jobs DROP COLUMN fallback_json; DROP TABLE linked_files; DROP TABLE linked_subfolders; DROP TABLE linked_folders; DROP TRIGGER plans_subject_to_maps; DROP TRIGGER plans_subject_to_cards; DROP INDEX sources_blob_sha; DROP INDEX sources_subject_sort; ALTER TABLE sources DROP COLUMN subject_sort; ALTER TABLE sources DROP COLUMN chosen_kind;",
     );
     db.pragma("user_version = 21");
     db.prepare("INSERT INTO plans(id,title,status,exam_at,created_at,updated_at) VALUES('dated','A','ready',?,1,1)").run(noon(2026, 11, 20));
@@ -178,7 +178,7 @@ describe("migration 22", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(35);
+    expect(again.pragma("user_version", { simple: true })).toBe(36);
     expect(readSessions(again, "dated")).toEqual([
       { id: "dated", date: noon(2026, 11, 20), time: null, place: null, label: null },
     ]);

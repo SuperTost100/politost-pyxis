@@ -34,14 +34,17 @@ function undoAfter16(db: Database.Database) {
   for (const name of added.filter((name) => !before.includes(name))) db.exec(`DROP INDEX ${name}`);
 }
 
-/** Removes what migrations 32 to 35 add, so a test can rewind the version past them. */
+/** Removes what migrations 32 to 36 add, so a test can rewind the version past them. */
 function undoLessonParts(db: Database.Database) {
+  db.exec(
+    "DROP TABLE held_files; ALTER TABLE attachments DROP COLUMN recognised; ALTER TABLE attachments DROP COLUMN source_id; ALTER TABLE attachments DROP COLUMN size; ALTER TABLE attachments DROP COLUMN kind; ALTER TABLE attachments DROP COLUMN name;",
+  );
   db.exec(
     "DROP INDEX chat_sessions_chat; DROP TABLE chat_sessions; DROP INDEX card_reviews_day; ALTER TABLE card_reviews DROP COLUMN seconds; DROP TABLE lesson_parts; DROP TABLE lesson_outlines;",
   );
 }
 
-/** Removes what migrations 29 to 35 add, so a test can rewind the version past them. */
+/** Removes what migrations 29 to 36 add, so a test can rewind the version past them. */
 function undoSubjectSort(db: Database.Database) {
   undoLessonParts(db);
   db.exec("ALTER TABLE sources DROP COLUMN chosen_kind; DROP INDEX sources_blob_sha; DROP INDEX sources_subject_sort; ALTER TABLE sources DROP COLUMN subject_sort;");
@@ -196,7 +199,7 @@ describe("migrate", () => {
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(35);
+    expect(db.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -211,7 +214,7 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(35);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
@@ -889,12 +892,12 @@ const PART_OBJECTS = [
 describe("lesson outlines and parts (migration 32)", () => {
   it("creates both tables and their indexes once on a new workspace, and a second run changes nothing", () => {
     const db = tempDb();
-    expect(db.pragma("user_version", { simple: true })).toBe(35);
+    expect(db.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
     const objects = objectsOf(db, ["lesson_outlines", "lesson_parts"]);
     expect(objects.map(({ type, name }) => ({ type, name }))).toEqual(PART_OBJECTS);
     migrate(db);
     expect(objectsOf(db, ["lesson_outlines", "lesson_parts"])).toEqual(objects);
-    expect(db.pragma("user_version", { simple: true })).toBe(35);
+    expect(db.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
   });
 
   // Each version is built by running the real steps up to it: 1 is the first release, 23 is 0.4.x, 26 0.5.0-dev.7,
@@ -1018,7 +1021,7 @@ describe("flashcard review time (migration 33)", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(35);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
     expect(again.prepare("SELECT id, card_id, rating, state_json, reviewed_at FROM card_reviews ORDER BY rowid").all()).toEqual(before);
     expect(again.prepare("SELECT COUNT(*) FROM card_reviews WHERE seconds IS NOT NULL").pluck().get()).toBe(0);
     expect(again.prepare("SELECT name FROM pragma_index_list('card_reviews') WHERE name = 'card_reviews_day'").pluck().get()).toBe(
@@ -1032,6 +1035,59 @@ describe("flashcard review time (migration 33)", () => {
     insert("fast", 7);
     expect(again.prepare("SELECT seconds FROM card_reviews WHERE id = 'fast'").pluck().get()).toBe(7);
     expect(() => insert("bad", -1)).toThrow(/CHECK/);
+    expect(again.pragma("integrity_check", { simple: true })).toBe("ok");
+    expect(again.pragma("foreign_key_check")).toEqual([]);
+  });
+});
+
+describe("files a message carried (migration 36)", () => {
+  const columns = (db: Database.Database) =>
+    (db.prepare("SELECT name FROM pragma_table_info('attachments') ORDER BY cid").pluck().all() as string[]).join(",");
+
+  it("adds the file's name, kind, size, hidden source and recognised text, empty for every attachment that exists", () => {
+    const { db, file } = workspaceAt(35);
+    expect(columns(db)).toBe("id,message_id,blob_sha,mime,created_at");
+    db.exec(`
+      INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c', 't', 1, 1);
+      INSERT INTO messages (id, chat_id, role, body, created_at) VALUES ('m', 'c', 'user', 'cosa dice?\n\nF uguale m a', 1);
+      INSERT INTO attachments (id, message_id, blob_sha, mime, created_at) VALUES ('a', 'm', '${"a".repeat(64)}', 'image/png', 1);
+    `);
+    db.close();
+    const again = openDatabase(file);
+    opened.push(again);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
+    expect(columns(again)).toBe("id,message_id,blob_sha,mime,created_at,name,kind,size,source_id,recognised");
+    // The message and its photo are as they were: nothing is rewritten, and the older body keeps its appended text.
+    expect(again.prepare("SELECT body FROM messages WHERE id = 'm'").pluck().get()).toBe("cosa dice?\n\nF uguale m a");
+    expect(again.prepare("SELECT name, kind, size, source_id, recognised FROM attachments WHERE id = 'a'").get()).toEqual({
+      name: null,
+      kind: null,
+      size: null,
+      source_id: null,
+      recognised: null,
+    });
+    // A kind is a photo or a document, and nothing else.
+    const insert = (id: string, kind: string | null) =>
+      again
+        .prepare("INSERT INTO attachments (id, message_id, blob_sha, mime, created_at, kind) VALUES (?, 'm', 'b', 'x', 1, ?)")
+        .run(id, kind);
+    insert("photo", "photo");
+    insert("document", "document");
+    expect(() => insert("other", "video")).toThrow(/CHECK/);
+    // Every file attached in a composer and not sent yet is a row, with the draft it belongs to and what it made.
+    expect(again.prepare("SELECT name FROM pragma_table_info('held_files') ORDER BY cid").pluck().all()).toEqual([
+      "id", "draft", "name", "kind", "size", "ext", "state", "error", "source_id", "blob_sha", "extracted_sha", "message_id", "created_at",
+    ]);
+    expect(again.prepare("SELECT COUNT(*) FROM held_files").pluck().get()).toBe(0);
+    const held = (id: string, kind: string, state: string) =>
+      again
+        .prepare("INSERT INTO held_files (id, name, kind, size, ext, state, created_at) VALUES (?, 'x', ?, 1, '.x', ?, 1)")
+        .run(id, kind, state);
+    held("h1", "photo", "ready");
+    held("h2", "document", "needs-data");
+    expect(() => held("h3", "video", "ready")).toThrow(/CHECK/);
+    expect(() => held("h4", "photo", "gone")).toThrow(/CHECK/);
+    expect(again.prepare("SELECT draft FROM held_files WHERE id = 'h1'").pluck().get()).toBe("");
     expect(again.pragma("integrity_check", { simple: true })).toBe("ok");
     expect(again.pragma("foreign_key_check")).toEqual([]);
   });

@@ -21,6 +21,8 @@ import {
   enqueueReextract,
   enqueueRefresh,
   hasUnfinishedJob,
+  heldMark,
+  isHeldReading,
   enqueueSourceFile,
   enqueueSourceData,
   SourceExists,
@@ -190,11 +192,12 @@ export function sourceHandlers(
       ),
     requireData: () => requireOcrData(),
     onReady: (sourceId) => {
-      if (embeddingConsent(db) && embeddingReady(modelDir)) runner.start("source-index", { sourceId });
+      if (embeddingConsent(db) && embeddingReady(modelDir)) runner.start("source-index", { sourceId, ...heldMark(db, sourceId) });
     },
   });
   runner.register("source-index", {
     jobClass: "local",
+    unlisted: isHeldReading,
     title: (params) => sourceTitle(db, params),
     group: (params) => importGroup(db, params),
     steps: [

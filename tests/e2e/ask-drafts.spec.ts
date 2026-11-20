@@ -93,7 +93,9 @@ test("R14-3 a suggestion sends only its own text and leaves the draft and photos
     await expect.poll(async () => (await chat()).messages.length).toBe(6);
     expect((await chat()).held).toHaveLength(1);
     await expect(box).toHaveText("");
-    await expect(page.getByText("appunti.txt")).toHaveCount(0);
+    // The composer is empty; the question it carried lists the file in the thread.
+    await expect(page.locator(".ask-attachments")).toHaveCount(0);
+    await expect(page.locator(".ask-sent-files").getByText("appunti.txt")).toBeVisible();
   } finally {
     await app.close();
     removeTestFolder(userData);

@@ -17,6 +17,12 @@ export const MAX_FOLDER_DEPTH = 12;
 /** A folder import stops after reading this many entries, files and folders alike, importable or not. */
 export const MAX_FOLDER_ENTRIES = 20_000;
 
+/**
+ * The most files one chat message carries. The provider's own limits on images set it (a request takes a few dozen
+ * megabytes of fitted photos), and a longer list is not read as one question anyway.
+ */
+export const MAX_ATTACHED_FILES = 8;
+
 /** The most files one drop can hand to main. */
 export const MAX_DROPPED_FILES = 20;
 
