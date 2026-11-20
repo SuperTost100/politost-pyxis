@@ -86,6 +86,31 @@ describe("a formula KaTeX draws without a failure", () => {
   });
 });
 
+describe("prices with punctuation after the dollar sign", () => {
+  // From the walk of the dev.13 build: a price followed by a comma or a full stop paired with the next dollar sign.
+  it.each([
+    ["Costa 12 $ oppure 15 $, e l'area vale $x^2$.", ["x^2"], 2],
+    ["Due biglietti da 7 $ fanno 12 $.", [], 2],
+    ["Costa 12 $ e lo sconto è del 10 %, quindi paghi $10{,}8$ euro.", ["10{,}8"], 1],
+    [
+      "Costa 12 $ oppure 15 $, e l'area vale $x^2$. Due biglietti da 7 $ fanno 12 $. Costa 12 $ e lo sconto è del 10 %, quindi paghi $10{,}8$ euro.",
+      ["x^2", "10{,}8"],
+      5,
+    ],
+    ["It costs $12, and $x^2$ here.", ["x^2"], 1],
+    ["$5$, $7$.", ["5", "7"], 0],
+  ])("%s: the prices are text and the formulas are drawn", (text, formulas, prices) => {
+    for (const writing of [false, true]) {
+      const html = render(text, false, writing);
+      const latex = [...html.matchAll(/<annotation encoding="application\/x-tex">([^<]*)<\/annotation>/g)].map((m) => m[1]);
+      expect(latex).toEqual(formulas);
+      expect(undrawn(html)).toBe(0);
+      expect(html).not.toContain("pyxis-math");
+      expect(visibleText(html).match(/\$/g) ?? []).toHaveLength(prices);
+    }
+  });
+});
+
 describe("an answer that is still being written", () => {
   // Claude's chat answer (display formulas on their own lines, a price), ChatGPT's (formulas in \( \) and \[ \]), a
   // lesson part of ChatGPT's (display formulas that share the $$ line with their first and last line).

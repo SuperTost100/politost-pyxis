@@ -286,6 +286,17 @@ describe("property (b): a price is never maths or a placeholder, in a complete t
     ["costa 25 $ e l'area è $x^2$.", ["x^2"], "costa 25 $ e l'area è ".length],
     ["Budget $5.\n\nThen $x^2 + 1$ here.", ["x^2 + 1"], "Budget $5.\n\nThen ".length],
     ["A cylinder costs $25 and holds \\(\\ce{CO2}\\) too.", ["\\ce{CO2}"], "A cylinder costs $25 and holds ".length],
+    // Prices with punctuation after the dollar sign, from the walk of the dev.13 build.
+    ["Costa 12 $ oppure 15 $, e l'area vale $x^2$.", ["x^2"], "Costa 12 $ oppure 15 $, e l'area vale ".length],
+    ["Due biglietti da 7 $ fanno 12 $.", [], 0],
+    ["Costa 12 $ e lo sconto è del 10 %, quindi paghi $10{,}8$ euro.", ["10{,}8"], "Costa 12 $ e lo sconto è del 10 %, quindi paghi ".length],
+    [
+      "Due biglietti da 7 $ fanno 12 $. Costa 12 $ e lo sconto è del 10 %, quindi paghi $10{,}8$ euro.",
+      ["10{,}8"],
+      "Due biglietti da 7 $ fanno 12 $. Costa 12 $ e lo sconto è del 10 %, quindi paghi ".length,
+    ],
+    ["It costs $12, and $x^2$ here.", ["x^2"], "It costs $12, and ".length],
+    ["It costs $12. Then $x^2$ here.", ["x^2"], "It costs $12. Then ".length],
   ];
 
   it.each(cases)("%s: the formulas are the ones meant, and nothing else", (text, formulas) => {
