@@ -391,7 +391,8 @@
         "unsupported": "A message can carry photos, PDF, Word, PowerPoint, text and Markdown files.",
         "denied": "Pyxis isn't allowed to open this file.",
         "cancelled": "The reading was stopped. Remove the file and attach it again.",
-        "data": "The scan could not be read, because its reading data is missing."
+        "data": "The scan could not be read, because its reading data is missing.",
+        "picture-too-large": "This photo has too many pixels for Pyxis to read on this computer. Take it again at a lower resolution."
       },
       "waiting_one": "Reading {{count}} file…",
       "waiting_other": "Reading {{count}} files…",

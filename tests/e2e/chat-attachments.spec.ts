@@ -544,16 +544,17 @@ test("a JPEG photo ends ready on its chip, however fast it is read, and never st
       await expect(chip, name).toBeVisible();
       // Core has nothing running for it, so the chip says what core says: ready, with the size.
       await expect(chip, name).not.toContainText("Leggo", { timeout: 15000 });
+      // Ready, not failed: a failed chip has no "Leggo" either. It is the ready kind with the file's size under its name.
+      await expect(chip.locator(".px-att"), name).toHaveClass(/is-ready/);
+      await expect(chip.locator(".px-att"), name).not.toHaveClass(/is-failed/);
+      await expect(chip.locator(".px-att-text small"), name).toHaveText(/\d[\d.,]*\s?(?:byte|kB|MB)/i);
       await expect(chip.locator(".px-att-bar")).toHaveCount(0);
       expect(await page.evaluate(() => window.pyxis.invoke("jobs.list", {}))).toEqual([]);
     }
     await saveShot(page, "chat-attachments/jpeg-photos-ready.png", { animations: "disabled" });
-    // All three are held ready by core, as the chips say.
-    const held = await page.evaluate(() => {
-      const ids = [...document.querySelectorAll(".ask-attachments li")].length;
-      return ids;
-    });
-    expect(held).toBe(3);
+    // All three are held, and ready.
+    await expect(page.locator(".ask-attachments li")).toHaveCount(3);
+    await expect(page.locator(".ask-attachments .px-att.is-ready")).toHaveCount(3);
   } finally {
     await app.close();
     removeTestFolder(userData);

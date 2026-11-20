@@ -130,11 +130,11 @@ describe("SRC-04 images fit provider limits before they are sent", () => {
     expect(() => normalizeForVision(bomb)).toThrow("vision-image-too-large");
   });
 
-  it("names the true reason for a JPEG that needs more memory than a decode may take: it is too large, not damaged", () => {
+  it("names the true reason for a JPEG that needs more memory than a decode may take: its own code, not damaged and not only past a provider's limit", () => {
     const photo = jpegOf(600, 400, redBlue, 80);
     // The same file decodes with room, and with too little the decoder's own refusal is told as size.
     expect(normalizeForVision(withOrientation(photo, 6), { jpegMemoryMb: JPEG_MEMORY_MB })).toMatchObject({ mediaType: "image/jpeg" });
-    expect(() => normalizeForVision(withOrientation(photo, 6), { jpegMemoryMb: 1 })).toThrow("vision-image-too-large");
+    expect(() => normalizeForVision(withOrientation(photo, 6), { jpegMemoryMb: 1 })).toThrow("vision-image-decode-limit");
     // A file the decoder cannot read at all is still damaged.
     const broken = withOrientation(photo, 6).slice(0, 4000);
     expect(() => normalizeForVision(broken)).toThrow("vision-image-unsupported");

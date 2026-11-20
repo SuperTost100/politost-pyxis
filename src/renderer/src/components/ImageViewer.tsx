@@ -19,6 +19,7 @@ export function ImageViewer({
   src,
   label,
   caption,
+  captionMarkdown = false,
   filename,
   ground = "white",
   origin,
@@ -28,6 +29,11 @@ export function ImageViewer({
   /** What the dialog is called for screen readers: "Figure enlarged". */
   label: string;
   caption?: string;
+  /**
+   * The caption is a figure's, whose formulas and marks are drawn and read in words. Without it the caption (a photo's, with
+   * its file name in it) is shown, and named for assistive technology, exactly as written.
+   */
+  captionMarkdown?: boolean;
   /** The PNG file the download offers. */
   filename: string;
   ground?: "white" | "dark" | "photo";
@@ -170,7 +176,7 @@ export function ImageViewer({
           <div ref={card} className={`px-viewer-card is-${ground}`}>
             <img
               src={src}
-              alt={caption ? plainReading(caption) : ""}
+              alt={caption ? (captionMarkdown ? plainReading(caption) : caption) : ""}
               draggable={false}
               onLoad={(event) => {
                 const { naturalWidth, naturalHeight } = event.currentTarget;
@@ -180,7 +186,7 @@ export function ImageViewer({
           </div>
           {caption ? (
             <figcaption>
-              <InlineMarkdown>{caption}</InlineMarkdown>
+              {captionMarkdown ? <InlineMarkdown>{caption}</InlineMarkdown> : caption}
             </figcaption>
           ) : null}
         </figure>

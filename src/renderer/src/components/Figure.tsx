@@ -149,6 +149,7 @@ export function Figure({
           src={shown() ?? image}
           label={t("components.figure.viewer")}
           caption={caption}
+          captionMarkdown
           filename={imageFileName(caption, t("components.figure.fileName"))}
           ground={
             darkImage && document.documentElement.dataset.theme === "dark"

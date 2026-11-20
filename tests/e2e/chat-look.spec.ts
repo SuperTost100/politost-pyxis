@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
-import { seedFigureChat, seedFollowupsChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat } from "./chat-look-seed";
+import { PHOTO_NAME, seedFigureChat, seedFollowupsChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat } from "./chat-look-seed";
 import { clickSettled } from "./settled";
 import { saveShot } from "./shots";
 
@@ -280,7 +280,7 @@ test("a sent message shows a photo as a thumbnail that opens the viewer and a do
   try {
     await open(page, "look-files");
     const files = page.locator(".ask-sent-files");
-    const thumb = files.getByRole("button", { name: "Ingrandisci esercizio-4.png" });
+    const thumb = files.getByRole("button", { name: `Ingrandisci ${PHOTO_NAME}` });
     await expect(thumb).toBeVisible();
     await expect(thumb.locator("img")).toHaveJSProperty("complete", true);
     expect(await thumb.locator("img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(312);
@@ -299,11 +299,15 @@ test("a sent message shows a photo as a thumbnail that opens the viewer and a do
     await thumb.click();
     const viewer = page.getByRole("dialog", { name: "Foto ingrandita" });
     await expect(viewer).toBeVisible();
-    await expect(viewer.getByText("esercizio-4.png, dal tuo messaggio")).toBeVisible();
+    await expect(viewer.getByText(`${PHOTO_NAME}, dal tuo messaggio`, { exact: true })).toBeVisible();
+    // A photo's caption and its picture's alt text are its file name as written: no link, no formula, no stripped marks.
+    await expect(viewer.locator("figcaption .katex")).toHaveCount(0);
+    await expect(viewer.locator("figcaption a")).toHaveCount(0);
+    await expect(viewer.locator(".px-viewer-card img")).toHaveAttribute("alt", `${PHOTO_NAME}, dal tuo messaggio`);
     // A portrait photo in a window 800 px high: the whole card and its caption are on screen, none cut at the foot.
     await expect.poll(() => page.evaluate(() => window.innerHeight)).toBeGreaterThan(0);
     const height = await page.evaluate(() => window.innerHeight);
-    const captionBox = await viewer.getByText("esercizio-4.png, dal tuo messaggio").boundingBox();
+    const captionBox = await viewer.getByText(`${PHOTO_NAME}, dal tuo messaggio`, { exact: true }).boundingBox();
     const cardBox = await viewer.locator(".px-viewer-card").boundingBox();
     expect(cardBox!.y).toBeGreaterThanOrEqual(0);
     expect(captionBox!.y + captionBox!.height).toBeLessThanOrEqual(height);

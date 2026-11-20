@@ -215,8 +215,10 @@ function decode(
     }
     return { data: png.data, width: png.width, height: png.height, orientation: 1 };
   } catch (error) {
-    // The decoder refuses a photo that needs more memory than it may take by name: that is a size, not a damaged file.
-    if (/maxMemoryUsageInMB|maxResolutionInMP/.test(error instanceof Error ? error.message : "")) throw new Error("vision-image-too-large");
+    // The decoder refuses a photo that needs more memory than it may take by name: that is a size, not a damaged file. It has
+    // its own code, since a photo only past a provider's limit can still be read locally and this one cannot: the local
+    // reading decodes it with the same limit.
+    if (/maxMemoryUsageInMB|maxResolutionInMP/.test(error instanceof Error ? error.message : "")) throw new Error("vision-image-decode-limit");
     throw new Error("vision-image-unsupported");
   }
 }
@@ -227,7 +229,8 @@ function decode(
  * decoded, turned upright by EXIF, shrunk to 2560 px and re-encoded as JPEG, stepping quality and size down
  * until it fits. A small JPEG whose EXIF orientation is not upright takes this path too, since providers
  * ignore the tag. WebP has no decoder here, so an oversized one is refused (`vision-image-too-large`).
- * Errors: `vision-image-unsupported` (not a readable JPEG, PNG or WebP, or a header that declares no size), `vision-image-too-large`.
+ * Errors: `vision-image-unsupported` (not a readable JPEG, PNG or WebP, or a header that declares no size), `vision-image-too-large`,
+ * `vision-image-decode-limit` (a JPEG that needs more memory to decode than `JPEG_MEMORY_MB`).
  */
 export function normalizeForVision(bytes: Uint8Array, options: { jpegMemoryMb?: number } = {}): VisionImage {
   const asIs = visionAsIs(bytes);

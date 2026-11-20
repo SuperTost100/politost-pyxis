@@ -40,21 +40,29 @@ const READINGS: Record<string, string> = {
  * `\cos` is cos, braces gone). Never the source of a formula.
  */
 export function plainReading(text: string): string {
-  return (
-    text
-      .replace(/\$\$?/g, "")
-      // A fraction reads as its parts with a slash; the style commands that only draw keep what they hold.
-      .replace(/\\[dt]?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "$1/$2")
-      .replace(/\\[dt]?frac\s*(\d)\s*(\d)/g, "$1/$2")
-      .replace(/\\(?:mathrm|mathbf|mathit|mathbb|text|textrm|operatorname|left|right|vec|hat|bar|overline)\b\s*/g, "")
-      .replace(/\^\{?2\}?/g, "²")
-      .replace(/\^\{?3\}?/g, "³")
-      .replace(/\\([A-Za-z]+)/g, (_, name: string) => READINGS[name] ?? name)
-      .replace(/\\[,;:! ]/g, " ")
-      .replace(/[{}]/g, "")
-      .replace(/\s+/g, " ")
-      .trim()
-  );
+  // A part of a fraction or an exponent that is more than one term keeps its grouping: "(a+b)/(c+d)", not "a+b/c+d".
+  const group = (part: string) => (/^[A-Za-z0-9_.,²³^\\]+$/.test(part.trim()) ? part.trim() : `(${part.trim()})`);
+  const raised = (part: string) => (part.trim() === "2" ? "²" : part.trim() === "3" ? "³" : `^${group(part)}`);
+  let reading = text
+    .replace(/\$\$?/g, "")
+    .replace(/\\(?:mathrm|mathbf|mathit|mathbb|text|textrm|operatorname|left|right|vec|hat|bar|overline)\b\s*/g, "")
+    .replace(/\\[dt]?frac\s*(\d)\s*(\d)/g, "$1/$2")
+    // A single digit after the caret is the whole exponent; a braced one is read below, whole.
+    .replace(/\^([23])/g, (_, digit: string) => (digit === "2" ? "²" : "³"));
+  // The innermost groups first, so a fraction in a fraction and a power in a fraction are read from the inside out.
+  for (let pass = 0; pass < 20; pass += 1) {
+    const before = reading;
+    reading = reading
+      .replace(/\^\{([^{}]*)\}/g, (_, part: string) => raised(part))
+      .replace(/\\[dt]?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, (_, top: string, bottom: string) => `${group(top)}/${group(bottom)}`);
+    if (reading === before) break;
+  }
+  return reading
+    .replace(/\\([A-Za-z]+)/g, (_, name: string) => READINGS[name] ?? name)
+    .replace(/\\[,;:! ]/g, " ")
+    .replace(/[{}]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** A jump's mark stays the one in view while the student has not scrolled away from where it left the page, in the chat it was made in. */

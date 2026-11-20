@@ -67,6 +67,28 @@ describe("plainReading", () => {
   });
 });
 
+describe("plainReading keeps what a formula means", () => {
+  it("reads a whole exponent, not its first digit", () => {
+    expect(plainReading("$x^{20}$")).toBe("x^20");
+    expect(plainReading("$x^{n+1}$")).toBe("x^(n+1)");
+    expect(plainReading("$x^2$ e $y^{3}$ e $z^n$")).toBe("x² e y³ e z^n");
+    expect(plainReading("$e^{-t/\\tau}$")).toBe("e^(-t/τ)");
+  });
+
+  it("keeps the grouping of a fraction whose parts are not single terms", () => {
+    expect(plainReading("$\\frac{a+b}{c+d}$")).toBe("(a+b)/(c+d)");
+    expect(plainReading("$\\frac{mg}{2}$")).toBe("mg/2");
+    expect(plainReading("$\\frac{a+b}{2}$")).toBe("(a+b)/2");
+    expect(plainReading("$\\tfrac12$")).toBe("1/2");
+  });
+
+  it("reads a fraction inside a fraction", () => {
+    expect(plainReading("$\\frac{\\frac{a}{b}}{c}$")).toBe("(a/b)/c");
+    expect(plainReading("$\\frac{1}{1+\\frac{1}{x}}$")).toBe("1/(1+1/x)");
+    expect(plainReading("$\\frac{x^{2}}{y^{20}}$")).toBe("x²/y^20");
+  });
+});
+
 describe("pinnedMark", () => {
   const pin = { chat: "a", index: 0, top: 0 };
 

@@ -88,6 +88,8 @@ export function attachmentErrorFor(code: string | null | undefined): AttachmentE
   if (!code) return "unreadable";
   if (code === "pdf-password-required" || code === "pdf-password-wrong") return "password";
   if (["source-too-big", "archive-too-large", "source-worker-memory", "heic-too-large"].includes(code)) return "too-large";
+  // A photo the decoder refuses for its size cannot be read here at all, with or without a model.
+  if (code === "vision-image-decode-limit") return "picture-too-large";
   if (code.startsWith("ocr-data-")) return "data";
   return "unreadable";
 }
