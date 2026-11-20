@@ -34,17 +34,17 @@ function undoAfter16(db: Database.Database) {
   for (const name of added.filter((name) => !before.includes(name))) db.exec(`DROP INDEX ${name}`);
 }
 
-/** Removes what migrations 32 to 36 add, so a test can rewind the version past them. */
+/** Removes what migrations 32 to 37 add, so a test can rewind the version past them. */
 function undoLessonParts(db: Database.Database) {
   db.exec(
     "DROP TABLE held_files; ALTER TABLE attachments DROP COLUMN recognised; ALTER TABLE attachments DROP COLUMN source_id; ALTER TABLE attachments DROP COLUMN size; ALTER TABLE attachments DROP COLUMN kind; ALTER TABLE attachments DROP COLUMN name;",
   );
   db.exec(
-    "DROP INDEX chat_sessions_chat; DROP TABLE chat_sessions; DROP INDEX card_reviews_day; ALTER TABLE card_reviews DROP COLUMN seconds; DROP TABLE lesson_parts; DROP TABLE lesson_outlines;",
+    "DROP TRIGGER attempts_drop_sessions; DROP TRIGGER topics_drop_sessions; DROP TRIGGER chats_drop_sessions; DROP INDEX tool_sessions_owner; DROP TABLE tool_sessions; DROP INDEX card_reviews_day; ALTER TABLE card_reviews DROP COLUMN seconds; DROP TABLE lesson_parts; DROP TABLE lesson_outlines;",
   );
 }
 
-/** Removes what migrations 29 to 36 add, so a test can rewind the version past them. */
+/** Removes what migrations 29 to 37 add, so a test can rewind the version past them. */
 function undoSubjectSort(db: Database.Database) {
   undoLessonParts(db);
   db.exec("ALTER TABLE sources DROP COLUMN chosen_kind; DROP INDEX sources_blob_sha; DROP INDEX sources_subject_sort; ALTER TABLE sources DROP COLUMN subject_sort;");
@@ -195,7 +195,7 @@ describe("migrate", () => {
       "linked_files",
       "lesson_outlines",
       "lesson_parts",
-      "chat_sessions",
+      "tool_sessions",
     ]) {
       expect(names).toContain(table);
     }
@@ -1090,5 +1090,66 @@ describe("files a message carried (migration 36)", () => {
     expect(again.prepare("SELECT draft FROM held_files WHERE id = 'h1'").pluck().get()).toBe("");
     expect(again.pragma("integrity_check", { simple: true })).toBe("ok");
     expect(again.pragma("foreign_key_check")).toEqual([]);
+  });
+});
+
+describe("tool sessions of chats, lessons and quiz hand-ins (migration 37)", () => {
+  it("moves every chat's sessions across as they were, under the chat's id", () => {
+    const { db, file } = workspaceAt(36);
+    db.exec(`
+      INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c1', 'uno', 1, 1), ('c2', 'due', 2, 2);
+      INSERT INTO chat_sessions (id, chat_id, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at, last_used_at, ended_at, ended_reason, instructions)
+        VALUES ('r1', 'c1', 'claude', 'sess-1', 'haiku', 'low', '/s', 'abc', 120, 1, 'm9', 0, 3, 10, 20, 30, 'tool', 'i1'),
+               ('r2', 'c1', 'antigravity', 'sess-2', 'flash', NULL, '/s', 'abc', 40, 0, NULL, 0, 1, 30, 31, NULL, NULL, 'i1'),
+               ('r3', 'c2', 'codex', 'sess-3', 'luna', 'low', '/s', NULL, 0, 1, NULL, 1, 0, 5, 5, NULL, NULL, NULL);
+    `);
+    const before = db
+      .prepare(
+        `SELECT id, chat_id AS owner, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at,
+                last_used_at, ended_at, ended_reason, instructions FROM chat_sessions ORDER BY id`,
+      )
+      .all();
+    db.close();
+    const again = openDatabase(file);
+    opened.push(again);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
+    expect(
+      again
+        .prepare(
+          `SELECT id, owner, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at,
+                  last_used_at, ended_at, ended_reason, instructions FROM tool_sessions ORDER BY id`,
+        )
+        .all(),
+    ).toEqual(before);
+    expect(again.prepare("SELECT name FROM sqlite_master WHERE name = 'chat_sessions'").get()).toBeUndefined();
+    expect(again.pragma("integrity_check", { simple: true })).toBe("ok");
+    expect(again.pragma("foreign_key_check")).toEqual([]);
+  });
+
+  it("drops a session with the chat, the topic or the attempt it belongs to, and with no other", () => {
+    const db = tempDb();
+    db.exec(`
+      INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('p', 'Fisica', 'ready', 1, 1);
+      INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('t1', 'p', 'Moto', 0, 1), ('t2', 'p', 'Forze', 1, 1);
+      INSERT INTO attempts (id, plan_id, started_at) VALUES ('a1', 'p', 1), ('a2', 'p', 1);
+      INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c1', 'uno', 1, 1), ('c2', 'due', 2, 2);
+    `);
+    const give = (owner: string) =>
+      db
+        .prepare(
+          `INSERT INTO tool_sessions (id, owner, provider, session_id, cwd, opened_at, last_used_at) VALUES (?, ?, 'claude', ?, '/s', 1, 1)`,
+        )
+        .run(`row-${owner}`, owner, `s-${owner}`);
+    for (const owner of ["c1", "c2", "lesson:t1", "lesson:t2", "quiz:a1", "quiz:a2"]) give(owner);
+    const left = () => db.prepare("SELECT owner FROM tool_sessions ORDER BY owner").pluck().all();
+    db.prepare("DELETE FROM chats WHERE id = 'c1'").run();
+    expect(left()).toEqual(["c2", "lesson:t1", "lesson:t2", "quiz:a1", "quiz:a2"]);
+    db.prepare("DELETE FROM attempts WHERE id = 'a1'").run();
+    expect(left()).toEqual(["c2", "lesson:t1", "lesson:t2", "quiz:a2"]);
+    // Deleting a plan removes its topics and attempts by cascade, and their sessions go with them.
+    db.prepare("DELETE FROM topics WHERE id = 't1'").run();
+    expect(left()).toEqual(["c2", "lesson:t2", "quiz:a2"]);
+    db.prepare("DELETE FROM plans WHERE id = 'p'").run();
+    expect(left()).toEqual(["c2"]);
   });
 });

@@ -1072,3 +1072,89 @@ describe("the steps of an open answer", () => {
     db.close();
   });
 });
+
+describe("the open answers of one hand-in", () => {
+  type Seen = {
+    prompt: string;
+    followUp?: string;
+    key?: string;
+    session?: { provider: string; id: string; cwd: string } | null;
+    kept: boolean;
+  };
+  /** A tool that keeps what it is told: it continues the session it is given and names a new one otherwise. */
+  function tool(options: { lose?: boolean } = {}) {
+    const seen: Seen[] = [];
+    let opened = 0;
+    const run = async (input: Parameters<NonNullable<GenerateInput["run"]>>[0]) => {
+      seen.push({
+        prompt: input.prompt,
+        followUp: input.conversation?.followUp,
+        key: input.conversation?.key,
+        session: input.conversation?.session,
+        kept: Boolean(input.conversation),
+      });
+      const held = input.conversation?.session;
+      const continued = Boolean(held) && !options.lose;
+      const id = continued ? held!.id : `grader-${(opened += 1)}`;
+      input.conversation?.onSession?.(id, "claude", "/scratch");
+      return {
+        ...reply(answerOf(input) === "ten" ? 1 : 0.5),
+        ...(input.conversation ? { sessionId: id, cwd: "/scratch", continued } : {}),
+      };
+    };
+    return { seen, run };
+  }
+  const submit = async (grader: ReturnType<typeof tool>, questions = [open("a"), open("b"), open("c")]) => {
+    const { db, attemptId } = fixture(questions, "diagnostic");
+    const runner = createRunner(db, () => {});
+    registerQuizGradingJobs(db, runner, grader.run);
+    submitQuiz(db, runner, attemptId, { a: "ten", b: "about ten", c: "nine" });
+    await until(db, attemptId, (view) => view.state === "succeeded");
+    return { db, attemptId };
+  };
+  const sessions = (db: Db, attemptId: string) =>
+    db.prepare("SELECT session_id, provider, turns, in_step FROM tool_sessions WHERE owner = ? ORDER BY opened_at").all(`quiz:${attemptId}`);
+
+  it("are graded in one session, opened with the first and continued for the rest", async () => {
+    const grader = tool();
+    const { db, attemptId } = await submit(grader);
+    expect(grader.seen.map((call) => call.key)).toEqual([`quiz:${attemptId}`, `quiz:${attemptId}`, `quiz:${attemptId}`]);
+    expect(grader.seen.map((call) => call.session)).toEqual([
+      null,
+      { provider: "claude", id: "grader-1", cwd: "/scratch" },
+      { provider: "claude", id: "grader-1", cwd: "/scratch" },
+    ]);
+    expect(sessions(db, attemptId)).toEqual([{ session_id: "grader-1", provider: "claude", turns: 3, in_step: 1 }]);
+    db.close();
+  });
+
+  it("send a message of their own each, with the question, the reference and the answer, so none needs the others", async () => {
+    const grader = tool();
+    const { db } = await submit(grader);
+    expect(grader.seen.map((call) => JSON.parse(call.followUp!).answer)).toEqual(["ten", "about ten", "nine"]);
+    for (const call of grader.seen) {
+      // The follow-up of a session that holds the hand-in is the whole message, and so is the message of a new one.
+      expect(call.followUp).toBe(call.prompt);
+      expect(JSON.parse(call.prompt)).toMatchObject({ reference: "ten", rubric: expect.any(Array) });
+    }
+    db.close();
+  });
+
+  it("go on in a new session when the tool lost the first, with nothing to hand over", async () => {
+    const grader = tool({ lose: true });
+    const { db, attemptId } = await submit(grader);
+    expect(grader.seen.map((call) => call.prompt)).toEqual(grader.seen.map((call) => call.followUp));
+    expect(db.prepare("SELECT COUNT(*) FROM tool_sessions WHERE owner = ?").pluck().get(`quiz:${attemptId}`)).toBeGreaterThan(1);
+    expect(sessions(db, attemptId).at(-1)).toMatchObject({ in_step: 1 });
+    db.close();
+  });
+
+  it("do not share a session with another hand-in", async () => {
+    const grader = tool();
+    const one = await submit(grader);
+    const two = await submit(grader);
+    expect(grader.seen.filter((call) => call.session === null)).toHaveLength(2);
+    one.db.close();
+    two.db.close();
+  });
+});

@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { askTurn, readChat, settleChecks } from "./turn";
-import { needsSolverChecks, solverChecks, splitChecks } from "./checks";
+import { checkSelection, needsSolverChecks, solverChecks, splitChecks } from "./checks";
+import { rememberReady } from "../engine/selection";
 import type { GenerateInput } from "../engine/generate";
 import { systemPrompt } from "../engine/prompts";
 
@@ -118,5 +119,56 @@ describe("what a reply states that can be checked", () => {
     expect(needsSolverChecks("Calcola \\int x\\,dx.")).toBe(true);
     expect(needsSolverChecks("Con $\\intercal$ e $x^2$ non si dice nulla di verificabile.")).toBe(false);
     expect(needsSolverChecks("La regola del prodotto si applica a $x^2 \\sin x$.")).toBe(false);
+  });
+});
+
+describe("the engine of a separate check", () => {
+  const cli = (id: string, model: string) => ({ id, kind: "cli" as const, effort: true, models: [{ id: model, efforts: [] }] });
+  const everyone = [cli("claude", "claude-sonnet-5"), cli("codex", "gpt-5.6-terra"), cli("antigravity", "gemini-4-argon")];
+
+  function chatOn(provider: string, model: string, ready: Array<ReturnType<typeof cli>>, auto = true) {
+    const db = openDatabase(":memory:");
+    db.prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)").run(
+      JSON.stringify({ provider, model, ...(auto ? { auto: true } : {}) }),
+    );
+    rememberReady(ready);
+    return db;
+  }
+  afterEach(() => rememberReady([]));
+
+  it("goes to the tool with the smallest overhead when another is ready, as the chat's own is not", () => {
+    for (const [provider, model] of [
+      ["codex", "gpt-5.6-terra"],
+      ["antigravity", "gemini-4-argon"],
+    ] as const) {
+      const db = chatOn(provider, model, everyone);
+      expect(checkSelection(db), provider).toMatchObject({ provider: "claude", chosenFor: "chat" });
+      db.close();
+    }
+  });
+
+  it("stays on the chat's own tool when it is the cheapest ready one, or no cheaper one is ready", () => {
+    const claude = chatOn("claude", "claude-sonnet-5", everyone);
+    expect(checkSelection(claude)).toMatchObject({ provider: "claude", model: "claude-sonnet-5" });
+    // Gemini's chat with Claude not ready: Codex is cheaper than Gemini.
+    const gemini = chatOn("antigravity", "gemini-4-argon", [cli("codex", "gpt-5.6-terra"), cli("antigravity", "gemini-4-argon")]);
+    expect(checkSelection(gemini)).toMatchObject({ provider: "codex" });
+    const alone = chatOn("antigravity", "gemini-4-argon", [cli("antigravity", "gemini-4-argon")]);
+    expect(checkSelection(alone)).toMatchObject({ provider: "antigravity", model: "gemini-4-argon" });
+    // No tool is known to be ready (nothing detected yet): the chat's own engine.
+    const unknown = chatOn("codex", "gpt-5.6-terra", []);
+    expect(checkSelection(unknown)).toMatchObject({ provider: "codex" });
+    for (const db of [claude, gemini, alone, unknown]) db.close();
+  });
+
+  it("leaves a chat on a local model or an API key where it is, so its text goes nowhere else", () => {
+    for (const [provider, model] of [
+      ["ollama", "qwen3:8b"],
+      ["anthropic-api", "claude-sonnet-5"],
+    ] as const) {
+      const db = chatOn(provider, model, everyone);
+      expect(checkSelection(db), provider).toMatchObject({ provider, model });
+      db.close();
+    }
   });
 });

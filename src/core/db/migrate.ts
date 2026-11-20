@@ -487,6 +487,47 @@ CREATE TABLE held_files (
 );
 CREATE INDEX held_files_draft ON held_files(draft);`,
   },
+  // The tool session a chat continues is now also the session of a lesson's parts and of a quiz hand-in, so the table is
+  // keyed by an owner that is not always a chat: a chat's id, `lesson:<topic id>` or `quiz:<attempt id>`. The rows
+  // move across as they are, and a trigger on each owner's table takes the place of the chat's foreign key.
+  {
+    version: 37,
+    sql: `CREATE TABLE tool_sessions (
+  id TEXT PRIMARY KEY,
+  owner TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  model TEXT,
+  effort TEXT,
+  cwd TEXT NOT NULL,
+  told TEXT,
+  chars INTEGER NOT NULL DEFAULT 0,
+  in_step INTEGER NOT NULL DEFAULT 1,
+  synced_to TEXT,
+  seen INTEGER NOT NULL DEFAULT 0,
+  turns INTEGER NOT NULL DEFAULT 0,
+  opened_at INTEGER NOT NULL,
+  last_used_at INTEGER NOT NULL,
+  ended_at INTEGER,
+  ended_reason TEXT CHECK (ended_reason IS NULL OR ended_reason IN ('tool', 'gone', 'long', 'instructions')),
+  instructions TEXT
+);
+INSERT INTO tool_sessions
+  (id, owner, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at, last_used_at, ended_at, ended_reason, instructions)
+  SELECT id, chat_id, provider, session_id, model, effort, cwd, told, chars, in_step, synced_to, seen, turns, opened_at, last_used_at, ended_at, ended_reason, instructions
+  FROM chat_sessions;
+DROP TABLE chat_sessions;
+CREATE INDEX tool_sessions_owner ON tool_sessions(owner, opened_at);
+CREATE TRIGGER chats_drop_sessions AFTER DELETE ON chats BEGIN
+  DELETE FROM tool_sessions WHERE owner = OLD.id;
+END;
+CREATE TRIGGER topics_drop_sessions AFTER DELETE ON topics BEGIN
+  DELETE FROM tool_sessions WHERE owner = 'lesson:' || OLD.id;
+END;
+CREATE TRIGGER attempts_drop_sessions AFTER DELETE ON attempts BEGIN
+  DELETE FROM tool_sessions WHERE owner = 'quiz:' || OLD.id;
+END;`,
+  },
 ] satisfies Array<{ version: number; sql: string; foreignKeysOff?: { check: string[] } }>;
 
 /** The newest schema version this build knows. */

@@ -266,10 +266,9 @@ describe("generate", () => {
     });
   });
 
-  it("repairs one bad structured answer", async () => {
+  it("repairs one bad structured answer with the whole prompt, in a call of its own", async () => {
     const calls: string[] = [];
-    const followUps: Array<string | undefined> = [];
-    const keys = new Set<string | undefined>();
+    const conversations: unknown[] = [];
     const output = await generate({
       selection,
       prompt: "name a colour",
@@ -280,8 +279,7 @@ describe("generate", () => {
         );
         expect(input.responseSchema?.schema.additionalProperties).toBe(false);
         calls.push(input.prompt);
-        followUps.push(input.conversation?.followUp);
-        keys.add(input.conversation?.key);
+        conversations.push(input.conversation);
         if (calls.length === 1)
           return result({ text: "blue", structuredError: "not json" });
         return result({
@@ -291,16 +289,38 @@ describe("generate", () => {
       },
     });
     expect(calls).toHaveLength(2);
-    // An engine that keeps no conversation gets the whole prompt with the bad answer.
+    // A call outside a conversation is not kept by the tool, so the repair cannot continue it: it carries the whole
+    // prompt with the bad answer.
     expect(calls[1]).toContain("name a colour");
     expect(calls[1]).toContain("blue");
-    // One that keeps the conversation already holds the prompt, so it gets only the error and the bad answer.
-    expect(keys.size).toBe(1);
-    expect(followUps[0]).toBe("name a colour");
-    expect(followUps[1]).not.toContain("name a colour");
-    expect(followUps[1]).toContain("not json");
-    expect(followUps[1]).toContain("blue");
+    expect(calls[1]).toContain("not json");
+    expect(conversations).toEqual([undefined, undefined]);
     expect(output.data).toEqual({ colour: "blue" });
+  });
+
+  it("repairs a structured answer inside a conversation in the session it ran in, with only the error", async () => {
+    const seen: Array<{ prompt: string; followUp?: string; session?: unknown }> = [];
+    const output = await generate({
+      selection,
+      prompt: "whole outline request",
+      followUpFor: () => "outline request",
+      schema: z.object({ colour: z.string() }),
+      conversation: { key: "lesson:t1", followUp: "", session: null, cliOnly: true },
+      run: async (input) => {
+        seen.push({ prompt: input.prompt, followUp: input.conversation?.followUp, session: input.conversation?.session });
+        return seen.length === 1
+          ? { ...result({ text: "blue", structuredError: "not json" }), sessionId: "s-9", cwd: "/scratch" }
+          : result({ structured: { colour: "blue" }, text: '{"colour":"blue"}' });
+      },
+    });
+    expect(output.data).toEqual({ colour: "blue" });
+    expect(seen[0]!.session).toBeNull();
+    // The second call resumes the session the first one opened and sends only the validation error and the bad answer.
+    expect(seen[1]!.session).toEqual({ provider: "claude", id: "s-9", cwd: "/scratch" });
+    expect(seen[1]!.followUp).toContain("not json");
+    expect(seen[1]!.followUp).not.toContain("outline request");
+    // Were the session lost, the whole request goes again with the bad answer.
+    expect(seen[1]!.prompt).toContain("whole outline request");
   });
 
   it("stops after two repair calls", async () => {

@@ -1,5 +1,5 @@
 import { activeSimulation } from "../study/simulation";
-import { needsSolverChecks, NO_SEPARATE_CHECK, splitChecks, solverChecks } from "./checks";
+import { checkSelection, needsSolverChecks, NO_SEPARATE_CHECK, splitChecks, solverChecks } from "./checks";
 import { stripCheckFences, type AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
@@ -1456,21 +1456,21 @@ async function answer(
         chatId,
       );
   }
-  // The check stays on the chat's own engine: it is a short extraction, not part of a stronger answer. It is a model call
-  // of its own, a new session in the tool's history, so it runs only for an answer that states maths and has no check
-  // blocks of its own (the template asks for them inline), and never on a tool in `NO_SEPARATE_CHECK` (see there), which
-  // `solverChecks` also applies to the tool that runs each attempt. The engine is looked up only when a check is needed:
-  // with none assigned at this moment the saved reply is returned as it is.
+  // The check is a short extraction, not part of a stronger answer, so it runs on the cheapest ready tool (`checkSelection`).
+  // It is a model call of its own that the tool does not save, so it runs only for an answer that states maths and has no
+  // check blocks of its own (the template asks for them inline), and never on a tool in `NO_SEPARATE_CHECK` (see there),
+  // which `solverChecks` also applies to the tool that runs each attempt. The engine is looked up only when a check is
+  // needed: with none assigned at this moment the saved reply is returned as it is.
   let checking = false;
   if (needsSolverChecks(parsed.body)) {
     try {
-      const checkSelection = selectionFor(db, "chat");
+      const checkEngine = checkSelection(db);
       // The tool that would run the check is the one `generate()` starts with, which is not the chat's own when that
       // one is out of requests.
-      const runsOn = (startingMove({ selection: checkSelection })?.to ?? checkSelection).provider;
+      const runsOn = (startingMove({ selection: checkEngine })?.to ?? checkEngine).provider;
       checking = !NO_SEPARATE_CHECK.has(runsOn);
       if (checking)
-        startChecks(db, { chatId, messageId, body: parsed.body }, { selection: checkSelection, run: input.run });
+        startChecks(db, { chatId, messageId, body: parsed.body }, { selection: checkEngine, run: input.run });
     } catch (err) {
       if (!(err instanceof IpcError && err.code === "engine-missing")) throw err;
     }

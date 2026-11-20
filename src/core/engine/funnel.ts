@@ -171,18 +171,21 @@ type Conversation = {
 const conversations = new Map<string, Conversation>();
 
 /**
- * A chat on a subscription CLI (Claude Code, Codex, Cursor Agent, Antigravity) keeps its session in the database and
- * continues it by id, in a live process or in a new one. API providers and Ollama keep their conversation as history
+ * A chat, a lesson or a quiz hand-in on a subscription CLI (Claude Code, Codex, Cursor Agent, Antigravity) keeps its
+ * session in the database and continues it by id, in a live process or in a new one. API providers and Ollama keep their conversation as history
  * in this process.
  */
 function isToolProvider(provider: ProviderId): boolean {
   return !provider.endsWith("-api") && provider !== "ollama";
 }
 
-/** Cursor Agent and Antigravity get `system` as a block at the start of the prompt, so a turn in a session they hold leaves it out. */
+/** Cursor Agent gets `system` as a block at the start of the prompt, so a turn in a session it holds leaves it out. The other tools take it on every call, Antigravity in its session's system slot. */
 export function systemInPrompt(provider: string): boolean {
-  return provider === "agent" || provider === "antigravity";
+  return provider === "agent";
 }
+
+/** The folder name that keeps Pyxis's chats apart from every other app's in Cursor's and Antigravity's history. */
+const WORKSPACE_NAME = "pyxis";
 
 /**
  * The CLIs word the failure of a resume differently: Claude Code "No conversation found with session ID", Codex "no
@@ -358,13 +361,16 @@ export type TurnInput = {
      */
     session?: { provider: string; id: string; cwd: string; seen?: boolean } | null;
     onSession?: (sessionId: string, provider: string, cwd: string) => void;
+    /**
+     * Only a subscription CLI keeps this conversation. An API or local provider answers each call on its own, with the
+     * whole prompt, because their history lives in this process, which a local model's small window cannot hold. A
+     * lesson and a quiz hand-in set it.
+     */
+    cliOnly?: boolean;
   };
   /** Mark the system prompt and the conversation so far for the provider's prompt cache, where it has one. */
   cache?: boolean;
 };
-
-/** What an engine without working structured output is told before the schema, worded as cli-funnel words it. */
-export const SCHEMA_REPLY = "Reply with only a JSON value that matches this JSON Schema. No prose, no code fences.";
 
 export async function runTurn(input: TurnInput): Promise<EngineResult> {
   disclosure?.ensure(input.selection.provider, input.signal);
@@ -397,7 +403,8 @@ async function turn(input: TurnInput): Promise<EngineResult> {
     access: "none" as const,
   };
   const engine = getFunnel();
-  const conversation = input.conversation;
+  const conversation =
+    input.conversation && (!input.conversation.cliOnly || isToolProvider(selection.provider)) ? input.conversation : undefined;
   const tool = Boolean(conversation) && isToolProvider(selection.provider);
   const talk = conversation
     ? tool
@@ -416,11 +423,9 @@ async function turn(input: TurnInput): Promise<EngineResult> {
     : talk?.sessionId;
   // Cursor Agent answers a resume of a chat it lost as a new chat, so its folder says whether it still holds the session.
   if (tool && selection.provider === "agent" && resumeId && stored && cursorSessionLost(resumeId, stored.seen)) resumeId = undefined;
-  // agy 1.4 fills a --json-schema with a report on its own run, not with the answer: Sonnet graded its own work 1 and
-  // narrated it, and Gemini returned nothing. Antigravity gets the schema in the prompt and answers in text, which
-  // `generate` parses and repairs like any other reply.
-  // shortcut: Pyxis works around the adapter here; drop this once cli-funnel's Antigravity provider does the same.
-  const schemaInPrompt = selection.provider === "antigravity" && input.responseSchema;
+  // A call outside a conversation has no next turn, so the tool is asked not to keep it in the student's own history.
+  // Cursor Agent and Antigravity cannot do that (`capabilities.ephemeral`), and cli-funnel refuses the run if asked.
+  const persist = !conversation && engine.providers[selection.provider]?.capabilities.ephemeral ? { persist: false as const } : {};
   const cache =
     input.cache && engine.providers[selection.provider]?.capabilities.cache;
   if (talk) talk.busy = true;
@@ -434,11 +439,8 @@ async function turn(input: TurnInput): Promise<EngineResult> {
   try {
     for (;;) {
       const continuing = Boolean(resumeId) && Boolean(conversation);
-      const asked = continuing ? conversation!.followUp : input.prompt;
-      const prompt = schemaInPrompt
-        ? `${asked}\n\n${SCHEMA_REPLY}\n${JSON.stringify(schemaInPrompt.schema)}`
-        : asked;
-      // The tool already holds the instructions the first prompt of a Cursor or Antigravity session carried.
+      const prompt = continuing ? conversation!.followUp : input.prompt;
+      // The tool already holds the instructions the first prompt of a Cursor session carried.
       const system = continuing && systemInPrompt(selection.provider) ? undefined : input.system;
       const log = startCall(scope?.jobId, {
         provider: selection.provider,
@@ -454,9 +456,11 @@ async function turn(input: TurnInput): Promise<EngineResult> {
           selection,
           prompt,
           system,
-          responseSchema: schemaInPrompt ? undefined : input.responseSchema,
+          responseSchema: input.responseSchema,
           attachments: input.attachments,
           signal: input.signal,
+          workspaceName: WORKSPACE_NAME,
+          ...persist,
           ...(continuing ? { sessionId: resumeId } : {}),
           ...(cache ? { cache: true } : {}),
           ...(log ? { verbose: true } : {}),
@@ -478,8 +482,8 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         // Live Codex ends a stopped turn with a cancelled result, and a CLI killed on Stop can report what it printed as a
         // finished answer. Either way the student stopped it.
         if (result.finishReason === "cancelled" || input.signal?.aborted) {
-          // The tokens of a turn the student stopped were spent all the same. Codex reports them for a cancelled turn;
-          // Claude Code, Cursor Agent and Antigravity report none, and then nothing is recorded.
+          // The tokens of a turn the student stopped were spent all the same. Codex and Antigravity report them for a
+          // cancelled turn; Claude Code and Cursor Agent report none, and then nothing is recorded.
           reportUsage({
             text: "",
             model: result.model,

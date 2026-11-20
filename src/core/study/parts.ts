@@ -4,7 +4,9 @@ import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
 import { IpcError } from "../../shared/ipc";
 import { parseLooseJson, parseSmartText, partQuestions, replaceSection, smartSections } from "../../shared/smart-text";
+import { contextHash } from "../chat/sessions";
 import { generate, type GenerateInput } from "../engine/generate";
+import { withSession, type SessionHandle } from "../engine/session-call";
 import { planLanguage, promptProvenance, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
 import { figureFixer, figureRunner, type FigureRunner } from "../math/figures";
@@ -542,6 +544,33 @@ function saveOutline(
   return liveOutline(db, input.topicId)!;
 }
 
+/**
+ * The tool session of a topic's lesson: its parts, one after the other, in one conversation, so the model keeps the
+ * outline, the material and what it already wrote, and the later parts read the earlier ones from the tool's prompt
+ * cache. The outline is planned in a call of its own, because a session keeps the system prompt it was opened under and
+ * the outline's differs from the parts'. See "Lessons and hand-ins in one session" in docs/engines.md.
+ */
+export const lessonOwner = (topicId: string) => `lesson:${topicId}`;
+
+/** The text of every written part of an outline, as the session is told it: position, item and body. */
+type LessonEntries = Array<[number, string | null, string]>;
+
+function lessonEntries(db: Database.Database, outline: Outline | null): LessonEntries {
+  return (outline?.parts ?? []).map((part) => [part.position, part.itemId ?? null, part.itemId ? (itemBody(db, part.itemId) ?? "") : ""]);
+}
+
+const fingerprint = (outlineId: string | null, entries: LessonEntries) => contextHash(JSON.stringify([outlineId, entries]));
+
+/**
+ * What the lesson holds now, as a fingerprint: the live outline and the text of every written part. A session is in step
+ * when it was last kept at this state, so a part that another writer wrote, a section rewritten on its own, a level
+ * chosen or a new outline each leave it out of step with no case of their own.
+ */
+export function lessonState(db: Database.Database, topicId: string): string {
+  const outline = liveOutline(db, topicId);
+  return fingerprint(outline?.id ?? null, lessonEntries(db, outline));
+}
+
 export type PlanPartsInput = {
   planId: string;
   topicId: string;
@@ -888,6 +917,15 @@ export type PartRequestInput = {
   headings: ReadonlyMap<number, readonly string[]>;
   /** This part's passages, in reading order; the recap has none. */
   passages: readonly OutlinePassage[];
+  /**
+   * For a call in a session that holds the lesson: `held` when the session wrote the parts already written itself, so
+   * the request names none of them, and `behind` when it wrote some of them but the lesson has changed since (a part
+   * failed, was stopped, was written again or written in another conversation), so the request says what the lesson
+   * holds and that this is right where the session remembers otherwise.
+   */
+  session?: "held" | "behind";
+  /** The part has a text already, which this request replaces: a session that holds the old one is told to drop it. */
+  again?: boolean;
 };
 
 /**
@@ -926,12 +964,26 @@ export function partRequest(input: PartRequestInput): string {
       if (entry.summary) lines.push(`What it taught: ${cutText(entry.summary, SUMMARY_CHARS)}`);
       return lines.join("\n");
     });
+  const held =
+    input.session === "held"
+      ? written.length
+        ? "The parts already written are in this conversation, as you wrote them."
+        : "No part is written yet."
+      : undefined;
+  const behind =
+    input.session === "behind"
+      ? "Earlier in this conversation you wrote parts of this lesson. This is what the lesson holds now. Where it differs from what you remember, this is right."
+      : undefined;
   const head = [
+    behind,
     `Topic: ${cutText(input.topic, TOPIC_CHARS)}`,
     place,
+    input.again ? "This part is written again. Drop the text you wrote for it before: only the one you write now stays." : undefined,
     `The lesson's parts:\n${plan}`,
-    written.length ? `Parts already written:\n\n${written.join("\n\n")}` : "No part is written yet.",
-  ].join("\n\n");
+    held ?? (written.length ? `Parts already written:\n\n${written.join("\n\n")}` : "No part is written yet."),
+  ]
+    .filter((line): line is string => line !== undefined)
+    .join("\n\n");
   if (part.kind === "recap" || input.passages.length === 0) return head;
   const label = "\n\nMaterial of this part:\n\n";
   const bound = CONTEXT_CHARS - PROBLEMS_CHARS;
@@ -945,10 +997,20 @@ export function partRequest(input: PartRequestInput): string {
   return request;
 }
 
+/** The problems of a reply, as both asks list them. */
+function problemList(problems: readonly string[]): string {
+  const list = problems.map((problem) => `- ${problem}`).join("\n");
+  return `Problems with your previous reply:\n${Array.from(list).slice(0, PROBLEMS_CHARS - 40).join("")}`;
+}
+
 /** The second ask: the same request with the problems of the first reply. */
 export function partRetry(request: string, problems: readonly string[]): string {
-  const list = problems.map((problem) => `- ${problem}`).join("\n");
-  return `${request}\n\nProblems with your previous reply:\n${Array.from(list).slice(0, PROBLEMS_CHARS - 40).join("")}`;
+  return `${request}\n\n${problemList(problems)}`;
+}
+
+/** The second ask in the session that holds the first reply and the request it answers: only the problems. */
+export function partProblems(problems: readonly string[]): string {
+  return `${problemList(problems)}\n\nWrite the part again.`;
 }
 
 export type WritePartInput = {
@@ -988,6 +1050,17 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
   const part = outline?.parts.find((entry) => entry.position === input.position);
   if (!outline || !part) throw new Error("part-missing");
   if (part.itemId && !input.rewrite) return outline;
+  // The part is written in the topic's lesson session, after any other call on it: two parts asked at once are written
+  // one after the other, because two processes on one session would each continue it from the same point.
+  return withSession(db, lessonOwner(input.topicId), (session) => writePartIn(db, input, session));
+}
+
+async function writePartIn(db: Database.Database, input: WritePartInput, session: SessionHandle): Promise<Outline> {
+  // What another call did while this one waited for the session: the outline may have been replaced, or the part written.
+  const outline = liveOutline(db, input.topicId);
+  const part = outline?.parts.find((entry) => entry.position === input.position);
+  if (!outline || !part) throw new Error("part-missing");
+  if (part.itemId && !input.rewrite) return outline;
   // The text this write replaces: none for a part not written yet.
   const before = part.itemId;
   const { context, passages, grounded, key } = partContext(db, input, outline, part, input.wording);
@@ -998,25 +1071,39 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
     .get(input.planId, key) as { id: string; body: string } | undefined;
   const topic = db.prepare("SELECT title FROM topics WHERE id = ?").pluck().get(input.topicId) as string;
   const headings = otherHeadings(db, outline, part);
-  const request = partRequest({ topic, outline, part, headings, passages });
+  // A session keeps the system prompt it was opened under: one asked under another, such as a part at another level, starts a new one.
   const drawer = await figureRunner(input.python);
   const system = [lessonSystem(context, grounded, drawer?.kinds ?? [], "lesson.part"), interestsLine(db)]
     .filter(Boolean)
     .join("\n");
+  const base = { topic, outline, part, headings, passages };
+  // The lesson as the messages below describe it, which is what the session knows once this part is in it.
+  const known = lessonEntries(db, outline);
+  // A session that holds the lesson as it is now needs only the part's place and material; one that does not is told
+  // what the lesson holds. A session of no use to this call (none, or lost) gets the whole request.
+  const whole = partRequest(base);
+  const next = partRequest({
+    ...base,
+    session: session.inStep(fingerprint(outline.id, known), system) ? "held" : "behind",
+    ...(before ? { again: true } : {}),
+  });
   const selection = input.selection ?? selectionFor(db, "lesson");
   let problems: string[] = [];
   let shaped: Extract<PartShape, { ok: true }> | null = null;
   let engine: { provider: string; model: string } | null = null;
   for (let ask = 0; ask < 2 && !shaped; ask++) {
-    const prompt = problems.length > 0 ? partRetry(request, problems) : request;
+    const retry = problems.length > 0;
     // Every bound above keeps a request within this; a request over it is a bug, and no call is made.
-    if (prompt.length > CONTEXT_CHARS) throw new Error("lesson-part-too-long");
-    const result = await generate({
+    if ((retry ? partRetry(whole, problems) : whole).length > CONTEXT_CHARS || next.length > CONTEXT_CHARS)
+      throw new Error("lesson-part-too-long");
+    const result = await session.generate({
       selection,
       run: input.run,
       signal: input.signal,
       system,
-      prompt,
+      fresh: retry ? partRetry(whole, problems) : whole,
+      // The session holds the request and the reply the problems are about.
+      followUp: retry ? partProblems(problems) : next,
     });
     input.signal?.throwIfAborted();
     const checked = partShape(result.text, {
@@ -1038,6 +1125,7 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
   const passageIds = passages.map((passage) => passage.id);
   const summary = shaped.summary ?? (part.about || null);
   const minutes = partMinutes(shaped.words);
+  let saved = false;
   db.transaction(() => {
     // The outline may have been retired, or the part written (or written again) by another job, while this one
     // waited for the engine.
@@ -1063,7 +1151,20 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
     });
     pointPart(db, part.id, itemId, summary, minutes);
     if (input.rewrite === "level" && !input.ahead) setOutlineWording(db, outline.id, context.wording);
+    saved = true;
   })();
+  // The session wrote this part, and the lesson holds it: the next part needs only its place and material. What the
+  // session knows is the lesson it was sent plus this part, not a part another writer saved meanwhile.
+  if (saved) {
+    const written = liveOutline(db, input.topicId)?.parts.find((entry) => entry.position === input.position)?.itemId;
+    if (written)
+      session.keep(
+        fingerprint(
+          outline.id,
+          known.map((entry) => (entry[0] === input.position ? [entry[0], written, itemBody(db, written) ?? ""] : entry)),
+        ),
+      );
+  }
   return liveOutline(db, input.topicId) ?? outline;
 }
 

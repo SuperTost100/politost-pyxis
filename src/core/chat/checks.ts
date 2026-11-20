@@ -8,6 +8,8 @@ import {
 import { generate, type GenerateInput } from "../engine/generate";
 import { runTurn } from "../engine/funnel";
 import { systemPrompt } from "../engine/prompts";
+import { selectionFor, selectionOn, type StoredSelection } from "../engine/selection";
+import type Database from "better-sqlite3";
 
 /** Store metadata separately from the visible answer, using the existing message body envelope. */
 export function splitChecks(text: string): {
@@ -33,6 +35,32 @@ const MATH = /=|∫|\\int(?![A-Za-z])/;
  * shortcut: no separate check on Cursor Agent; lift it when its first text comes within the check's time.
  */
 export const NO_SEPARATE_CHECK = new Set(["agent"]);
+
+/**
+ * The subscription tools, cheapest first for a call that stands alone. Every call on a tool carries the tool's own prompt
+ * and tool list, and that overhead differs more than the check does: a check of two stated equations measured 2,191 input
+ * tokens on Claude Code (1,516 of them from its cache), 17,340 on Codex and 12,565 on Antigravity, with a short system
+ * prompt of 960 characters on each. Antigravity comes last although it measured below Codex, because it cannot skip being
+ * saved: every check there would be a chat in the student's Gemini history.
+ * shortcut: a ranking measured on three tools on one day (2026-11-20); measure again when a tool or model changes.
+ */
+const CHEAPEST_FIRST = ["claude", "codex", "antigravity"];
+
+/**
+ * The engine of a separate check. The check is a call of its own with a short answer, so it goes to the cheapest ready
+ * subscription tool, not necessarily the chat's. A chat on a local model or an API key stays where it is: its text never
+ * goes to another provider for this, and an API call is paid by the token.
+ */
+export function checkSelection(db: Database.Database): StoredSelection {
+  const own = selectionFor(db, "chat");
+  if (!CHEAPEST_FIRST.includes(own.provider)) return own;
+  for (const provider of CHEAPEST_FIRST) {
+    if (provider === own.provider) break;
+    const there = selectionOn(provider, "chat");
+    if (there) return { ...there, chosenFor: "chat" };
+  }
+  return own;
+}
 
 /** Raised, with no call made, when a check's attempt would run on a tool in `NO_SEPARATE_CHECK`. */
 class CheckSkipped extends Error {}

@@ -4,7 +4,8 @@ import { z } from "zod";
 import { checkRef, fullCredit } from "../../shared/quiz";
 import { uuidv7 } from "../../shared/ids";
 import { parseLooseJson } from "../../shared/smart-text";
-import { generate, type GenerateInput } from "../engine/generate";
+import type { GenerateInput } from "../engine/generate";
+import { withSession } from "../engine/session-call";
 import { promptProvenance, systemPrompt } from "../engine/prompts";
 import { selectionFor, type StoredSelection } from "../engine/selection";
 import type { Runner } from "../jobs/runner";
@@ -147,6 +148,8 @@ function needsModel(question: StoredQuestion, pick: string | undefined) {
   return question.answer.kind === "open" && Boolean(pick?.trim());
 }
 type Engine = { signal?: AbortSignal; selection?: StoredSelection };
+/** The tool session of one quiz hand-in: every open answer of the attempt is graded in it. */
+export const quizOwner = (attemptId: string) => `quiz:${attemptId}`;
 /** Whether a text is a grader's JSON reply: an object with a score in any key order or a code fence, or one cut off. */
 export function graderReply(text: string): boolean {
   const body = text.trim().replace(/^```(?:json)?\s*/i, "");
@@ -163,6 +166,7 @@ export function graderReply(text: string): boolean {
  */
 async function gradeOpen(
   db: Database.Database,
+  attemptId: string,
   question: StoredQuestion,
   pick: string,
   run?: GenerateInput["run"],
@@ -179,35 +183,44 @@ async function gradeOpen(
     engine.signal,
   );
   engine.signal?.throwIfAborted();
-  const result = await generate({
-    selection: engine.selection ?? selectionFor(db, "grading"),
-    run,
-    signal: engine.signal,
-    schema: z.object({
-      score: z.number().min(0).max(1),
-      // An explanation that is the grader's own reply means the engine wrapped the model's raw answer, so its score is
-      // a guess; failing here sends the repair round instead of showing JSON to the student.
-      explanation: z
-        .string()
-        .min(1)
-        .max(4000)
-        .refine((text) => !graderReply(text), {
-          message: "explanation must be feedback for the student, not a JSON object",
-        }),
-    }),
-    system: systemPrompt("quiz.open-grade"),
-    prompt: JSON.stringify({
-      question: question.stem,
-      reference: question.answer.reference,
-      rubric: question.answer.rubric ?? [
-        "Correct central concepts",
-        "Coverage of the reference",
-        "Reasoning or mathematical working where requested",
-      ],
-      answer: pick,
-      ...(work ? { steps: work } : {}),
-      ...(mathCheck ? { mathCheck } : {}),
-    }),
+  const message = JSON.stringify({
+    question: question.stem,
+    reference: question.answer.reference,
+    rubric: question.answer.rubric ?? [
+      "Correct central concepts",
+      "Coverage of the reference",
+      "Reasoning or mathematical working where requested",
+    ],
+    answer: pick,
+    ...(work ? { steps: work } : {}),
+    ...(mathCheck ? { mathCheck } : {}),
+  });
+  // The open answers of one hand-in are graded in one session, so the instructions and the tool's own overhead are paid
+  // once and read from its cache for the rest. Each message stands alone: it holds the question, the reference and the
+  // rubric of its own answer, so a lost session or a failed grade needs nothing handed over.
+  const result = await withSession(db, quizOwner(attemptId), async (session) => {
+    const graded = await session.generate({
+      selection: engine.selection ?? selectionFor(db, "grading"),
+      run,
+      signal: engine.signal,
+      schema: z.object({
+        score: z.number().min(0).max(1),
+        // An explanation that is the grader's own reply means the engine wrapped the model's raw answer, so its score is
+        // a guess; failing here sends the repair round instead of showing JSON to the student.
+        explanation: z
+          .string()
+          .min(1)
+          .max(4000)
+          .refine((text) => !graderReply(text), {
+            message: "explanation must be feedback for the student, not a JSON object",
+          }),
+      }),
+      system: systemPrompt("quiz.open-grade"),
+      fresh: message,
+      followUp: message,
+    });
+    session.keep(question.id);
+    return graded;
   });
   const data = result.data as { score: number; explanation: string };
   return {
@@ -257,7 +270,7 @@ export async function gradeOpenAnswers(
   for (const question of attempt.body.questions) {
     const pick = picks[question.id];
     if (typeof pick !== "string") continue;
-    const graded = await gradeOpen(db, question, pick, run, {}, steps[question.id]);
+    const graded = await gradeOpen(db, attemptId, question, pick, run, {}, steps[question.id]);
     if (!graded) continue;
     grades.set(question.id, {
       id: question.id,
@@ -303,7 +316,7 @@ export async function gradeQuizQuestion(
   // An empty pick is the student's "I don't know": 0 for every kind, whatever the question would accept as blank.
   if (!pick.trim()) score = 0;
   engine.signal?.throwIfAborted();
-  const modelGrade = await gradeOpen(db, question, pick, run, engine, steps);
+  const modelGrade = await gradeOpen(db, attemptId, question, pick, run, engine, steps);
   engine.signal?.throwIfAborted();
   if (modelGrade) {
     ({ score, explanation } = modelGrade);
@@ -573,6 +586,7 @@ export function registerQuizGradingJobs(
             const pick = params.picks[id] ?? "";
             const graded = await gradeOpen(
               db,
+              params.attemptId,
               question,
               pick,
               run,

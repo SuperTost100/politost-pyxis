@@ -2,7 +2,11 @@ import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 
-/** The tool session a chat continues. One Pyxis chat is one chat in the student's Claude, ChatGPT, Cursor or Gemini history. */
+/**
+ * The tool session an owner continues. An owner is a chat (its id), a topic's lesson (`lesson:<topic id>`) or a quiz
+ * hand-in (`quiz:<attempt id>`). One Pyxis chat, lesson or hand-in is one chat in the student's Claude, ChatGPT, Cursor
+ * or Gemini history, whatever number of turns it takes.
+ */
 export type StoredSession = {
   /** The row's own id. */
   id: string;
@@ -19,7 +23,10 @@ export type StoredSession = {
   chars: number;
   /** True after a turn that completed normally on this session, false from the start of any turn until one does. */
   inStep: boolean;
-  /** The last message the session holds in full: a session out of step is told what the student sees after it. Null: from the start. */
+  /**
+   * What the session holds in full. For a chat the last message: a session out of step is told what the student sees
+   * after it, and null means from the start. For a lesson a fingerprint of the lesson as the session last saw it.
+   */
   syncedTo: string | null;
   /** Cursor's own folder was seen to hold this chat, so its absence now means the student cleared it. */
   seen: boolean;
@@ -39,22 +46,23 @@ type Row = {
 };
 
 /**
- * Tools that keep no compaction of their own that Pyxis has seen. Claude Code and Codex compact a long session by
- * themselves; for these two the session starts over, with the conversation handed across again, once this many
- * characters (about 100,000 tokens, under the smallest window the two offer) have gone into it.
- * shortcut: a fixed size, since neither tool reports how full its context is; replace it when cli-funnel reports that.
+ * Tools that keep no compaction of their own that Pyxis has seen. Claude Code, Codex and Antigravity compact a long
+ * session by themselves (agy's program has a trajectory compaction with its own trigger, checked in the binary, though
+ * no session was run to its limit); for Cursor Agent the session starts over, with the conversation handed across
+ * again, once this many characters (about 100,000 tokens, under the smallest window it offers) have gone into it.
+ * shortcut: a fixed size, since the tool does not report how full its context is; replace it when cli-funnel reports that.
  */
 export const UNCOMPACTED_SESSION_CHARS = 400_000;
-const UNCOMPACTED = new Set(["agent", "antigravity"]);
+const UNCOMPACTED = new Set(["agent"]);
 
-/** The chat's open session, if any. */
-export function currentSession(db: Database.Database, chatId: string): StoredSession | undefined {
+/** The owner's open session, if any. */
+export function currentSession(db: Database.Database, owner: string): StoredSession | undefined {
   const row = db
     .prepare(
-      `SELECT id, provider, session_id, cwd, told, instructions, chars, in_step, synced_to, seen FROM chat_sessions
-       WHERE chat_id = ? AND ended_at IS NULL ORDER BY opened_at DESC, rowid DESC LIMIT 1`,
+      `SELECT id, provider, session_id, cwd, told, instructions, chars, in_step, synced_to, seen FROM tool_sessions
+       WHERE owner = ? AND ended_at IS NULL ORDER BY opened_at DESC, rowid DESC LIMIT 1`,
     )
-    .get(chatId) as Row | undefined;
+    .get(owner) as Row | undefined;
   return row && { id: row.id, provider: row.provider, sessionId: row.session_id, cwd: row.cwd, told: row.told, instructions: row.instructions, chars: row.chars, inStep: row.in_step === 1, syncedTo: row.synced_to, seen: row.seen === 1 };
 }
 
@@ -97,31 +105,31 @@ export type SessionTurn = {
  */
 export function recordSession(
   db: Database.Database,
-  chatId: string,
+  owner: string,
   prior: StoredSession | undefined,
   turn: SessionTurn,
-  reason: "tool" | "gone" | "long" = "gone",
+  reason: "tool" | "gone" | "long" | "instructions" = "gone",
 ): void {
   if (prior && prior.provider === turn.provider && prior.sessionId === turn.sessionId) {
     db.prepare(
-      `UPDATE chat_sessions SET model = ?, effort = ?, told = ?, instructions = ?, chars = chars + ?, seen = MAX(seen, ?),
+      `UPDATE tool_sessions SET model = ?, effort = ?, told = ?, instructions = ?, chars = chars + ?, seen = MAX(seen, ?),
          turns = turns + 1, last_used_at = ? WHERE id = ?`,
     ).run(turn.model, turn.effort, turn.told, turn.instructions, turn.chars, turn.seen ? 1 : 0, turn.now, prior.id);
     return;
   }
   if (prior)
-    db.prepare(`UPDATE chat_sessions SET ended_at = ?, ended_reason = ? WHERE id = ? AND ended_at IS NULL`).run(
+    db.prepare(`UPDATE tool_sessions SET ended_at = ?, ended_reason = ? WHERE id = ? AND ended_at IS NULL`).run(
       turn.now,
       prior.provider !== turn.provider ? "tool" : reason,
       prior.id,
     );
   db.prepare(
-    `INSERT INTO chat_sessions
-      (id, chat_id, provider, session_id, model, effort, cwd, told, instructions, chars, in_step, synced_to, seen, turns, opened_at, last_used_at)
+    `INSERT INTO tool_sessions
+      (id, owner, provider, session_id, model, effort, cwd, told, instructions, chars, in_step, synced_to, seen, turns, opened_at, last_used_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
   ).run(
     uuidv7(turn.now),
-    chatId,
+    owner,
     turn.provider,
     turn.sessionId,
     turn.model,
@@ -139,19 +147,19 @@ export function recordSession(
   );
 }
 
-/** A turn starts: no open session of the chat can be trusted to hold the conversation until one completes normally. */
-export function markOutOfStep(db: Database.Database, chatId: string): void {
-  db.prepare(`UPDATE chat_sessions SET in_step = 0 WHERE chat_id = ? AND ended_at IS NULL`).run(chatId);
+/** A turn starts: no open session of the owner can be trusted to hold the conversation until one completes normally. */
+export function markOutOfStep(db: Database.Database, owner: string): void {
+  db.prepare(`UPDATE tool_sessions SET in_step = 0 WHERE owner = ? AND ended_at IS NULL`).run(owner);
 }
 
 /**
  * The one place a session becomes in step: the model completed the reply on the open session of `provider`, and the reply
- * is kept on screen as `messageId`, so the session holds the conversation up to it.
+ * is kept on screen as `marker` (a message id for a chat), so the session holds the conversation up to it.
  */
-export function keepSession(db: Database.Database, chatId: string, provider: string, messageId: string): void {
-  db.prepare(`UPDATE chat_sessions SET in_step = 1, synced_to = ? WHERE chat_id = ? AND provider = ? AND ended_at IS NULL`).run(
-    messageId,
-    chatId,
+export function keepSession(db: Database.Database, owner: string, provider: string, marker: string): void {
+  db.prepare(`UPDATE tool_sessions SET in_step = 1, synced_to = ? WHERE owner = ? AND provider = ? AND ended_at IS NULL`).run(
+    marker,
+    owner,
     provider,
   );
 }
@@ -170,19 +178,19 @@ export function rewindSession(db: Database.Database, chatId: string, questionId:
     )
     .get(chatId, questionId) as { id: string; rowid: number } | undefined;
   const current = db
-    .prepare(`SELECT id, synced_to FROM chat_sessions WHERE chat_id = ? AND ended_at IS NULL`)
+    .prepare(`SELECT id, synced_to FROM tool_sessions WHERE owner = ? AND ended_at IS NULL`)
     .all(chatId) as Array<{ id: string; synced_to: string | null }>;
   for (const row of current) {
     if (row.synced_to === null) continue;
     const held = db.prepare(`SELECT rowid FROM messages WHERE id = ?`).pluck().get(row.synced_to) as number | undefined;
     if (completed && held !== undefined && held <= completed.rowid) continue;
-    db.prepare(`UPDATE chat_sessions SET synced_to = ? WHERE id = ?`).run(completed?.id ?? null, row.id);
+    db.prepare(`UPDATE tool_sessions SET synced_to = ? WHERE id = ?`).run(completed?.id ?? null, row.id);
   }
 }
 
 /** How many tool sessions the chat has opened, the ended ones included. */
-export function sessionsOpened(db: Database.Database, chatId: string): number {
-  return (db.prepare(`SELECT COUNT(*) FROM chat_sessions WHERE chat_id = ?`).pluck().get(chatId) as number) ?? 0;
+export function sessionsOpened(db: Database.Database, owner: string): number {
+  return (db.prepare(`SELECT COUNT(*) FROM tool_sessions WHERE owner = ?`).pluck().get(owner) as number) ?? 0;
 }
 
 /** A short fingerprint of the context block, so a session is told it again only when it changed. */
@@ -194,7 +202,7 @@ export function contextHash(text: string): string {
  * Counts what a tool kept of a turn that ended without an answer into the open session of that tool, for the size bound
  * only: what a session is told next does not depend on it.
  */
-export function addSessionChars(db: Database.Database, chatId: string, provider: string, chars: number): void {
+export function addSessionChars(db: Database.Database, owner: string, provider: string, chars: number): void {
   if (chars <= 0) return;
-  db.prepare(`UPDATE chat_sessions SET chars = chars + ? WHERE chat_id = ? AND provider = ? AND ended_at IS NULL`).run(chars, chatId, provider);
+  db.prepare(`UPDATE tool_sessions SET chars = chars + ? WHERE owner = ? AND provider = ? AND ended_at IS NULL`).run(chars, owner, provider);
 }

@@ -105,7 +105,7 @@ describe("a pinned effort reaches the tool", () => {
     db.close();
   });
 
-  it.skipIf(process.platform === "win32")("sends CLI Funnel the variant's id for xhigh, which it refuses as an effort of the model", async () => {
+  it.skipIf(process.platform === "win32")("finds xhigh listed as an effort of the model itself, which CLI Funnel groups, and starts the ACP server for it", async () => {
     const real = await vi.importActual<typeof import("./funnel")>("./funnel");
     const dir = mkdtempSync(join(tmpdir(), "pyxis-agy-"));
     dirs.push(dir);
@@ -114,13 +114,16 @@ describe("a pinned effort reaches the tool", () => {
     // It answers the questions Pyxis asks to find the program, and records the arguments of the turn.
     writeFileSync(
       bin,
-      `#!/bin/sh\ncase "$1" in --version) echo "1.3.0"; exit 0;; models) printf 'gemini-4-neon-low\\tGemini 4 Neon (Low)\\ngemini-4-neon-high\\tGemini 4 Neon (High)\\ngemini-4-neon-xhigh\\tGemini 4 Neon (XHigh)\\n'; exit 0;; esac\necho "---" >> "${log}"\nprintf '%s\\n' "$@" >> "${log}"\nexit 1\n`,
+      `#!/bin/sh\ncase "$1" in --version) echo "1.5.13"; exit 0;; models) printf 'gemini-4-neon-low\\tGemini 4 Neon (Low)\\ngemini-4-neon-high\\tGemini 4 Neon (High)\\ngemini-4-neon-xhigh\\tGemini 4 Neon (XHigh)\\n'; exit 0;; esac\necho "---" >> "${log}"\nprintf '%s\\n' "$@" >> "${log}"\nexit 1\n`,
     );
     chmodSync(bin, 0o755);
     process.env.CLI_FUNNEL_AGY_BIN = bin;
     const funnel = real.getFunnel();
-    // The program is asked for its models first, as Pyxis does, and only then runs the turn.
-    expect((await funnel.models("antigravity")).map((model) => model.id)).toContain("gemini-4-neon");
+    // The program is asked for its models first, as Pyxis does. CLI Funnel 1.0 puts the level on the model it belongs to.
+    const listed = await funnel.models("antigravity");
+    expect(listed.map((model) => model.id)).toContain("gemini-4-neon");
+    expect(listed.map((model) => model.id)).not.toContain("gemini-4-neon-xhigh");
+    expect(listed.find((model) => model.id === "gemini-4-neon")!.efforts.map((effort) => effort.id)).toContain("xhigh");
     const drain = async (stream: ReturnType<typeof funnel.stream>): Promise<string> => {
       try {
         for await (const event of stream) void event;
@@ -130,19 +133,16 @@ describe("a pinned effort reaches the tool", () => {
         return String(error);
       }
     };
-    // The tool lists three levels for the model, so CLI Funnel stops `--effort xhigh` on it before the program runs.
+    // So `xhigh` is an effort of `gemini-4-neon` and reaches the tool, which here ends at once.
     expect(
       await drain(
         funnel.stream({ selection: { provider: "antigravity", model: "gemini-4-neon", effort: "xhigh", cwd: dir, access: "none" }, prompt: "hi" }),
       ),
-    ).toMatch(/does not support effort/);
-    await drain(
-      funnel.stream({ selection: { provider: "antigravity", model: "gemini-4-neon-xhigh", cwd: dir, access: "none" }, prompt: "hi" }),
-    );
-    // One block per run of the program; the one that carries the prompt is the turn.
-    const args = readFileSync(log, "utf8").split("---\n").find((block) => block.includes("--model"))!.split("\n");
-    expect(args[args.indexOf("--model") + 1]).toBe("gemini-4-neon-xhigh");
-    expect(args).not.toContain("--effort");
+    ).not.toMatch(/does not support effort/);
+    // The turn runs `agy acp`, which takes the model and the level from its session, not from flags.
+    const turn = readFileSync(log, "utf8").split("---\n").find((block) => block.startsWith("acp\n"))!;
+    expect(turn).toBeDefined();
+    expect(turn).not.toContain("--effort");
     real.closeFunnel();
   });
 });

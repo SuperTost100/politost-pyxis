@@ -149,17 +149,18 @@ describe("a chat's stored tool session", () => {
     db.close();
   });
 
-  it("delivers the current instructions to a session opened under another system prompt, on the tools that carry them in the prompt", async () => {
+  it("delivers the current instructions to a session opened under another system prompt, on the tool that carries them in the prompt", async () => {
     for (const [provider, model, carries] of [
       ["agent", "cursor-grok-4.5", true],
-      ["antigravity", "gemini-3.8-flash", true],
+      // Antigravity takes the system prompt in its session's own slot on every call, so a turn needs nothing more.
+      ["antigravity", "gemini-3.8-flash", false],
       ["claude", "claude-sonnet-5", false],
     ] as const) {
       const { db } = setup();
       db.prepare("UPDATE feature_engines SET selection_json = ?").run(JSON.stringify({ provider, model }));
       const first = await ask(db, "prima", { provider, sessionId: "s1" });
       // The template was edited since the session was opened.
-      db.prepare("UPDATE chat_sessions SET instructions = 'older' WHERE chat_id = ?").run(first.chatId);
+      db.prepare("UPDATE tool_sessions SET instructions = 'older' WHERE owner = ?").run(first.chatId);
       const next = await ask(db, "seconda", { chatId: first.chatId, provider, sessionId: "s1" });
       const sent = next.seen.conversation!.followUp;
       expect(sent.startsWith("<instructions>\nYou are Pyxis, a study tutor"), provider).toBe(carries);
@@ -184,7 +185,7 @@ describe("a chat's stored tool session", () => {
       },
     });
     await ask(db, "seconda", { chatId: first.chatId });
-    expect(db.prepare("SELECT turns FROM chat_sessions WHERE chat_id = ?").pluck().get(first.chatId)).toBe(2);
+    expect(db.prepare("SELECT turns FROM tool_sessions WHERE owner = ?").pluck().get(first.chatId)).toBe(2);
     db.close();
   });
 
@@ -239,7 +240,7 @@ describe("a chat's stored tool session", () => {
     expect(moved.seen.prompt).not.toContain("left out");
     expect(currentSession(db, chatId)).toMatchObject({ provider: "codex", sessionId: "c1" });
     expect(
-      db.prepare("SELECT provider, ended_reason FROM chat_sessions WHERE chat_id = ? ORDER BY opened_at").all(chatId),
+      db.prepare("SELECT provider, ended_reason FROM tool_sessions WHERE owner = ? ORDER BY opened_at").all(chatId),
     ).toEqual([
       { provider: "claude", ended_reason: "tool" },
       { provider: "codex", ended_reason: null },
@@ -257,7 +258,7 @@ describe("a chat's stored tool session", () => {
     expect(second.seen.conversation!.session?.id).toBe("s1");
     expect(currentSession(db, first.chatId)?.sessionId).toBe("s2");
     expect(
-      db.prepare("SELECT ended_reason FROM chat_sessions WHERE chat_id = ? AND ended_at IS NOT NULL").pluck().all(first.chatId),
+      db.prepare("SELECT ended_reason FROM tool_sessions WHERE owner = ? AND ended_at IS NOT NULL").pluck().all(first.chatId),
     ).toEqual(["gone"]);
     db.close();
   });
@@ -690,21 +691,23 @@ describe("a chat's stored tool session", () => {
     db.close();
   });
 
-  it("starts Cursor Agent and Antigravity over, with the conversation handed across, once a session passes the size they are known to handle", async () => {
+  it("starts Cursor Agent over, with the conversation handed across, once a session passes the size it is known to handle", async () => {
     const { db } = setup();
     const first = await ask(db, "prima", { provider: "agent", sessionId: "a1" });
-    db.prepare("UPDATE chat_sessions SET chars = ? WHERE chat_id = ?").run(UNCOMPACTED_SESSION_CHARS, first.chatId);
+    db.prepare("UPDATE tool_sessions SET chars = ? WHERE owner = ?").run(UNCOMPACTED_SESSION_CHARS, first.chatId);
     const next = await ask(db, "dopo", { chatId: first.chatId, provider: "agent", sessionId: "a2" });
     expect(next.seen.conversation!.session).toBeNull();
     expect(next.seen.prompt).toContain("prima");
     expect(
-      db.prepare("SELECT ended_reason FROM chat_sessions WHERE chat_id = ? AND ended_at IS NOT NULL").pluck().all(first.chatId),
+      db.prepare("SELECT ended_reason FROM tool_sessions WHERE owner = ? AND ended_at IS NOT NULL").pluck().all(first.chatId),
     ).toEqual(["long"]);
-    // Claude Code and Codex compact a long session themselves, so theirs is never cut.
-    const claude = await ask(db, "prima", { provider: "claude", sessionId: "s1" });
-    db.prepare("UPDATE chat_sessions SET chars = ? WHERE chat_id = ?").run(UNCOMPACTED_SESSION_CHARS * 5, claude.chatId);
-    const more = await ask(db, "dopo", { chatId: claude.chatId, provider: "claude", sessionId: "s1" });
-    expect(more.seen.conversation!.session?.id).toBe("s1");
+    // Claude Code, Codex and Antigravity compact a long session themselves, so theirs is never cut.
+    for (const provider of ["claude", "antigravity"]) {
+      const chat = await ask(db, "prima", { provider, sessionId: "s1" });
+      db.prepare("UPDATE tool_sessions SET chars = ? WHERE owner = ?").run(UNCOMPACTED_SESSION_CHARS * 5, chat.chatId);
+      const more = await ask(db, "dopo", { chatId: chat.chatId, provider, sessionId: "s1" });
+      expect(more.seen.conversation!.session?.id, provider).toBe("s1");
+    }
     db.close();
   });
 
@@ -745,7 +748,7 @@ describe("a decision taken from the tool that answers, not the one that was plan
       allowGeneral: true,
       run: async (input) => toolReply("a1", input as Seen, "agent"),
     });
-    db.prepare("UPDATE chat_sessions SET instructions = 'older' WHERE chat_id = ?").run(first.chatId);
+    db.prepare("UPDATE tool_sessions SET instructions = 'older' WHERE owner = ?").run(first.chatId);
     // The chat's tool is Claude now and is out of requests, so the turn falls back to the Cursor session.
     automatic(db, "claude", "claude-haiku-5-5");
     ready();
@@ -771,7 +774,7 @@ describe("a decision taken from the tool that answers, not the one that was plan
     expect(providers).toEqual(["claude", "agent"]);
     expect(followUp.startsWith("<instructions>\nYou are Pyxis, a study tutor")).toBe(true);
     expect(currentSession(db, first.chatId)).toMatchObject({ provider: "agent", sessionId: "a1", inStep: true });
-    expect(db.prepare("SELECT model FROM chat_sessions WHERE chat_id = ? AND ended_at IS NULL").pluck().get(first.chatId)).toBe("cursor-grok-4.5");
+    expect(db.prepare("SELECT model FROM tool_sessions WHERE owner = ? AND ended_at IS NULL").pluck().get(first.chatId)).toBe("cursor-grok-4.5");
     db.close();
   });
 
