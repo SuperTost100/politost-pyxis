@@ -1,9 +1,11 @@
+import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { automaticEffort, studentEffort } from "@shared/effort";
 import type { RequestOutput } from "@shared/ipc";
 import { Button } from "../../components/Button";
 
-export const featureNames = ["default", "chat", "plan", "lesson", "cards", "grading", "map", "vision"] as const;
+/** In the order of the roles the tasks run in: the fast ones, the middle ones, the plan. */
+export const featureNames = ["chat", "cards", "map", "lesson", "grading", "plan", "vision", "default"] as const;
 export type Feature = (typeof featureNames)[number];
 type Engine = RequestOutput<"engines.overview">[number];
 type Model = RequestOutput<"engines.models">[number];
@@ -12,8 +14,9 @@ type Features = RequestOutput<"engines.features">;
 const AUTO = "__auto__";
 
 /**
- * The model and the reasoning effort of each task, for a student who wants to set them by hand. "Automatic" leaves a
- * task to Pyxis, which follows the order of the tools; a model picked here pins the task to it.
+ * The model and the reasoning effort of each kind of work, for a student who wants to set them by hand. "Automatic"
+ * leaves a kind of work to Pyxis, which follows the order of the tools and says which model that means today; a model
+ * picked here pins the work to it and tints the field.
  */
 export function EngineTasks({
   features,
@@ -21,6 +24,9 @@ export function EngineTasks({
   modelsByProvider,
   choices,
   labelOf,
+  autoLabel,
+  roleOf,
+  pinned,
   busy,
   customised,
   visionWarning,
@@ -32,9 +38,15 @@ export function EngineTasks({
   overview: Engine[] | undefined;
   modelsByProvider: Record<string, Model[]>;
   /** The models a task can be pinned to, each named with its tool. */
-  choices: Array<{ value: string; label: string }>;
+  choices: Array<{ value: string; label: string; group: string }>;
   /** The name of a tool's model, for a pinned one the lists no longer hold. */
   labelOf: (provider: string, model: string) => string;
+  /** The model as the field says it when automatic: "Haiku 5.5", with no maker's name the tool already gives. */
+  autoLabel: (provider: string, model: string) => string;
+  /** The role a task runs in on a tool, for the word under its name. */
+  roleOf: (provider: string | undefined, feature: Feature) => "fast" | "mid" | "strong";
+  /** How many kinds of work are pinned to a model. */
+  pinned: number;
   busy: boolean;
   /** Something is pinned or an effort is picked, so going back to automatic changes something. */
   customised: boolean;
@@ -45,14 +57,21 @@ export function EngineTasks({
   onAutomatic: (feature?: Feature) => void;
 }) {
   const { t } = useTranslation();
+  const headingId = useId();
   const levelLabel = (id: string) => t(`engines.effortLevel.${id}`, { defaultValue: id });
+  const groups = [...new Set(choices.map((choice) => choice.group))];
   return (
-    <details className="engines-section">
-      <summary>
-        {t("engines.perFeature")}
-      </summary>
+    <section className="engines-section" aria-labelledby={headingId}>
       <div className="engines-heading">
-        <span className="small ink-muted">{t("engines.perFeatureHint")}</span>
+        <h3 className="px-ctl-group-title" id={headingId}>
+          {t("engines.perFeature")}
+        </h3>
+        <span className="small engines-hint" role="status">
+          {pinned > 0 ? t("engines.pinnedCount", { count: pinned }) : t("engines.allAuto")}
+        </span>
+      </div>
+      <div className="engines-pinhead">
+        <p className="small engines-hint">{t("engines.perFeatureHint")}</p>
         <Button variant="secondary" size="sm" disabled={busy || !customised} onClick={() => onAutomatic()}>
           {t("engines.backToAuto")}
         </Button>
@@ -84,17 +103,17 @@ export function EngineTasks({
                   listed.map((option) => option.id),
                 );
           // A pinned model the lists no longer hold stays in the picker, so the row shows what the task runs on.
-          const options =
-            selection && !isAuto && !choices.some((choice) => choice.value === value)
-              ? [{ value, label: labelOf(selection.provider, selection.model) }, ...choices]
-              : choices;
+          const missing = selection && !isAuto && !choices.some((choice) => choice.value === value);
           return (
             <div className="engines-feature-row" key={feature}>
-              <label htmlFor={`engine-${feature}`}>{t(`engines.feature.${feature}`)}</label>
+              <div className="engines-feature-work">
+                <label htmlFor={`engine-${feature}`}>{t(`engines.feature.${feature}`)}</label>
+                <small>{t(`engines.roles.${roleOf(selection?.provider, feature)}`)}</small>
+              </div>
               <div className="engines-feature-model">
                 <select
                   id={`engine-${feature}`}
-                  className="px-ctl-field"
+                  className={isAuto ? "px-ctl-field" : "px-ctl-field is-pinned"}
                   disabled={busy}
                   value={isAuto ? AUTO : value}
                   onChange={(event) => {
@@ -109,19 +128,24 @@ export function EngineTasks({
                     );
                   }}
                 >
-                  <option value={AUTO}>{t("engines.automatic")}</option>
-                  {options.map((choice) => (
-                    <option key={choice.value} value={choice.value}>
-                      {choice.label}
-                    </option>
+                  <option value={AUTO}>
+                    {isAuto && selection
+                      ? t("engines.autoToday", { model: autoLabel(selection.provider, selection.model) })
+                      : t("engines.automatic")}
+                  </option>
+                  {missing ? <option value={value}>{labelOf(selection.provider, selection.model)}</option> : null}
+                  {groups.map((group) => (
+                    <optgroup key={group} label={group}>
+                      {choices
+                        .filter((choice) => choice.group === group)
+                        .map((choice) => (
+                          <option key={choice.value} value={choice.value}>
+                            {choice.label}
+                          </option>
+                        ))}
+                    </optgroup>
                   ))}
                 </select>
-                {isAuto && selection ? (
-                  <p className="small engines-auto-model">
-                    {labelOf(selection.provider, selection.model)}
-                    {selection.effort ? ` · ${levelLabel(selection.effort)}` : ""}
-                  </p>
-                ) : null}
                 {feature === "vision" && visionWarning ? (
                   <p className="small engines-warning">{t(visionWarning)}</p>
                 ) : null}
@@ -161,6 +185,6 @@ export function EngineTasks({
       </div>
       <p className="small engines-hint">{t("engines.modelAdvice")}</p>
       <p className="small engines-hint">{t("engines.effortAdvice")}</p>
-    </details>
+    </section>
   );
 }

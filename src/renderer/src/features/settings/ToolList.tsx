@@ -27,6 +27,13 @@ export type Tool = {
   name: string;
   /** The line under the name: the program behind the tool and the models it works on. */
   detail: string;
+  /**
+   * The three roles with the model each one runs, drawn in place of `detail`: the role in the quiet colour, the model
+   * in the normal one. Said only once the tool's models are known.
+   */
+  roles?: Array<{ role: string; label: string; model: string }>;
+  /** Lines under the roles: when the requests return, a model the plan leaves out, a task that runs in another role. */
+  notes?: string[];
   /** Its place among the tools in use, once the student has set an order. */
   position?: number;
   state: { tone: "ok" | "warn" | "idle"; text: string };
@@ -82,7 +89,24 @@ function ToolRow({ tool, sortable, disabled }: { tool: Tool; sortable: boolean; 
           <span className="engines-tool-name">{tool.name}</span>
           {tool.position ? <span className="visually-hidden">{t("engines.order.place", { position: tool.position })}</span> : null}
         </span>
-        <span className="px-ctl-description">{tool.detail}</span>
+        {tool.roles ? (
+          <>
+            <span className="px-ctl-description engines-roles" data-roles>
+              {tool.roles.map((item) => (
+                <span key={item.role} data-role={item.role}>
+                  <span className="engines-role">{item.label}</span> <span className="engines-role-model">{item.model}</span>
+                </span>
+              ))}
+            </span>
+            {tool.notes?.map((note) => (
+              <span key={note} className="px-ctl-description">
+                {note}
+              </span>
+            ))}
+          </>
+        ) : (
+          <span className="px-ctl-description">{tool.detail}</span>
+        )}
       </div>
       {tool.working ? (
         <span className="engines-tool-state is-working" role="status">

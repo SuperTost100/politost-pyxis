@@ -82,6 +82,37 @@ export function pickModel(
   return own[0];
 }
 
+const roleNames: readonly Tier[] = ["fast", "mid", "strong"];
+
+/**
+ * The model each of a tool's three roles runs for this account, as a tool's row in Settings says it: what
+ * `pickModel` gives, so the row and the automatic choice cannot disagree. `listed` is what the tool reports; a tool
+ * that is not connected has no list, and its roles are the file's preferred models. A role that has no model is null.
+ */
+export function rolesOf(provider: string, listed: readonly string[] | null): Record<Tier, string | null> {
+  const none = { fast: null, mid: null, strong: null };
+  if (!hasRoles(provider)) return none;
+  if (listed === null)
+    return Object.fromEntries(roleNames.map((tier) => [tier, roleModels(provider, tier)[0] ?? null])) as Record<
+      Tier,
+      string | null
+    >;
+  const models = listed.map((id) => ({ id, efforts: [] }));
+  const tool: AutoProvider = { id: provider, kind: "cli", effort: false, models };
+  return Object.fromEntries(roleNames.map((tier) => [tier, pickModel(tool, tier)?.id ?? null])) as Record<
+    Tier,
+    string | null
+  >;
+}
+
+/** The role each task runs in on this tool: the tool's own say in the file, else the task's tier. */
+export function taskRolesOf(provider: string): Record<AutoFeature, Tier> {
+  return Object.fromEntries(autoFeatures.map((feature) => [feature, roleOn(provider, feature)])) as Record<
+    AutoFeature,
+    Tier
+  >;
+}
+
 function choiceFor(
   provider: AutoProvider,
   feature: string,

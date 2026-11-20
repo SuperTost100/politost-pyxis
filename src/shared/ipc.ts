@@ -754,6 +754,22 @@ export const requests = {
     input: z.object({}),
     output: z.record(z.string(), engineSelection),
   },
+  /**
+   * What a tool's row says about the models: the model each of its three roles runs for this account (the first of the
+   * role's list the tool reports; null for a role with none), and the role each task runs in on this tool. `models` is
+   * the list the tool reports; null for a tool that is not connected, which gets the model file's preferred ones.
+   */
+  "engines.roles": {
+    input: z.object({ provider: z.string(), models: z.array(z.string().max(200)).max(500).nullable() }),
+    output: z.object({
+      roles: z.object({
+        fast: z.string().nullable(),
+        mid: z.string().nullable(),
+        strong: z.string().nullable(),
+      }),
+      tasks: z.record(z.string(), z.enum(["fast", "mid", "strong"])),
+    }),
+  },
   /** The names a student reads: each engine's, and each model's that Pyxis has listed, by engine. */
   "engines.names": {
     input: z.object({}),

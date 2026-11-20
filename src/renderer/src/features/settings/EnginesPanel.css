@@ -4,6 +4,7 @@
   gap: 30px;
 }
 .engines-panel h2,
+.engines-panel h3,
 .engines-panel p {
   margin: 0;
 }
@@ -107,8 +108,26 @@
   overflow-wrap: anywhere;
 }
 .engines-tool.is-off .px-ctl-title,
-.engines-tool.is-off .px-ctl-description {
+.engines-tool.is-off .px-ctl-description,
+.engines-tool.is-off .engines-role-model {
   color: var(--ink-subtle);
+}
+/* The three roles of a tool: the role in the quiet colour, the model it runs in the normal one. */
+.engines-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 18px;
+  margin-top: 2px;
+}
+.engines-roles > span {
+  white-space: nowrap;
+}
+.engines-role-model {
+  color: var(--ink);
+}
+.engines-roles-note b {
+  color: var(--ink);
+  font-weight: 600;
 }
 .engines-tool-state {
   display: inline-flex;
@@ -142,17 +161,14 @@
 
 /* Advanced, closed until opened: a summary that reads as the group titles above it. */
 .engines-advanced > summary,
-.engines-section > summary,
 .engines-diagnostics > summary {
   display: inline-flex;
   font: 650 15.5px/1.3 var(--font-sans);
 }
-.engines-section > summary,
 .engines-diagnostics > summary {
   font-size: 14.5px;
 }
 .engines-advanced > summary:focus-visible,
-.engines-section > summary:focus-visible,
 .engines-diagnostics > summary:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
@@ -166,10 +182,23 @@
 .engines-advanced-body > .px-ctl {
   margin-top: 6px;
 }
-.engines-section > .engines-heading {
-  margin-top: var(--space-3);
+/* The kinds of work: a heading with how many are pinned, a line that says what pinning does, and the one button. */
+.engines-pinhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+.engines-pinhead p {
+  max-width: 460px;
+}
+.engines-pinhead .px-btn {
+  flex: none;
+  white-space: nowrap;
 }
 .engines-feature-table {
+  container-type: inline-size;
   margin-top: var(--space-3);
   border-radius: var(--radius-card);
   background: var(--surface);
@@ -194,10 +223,22 @@
   align-items: start;
 }
 /* The task's name sits on the picker's first line, and a name that wraps keeps its lines together. */
-.engines-feature-row > label {
+.engines-feature-work > label {
+  display: block;
   padding-top: 8px;
   font-weight: 500;
   line-height: 1.4;
+}
+.engines-feature-work > small {
+  display: block;
+  color: var(--ink-muted);
+  font-size: 12.5px;
+}
+/* A kind of work pinned to a model: the field takes the tint, and the model's name its colour. */
+select.px-ctl-field.is-pinned {
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  font-weight: 600;
 }
 .engines-effort-caption {
   display: none;
@@ -272,13 +313,6 @@
 .engines-result {
   overflow-wrap: anywhere;
 }
-.engines-auto-model {
-  margin-top: var(--space-2) !important;
-  color: var(--ink-muted);
-  font-family: var(--font-sans);
-  overflow-wrap: anywhere;
-  font-variant-numeric: tabular-nums;
-}
 /* A narrow window: the state and the buttons go under the name, in line with it. */
 @media (max-width: 640px) {
   .engines-tool {
@@ -294,6 +328,10 @@
   .engines-tool > .px-btn {
     margin-left: auto;
   }
+}
+/* A table too narrow for three columns, whatever the window: each kind of work stacks its name, model and effort, so
+   the model's name is never cut. */
+@container (max-width: 520px) {
   .engines-feature-head {
     display: none;
   }

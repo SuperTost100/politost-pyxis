@@ -5,6 +5,8 @@ import {
   autoFeatures,
   pickModel,
   planAuto,
+  rolesOf,
+  taskRolesOf,
   type AutoProvider,
 } from "./auto";
 import {
@@ -614,6 +616,10 @@ export function engineHandlers(
         ),
         models: modelNames(),
       };
+    },
+    /** The model of each role of a tool for this account and the role of each task on it; see `rolesOf`. */
+    roles(input: { provider: string; models: string[] | null }) {
+      return { roles: rolesOf(input.provider, input.models), tasks: taskRolesOf(input.provider) };
     },
     /**
      * The engines the student lets Pyxis use (null means automatic, every engine that is ready) and the order they put

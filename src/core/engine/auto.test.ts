@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { planAuto, pickModel, type AutoProvider } from "./auto";
+import { afterEach, describe, expect, it } from "vitest";
+import { adoptModelFile, modelFile, resetModelFile, type ModelFile } from "./model-roles";
+import { planAuto, pickModel, rolesOf, taskRolesOf, type AutoProvider } from "./auto";
 
 const all = [
   { id: "low" },
@@ -404,5 +405,88 @@ describe("the order the student put their tools in", () => {
     expect(planAuto([anthropicApi, openaiApi], undefined, ["claude", "codex"])).toEqual(
       planAuto([anthropicApi, openaiApi]),
     );
+  });
+});
+
+describe("the three roles of a tool, as its row shows them", () => {
+  const ids = (provider: AutoProvider) => provider.models.map((m) => m.id);
+
+  it("names the model the automatic choice runs for each role on this account", () => {
+    expect(rolesOf("claude", ids(claude))).toEqual({
+      fast: "claude-haiku-5-5",
+      mid: "claude-sonnet-5-5",
+      strong: "claude-opus-5-5",
+    });
+    expect(rolesOf("codex", ids(codex))).toEqual({
+      fast: "gpt-6-luna",
+      mid: "gpt-6.1-terra",
+      strong: "gpt-6.2-sol",
+    });
+  });
+
+  it("agrees with what planAuto gives each task, so the row never says one thing and the choice another", () => {
+    const plan = planAuto([claude]);
+    const roles = rolesOf("claude", ids(claude));
+    expect(plan.chat?.model).toBe(roles.fast);
+    expect(plan.lesson?.model).toBe(roles.mid);
+    expect(plan.plan?.model).toBe(roles.strong);
+  });
+
+  it("uses the first model of the list the account has, not the first of the list", () => {
+    // The newest Sonnet is not on this account: the older one of the same role is.
+    const older = ids(claude).filter((id) => id !== "claude-sonnet-5-5");
+    expect(rolesOf("claude", older).mid).toBe("claude-sonnet-5");
+  });
+
+  it("steps a role none of whose models the account has to the neighbouring role", () => {
+    const noHaiku = ids(claude).filter((id) => !id.includes("haiku"));
+    expect(rolesOf("claude", noHaiku)).toEqual({
+      fast: "claude-sonnet-5-5",
+      mid: "claude-sonnet-5-5",
+      strong: "claude-opus-5-5",
+    });
+    // Only the maker's first listed model is left: every role runs on it.
+    expect(rolesOf("codex", ["gpt-7-nova", "claude-opus-5-5"])).toEqual({
+      fast: "gpt-7-nova",
+      mid: "gpt-7-nova",
+      strong: "gpt-7-nova",
+    });
+  });
+
+  it("leaves every role empty for a tool with no model of its own, and never names Fable", () => {
+    expect(rolesOf("codex", ["claude-opus-5-5", "gemini-3.8-flash"])).toEqual({ fast: null, mid: null, strong: null });
+    expect(rolesOf("claude", ["claude-fable-5-2"])).toEqual({ fast: null, mid: null, strong: null });
+    expect(rolesOf("claude", [])).toEqual({ fast: null, mid: null, strong: null });
+  });
+
+  it("names the file's preferred model of each role for a tool that is not connected", () => {
+    expect(rolesOf("antigravity", null)).toEqual({
+      fast: "gemini-4-hydrogen",
+      mid: "gemini-4-hydrogen",
+      strong: "gemini-4-carbon",
+    });
+  });
+
+  it("has nothing to say about a tool the file has no rule for", () => {
+    expect(rolesOf("ollama", ["gemma3:12b"])).toEqual({ fast: null, mid: null, strong: null });
+    expect(rolesOf("ollama", null)).toEqual({ fast: null, mid: null, strong: null });
+  });
+
+  describe("the role each task runs in on a tool", () => {
+    afterEach(() => resetModelFile());
+
+    it("is the task's tier while the file gives the tool no featureRoles", () => {
+      expect(taskRolesOf("claude")).toMatchObject({ chat: "fast", map: "fast", cards: "fast", lesson: "mid", grading: "mid", plan: "strong" });
+    });
+
+    it("follows featureRoles on the tool that has them and only on that tool", () => {
+      const file = JSON.parse(JSON.stringify(modelFile())) as ModelFile;
+      file.updatedAt = "2099-01-01T00:00:00Z";
+      file.tools.claude!.featureRoles = { chat: "mid" };
+      expect(adoptModelFile(file)).toBe(true);
+      expect(taskRolesOf("claude").chat).toBe("mid");
+      expect(taskRolesOf("claude").map).toBe("fast");
+      expect(taskRolesOf("codex").chat).toBe("fast");
+    });
   });
 });

@@ -3133,7 +3133,7 @@
     "removeKey": "Rimuovi chiave API",
     "clearChoices": "Rimuovi scelte di {{name}}",
     "effortDefault": "Automatico per ogni funzione",
-    "taskHeading": "Funzione",
+    "taskHeading": "Lavoro",
     "effortAuto": "Automatico · {{level}}",
     "effortNone": "Non regolabile",
     "effortFellBack": "Questo modello non offre il livello «{{level}}», quindi Pyxis usa quello automatico.",
@@ -3233,10 +3233,10 @@
       "map": "Mappe",
       "vision": "Immagini"
     },
-    "perFeature": "Strumenti per funzione",
+    "perFeature": "Modello per tipo di lavoro",
     "advanced": "Avanzate",
     "automatic": "Automatico",
-    "backToAuto": "Torna alla scelta automatica",
+    "backToAuto": "Torna tutto ad Automatico",
     "installHelp": "Pyxis ha bisogno di uno strumento AI per rispondere. Collega qui sopra l'AI che paghi già: il modello lo sceglie Pyxis.",
     "auto": {
       "summary": "Pyxis sceglie da solo lo strumento adatto a ogni lavoro, tra {{names}}, e usa il modello più economico che basta.",
@@ -3334,7 +3334,7 @@
     "debug": "Mostra dettagli tecnici e debug",
     "debugHint": "Pyxis tiene su questo computer il registro di ogni chiamata all'AI dei lavori in Attività: quale AI e modello, quanto è durata, la richiesta e la risposta. Chiavi e token sono nascosti, e niente viene inviato.",
     "debugFailed": "Non è stato possibile salvare questa scelta. Riprova.",
-    "perFeatureHint": "Pyxis sceglie da solo lo strumento e il livello di ragionamento per ogni funzione. Qui puoi cambiarli una per una.",
+    "perFeatureHint": "Pyxis sceglie da solo il modello per ogni lavoro. Qui puoi fissarne uno per un solo tipo di lavoro: gli altri restano automatici.",
     "intro": {
       "listed": "Pyxis usa il primo della lista. Se finisce le richieste del giorno, passa al successivo."
     },
@@ -3345,7 +3345,8 @@
     "toConnect": {
       "title": "Da collegare",
       "install": "Installa e accedi",
-      "installNamed": "Installa e accedi a {{name}}"
+      "installNamed": "Installa e accedi a {{name}}",
+      "uses": "Usa {{models}}."
     },
     "order": {
       "hint": "Trascinali per cambiare l'ordine.",
@@ -3384,7 +3385,18 @@
     "key": {
       "hint": "Per chi paga un servizio a consumo. La chiave resta su questo computer.",
       "add": "Aggiungi una chiave"
-    }
+    },
+    "roles": {
+      "fast": "Veloce",
+      "mid": "Equilibrato",
+      "strong": "Forte",
+      "note": "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: <b>veloce</b> per chat, flashcard e mappe, <b>equilibrato</b> per lezioni e correzione, <b>forte</b> per il piano di studio.",
+      "exception": "Qui «{{task}}» usa il modello {{role}}."
+    },
+    "autoToday": "Automatico · oggi {{model}}",
+    "pinnedCount_one": "{{count}} fissato da te",
+    "pinnedCount_other": "{{count}} fissati da te",
+    "allAuto": "Tutto automatico"
   },
   "graph": {
     "title": "Grafico",
