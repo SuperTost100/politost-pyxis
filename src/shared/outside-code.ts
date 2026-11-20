@@ -33,12 +33,41 @@ function inlineClose(input: string, from: number, width: number): number {
 }
 
 /**
+ * Where an inline formula opened by the `$` at `from` ends (just after its closing `$` run), or -1 when none closes in its
+ * paragraph. A backslash escapes the next character. Inside it, backticks are data: micromark reads whichever of a
+ * formula and a code span opens first, so `$\text{`x`}$` is one formula.
+ */
+function mathClose(input: string, from: number): number {
+  let width = 1;
+  while (input[from + width] === "$") width += 1;
+  let at = from + width;
+  while (at < input.length) {
+    if (input[at] === "\\") {
+      at += 2;
+      continue;
+    }
+    if (input[at] === "\n" && /^\n[ \t]*\n/.test(input.slice(at, at + 40))) return -1;
+    if (input[at] === "$") {
+      let run = 0;
+      while (input[at + run] === "$") run += 1;
+      if (run === width) return at + run;
+      at += run;
+      continue;
+    }
+    at += 1;
+  }
+  return -1;
+}
+
+/**
  * Applies `map` to Markdown outside fenced blocks and inline code. `map` also gets the chunk's `start` and `end`
  * offsets in `input`, for callers that must know whether a chunk edge is a real line edge.
  */
 export function mapOutsideCode(
   input: string,
   map: (text: string, start: number, end: number) => string,
+  /** Also maps a code block or span, as written, with its kind. Without it, code is kept as it is. */
+  mapCode: (code: string, kind: "fence" | "inline") => string = (code) => code,
 ): string {
   let out = "";
   let i = 0;
@@ -61,9 +90,22 @@ export function mapOutsideCode(
             : fenceClose(input, lineEnd + 1, tick, width);
         flush(i);
         const end = close === -1 ? input.length : close;
-        out += input.slice(i, end);
+        out += mapCode(input.slice(i, end), "fence");
         i = end;
         prose = end;
+        continue;
+      }
+    }
+    if (tick === "\\" && input[i + 1] === "$") {
+      // An escaped dollar sign opens no formula.
+      i += 2;
+      continue;
+    }
+    if (tick === "$") {
+      // A formula that closes in its paragraph is prose from its first dollar to its last, backticks inside it included.
+      const close = mathClose(input, i);
+      if (close !== -1) {
+        i = close;
         continue;
       }
     }
@@ -73,7 +115,7 @@ export function mapOutsideCode(
       const close = inlineClose(input, i + width, width);
       if (close !== -1) {
         flush(i);
-        out += input.slice(i, close);
+        out += mapCode(input.slice(i, close), "inline");
         i = close;
         prose = close;
         continue;

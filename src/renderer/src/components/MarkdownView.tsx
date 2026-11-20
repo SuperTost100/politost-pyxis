@@ -135,24 +135,16 @@ export const MarkdownView = memo(function MarkdownView({
     () => anchoredChecks(children, checks ?? fencedChecks(children)),
     [children, checks],
   );
-  const source = useMemo(() => {
-    let body = stripCheckFences(children);
-    const inserts = new Map<number, string[]>();
-    claims.forEach((claim, index) => {
-      const start = body.indexOf(claim.step);
-      if (start < 0) return;
-      const next = body.indexOf("\n\n", start + claim.step.length);
-      const at = next < 0 ? body.length : next;
-      inserts.set(at, [
-        ...(inserts.get(at) ?? []),
-        `[check](mathcheck:${index})`,
-      ]);
-    });
-    for (const [at, markers] of [...inserts].sort((a, b) => b[0] - a[0])) {
-      body = `${body.slice(0, at)}\n\n${markers.join(" ")}\n\n${body.slice(at)}`;
-    }
-    return markdownSource(body, citationResolver, drawing);
-  }, [children, citationResolver, claims, drawing]);
+  const source = useMemo(
+    () =>
+      markdownSource(
+        stripCheckFences(children),
+        citationResolver,
+        drawing,
+        claims.map((claim) => claim.step),
+      ),
+    [children, citationResolver, claims, drawing],
+  );
   const scope = useMemo(
     () => ({ claims, canRun, onCitationClick, citationResolver, figures, drawing }),
     [claims, canRun, onCitationClick, citationResolver, figures, drawing],

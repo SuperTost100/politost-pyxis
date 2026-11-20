@@ -130,6 +130,15 @@ describe("a formula KaTeX cannot draw", () => {
   });
 });
 
+describe("a formula KaTeX draws without a failure", () => {
+  it("is not replaced by its source because of the colour it paints, even KaTeX's own error red", () => {
+    const html = render("Vale $\\textcolor{#cc0000}{x}$ e $\\color{#cc0000} y^2$ e $$\\textcolor{#cc0000}{z}$$", false);
+    expect(undrawn(html)).toBe(0);
+    expect(drawn(html)).toBe(3);
+    expect(html).toContain("color:#cc0000");
+  });
+});
+
 describe("an answer that is still being written", () => {
   // Claude's chat answer (display formulas on their own lines, a price), ChatGPT's (formulas in \( \) and \[ \]), a
   // lesson part of ChatGPT's (display formulas that share the $$ line with their first and last line).
@@ -157,5 +166,32 @@ describe("an answer that is still being written", () => {
   it("shows the whole text when it is finished", () => {
     const entry = written[0]![1];
     expect(render(entry.text, false, true)).toBe(render(entry.text, false, false));
+  });
+});
+
+describe("the text of a reply with a check marker", () => {
+  const step = "$2 + 2 = 4$";
+
+  it("keeps a formula that is open at the end of the paragraph a placeholder", () => {
+    const text = `Il primo passo è ${step} e poi $x = `;
+    const source = markdownSource(text, undefined, true, [step]);
+    expect(source).not.toContain("$x =");
+    expect(source).toContain("pyxis-math:inline:");
+    expect(source).toContain("[check](mathcheck:0)");
+    // The marker follows the placeholder, in a paragraph of its own.
+    expect(source.indexOf("pyxis-math")).toBeLessThan(source.indexOf("mathcheck"));
+  });
+
+  it("puts the marker after the paragraph of its step, as it always did", () => {
+    expect(markdownSource(`Prima ${step} qui.\n\nDopo.`, undefined, false, [step])).toBe(
+      `Prima ${step} qui.\n\n[check](mathcheck:0)\n\n\n\nDopo.`,
+    );
+    expect(markdownSource(`Prima ${step}.`, undefined, false, [step, "non c'è"])).toBe(`Prima ${step}.\n\n[check](mathcheck:0)\n\n`);
+  });
+
+  it("puts two markers of one paragraph together, and never draws a formula it has cut", () => {
+    const html = render(markdownSource("$a = 1$ e $b = 2$ e $c = ", undefined, true, ["$a = 1$", "$b = 2$"]), false);
+    expect(html).not.toContain("katex-error");
+    expect(visibleText(html)).not.toContain("$");
   });
 });

@@ -83,13 +83,10 @@ function scanMath(text: string, literals: number[] = []): MathSpan[] {
     } else {
       open = text[i + 1] === "$" ? "$$" : "$";
       close = open;
-      // A lone `$` beside a space is a dollar sign, as in "25 $". One that ends the text may still become a formula.
-      if (open === "$" && i + 1 < text.length && !/\S/.test(text[i + 1]!)) {
-        literals.push(i);
-        i += 1;
-        continue;
-      }
     }
+    // A `$` before a space may open a formula (`$ x $`, which remark-math draws), but one that nothing closes is a dollar
+    // sign, as in "25 $ e basta", and never a formula still being written. A `$` that ends the text may become either.
+    const padded = open === "$" && i + 1 < text.length && !/\S/.test(text[i + 1]!);
     const inline = open === "$" || open === "\\(";
     let at = i + open.length;
     let end = -1;
@@ -113,7 +110,7 @@ function scanMath(text: string, literals: number[] = []): MathSpan[] {
     }
     if (end === -1) {
       // Never closed within its paragraph (inline) or its text (display): the end of an unfinished text, or plain characters.
-      if (at >= text.length) spans.push({ start: i, end: text.length, open, close, closed: false });
+      if (at >= text.length && !padded) spans.push({ start: i, end: text.length, open, close, closed: false });
       if (open[0] === "$") for (let k = 0; k < open.length; k += 1) literals.push(i + k);
       i += open.length;
       continue;
@@ -193,25 +190,42 @@ export function holdOpenMath(input: string): string {
 /**
  * A chemical equation a model put alone, in a code fence of its own (no language or a LaTeX one) or with no delimiter
  * at all, is a formula: the fence would show `\ce{…}` as code and the bare line as text. Only a lone `\ce{…}` or
- * `\pu{…}` is read this way, so a code block stays code.
+ * `\pu{…}` is read this way, so a code block stays code, and a fence inside a longer one is the longer one's text: the
+ * traversal is the one that finds code everywhere else, and a closing fence must be the opening one's marker, as wide or wider.
  */
 function unfenceChemistry(input: string): string {
   if (!input.includes("\\ce{") && !input.includes("\\pu{")) return input;
-  return input.replace(
-    /^([ \t]*)(`{3,}|~{3,})[ \t]*(?:latex|tex|katex|mhchem|chem)?[ \t]*\n[ \t]*(\\(?:ce|pu)\{[^\n]*\})[ \t]*\n[ \t]*\2[ \t]*$/gim,
-    (_, indent: string, _fence: string, body: string) => `${indent}$$\n${indent}${body}\n${indent}$$`,
+  return mapOutsideCode(
+    input,
+    (text) => text,
+    (code, kind) => {
+      if (kind !== "fence") return code;
+      const fence = /^(`{3,}|~{3,})[ \t]*(?:latex|tex|katex|mhchem|chem)?[ \t]*\n[ \t]*(\\(?:ce|pu)\{[^\n]*\})[ \t]*\n([`~]+)[ \t]*(\n?)$/i.exec(code);
+      if (!fence) return code;
+      const [, open, body, close, lineEnd] = fence;
+      return close === open![0]!.repeat(close!.length) && close!.length >= open!.length
+        ? `$$\n${body}\n$$${lineEnd}`
+        : code;
+    },
   );
 }
 
+/** Commands whose argument is words, not mathematics. */
+const TEXT_COMMANDS = /\\(?:text|textbf|textit|textrm|textsf|texttt|textnormal|mbox|mathrm|emph)\{[^{}]*\}/g;
+
 /**
  * A text that is nothing but LaTeX, with no delimiter and no prose, as a model writes it in a field meant for one
- * formula (the answer of a worked example): it would show its backslash commands as text.
+ * formula (the answer of a worked example): it would show its backslash commands as text. It needs something
+ * mathematical outside the commands that hold words (an operator, a sub- or superscript, a command such as `\vec`), and
+ * no sentence: three words in a row make it prose that starts with a command.
  */
 function bareFormula(input: string): string {
   const text = input.trim();
   if (!/^\\[A-Za-z]+/.test(text) || /[$`]|\\[([]|\n[ \t]*\n/.test(text)) return input;
-  // Three words in a row outside \text{…} make it a sentence that starts with a command, which stays as written.
-  const words = text.replace(/\\(?:text|mathrm|mbox|textbf|operatorname)\{[^{}]*\}/g, "").replace(/\\[A-Za-z]+/g, "");
+  const outside = text.replace(TEXT_COMMANDS, "");
+  const mathematical = /[=<>^_+*/]|\\(?!(?:text|textbf|textit|textrm|textsf|texttt|textnormal|mbox|mathrm|emph)\b)[A-Za-z]+/.test(outside);
+  if (!mathematical) return input;
+  const words = outside.replace(/\\[A-Za-z]+/g, "");
   if (/\p{L}{2,}[ \t]+\p{L}{2,}[ \t]+\p{L}{2,}/u.test(words)) return input;
   return `$${text}$`;
 }

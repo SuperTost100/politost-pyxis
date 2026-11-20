@@ -337,3 +337,59 @@ describe("a chemical equation alone on a line, with no delimiter", () => {
     expect(normalizeMathDelimiters("\\[\n\\ce{H2O}\n\\]")).toBe("\n$$\n\\ce{H2O}\n$$\n");
   });
 });
+
+// Review of #534: every guess must leave ordinary text and complete formulas alone.
+describe("holdOpenMath leaves complete formulas and prices alone", () => {
+  it("a complete formula with spaces inside its delimiters keeps its closing dollar", () => {
+    expect(holdOpenMath("Vale $ C_nH_{2n+2} $")).toBe("Vale $ C_nH_{2n+2} $");
+    expect(holdOpenMath("Vale $ C_nH_{2n+2} $ per gli alcani")).toBe("Vale $ C_nH_{2n+2} $ per gli alcani");
+  });
+
+  it("a price with a space after its dollar sign stays text, not a placeholder", () => {
+    expect(holdOpenMath("Costa 25 $ e basta")).toBe("Costa 25 $ e basta");
+    expect(holdOpenMath("Costa $ 25 e basta")).toBe("Costa $ 25 e basta");
+  });
+
+  it("a backtick span inside a formula is part of the formula", () => {
+    expect(holdOpenMath("Vale $\\text{`x`}$ qui")).toBe("Vale $\\text{`x`}$ qui");
+    expect(holdOpenMath("Vale $\\text{`x`}$ e $y =")).toBe("Vale $\\text{`x`}$ e […](pyxis-math:inline:3)");
+    expect(normalizeMathDelimiters("$\\text{`x`}$ vale \\(25\\ \\$\\)")).toBe("$\\text{`x`}$ vale $25\\ \\char36{}$");
+  });
+
+  it("code before a dollar sign is still code", () => {
+    expect(holdOpenMath("Uso `$x` e poi $y =")).toBe("Uso `$x` e poi […](pyxis-math:inline:3)");
+    expect(normalizeMathDelimiters("`a \\(b\\)` e \\(c\\)")).toBe("`a \\(b\\)` e $c$");
+  });
+});
+
+describe("a chemistry fence inside another code block", () => {
+  it("is code, not a formula", () => {
+    const example = "````\n```\n\\ce{H2O}\n```\n````";
+    expect(normalizeMathDelimiters(example)).toBe(example);
+    const tilde = "~~~~\n~~~\n\\ce{H2O}\n~~~\n~~~~";
+    expect(normalizeMathDelimiters(tilde)).toBe(tilde);
+  });
+
+  it("a standalone block still is a formula, whatever follows it, and so is one closed by a longer fence", () => {
+    expect(normalizeMathDelimiters("```\n\\ce{H2O}\n```\nAcqua")).toBe("$$\n\\ce{H2O}\n$$\nAcqua");
+    expect(normalizeMathDelimiters("```\n\\ce{H2O}\n````")).toBe("$$\n\\ce{H2O}\n$$");
+    expect(normalizeMathDelimiters("Prima\n\n```tex\n\\pu{5 mol}\n```\n\nDopo")).toBe("Prima\n\n$$\n\\pu{5 mol}\n$$\n\nDopo");
+  });
+});
+
+describe("a text that starts with a text command", () => {
+  it("is prose, however short", () => {
+    for (const same of [
+      "\\textbf{Nota:} valore nullo",
+      "\\textit{Nota} sì",
+      "\\textbf{Attenzione}",
+      "\\emph{valore} nullo",
+    ])
+      expect(normalizeMathDelimiters(same)).toBe(same);
+  });
+
+  it("is a formula once something mathematical follows", () => {
+    expect(normalizeMathDelimiters("\\vec{v}")).toBe("$\\vec{v}$");
+    expect(normalizeMathDelimiters("\\text{massa} = 3\\ \\mathrm{kg}")).toBe("$\\text{massa} = 3\\ \\mathrm{kg}$");
+  });
+});
