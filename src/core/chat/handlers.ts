@@ -13,7 +13,7 @@ import { chatUsage } from "../engine/usage";
 import { removeBlobLeftovers } from "../share/usage";
 import { sessionsOpened } from "./sessions";
 import type { FigureEvent } from "../math/figures";
-import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, chatSubjectBy, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat, setChatSubject } from "./turn";
+import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, chatSubjectBy, chatTitle, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat, setChatSubject } from "./turn";
 
 /** Recorded reply for tests. With a delay it waits, then streams the words, so the thinking and streaming states can be seen. */
 function recordedReply(text: string, delayMs: number) {
@@ -121,6 +121,7 @@ export function chatHandlers(
     },
     read(input: { chatId: string }) {
       return {
+        title: chatTitle(db, input.chatId),
         sourceIds: chatPickedSources(db, input.chatId),
         planId: chatPlan(db, input.chatId),
         subject: chatSubject(db, input.chatId),

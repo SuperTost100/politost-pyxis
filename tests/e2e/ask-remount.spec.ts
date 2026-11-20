@@ -127,7 +127,7 @@ test("a question sent again after Stop shows once while its reply is written", a
     await expect(page.getByText("Un esempio?")).toBeVisible();
     const chatId = await page.evaluate(() => location.hash.split("/").at(-1)!);
 
-    // Stopped mid-reply, the chat keeps the stored question and the composer gets it back.
+    // Stopped before any text of the reply, the question is taken back: the composer gets it and the chat holds no copy.
     await box.fill("Seconda domanda");
     await box.press("Enter");
     const stop = page.getByRole("button", { name: "Interrompi", exact: true });
@@ -136,9 +136,10 @@ test("a question sent again after Stop shows once while its reply is written", a
     await expect(stop).toHaveCount(0);
     await expect(box).toHaveText("Seconda domanda");
     const bubbles = page.locator(".px-msg-bubble", { hasText: "Seconda domanda" });
-    await expect(bubbles).toHaveCount(1);
+    await expect(bubbles).toHaveCount(0);
+    expect(await messages(page, chatId)).toBe(2);
 
-    // Sent again, core answers the stored question rather than storing a second one, and the page shows it once.
+    // Sent again, the question is stored once, and the page shows it once while its reply is written.
     await box.press("Enter");
     await expect(stop).toBeVisible();
     // While the reply is written, a second copy of the question must not show up. Its absence has no signal to wait for.

@@ -3181,6 +3181,8 @@ export const requests = {
   "chats.read": {
     input: z.object({ chatId: z.string() }),
     output: z.object({
+      /** The chat's title; a chat that was only seeded has one before it is stored. Undefined for a chat that does not exist. */
+      title: z.string().nullable().optional(),
       sourceIds: z.array(z.string()),
       planId: z.string().nullable(),
       subject: z.string().nullable(),

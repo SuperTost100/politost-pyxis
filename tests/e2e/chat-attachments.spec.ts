@@ -366,7 +366,8 @@ test("a send that waits for files belongs to its draft: the composer works and s
     }, other.chatId);
     await expect(page).toHaveURL(new RegExp(`#/ask/${other.chatId}`));
     await box.fill("Una bozza di questa chat");
-    await expect.poll(() => rows(userData, "SELECT id FROM chats").length, { timeout: 60000 }).toBe(2);
+    // The other chat is only seeded, so the one row is the chat the waiting send made.
+    await expect.poll(() => rows(userData, "SELECT id FROM chats").length, { timeout: 60000 }).toBe(1);
     await expect(box).toHaveText("Una bozza di questa chat");
     expect(await page.evaluate((id) => sessionStorage.getItem(`pyxis-draft:${id}`), other.chatId)).toBe("Una bozza di questa chat");
   } finally {
@@ -446,7 +447,7 @@ test("files picked while a new chat's first reply is written follow that chat, w
   }
 });
 
-test("Try again answers the stored question and lets its files go, and a notice about files stays with its chat", async () => {
+test("a question stopped before any answer is taken back with its files, and sending it again answers it and lets them go", async () => {
   test.setTimeout(120000);
   const { app, page, userData } = await launch({ PYXIS_E2E_REPLY_DELAY: "6000" });
   const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-files-"));
@@ -467,11 +468,15 @@ test("Try again answers the stored question and lets its files go, and a notice 
     const stop = page.getByRole("button", { name: "Interrompi", exact: true });
     await expect(stop).toBeVisible();
     await stop.click();
+    // The question is taken back: the composer gets its text and its file chip, and the chat keeps no copy.
     await expect(page.locator(".ask-attachments li").filter({ hasText: "appunti.txt" })).toBeVisible();
-    // The stored question is answered again with its file, and the chip that came back goes.
-    await page.getByRole("button", { name: "Riprova" }).click();
+    await expect(box).toHaveText("Spiega gli appunti");
+    expect(rows(userData, "SELECT id FROM attachments WHERE kind = 'document'")).toEqual([]);
+    // Sent again, the question is answered with its file, and the chip that came back goes.
+    await box.press("Enter");
     await expect(page.locator(".ask-attachments")).toHaveCount(0, { timeout: 30000 });
-    expect(rows(userData, "SELECT id FROM held_files")).toEqual([]);
+    // The files are let go once the answer is stored, which the delayed reply makes later than the chip going.
+    await expect.poll(() => rows(userData, "SELECT id FROM held_files"), { timeout: 30000 }).toEqual([]);
     expect(rows(userData, "SELECT id FROM attachments WHERE kind = 'document'")).toHaveLength(1);
   } finally {
     await app.close();

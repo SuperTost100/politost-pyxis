@@ -1,6 +1,6 @@
 // Runs the fixed conversations of tests/fixtures/chat-conversations.json through a real tool and says which replies do
 // what each conversation's rule asks. It makes real model calls on the student's subscriptions, so it is run by hand and
-// is not part of the tests or CI. Usage: node scripts/judge-chat.mjs <claude|codex|agent|antigravity> [fast|mid] [id,id,...]
+// is not part of the tests or CI. Usage: node scripts/judge-chat.mjs <claude|codex|antigravity> [fast|mid] [id,id,...]
 // `print <id>` shows what would be sent for one conversation without calling a model, and `rejudge <file> [--no-followups]` judges saved replies again, for replies saved without their follow-up chips. Replies are written to .tmp/judge-chat-<tool>-<tier>.json, which is not committed.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createFunnel } from "cli-funnel";
@@ -26,7 +26,7 @@ function messageFor(conv: Conversation): string {
     subject: "",
     profile: "Level: university.",
     followups: true,
-    figures: [],
+    figures: (conv.figures ?? []) as never,
   })}\nPinned context: none.`;
   const earlier = conv.history.length
     ? `Earlier turns:\n${conv.history.map((m) => `${m.role}: ${m.text}`).join("\n")}\n\n`
@@ -57,7 +57,7 @@ if (tool === "rejudge") {
 }
 const models = MODELS[tool];
 if (!models || (tier !== "fast" && tier !== "mid")) {
-  console.error("Usage: node scripts/judge-chat.mjs <claude|codex|agent|antigravity> [fast|mid] [id,id,...] | print <id>");
+  console.error("Usage: node scripts/judge-chat.mjs <claude|codex|antigravity> [fast|mid] [id,id,...] | print <id>");
   process.exit(1);
 }
 const [model, effort] = models[tier];

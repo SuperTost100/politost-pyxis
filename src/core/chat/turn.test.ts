@@ -15,6 +15,7 @@ import {
   chatScope,
   chatSubject,
   clearChatContext,
+  chatTitle,
   chatTitleFrom,
   deleteChat,
   heldSources,
@@ -665,6 +666,7 @@ describe("askTurn", () => {
     // What the page reads for the new chat comes from the seed.
     expect(chatContext(db, seeded.chatId)).toEqual({ kind: "answer", title: "Entropia", body: "Il disordine cresce." });
     expect(chatSubject(db, seeded.chatId)).toBe("Fisica");
+    expect(chatTitle(db, seeded.chatId)).toBe("Entropia");
     expect(readChat(db, seeded.chatId)).toEqual([]);
     clearChatContext(db, seeded.chatId);
     expect(chatContext(db, seeded.chatId)).toBeNull();

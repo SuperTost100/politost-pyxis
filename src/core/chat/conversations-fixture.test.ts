@@ -45,6 +45,9 @@ describe("the conversations a chat reply is judged on", () => {
       "check-wrong",
       "mixed",
       "not-study",
+      "stuck-after-attempt",
+      "stuck-again",
+      "three-figures",
     ])
       expect(ids).toContain(id);
   });
@@ -78,6 +81,26 @@ describe("the conversations a chat reply is judged on", () => {
       // A fence is still forbidden where the rule forbids it, whatever it holds.
       const poem = "not-study";
       expect(ok(poem, "Soft paws\nin the sun\nI sleep.\n```check\n{}\n```")).toContain("has ```");
+    });
+
+    it("tell a more concrete hint from a solution, for a student who says they are stuck once and again", () => {
+      const once = "stuck-after-attempt";
+      expect(ok(once, "Sottrai 6 da entrambi i membri: $2x + 6 - 6 = 14 - 6$. Quanto ottieni a destra?")).toEqual([]);
+      expect(ok(once, "Ecco la soluzione: $2x = 8$, quindi $x = 4$.")).not.toEqual([]);
+      expect(ok(once, "Pensaci ancora un po': come si isola il termine con x?")).toEqual([expect.stringContaining("missing")]);
+      const again = "stuck-again";
+      expect(ok(again, "Svolgiamolo insieme. $2x + 6 = 14$, sottraiamo 6: $2x = 8$, dividiamo per 2: $x = 4$.")).toEqual([]);
+      expect(ok(again, "Quasi: quanto vale $14 - 6$?")).not.toEqual([]);
+    });
+
+    it("count the figures a reply draws, and see a limit named or figure code outside a figure block", () => {
+      const three = "three-figures";
+      const block = (kind: string) => "```pyxis-figure\n" + JSON.stringify({ kind, caption: "c", code: "x" }) + "\n```";
+      expect(ok(three, `Ecco.\n${block("plot")}\n${block("circuit")}\nL'albero lo descrivo a parole: ha una radice e due figli.`)).toEqual([]);
+      expect(ok(three, [block("plot"), block("circuit"), block("graph")].join("\n"))).toContain("3 figures, over 2");
+      expect(ok(three, "Ho disegnato due figure.")).toContain("0 figures, under 1");
+      expect(ok(three, `${block("plot")}\nL'applicazione consente al massimo due figure per risposta.`)).not.toEqual([]);
+      expect(ok(three, `${block("plot")}\n\`\`\`dot\ndigraph { a -> b }\n\`\`\``)).toEqual([expect.stringContaining("has ```")]);
     });
 
     it("accept a confirmation with the final result and a further check, and reject handing the done step back", () => {

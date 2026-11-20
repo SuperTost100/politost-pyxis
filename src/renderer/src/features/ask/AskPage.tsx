@@ -862,7 +862,7 @@ export function AskPage() {
 
   const chats = useChats();
   const title = chatId
-    ? chats.data?.find((chat) => chat.id === chatId)?.title
+    ? (chats.data?.find((chat) => chat.id === chatId)?.title ?? thread.data?.title)
     : undefined;
   // A back control elsewhere calls this chat by its title. A chat opened from another page (a lesson's selection, an
   // exam's topic) leads back there; one opened from the sidebar, and a new chat, have none.

@@ -629,7 +629,8 @@ const rows: Row[] = [
       await askAboutSelection(page);
     },
     label: "Successioni e serie di funzioni",
-    lit: /^Che cosa dice/,
+    // The chat is stored with its first message, so the sidebar has no entry to light yet.
+    lit: null,
     leadsTo: `${exam}/lesson/t-serie`,
     focus: "Successioni e serie di funzioni",
   },

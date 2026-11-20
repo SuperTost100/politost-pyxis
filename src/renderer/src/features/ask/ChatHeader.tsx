@@ -42,6 +42,7 @@ export function ChatHeader({
       void message.error(t("ask.renameFailed"));
     }
     void client.invalidateQueries({ queryKey: ["chats"] });
+    void client.invalidateQueries({ queryKey: ["chat", chatId] });
   }
 
   return (

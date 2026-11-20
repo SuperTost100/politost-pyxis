@@ -19,6 +19,10 @@ export type Conversation = {
   endsWithQuestion?: boolean;
   followups?: "solution" | "similar";
   material?: boolean;
+  /** The figure kinds the context block says can be drawn, and how many figure blocks the reply may and must hold. */
+  figures?: string[];
+  minFigures?: number;
+  maxFigures?: number;
 };
 
 /**
@@ -54,6 +58,9 @@ export function judge(conv: Conversation, reply: string, options: { followups?: 
   for (const pattern of conv.mustNot ?? []) if (new RegExp(pattern).test(seen)) fails.push(`has ${pattern}`);
   for (const pattern of conv.mustFormula ?? []) if (!forms.some((form) => new RegExp(pattern).test(form))) fails.push(`missing ${pattern}`);
   for (const pattern of conv.mustNotFormula ?? []) if (forms.some((form) => new RegExp(pattern).test(form))) fails.push(`has ${pattern}`);
+  const drawn = (body.match(/```pyxis-figure/g) ?? []).length;
+  if (conv.minFigures !== undefined && drawn < conv.minFigures) fails.push(`${drawn} figures, under ${conv.minFigures}`);
+  if (conv.maxFigures !== undefined && drawn > conv.maxFigures) fails.push(`${drawn} figures, over ${conv.maxFigures}`);
   const words = seen.split(/\s+/).filter(Boolean).length;
   if (conv.minWords && words < conv.minWords) fails.push(`only ${words} words`);
   if (conv.maxWords && words > conv.maxWords) fails.push(`${words} words, over ${conv.maxWords}`);
