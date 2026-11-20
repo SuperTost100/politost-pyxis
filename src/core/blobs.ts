@@ -4,9 +4,11 @@ import {
   readFileSync,
   lstatSync,
   statSync,
+  renameSync,
   rmSync,
 } from "node:fs";
-import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { basename, dirname, join } from "node:path";
 import { strictlyInside } from "./path-inside";
 import type Database from "better-sqlite3";
 import { blobParts } from "../shared/blob-path";
@@ -68,9 +70,22 @@ function location(
   return { file, meta: `${file}.json` };
 }
 
+/**
+ * The file operations a blob uses, in one place so a test can make the system behave as Windows does while a file is
+ * deleted under an open handle: the name stays in the folder but cannot be opened, read or replaced until the handle goes.
+ */
+export const blobFs = {
+  exists: existsSync,
+  lstat: lstatSync,
+  read: readFileSync,
+  rm: rmSync,
+  rename: renameSync,
+  write: writeFileAtomic,
+};
+
 function regularFile(path: string): boolean {
-  if (!existsSync(path)) return false;
-  const info = lstatSync(path);
+  if (!blobFs.exists(path)) return false;
+  const info = blobFs.lstat(path);
   if (!info.isFile() || info.isSymbolicLink())
     throw new Error("blob-unsafe-path");
   return true;
@@ -79,7 +94,7 @@ function regularFile(path: string): boolean {
 function validMetadata(path: string): boolean {
   if (!regularFile(path)) return false;
   try {
-    const meta = JSON.parse(readFileSync(path, "utf8")) as {
+    const meta = JSON.parse(blobFs.read(path, "utf8") as string) as {
       mime?: unknown;
       ext?: unknown;
     };
@@ -108,10 +123,10 @@ export function putBlob(
   mkdirSync(join(file, ".."), { recursive: true });
   if (
     !regularFile(file) ||
-    sha256(readFileSync(file)) !== sha
+    sha256(blobFs.read(file)) !== sha
   )
-    writeFileAtomic(file, bytes);
-  if (!validMetadata(meta)) writeFileAtomic(meta, JSON.stringify({ mime, ext }));
+    blobFs.write(file, bytes);
+  if (!validMetadata(meta)) blobFs.write(meta, JSON.stringify({ mime, ext }));
   return sha;
 }
 
@@ -121,13 +136,45 @@ export function hasBlob(workspace: string, sha: string): boolean {
 }
 
 /**
+ * Takes one file off its name: it is renamed to a temporary name, which is what a write's leftover looks like (a backup
+ * skips it and Free up space removes it), and the file under that name is deleted. The blob's own name is free at once.
+ * On Windows a file something still holds open is not deleted but marked for deletion: its name stays in the folder and
+ * cannot be opened or replaced until the last handle closes, so a blob deleted under its own name could not be stored
+ * again in that time. A file the system will not rename stays whole under its name, and the error is the caller's.
+ */
+function takeOff(path: string): void {
+  let info: ReturnType<typeof lstatSync>;
+  try {
+    info = blobFs.lstat(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  // Only a file goes. A directory or a link where a blob should be is not ours to rename, and is left in place.
+  if (!info.isFile() || info.isSymbolicLink()) throw new Error("blob-unsafe-path");
+  const gone = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`);
+  try {
+    blobFs.rename(path, gone);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  try {
+    blobFs.rm(gone, { force: true });
+  } catch {
+    /* Ceiling: the temporary name stays until Free up space or the next run. */
+  }
+}
+
+/**
  * Removes a blob and its metadata. Only for a blob this caller has just made new and no row references, to undo its own
- * write. A blob that was already there, or may be shared, is never removed.
+ * write, or for one nothing references any more. A blob that was already there, or may be shared, is never removed. The
+ * blob is off its name at once, so storing the same bytes again never meets a file on its way out (see `takeOff`).
  */
 export function removeBlob(workspace: string, sha: string): void {
   const { file, meta } = location(workspace, sha);
-  rmSync(file, { force: true });
-  rmSync(meta, { force: true });
+  takeOff(file);
+  takeOff(meta);
 }
 
 /** The stored file's size in bytes, or null when it is missing. Reads no metadata, for listing many at once. */

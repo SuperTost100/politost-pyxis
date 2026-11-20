@@ -341,7 +341,10 @@ export function createHeldFiles(deps: HeldDeps) {
         return refresh(entry);
       } catch (error) {
         const code = error instanceof Error ? error.message : "";
-        return refused(attachmentErrorFor(code));
+        const reason = attachmentErrorFor(code);
+        // An error with no cause of its own reads as a damaged file on the chip; the log says what the system reported.
+        if (reason === "unreadable") console.error("pyxis-core: a file could not be attached", (error as NodeJS.ErrnoException | undefined)?.code ?? code.slice(0, 60));
+        return refused(reason);
       }
     },
 
