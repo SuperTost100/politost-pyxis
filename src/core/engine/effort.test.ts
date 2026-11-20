@@ -521,25 +521,41 @@ describe("model names core learns", () => {
 });
 
 describe("atLowEffort", () => {
-  it("runs a call at the lowest effort its model lists, whatever the task or the student asked for", () => {
+  it("runs a call at the lowest effort its model lists when the model file says the tool does", () => {
     rememberModels("antigravity", [{ id: "gemini-3.8-flash", efforts: levels("medium", "high", "low") }]);
-    expect(atLowEffort({ provider: "antigravity", model: "gemini-3.8-flash", effort: "high" })).toEqual({
-      provider: "antigravity",
-      model: "gemini-3.8-flash",
-      effort: "low",
-    });
+    for (const call of ["outline", "quiz"])
+      expect(atLowEffort({ provider: "antigravity", model: "gemini-3.8-flash", effort: "high" }, call)).toEqual({
+        provider: "antigravity",
+        model: "gemini-3.8-flash",
+        effort: "low",
+      });
+  });
+
+  it("leaves a call the tool does not run so at its level: only the outline on Claude and Codex", () => {
+    rememberModels("claude", [{ id: "m", efforts: levels("low", "medium", "high") }]);
+    rememberModels("codex", [{ id: "m", efforts: levels("low", "medium", "high") }]);
+    for (const provider of ["claude", "codex"]) {
+      expect(atLowEffort({ provider, model: "m", effort: "medium" }, "outline").effort).toBe("low");
+      expect(atLowEffort({ provider, model: "m", effort: "medium" }, "quiz").effort).toBe("medium");
+    }
+  });
+
+  it("takes the outline at low on a tool the file does not know, and nothing else", () => {
+    rememberModels("ollama", [{ id: "local", efforts: levels("low", "high") }]);
+    expect(atLowEffort({ provider: "ollama", model: "local", effort: "high" }, "outline").effort).toBe("low");
+    expect(atLowEffort({ provider: "ollama", model: "local", effort: "high" }, "quiz").effort).toBe("high");
   });
 
   it("uses the nearest level when the model has no low one, and none when it lists none", () => {
     rememberModels("codex", [{ id: "has-medium", efforts: levels("medium", "high") }]);
     rememberModels("claude", [{ id: "lists-none", efforts: [] }]);
-    expect(atLowEffort({ provider: "codex", model: "has-medium", effort: "high" }).effort).toBe("medium");
-    expect(atLowEffort({ provider: "claude", model: "lists-none", effort: "medium" })).toEqual({ provider: "claude", model: "lists-none" });
+    expect(atLowEffort({ provider: "codex", model: "has-medium", effort: "high" }, "outline").effort).toBe("medium");
+    expect(atLowEffort({ provider: "claude", model: "lists-none", effort: "medium" }, "outline")).toEqual({ provider: "claude", model: "lists-none" });
   });
 
   it("leaves a selection with no effort alone, and asks for low before the model's list is read", () => {
     const plain = { provider: "ollama", model: "local" };
-    expect(atLowEffort(plain)).toBe(plain);
-    expect(atLowEffort({ provider: "antigravity", model: "unread", effort: "medium" }).effort).toBe("low");
+    expect(atLowEffort(plain, "outline")).toBe(plain);
+    expect(atLowEffort({ provider: "antigravity", model: "unread", effort: "medium" }, "quiz").effort).toBe("low");
   });
 });

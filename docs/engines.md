@@ -78,6 +78,7 @@ Feature keys are `default`, `chat`, `plan`, `lesson`, `grading`, `map`, `vision`
 - Without a match in the tier's list, the neighbouring tiers are tried (`tierOrder` in `resources/model-tiers.json`), then the first of the maker's own models the tool reports. A tool that reports none of its maker's models gets no task.
 - The local model and unknown tools have no entry and are not restricted.
 - An optional `featureRoles` on a tool moves a task to another role on that tool, by task. The shipped file has `"featureRoles": { "chat": "mid" }` on `claude` and on `codex`, so the chat runs on Sonnet 5.5 and GPT-6.1 Terra at their mid effort: measured in chat, they answer as fast as Haiku 5.5 and GPT-6 Luna. Antigravity has none and keeps the chat on its fast role, whose first model is Gemini 3.8 Flash. Ten exercises with known answers (calculus, mechanics with friction, a circuit with two loops, a limiting reagent, probability with conditioning), run in Italian through the chat's own prompt on the real `agy`, were answered right by Gemini 3.8 Flash at low effort 10 of 10 (first text after 5.6 s on average), by Gemini 4 Hydrogen at low effort 10 of 10 (9.7 s) and at medium effort 10 of 10 (16.7 s), and by Gemini 4 Argon at medium effort 9 of 10 (8.5 s), so the mid role was neither more often right nor within three seconds of the fast one, and Flash leads the fast role. A tool without a `featureRoles` entry keeps the chat on its fast models. Only the model and the effort follow it; which tool does the task is still decided by the order of the tiers in `resources/model-tiers.json` and the student's order, and the share-out between tools still counts the task at its tier's cost.
+- An optional `lowEffort` on a tool lists the calls that run at the lowest effort the model lists, see [Calls that only reshape what they are given](#calls-that-only-reshape-what-they-are-given). Without it a tool runs only the outline that way. A name a build does not know is ignored.
 - `capabilities` says what models can do, as rows of a regular expression `pattern` (one model or a family; the first row that matches an id wins) with `vision` (reads images), `structured` (answers in the JSON a schema asks for) and `contextTokens`. Photos need a model whose row says `vision`, and the photo work takes the first model of its tier's list that does, so the newest one. A model with no row is treated as unable to read images. A file that names a model in a role that no row speaks for is refused, so a new model never needs a second file. The context sizes are not read by any code yet.
 
 ### Efforts of a model on Antigravity
@@ -207,7 +208,7 @@ In Settings, AI tools, under Advanced, each task has an effort picker next to it
 
 ### Calls that only reshape what they are given
 
-The lesson's outline and the batches of a quiz run at the lowest effort their model lists (`atLowEffort()` in `efforts.ts`, called by `planParts()` and `generateQuiz()`), whatever the task's level or the student's pick. Both give code something to check: the outline goes through `checkOutline()` and has a plain fallback, and each batch goes through its schema and the passage ids it was given. The part's text keeps the lesson's level, which is where reasoning shows. The reason is time, measured on Gemini 3.8 Flash through `agy`, on a busy machine (load average 13 to 20) and a 600-character outline asked three ways:
+Some calls run at the lowest effort their model lists (`atLowEffort()` in `efforts.ts`), whatever the task's level or the student's pick, when the model file says the tool runs that call so: the `lowEffort` list of the tool (`lowEffortOn()` in `model-roles.ts`). Two calls have a name today: `outline` (the lesson's outline, `planParts()`) and `quiz` (each batch of a quiz, `generateQuiz()`). The shipped file gives the outline to every tool, by the default a tool without a `lowEffort` gets, and the quiz to Antigravity only: `"lowEffort": ["outline", "quiz"]`. Claude and ChatGPT keep the lesson's level for a quiz, because they were not slow at it and nobody measured what low effort does to their questions. A newer copy of the file changes this with no release. The outline goes through `checkOutline()` and has a plain fallback, and each batch goes through its schema and the passage ids it was given. The part's text keeps the lesson's level, which is where reasoning shows. The reason is time, measured on Gemini 3.8 Flash through `agy`, on a busy machine (load average 13 to 20) and a 600-character outline asked three ways:
 
 | The same outline call                  | Time to the reply | Output tokens |
 | -------------------------------------- | ----------------- | ------------- |
@@ -217,6 +218,23 @@ The lesson's outline and the batches of a quiz run at the lowest effort their mo
 | ACP, low effort                        | 7.9 s             | 180           |
 
 `agy` reports 2,372 of the 2,436 tokens of the by-hand call as thinking, so the transport is not where the time goes: the model reasons for half a minute before it writes a split of numbered passages. In the app, an outline took 30.4 s at medium and 6.1 s at low, and the three batches of a ten-question quiz took 25.4, 35.7 and 37.9 s at medium and 9.2, 11.2 and 11.6 s at low. The questions written at low were grounded in their passages and had a right answer on the key. The call that writes a part keeps the lesson's level.
+
+Twenty multiple-choice questions from one chapter, two quizzes of ten at the lesson's effort (medium) and two at the lowest (low), on Gemini 3.8 Flash. The sets were checked by rule, by a Gemini judge told nothing about the effort, and by reading every question:
+
+| Check                                                    | Low             | Medium           |
+| -------------------------------------------------------- | --------------- | ---------------- |
+| Exactly one keyed option in range, four distinct options | 20/20           | 20/20            |
+| Cited passage ids all known                              | 20/20           | 20/20            |
+| Duplicate stems inside one quiz                          | 0               | 0                |
+| Same question asked again in the other quiz of the set   | 5               | 4                |
+| Judge: only the keyed option correct                     | 20/20           | 20/20            |
+| Judge: the cited passage supports the key                | 20/20           | 20/20            |
+| Judge: the explanation agrees with the key               | 20/20           | 20/20            |
+| Wrong key or a second defensible option, by reading      | 0               | 0                |
+| The keyed option is the longest of the four              | 5/20            | 12/20            |
+| Time of a batch of ten                                   | 23.0 and 24.5 s | 47.7 and 103.9 s |
+
+The low set was not worse. Its options were shorter, and the keyed one was the longest at the rate of chance (5 of 20 against 5 expected), where the medium set gave the answer away by length in 12 of 20. The two sets overlap because both draw on one chapter and each quiz is asked on its own.
 
 Starting the tool is a small cost next to that. Every call that is not a chat turn or a part of a lesson session starts its own `agy acp`, which answers `initialize` in 0.1 to 1.4 s (the first call of a run is the slow one) and `session/new` about 1 s later; the first token follows 1 to 2 s after that. That is 2.4 s on the first call and 1.0 to 1.4 s on the next ones, for the 3 to 7 calls of a lesson and a quiz, so keeping one process alive across one-shot calls would save a few seconds of several minutes and is not done. No wait for the per-run folder's lock or for the hook self-test showed in these runs: the first call of a job started within 0.1 s of the job.
 

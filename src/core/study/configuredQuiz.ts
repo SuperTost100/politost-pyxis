@@ -365,7 +365,7 @@ export async function generateQuiz(
       });
     const result = await generate({
       // Questions grounded in the passages given and checked against the schema above: thinking only costs time.
-      selection: atLowEffort(selection),
+      selection: atLowEffort(selection, "quiz"),
       run,
       signal,
       schema,

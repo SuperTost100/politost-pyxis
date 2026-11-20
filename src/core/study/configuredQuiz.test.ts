@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { forgetModels, rememberModels } from "../engine/efforts";
 import { currentUsageScope } from "../engine/usage";
+import type { ProviderId } from "../engine/funnel";
 import { trackCall } from "../jobs/activity";
 import { createRunner } from "../jobs/runner";
 import {
@@ -499,18 +500,23 @@ it("marks a quiz written without the plan's sources as general knowledge", async
   db.close();
 });
 
-it("writes every batch at the lowest effort the model lists", async () => {
-  rememberModels("claude", [{ id: "model-A", efforts: [{ id: "low" }, { id: "medium" }] }]);
+it.each([
+  ["antigravity", "low"],
+  // The model file gives the lowest effort for a quiz to Antigravity only: the other tools keep the lesson's level.
+  ["claude", "medium"],
+  ["codex", "medium"],
+])("writes every batch on %s at effort %s", async (provider, expected) => {
+  rememberModels(provider, [{ id: "model-A", efforts: [{ id: "low" }, { id: "medium" }] }]);
   const db = fixture();
   const snapshot = prepareQuiz(db, { planId: "plan", topicId: "topic", count: 10, types: ["tf" as const] });
-  snapshot.selection = { provider: "claude", model: "model-A", effort: "medium" };
+  snapshot.selection = { provider: provider as ProviderId, model: "model-A", effort: "medium" };
   const efforts: Array<string | undefined> = [];
   await generateQuiz(snapshot, async (turn) => {
     efforts.push(turn.selection.effort);
     return tfRun(turn);
   });
   expect(efforts.length).toBeGreaterThan(0);
-  expect(new Set(efforts)).toEqual(new Set(["low"]));
+  expect(new Set(efforts)).toEqual(new Set([expected]));
   // The snapshot keeps the engine as it was chosen, so a retry and the saved quiz record the student's selection.
   expect(snapshot.selection.effort).toBe("medium");
   forgetModels();

@@ -616,7 +616,7 @@ export async function planParts(db: Database.Database, input: PlanPartsInput): P
     try {
       result = await generate({
         // A split of numbered passages that `checkOutline` checks, and the fallback covers: thinking only costs time.
-        selection: atLowEffort(selection),
+        selection: atLowEffort(selection, "outline"),
         run: input.run,
         signal: input.signal,
         schema: outlineReply,
