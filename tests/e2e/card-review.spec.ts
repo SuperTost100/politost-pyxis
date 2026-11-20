@@ -210,10 +210,9 @@ test("card review: the study bar, ratings only under the card, undo, the card me
     await expect(page.getByRole("group", { name: "How well did you know it?" })).toHaveText("Didn't know it1Hard2Knew it3Easy4");
     await page.getByRole("button", { name: "Ask the tutor" }).click();
     await expect(page).toHaveURL(/#\/ask\/[\w-]+$/);
-    const chat = db
-      .prepare("SELECT context_json FROM chats ORDER BY created_at DESC LIMIT 1")
-      .get() as { context_json: string };
-    const context = JSON.parse(chat.context_json) as { body: string };
+    // The chat is stored with its first question, so the seed is read through core.
+    const chatId = page.url().split("/").at(-1)!;
+    const context = (await page.evaluate((id) => window.pyxis.invoke("chats.read", { chatId: id }), chatId)).context!;
     expect(context.body).toContain("Seconda legge di Newton?");
     expect(context.body).toContain("$F=ma$.");
     expect(context.body).toContain("La forza è il prodotto di massa e accelerazione.");
