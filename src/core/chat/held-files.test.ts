@@ -518,6 +518,90 @@ describe("a photo that cannot be read fails on its chip", () => {
   });
 });
 
+describe("a photo the decoder refuses for its size", () => {
+  it("fails on its chip when it is attached, since the local reading would decode it with the same limit; a photo only past the provider's limit stays ready", async () => {
+    const reasons: Record<string, string> = { "enorme.jpg": "vision-image-decode-limit", "grande.webp": "vision-image-too-large" };
+    const { files, write } = setup({
+      fit: async (file) => {
+        throw new Error(reasons[readFileSync(file, "utf8")]!);
+      },
+    });
+    const views = [];
+    for (const name of Object.keys(reasons)) views.push(await files.held.attach(write(name, name)));
+    await files.held.settle(views.map((view) => view.id));
+    expect(files.held.list(views.map((view) => view.id)).map((view) => [view.name, view.state, view.error])).toEqual([
+      ["enorme.jpg", "failed", "picture-too-large"],
+      ["grande.webp", "ready", undefined],
+    ]);
+    // The message goes out without the first and names it, as for any file that cannot be read.
+    const taken = files.held.take(views.map((view) => view.id));
+    expect(taken.leftOut.map((file) => [file.name, file.error])).toEqual([["enorme.jpg", "picture-too-large"]]);
+    expect(taken.photos.map((photo) => photo.name)).toEqual(["grande.webp"]);
+  });
+});
+
+describe("a photo is never reading with nothing running", () => {
+  const png = { mediaType: "image/png" as const, bytes: new Uint8Array([1, 2, 3]) };
+
+  it("holds a photo as reading only while its fitting is under way, and ends every photo as ready or failed", async () => {
+    // One fitting is held until the test lets it go; the others end at once, one fitted and three refused.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const outcomes: Record<string, () => Promise<typeof png>> = {
+      "subito.jpg": async () => png,
+      "attesa.jpg": async () => (await gate, png),
+      "rifiutata.jpg": () => Promise.reject(new Error("vision-image-unsupported")),
+      "troppo-grande.jpg": () => Promise.reject(new Error("vision-image-too-large")),
+      "senza-parole.jpg": () => Promise.reject(new Error("")),
+    };
+    const inFlight = new Set<string>();
+    const reading: Array<{ name: string; fitting: boolean }> = [];
+    const events: AttachmentView[] = [];
+    const { files, write } = setup({
+      fit: async (file) => {
+        const name = readFileSync(file, "utf8");
+        inFlight.add(name);
+        try {
+          return await outcomes[name]!();
+        } finally {
+          inFlight.delete(name);
+        }
+      },
+      // Every view core announces as reading is checked at that moment: its fitting must be under way.
+      emit: (view) => {
+        events.push(view);
+        if (view.state === "reading") reading.push({ name: view.name, fitting: inFlight.has(view.name) });
+      },
+    });
+    const views: AttachmentView[] = [];
+    for (const name of Object.keys(outcomes)) views.push(await files.held.attach(write(name, name)));
+    const held = views.find((view) => view.name === "attesa.jpg")!;
+    const others = views.filter((view) => view !== held).map((view) => view.id);
+    await files.held.settle(others);
+
+    // While the gated fitting is held, its photo is reading and its fitting is under way; every other photo has ended.
+    expect(files.held.list([held.id])[0]).toMatchObject({ state: "reading" });
+    expect(inFlight.has("attesa.jpg")).toBe(true);
+    expect(files.held.list(others).map((view) => [view.name, view.state])).toEqual([
+      ["subito.jpg", "ready"],
+      ["rifiutata.jpg", "failed"],
+      ["troppo-grande.jpg", "ready"],
+      ["senza-parole.jpg", "failed"],
+    ]);
+
+    // Let it go: the photo ends ready, nothing is left under way, and the window was told.
+    release();
+    await files.held.settle([held.id]);
+    expect(files.held.list([held.id])[0]).toMatchObject({ state: "ready" });
+    expect(inFlight.size).toBe(0);
+    expect(events.filter((event) => event.id === held.id).at(-1)).toMatchObject({ state: "ready" });
+    for (const view of views) expect(["ready", "failed"], view.name).toContain(events.filter((event) => event.id === view.id).at(-1)?.state);
+    // No view said reading while nothing was fitting.
+    expect(reading.length).toBeGreaterThan(0);
+    expect(reading.every((entry) => entry.fitting), JSON.stringify(reading)).toBe(true);
+  });
+});
+
 describe("a scan whose indexing failed is still read", () => {
   it("starts reading the scan when the import ended on its indexing step, and does not wait for ever", async () => {
     const t = setup({

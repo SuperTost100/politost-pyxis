@@ -152,7 +152,9 @@ export function createAttachQueue(
           detachInCore(view.id);
           return;
         }
-        drafts.views.put(view);
+        // Core announces every change of a file (`chats.attachment`), and a small photo is fitted before its answer to the
+        // attach has left core: the announcement is then here first, and the answer, made earlier, must not replace it.
+        if (!drafts.views.get()[view.id]) drafts.views.put(view);
         drafts.files.set(draft, (list) => (list.some((file) => file.id === view.id) ? list : [...list, { id: view.id, name: view.name, path }]));
         if (preview) drafts.previews.put(view.id, preview);
       } catch (error) {

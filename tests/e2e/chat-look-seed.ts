@@ -8,7 +8,7 @@ import { dataUrl, photoPng, plotPng } from "./pictures";
 
 const PLOT = "plt.plot([0, 6], [2, 11])";
 const OLD_PLOT = "plt.plot([0, 6], [11, 2])";
-export const FIGURE_CAPTION = "La velocità cresce di 1,5 m/s ogni secondo. L'area colorata è lo spostamento tra 1 s e 4 s.";
+export const FIGURE_CAPTION = "La velocità $v(t)=2+1{,}5\\,t$ cresce di 1,5 m/s ogni secondo. L'area colorata è lo spostamento tra 1 s e 4 s.";
 export const OLD_FIGURE_CAPTION = "La velocità scende di 1,5 m/s ogni secondo.";
 
 const block = (code: string, caption: string) => "```pyxis-figure\n" + JSON.stringify({ caption, code }) + "\n```";
@@ -95,6 +95,8 @@ export function seedStoppedChat(db: DatabaseSync, id = "look-stopped") {
 }
 
 const PHOTO_SHA = "c".repeat(64);
+/** A file name with the marks Markdown and TeX read, which the viewer must show as written. */
+export const PHOTO_NAME = "Appunti [set](2026) {1} $x$.png";
 
 /** A picture in the workspace's blob store under a name of 64 hex digits, as the app's `pyxis-blob:` address reads it. */
 export function writeBlob(userData: string, sha: string, bytes: Buffer, mime: string) {
@@ -123,7 +125,7 @@ export function seedSentFilesChat(db: DatabaseSync, userData: string, id = "look
   const attach = db.prepare(
     "INSERT INTO attachments(id,message_id,blob_sha,mime,created_at,name,kind,size,source_id) VALUES(?,?,?,?,?,?,?,?,?)",
   );
-  attach.run(`${id}-photo`, `${id}-q`, PHOTO_SHA, "image/png", 1, "esercizio-4.png", "photo", 204800, null);
+  attach.run(`${id}-photo`, `${id}-q`, PHOTO_SHA, "image/png", 1, PHOTO_NAME, "photo", 204800, null);
   attach.run(`${id}-old`, `${id}-q`, "d".repeat(64), "image/png", 2, null, "photo", null, null);
   attach.run(`${id}-doc`, `${id}-q`, "e".repeat(64), "application/pdf", 3, "esercizi-scansione.pdf", "document", 1048576, `${id}-source`);
   db.exec(`INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('${id}-source','pdf','esercizi-scansione','ready',0,1,1);`);
