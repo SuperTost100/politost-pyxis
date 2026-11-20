@@ -100,7 +100,9 @@ for (const theme of ["light", "dark"] as const) {
       await expect(figure.getByRole("button", { name: /^Ingrandisci la figura: La velocità v\(t\)=2\+1,5 t cresce/ })).toBeVisible();
       await saveShot(page, `chat-look/figure-${theme}-viewer.png`, { animations: "disabled" });
       // A right-click or Shift+F10 in the viewer does not open the menu of the figure behind it.
-      await viewer.locator("figcaption").click({ button: "right" });
+      // On the picture, not on text: on macOS a right-click on text selects the word under the pointer and the app then shows
+      // its native Copia menu, which a test cannot close and which keeps the app from quitting (see text-menu.spec.ts).
+      await viewer.locator(".px-viewer-card img").click({ button: "right" });
       await viewer.getByRole("button", { name: "Scarica PNG" }).focus();
       await page.keyboard.press("Shift+F10");
       await expect(menu()).toHaveCount(0);
@@ -357,7 +359,14 @@ test("a jump's mark does not follow the student to another chat, and the next ch
     const marks = page.getByRole("navigation", { name: "Indice della conversazione" }).getByRole("button");
     await expect(marks).toHaveCount(3);
     // Both chats fit the window, so both are at scroll 0 and nothing but the chat tells them apart.
-    expect(await page.evaluate(() => document.scrollingElement!.scrollHeight <= window.innerHeight + 1)).toBe(true);
+    // Messages out of view hold an estimated height until the page has laid them out, so the page is given a moment to settle;
+    // on macOS the first look comes before it has. What it must not do, once settled, is scroll.
+    await expect
+      .poll(() => page.evaluate(() => document.scrollingElement!.scrollHeight - window.innerHeight), {
+        message: "the page overflows the window by this many pixels",
+        timeout: 10000,
+      })
+      .toBeLessThanOrEqual(1);
     await marks.first().click();
     await expect(marks.first()).toHaveAttribute("aria-current", "true");
     // Chat B opens with no reload, as from the sidebar. It ends where it opened, so its last question is the one in view.
