@@ -2987,8 +2987,7 @@
       "run": "Esegui",
       "verified": "Verificato",
       "failed": "Non verificato",
-      "checking": "Verifico il calcolo…",
-      "uncheckable": "Non verificabile"
+      "checking": "Verifico il calcolo…"
     },
     "lesson": {
       "recommended": "Consigliato"

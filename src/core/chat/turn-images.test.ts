@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PNG } from "pngjs";
 import { afterEach, expect, it, vi } from "vitest";
+import * as blobs from "../blobs";
 import { putBlob } from "../blobs";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
@@ -18,9 +19,17 @@ vi.mock("./attach", async (original) => {
 });
 const fitted = vi.mocked(attach.savedImages);
 
+// Calls through to the real store, and lets a test make the system refuse to remove a file.
+vi.mock("../blobs", async (original) => {
+  const actual = await original<typeof import("../blobs")>();
+  return { ...actual, removeBlob: vi.fn(actual.removeBlob) };
+});
+const removing = vi.mocked(blobs.removeBlob);
+
 const dirs: string[] = [];
 afterEach(() => {
   fitted.mockClear();
+  removing.mockClear();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -134,5 +143,38 @@ it("sends no photo to a provider that refuses images, so the chat reads text ins
   });
   expect(fitted).not.toHaveBeenCalled();
   expect(sent).toEqual([]);
+  db.close();
+});
+
+it("ends a stop as a stop when the system will not remove the photo's copy the withdrawn question made", async () => {
+  const { workspace, db } = chatWithPhotos();
+  // A photo wider than a provider takes is cut down: the original is stored beside the copy, and nothing else names it.
+  const file = join(workspace, "wide.png");
+  writeFileSync(file, PNG.sync.write(new PNG({ width: 8100, height: 4 })));
+  const files = heldFilesFor(db, workspace);
+  const attached = await files.attach(file);
+  const controller = new AbortController();
+  removing.mockImplementation(() => {
+    throw new Error("EBUSY");
+  });
+  await expect(
+    askTurn(db, {
+      chatId: "c",
+      text: "cosa vedi?",
+      allowGeneral: true,
+      attachments: attached.ids,
+      held: files.held,
+      workspace,
+      signal: controller.signal,
+      run: async () => {
+        controller.abort();
+        throw new DOMException("aborted", "AbortError");
+      },
+    }),
+  ).rejects.toMatchObject({ name: "AbortError" });
+  // The question is withdrawn and its photo rows are gone; the file stays for the sweep.
+  expect(db.prepare("SELECT COUNT(*) FROM messages WHERE id != 'm'").pluck().get()).toBe(0);
+  expect(db.prepare("SELECT COUNT(*) FROM attachments WHERE message_id != 'm'").pluck().get()).toBe(0);
+  expect(removing).toHaveBeenCalled();
   db.close();
 });

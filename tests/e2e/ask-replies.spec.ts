@@ -195,3 +195,35 @@ test("Ask: Continue keeps the cut reply's citation chips while it waits for the 
     removeTestFolder(userData);
   }
 });
+
+test("Ask: a claim the checker cannot evaluate shows no badge, and a reply is still readable between its steps", async () => {
+  test.setTimeout(120000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-badge-"));
+  const claim = JSON.stringify({
+    kind: "equal",
+    expr: "a = g(sin θ − μ cos θ)",
+    claimed: "a",
+    vars: ["a"],
+    step: "Vale $a = g(\\sin\\theta)$.",
+  });
+  const reply = ["Passo uno.", "", "Vale $a = g(\\sin\\theta)$.", "", "```check", claim, "```", "", "Passo due: fine."].join("\n");
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_REPLY: reply } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    await box.fill("Calcola a");
+    await box.press("Enter");
+    await expect(page.getByText("Passo due: fine.")).toBeVisible({ timeout: 30000 });
+    // The check runs after the reply is saved; give it the time it takes, then nothing may say "not checkable".
+    await expect(page.getByText("Verifico il calcolo…")).toHaveCount(0, { timeout: 30000 });
+    await expect(page.getByText(/Non verificabile|Not checkable/)).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

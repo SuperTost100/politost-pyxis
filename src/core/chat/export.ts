@@ -3,7 +3,7 @@ import {
   mapOutsideCode,
   normalizeMathDelimiters,
 } from "../../shared/math-delimiters";
-import { chatContext, heldSources, readChat } from "./turn";
+import { chatContext, chatTitle, heldSources, readChat } from "./turn";
 import { visibleText } from "./visible";
 import { safeFileName } from "../../shared/file-name";
 
@@ -143,14 +143,12 @@ export function exportChat(
   chatId: string,
   language: ChatExportLanguage,
 ): { filename: string; markdown: string } {
-  const chat = db
-    .prepare(`SELECT title FROM chats WHERE id = ?`)
-    .get(chatId) as { title: string | null } | undefined;
-  if (!chat) throw new Error("chat-missing");
+  const title = chatTitle(db, chatId);
+  if (title === undefined) throw new Error("chat-missing");
   const photos = photoCounts(db, chatId);
   const titleOf = db.prepare(`SELECT title FROM sources WHERE id = ?`);
   const data: ChatExport = {
-    title: chat.title,
+    title,
     context: chatContext(db, chatId),
     documents: heldSources(db, chatId).map((source) => source.title),
     messages: readChat(db, chatId).map((message) => {
@@ -176,6 +174,6 @@ export function exportChat(
       };
     }),
   };
-  const name = safeFileName(chat.title ?? "", labels[language].untitled);
+  const name = safeFileName(title ?? "", labels[language].untitled);
   return { filename: `${name}.md`, markdown: chatMarkdown(data, language) };
 }

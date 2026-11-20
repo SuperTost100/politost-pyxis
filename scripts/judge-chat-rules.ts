@@ -1,4 +1,5 @@
 // The rules of tests/fixtures/chat-conversations.json, applied to a reply. Pure, so a unit test can run them.
+import { mapFigureBlocks } from "../src/shared/smart-text";
 
 export type Conversation = {
   id: string;
@@ -19,6 +20,10 @@ export type Conversation = {
   endsWithQuestion?: boolean;
   followups?: "solution" | "similar";
   material?: boolean;
+  /** The figure kinds the context block says can be drawn, and how many figure blocks the reply may and must hold. */
+  figures?: string[];
+  minFigures?: number;
+  maxFigures?: number;
 };
 
 /**
@@ -54,6 +59,14 @@ export function judge(conv: Conversation, reply: string, options: { followups?: 
   for (const pattern of conv.mustNot ?? []) if (new RegExp(pattern).test(seen)) fails.push(`has ${pattern}`);
   for (const pattern of conv.mustFormula ?? []) if (!forms.some((form) => new RegExp(pattern).test(form))) fails.push(`missing ${pattern}`);
   for (const pattern of conv.mustNotFormula ?? []) if (forms.some((form) => new RegExp(pattern).test(form))) fails.push(`has ${pattern}`);
+  // A figure counts when the app can draw it: a closed block whose payload parses, which is how the chat reads one.
+  let drawn = 0;
+  mapFigureBlocks(body, (figure) => {
+    if (figure) drawn++;
+    return null;
+  });
+  if (conv.minFigures !== undefined && drawn < conv.minFigures) fails.push(`${drawn} figures, under ${conv.minFigures}`);
+  if (conv.maxFigures !== undefined && drawn > conv.maxFigures) fails.push(`${drawn} figures, over ${conv.maxFigures}`);
   const words = seen.split(/\s+/).filter(Boolean).length;
   if (conv.minWords && words < conv.minWords) fails.push(`only ${words} words`);
   if (conv.maxWords && words > conv.maxWords) fails.push(`${words} words, over ${conv.maxWords}`);

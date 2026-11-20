@@ -5,6 +5,7 @@ import {
   attachable,
   attachmentLine,
   chipLine,
+  composerHolds,
   filesReading,
   isLocalFile,
   refusedFile,
@@ -74,6 +75,15 @@ describe("Ask attachments", () => {
     expect(draftKey()).toBe("pyxis-draft");
     writePendingFiles(s, "a", []);
     expect([...s.data.keys()]).toEqual(["pyxis-files"]);
+  });
+
+  it("says a composer holds something when it has text, a picked file or a file still being attached", () => {
+    expect(composerHolds(store({}), "a", false)).toBe(false);
+    expect(composerHolds(store({ "pyxis-draft:b": "bozza" }), "a", false)).toBe(false);
+    expect(composerHolds(store({ "pyxis-draft:a": "bozza" }), "a", false)).toBe(true);
+    expect(composerHolds(store({ "pyxis-files:a": '[{"id":"f1","name":"uno.pdf"}]' }), "a", false)).toBe(true);
+    // A pick the window has not finished attaching is stored nowhere yet, so the queue is what says so.
+    expect(composerHolds(store({}), "a", true)).toBe(true);
   });
 
   it("keeps an unsent question as its chat's draft, without replacing a draft already there", () => {

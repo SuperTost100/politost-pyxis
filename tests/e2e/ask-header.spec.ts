@@ -141,7 +141,11 @@ test("Ask: recent chats show each subject, All chats groups them by date and sea
       INSERT INTO messages(id,chat_id,role,body,created_at) VALUES
         ('m1','c-today','user','Che cos''è il moto rettilineo?',1),
         ('m2','c-an','user','Un limite sul moto di una funzione',1),
-        ('m3','c-old','user','Il moto circolare uniforme',1);
+        ('m3','c-old','user','Il moto circolare uniforme',1),
+        ('m4','c-free','user','Una domanda libera',1),
+        ('m5','c-x1','user','Che cosa sono i vettori?',1),
+        ('m6','c-x2','user','Che cosa sono le derivate?',1),
+        ('m7','c-x3','user','Che cosa sono gli integrali?',1);
     `);
     const insert = db.prepare("INSERT INTO messages(id,chat_id,role,body,grounding,created_at) VALUES(?,?,?,?,?,?)");
     for (let i = 1; i <= 15; i += 1) {

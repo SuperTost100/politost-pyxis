@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { retiredProviders } from "../../shared/limits";
+import { putSetting } from "../settings";
 
 /**
  * The tool session an owner continues. An owner is a chat (its id), a topic's lesson (`lesson:<topic id>`) or a quiz
@@ -159,6 +160,10 @@ export function markOutOfStep(db: Database.Database, owner: string): void {
  * is kept on screen as `marker` (a message id for a chat), so the session holds the conversation up to it.
  */
 export function keepSession(db: Database.Database, owner: string, provider: string, marker: string): void {
+  // The session now holds a completed reply after the question it was told to disregard (see `withdrawQuestion`).
+  db.prepare(
+    `DELETE FROM settings WHERE key IN (SELECT 'chat-withdrawn:' || id FROM tool_sessions WHERE owner = ? AND provider = ? AND ended_at IS NULL)`,
+  ).run(owner, provider);
   db.prepare(`UPDATE tool_sessions SET in_step = 1, synced_to = ? WHERE owner = ? AND provider = ? AND ended_at IS NULL`).run(
     marker,
     owner,
@@ -198,4 +203,33 @@ export function sessionsOpened(db: Database.Database, owner: string): number {
 /** A short fingerprint of the context block, so a session is told it again only when it changed. */
 export function contextHash(text: string): string {
   return createHash("sha256").update(text).digest("hex").slice(0, 16);
+}
+
+const withdrawnKey = (sessionRow: string) => `chat-withdrawn:${sessionRow}`;
+
+/**
+ * A question the student took back before it was answered is gone from the chat, but the tool sessions that were open
+ * still hold it and the files that came with it. Each of them is out of step (the stop left it so), and the next turn
+ * that resumes one says, once, that the question was withdrawn: `withdrawnNote` builds the line for that session, and
+ * `keepSession` forgets it when that session completes a reply. A session that ends takes its line with it (nothing
+ * reads it), and a chat with no open session has none to tell.
+ */
+export function withdrawQuestion(db: Database.Database, owner: string, text: string, files: string[]): void {
+  const quote = text.length > 300 ? `${text.slice(0, 299)}…` : text;
+  const note = `The student withdrew a question before you answered it: "${quote}"${files.length ? ` (with ${files.join(", ")})` : ""}. Disregard it and any file that came with it; it is not part of the conversation.`;
+  for (const session of db.prepare(`SELECT id FROM tool_sessions WHERE owner = ? AND ended_at IS NULL`).pluck().all(owner) as string[]) {
+    const earlier = (db.prepare(`SELECT value_json FROM settings WHERE key = ?`).pluck().get(withdrawnKey(session)) as string | undefined) ?? "[]";
+    putSetting(db, withdrawnKey(session), [...(JSON.parse(earlier) as string[]), note].slice(-3));
+  }
+}
+
+/** The lines for the questions withdrawn since this session last completed a reply, oldest first; empty when there are none. */
+export function withdrawnNote(db: Database.Database, sessionRow: string): string {
+  const stored = db.prepare(`SELECT value_json FROM settings WHERE key = ?`).pluck().get(withdrawnKey(sessionRow)) as string | undefined;
+  return stored ? (JSON.parse(stored) as string[]).join("\n") : "";
+}
+
+/** A deleted chat leaves no line behind, for any of its sessions, ended ones included. */
+export function forgetWithdrawn(db: Database.Database, owner: string): void {
+  db.prepare(`DELETE FROM settings WHERE key IN (SELECT 'chat-withdrawn:' || id FROM tool_sessions WHERE owner = ?)`).run(owner);
 }

@@ -492,6 +492,28 @@ describe("every held file is recorded in the database", () => {
   });
 });
 
+describe("a file attached to a chat that is removed while it is being registered", () => {
+  it("is refused, and leaves no held file, source or stored file for a chat that is gone", async () => {
+    const { db, workspace, sources, write } = setup();
+    // The app's wiring: the runner's updates reach the running composer.
+    const runner = createRunner(db, (job) => heldFiles()?.onJob(job));
+    registerSourceJobs(db, workspace, runner, async () => ({ document: extractPlain("Il calore si trasmette per conduzione.", false) }));
+    const handlers = chatHandlers(db, workspace, undefined, 0, undefined, { runner, emit: () => {} });
+    for (const [name, content] of [["appunti.txt", "Il calore si trasmette per conduzione."], ["foto.png", "x"]] as const) {
+      db.prepare(`INSERT INTO chats (id, title, created_at, updated_at) VALUES ('vuota', 't', 1, 1)`).run();
+      const path = write(name, content);
+      // The pick has passed the chat's check and is still reading the file when the student leaves the empty chat.
+      const picked = handlers.attach({ path, draft: "vuota" });
+      handlers.leave({ chatId: "vuota" });
+      await expect(picked).rejects.toMatchObject({ code: "chat-missing" });
+      expect(db.prepare(`SELECT COUNT(*) FROM held_files`).pluck().get()).toBe(0);
+      await until(() => sources().length === 0);
+      await until(() => !hasBlob(workspace, sha256(readFileSync(path))));
+    }
+    setHeldFiles(null);
+  });
+});
+
 describe("a photo that cannot be read fails on its chip", () => {
   it("tells a valid photo that needs OCR from one that is corrupt: the corrupt one fails when it is attached", async () => {
     const reasons: Record<string, string> = { "grande.webp": "vision-image-too-large", "rotto.heic": "heic-invalid", "strano.png": "vision-image-unsupported" };

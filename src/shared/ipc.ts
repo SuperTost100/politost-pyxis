@@ -3191,6 +3191,8 @@ export const requests = {
   "chats.read": {
     input: z.object({ chatId: z.string() }),
     output: z.object({
+      /** The chat's title; a chat that was only seeded has one before it is stored. Undefined for a chat that does not exist. */
+      title: z.string().nullable().optional(),
       sourceIds: z.array(z.string()),
       planId: z.string().nullable(),
       subject: z.string().nullable(),
@@ -3268,9 +3270,13 @@ export const requests = {
     input: z.object({ chatId: z.string() }),
     output: z.object({ ok: z.literal(true) }),
   },
-  // The chat left the screen, so core can stop the engine conversation it kept for it.
+  // The chat left the screen, so core can stop the engine conversation it kept for it, and remove it when it holds no message.
   "chats.leave": {
-    input: z.object({ chatId: z.string() }),
+    input: z.object({
+      chatId: z.string(),
+      /** The composer still holds text, so a chat with no message is kept for it. */
+      draft: z.boolean().optional(),
+    }),
     output: z.object({ ok: z.literal(true) }),
   },
   "chats.ask": {
