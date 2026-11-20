@@ -16,3 +16,14 @@ export function replyPlainText(body: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
+
+/** A reply's start as a card quotes it: the plain text with its Markdown marks (headings, emphasis, code, math delimiters, links) taken off. */
+export function answerPreview(body: string): string {
+  return replyPlainText(body)
+    .replace(/```[a-z]*\n?/gi, "")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}(?:#{1,6}|>|[-*+]|\d+[.)])\s+/gm, "")
+    .replace(/[*_`$]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}

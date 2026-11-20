@@ -1,7 +1,7 @@
 import { openSourceViewer } from "../../components/SourceViewer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Skeleton } from "antd";
-import { RefreshCw, X } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -17,7 +17,9 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { usePlace } from "../../app/usePlace";
 import { ChatMessage, ThinkingMessage } from "../../components/ChatMessage";
-import { Chip } from "../../components/Chip";
+import { AttachmentChip } from "./AttachmentChip";
+import { SentFiles, type SentFile } from "./SentFiles";
+import { formatBytes } from "@shared/format-bytes";
 import { Composer } from "../../components/Composer";
 import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MathText } from "../../components/math/MathText";
@@ -34,7 +36,9 @@ import {
   ATTACH_EXTENSIONS,
   attachable,
   attachmentLine,
+  chipLine,
   draftKey,
+  filesReading,
   isLocalFile,
   type PickedFile,
   readPendingSubject,
@@ -45,10 +49,13 @@ import { attachQueue, drafts, syncDraftFiles, useDraftFiles, useFilePreviews, us
 import { mergeFiles, type Preview } from "./draftFiles";
 import { ChatHeader } from "./ChatHeader";
 import { pastedPng } from "./paste";
-import { replyPlainText } from "./replyText";
+import { answerPreview, replyPlainText } from "./replyText";
 import { chipState, newChipState, settleNewSubject, subjectToSend, type NewChatSubject } from "./scope";
 import { SubjectChip, type SubjectPick } from "./SubjectChip";
 import { UsedSources } from "./UsedSources";
+import { canContinue } from "./continuable";
+import { ConversationOutline } from "./ConversationOutline";
+import { currentMark, jumpRange, outlineMarks, type OutlineMark } from "./outline";
 import { dayPart } from "./greeting";
 import { useEngineError } from "../../lib/engineError";
 import { useEngineNames } from "../../lib/useEngineNames";
@@ -83,8 +90,6 @@ type ChatRow = Awaited<ReturnType<typeof invoke<"chats.read">>>["messages"][numb
 /** A message taken out of the composer as it was sent, put back if its turn fails or is stopped. */
 type Held = { draft: string; files: PickedFile[] };
 type Skipped = Array<"too-large" | "unreadable" | "over-limit">;
-/** The files a sent message carried, as the chat reads them, or as the composer held them before the reply arrived. */
-type SentFile = { id: string; name: string | null; kind: "document" | "photo"; sourceId?: string | null };
 type LeftOut = Array<{ name: string; kind: "document" | "photo"; error: AttachmentView["error"] & string }>;
 
 /** Whether each chat's latest question was asked with "Answer generally", which Try again and Regenerate keep. */
@@ -121,25 +126,10 @@ function useStable<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) 
   return useCallback((...args: A) => latest.current(...args), []);
 }
 
-const Question = memo(function Question({ body, files }: { body: string; files?: readonly SentFile[] }) {
-  const { t } = useTranslation();
+const Question = memo(function Question({ id, body, files }: { id?: string; body: string; files?: readonly SentFile[] }) {
   return (
-    <ChatMessage role="user">
+    <ChatMessage role="user" messageId={id} attachments={files && files.length > 0 ? <SentFiles files={files} /> : undefined}>
       <MathText text={body} />
-      {files && files.length > 0 ? (
-        <ul className="ask-sent-files" aria-label={t("ask.attach.sent")}>
-          {files.map((file) => (
-            <li key={file.id}>
-              <Chip
-                icon={file.kind === "photo" ? "image" : "paperclip"}
-                onClick={file.sourceId ? () => openSourceViewer({ sourceId: file.sourceId! }) : undefined}
-              >
-                {file.name ?? t("ask.attach.photo")}
-              </Chip>
-            </li>
-          ))}
-        </ul>
-      ) : null}
     </ChatMessage>
   );
 });
@@ -154,7 +144,6 @@ const Reply = memo(function Reply({
   busy,
   onRegenerate,
   onAnswerStronger,
-  onContinue,
   onSuggest,
   onReact,
   onMakeCards,
@@ -165,8 +154,6 @@ const Reply = memo(function Reply({
   busy: boolean;
   onRegenerate?: () => void;
   onAnswerStronger?: () => void;
-  /** Continue a reply the engine cut short. */
-  onContinue?: () => void;
   onSuggest: (text: string) => void;
   onReact: (messageId: string, reaction: "up" | "down") => void;
   onMakeCards: (row: ChatRow) => void;
@@ -209,7 +196,6 @@ const Reply = memo(function Reply({
       stopped={row.stopped}
       failure={failure?.text}
       failureAction={failure?.action}
-      onContinue={last && (row.error || row.stopped) ? onContinue : undefined}
       checking={row.checking}
       text={replyPlainText(row.body)}
       onMakeCards={makeCards}
@@ -270,7 +256,7 @@ function StreamingReply({
 }
 
 export function AskPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { chatId } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -542,7 +528,12 @@ export function AskPage() {
         : drafts.files
             .get(startedIn)
             .filter((file) => !isLocalFile(file))
-            .map((file) => ({ id: file.id, name: file.name, kind: drafts.views.get()[file.id]?.kind ?? "document" })),
+            .map((file) => ({
+              id: file.id,
+              name: file.name,
+              kind: drafts.views.get()[file.id]?.kind ?? "document",
+              src: drafts.previews.get()[file.id]?.src,
+            })),
     );
     if (!turn) return;
     setError(null);
@@ -791,6 +782,61 @@ export function AskPage() {
     return () => watch.disconnect();
   }, [firstShown, chatId, showEarlier]);
 
+  // The outline of the conversation: one mark per question from the third on, the part in view marked, and a jump that
+  // first renders the question when it is among the older messages that are not shown yet.
+  const marks = useMemo(() => outlineMarks(messages, answerPreview), [messages]);
+  const [inView, setInView] = useState(-1);
+  // A jump marks the question it went to until the student scrolls away, whatever else the window shows.
+  const pinned = useRef<{ index: number; top: number } | null>(null);
+  useEffect(() => {
+    if (marks.length === 0) return;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const root = document.scrollingElement ?? document.documentElement;
+      if (pinned.current && Math.abs(root.scrollTop - pinned.current.top) <= 24) return setInView(pinned.current.index);
+      pinned.current = null;
+      const tops = marks.map(
+        (mark) => document.querySelector(`[data-message="${CSS.escape(mark.id)}"]`)?.getBoundingClientRect().top ?? null,
+      );
+      const atEnd = root.scrollHeight - root.scrollTop - root.clientHeight < 8;
+      setInView(currentMark(tops, window.innerHeight * 0.4, atEnd));
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    measure();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    const watch = typeof ResizeObserver === "undefined" || !page.current ? undefined : new ResizeObserver(schedule);
+    if (page.current) watch?.observe(page.current);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      watch?.disconnect();
+    };
+  }, [marks, firstShown]);
+  const [jump, setJump] = useState<string | null>(null);
+  const jumpTo = useStable((mark: OutlineMark) => {
+    following.current = false;
+    setRange({ chat: chatId, from: jumpRange(firstShown, mark.row) });
+    setJump(mark.id);
+  });
+  useLayoutEffect(() => {
+    if (!jump) return;
+    const question = document.querySelector(`[data-message="${CSS.escape(jump)}"]`);
+    // Not rendered yet: the range just set renders it, and this runs again.
+    if (!question) return;
+    setJump(null);
+    question.scrollIntoView({ block: "start" });
+    const index = marks.findIndex((mark) => mark.id === jump);
+    pinned.current = { index, top: (document.scrollingElement ?? document.documentElement).scrollTop };
+    setInView(index);
+    question.classList.add("is-spot");
+    setTimeout(() => question.classList.remove("is-spot"), 1400);
+  }, [jump, firstShown, messages, marks]);
+
   const lastTutorId = lastTutor?.id;
   // Called with no arguments: a click event must not reach `regenerate` as its options.
   const regenerateNow = useStable(() => regenerate());
@@ -866,6 +912,8 @@ export function AskPage() {
       fail(err);
     }
   }
+  // Invia waits while a picked file is still being read.
+  const reading = filesReading(files.map((file) => views[file.id]));
   // Scans among the picked files that wait for the OCR language data.
   const waitingForData = files.filter((file) => views[file.id]?.state === "needs-data");
   const carriesFiles = (event: DragEvent) => event.dataTransfer.types.includes("Files");
@@ -959,7 +1007,7 @@ export function AskPage() {
           ) : null}
           {shownMessages.slice(firstShown).map((row) =>
             row.role === "user" ? (
-              <Question key={row.id} body={row.body} files={row.files} />
+              <Question key={row.id} id={row.id} body={row.body} files={row.files} />
             ) : (
               <Reply
                 key={row.id}
@@ -968,7 +1016,6 @@ export function AskPage() {
                 busy={row.id === lastTutorId && busy}
                 onRegenerate={chatId ? regenerateNow : undefined}
                 onAnswerStronger={chatId ? strongerNow : undefined}
-                onContinue={chatId ? continueNow : undefined}
                 onSuggest={suggest}
                 onReact={react}
                 onMakeCards={makeCards}
@@ -1001,6 +1048,7 @@ export function AskPage() {
       <div className="visually-hidden" role="status" aria-live="polite">
         {announcement}
       </div>
+      {conversation && marks.length > 0 ? <ConversationOutline marks={marks} current={inView} onJump={jumpTo} /> : null}
       <div className="ask-dock">
         {isOcrRefusal(error) ? (
           // The message and attached photos stay in the composer. Sending again is the student's call, since it asks the tutor.
@@ -1131,33 +1179,22 @@ export function AskPage() {
           />
         ) : null}
         {files.length > 0 ? (
-          <ul className="ask-attachments" aria-live="polite">
+          <ul className="ask-attachments" aria-live="polite" aria-label={t("ask.attach.sent")}>
             {files.map((file) => {
               const preview = previews[file.id];
               const label = preview?.name ?? file.name;
               const view = views[file.id];
-              const line = view ? attachmentLine(view) : null;
               return (
                 <li key={file.id}>
-                  {preview ? (
-                    <img
-                      alt={preview.alt}
-                      src={preview.src}
-                      className="ask-attachment-preview"
-                    />
-                  ) : null}
-                  <span className="small">{line ? `${label} · ${t(line.key, line.values)}` : label}</span>
-                  <Button
-                    type="text"
-                    shape="circle"
-                    size="small"
-                    disabled={busy}
-                    icon={<X size={14} aria-hidden />}
-                    aria-label={t("ask.removeAttachment", {
-                      name: label,
-                      defaultValue: "Remove {{name}}",
-                    })}
-                    onClick={() => removeFile(file)}
+                  <AttachmentChip
+                    name={label}
+                    line={view ? chipLine(view, t, (bytes) => formatBytes(bytes, i18n.language)) : ""}
+                    state={view?.state === "failed" ? "failed" : view?.state === "reading" ? "reading" : "ready"}
+                    progress={view?.progress}
+                    thumbnail={preview ? { src: preview.src, alt: preview.alt } : undefined}
+                    photo={view?.kind === "photo"}
+                    removeLabel={t("ask.removeAttachment", { name: label, defaultValue: "Remove {{name}}" })}
+                    onRemove={() => removeFile(file)}
                   />
                 </li>
               );
@@ -1172,7 +1209,9 @@ export function AskPage() {
             sessionStorage.setItem(draftKey(composerFor.current), next);
           }}
           streaming={busy}
+          waiting={reading > 0 ? t("ask.attach.waiting", { count: reading }) : undefined}
           onStop={() => turns.get()?.stop()}
+          onContinue={chatId && canContinue(messages, busy) ? continueNow : undefined}
           onSend={() => void send(draft)}
           onPasteImages={(images) => void attachPasted(images)}
           dropping={dropping}

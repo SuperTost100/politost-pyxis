@@ -1,0 +1,111 @@
+/* The outline of a conversation: marks at mid height, just outside the answer column. */
+.ask-outline {
+  position: fixed;
+  top: 46%;
+  z-index: 6;
+  transform: translateY(-50%);
+}
+.ask-outline ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ask-outline li {
+  position: relative;
+}
+.ask-outline button {
+  display: grid;
+  justify-items: end;
+  align-items: center;
+  width: 34px;
+  height: min(22px, calc(64vh / var(--marks, 1)));
+  min-height: 8px;
+  padding: 0 4px 0 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+.ask-outline button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+.ask-outline button i {
+  display: block;
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-control);
+  transition:
+    width 150ms var(--ease-out),
+    background-color 150ms var(--ease-out);
+}
+.ask-outline button:hover i,
+.ask-outline button:focus-visible i {
+  width: 22px;
+  background: var(--ink-muted);
+}
+.ask-outline button[aria-current="true"] i {
+  width: 22px;
+  background: var(--ink);
+}
+/* The card grows out of the mark it belongs to. */
+.ask-outline-card {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 4px);
+  z-index: 7;
+  width: 300px;
+  box-sizing: border-box;
+  padding: 12px 14px 13px;
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-overlay);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.ask-outline-card small {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink-subtle);
+  font: 600 calc(12px * var(--text-scale, 1)) / 1.2 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+.ask-outline-card b {
+  display: block;
+  overflow: hidden;
+  font: 600 calc(14px * var(--text-scale, 1)) / 1.35 var(--font-sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ask-outline-card p {
+  display: -webkit-box;
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: var(--ink-muted);
+  font: 400 calc(13px * var(--text-scale, 1)) / 1.45 var(--font-sans);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ask-outline-card {
+    animation: ask-outline-card 150ms var(--ease-out);
+    transform-origin: 100% 50%;
+  }
+}
+@keyframes ask-outline-card {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.94);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ask-outline button i {
+    transition: none;
+  }
+}
+/* After a jump the question is outlined for a moment, so the eye finds it. */
+.px-msg-user.is-spot .px-msg-bubble {
+  box-shadow: 0 0 0 2px var(--primary-text);
+}

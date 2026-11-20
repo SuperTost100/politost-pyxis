@@ -37,6 +37,14 @@ const rc =
 const divider =
   "d += elm.SourceV().up().label('12 V')\nd += elm.Line().right()\nd += elm.Resistor().down().label('$R_1$')\nd += elm.Dot()\nd.push()\nd += elm.Line().right().length(1.5)\nd += elm.Dot(open=True).label('$V_{out}$', loc='right')\nd.pop()\nd += elm.Resistor().down().label('$R_2$')\nd += elm.Line().left()\nd += elm.Line().up()";
 
+/** An answer stores `count` figures, each with its picture for the dark theme beside it. */
+function expectFigures(figures: Record<string, string> | undefined, count: number) {
+  const keys = Object.keys(figures ?? {});
+  const light = keys.filter((key) => !key.endsWith("-dark"));
+  expect(light).toHaveLength(count);
+  expect(keys.sort()).toEqual([...light, ...light.map((key) => `${key}-dark`)].sort());
+}
+
 /** Stages the pinned packs as a workspace that finished the Python download has them. */
 function stagePacks(userData: string) {
   for (const pack of ["pyodide", "drawing"]) {
@@ -306,7 +314,27 @@ test("plots and circuits in a lesson and an Ask answer are drawn in the Python s
         allowGeneral: true,
       }),
     )) as { chatId: string; message: { figures?: Record<string, string> } };
-    expect(Object.keys(asked.message.figures ?? {})).toHaveLength(2);
+    // Each figure of an answer is stored twice: drawn on white, and turned for the dark theme with its ground in the card's colour.
+    const stored = asked.message.figures ?? {};
+    const lightKeys = Object.keys(stored).filter((key) => !key.endsWith("-dark"));
+    expect(lightKeys).toHaveLength(2);
+    expect(Object.keys(stored).sort()).toEqual([...lightKeys, ...lightKeys.map((key) => `${key}-dark`)].sort());
+    const corner = (src: string) =>
+      page.evaluate(async (url) => {
+        const image = new Image();
+        image.src = url;
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        return Array.from(context.getImageData(1, 1, 1, 1).data.slice(0, 3));
+      }, src);
+    for (const key of lightKeys) {
+      expect(await corner(stored[key]!)).toEqual([255, 255, 255]);
+      expect(await corner(stored[`${key}-dark`]!)).toEqual([23, 27, 34]);
+    }
     await page.evaluate((chatId) => {
       location.hash = `/ask/${chatId}`;
     }, asked.chatId);
@@ -472,7 +500,7 @@ test("a circuit whose code reaches for the network or the host fails with an err
       chatId: string;
       message: { body: string; figures?: Record<string, string> };
     };
-    expect(Object.keys(asked.message.figures ?? {})).toHaveLength(1);
+    expectFigures(asked.message.figures, 1);
     expect(asked.message.body).toContain("Un partitore onesto.");
     for (const caption of ["Chiama la rete.", "Apre un indirizzo.", "Scrive sul disco.", "Legge dal disco."])
       expect(asked.message.body).not.toContain(caption);
@@ -600,7 +628,7 @@ test("a graph in a lesson and an Ask answer is drawn by the drawing window, with
       chatId: string;
       message: { figures?: Record<string, string> };
     };
-    expect(Object.keys(asked.message.figures ?? {})).toHaveLength(1);
+    expectFigures(asked.message.figures, 1);
     await page.evaluate((chatId) => (location.hash = `/ask/${chatId}`), asked.chatId);
     await expect(page.locator(".px-msg figure.px-figure")).toHaveCount(1);
     await expect(page.getByText("Le foglie non hanno figli.")).toBeVisible();
@@ -707,7 +735,7 @@ test("an answer's figure that failed shows its working state while it is fixed, 
       chats[0]!.id,
     )) as { messages: Array<{ role: string; body: string; figures?: Record<string, string> }> };
     const reply = saved.messages.find((message) => message.role === "assistant")!;
-    expect(Object.keys(reply.figures ?? {})).toHaveLength(1);
+    expectFigures(reply.figures, 1);
     expect(reply.body).toContain("elm.Dot(open=True)");
     expect(reply.body).not.toContain("DotOpen");
   } finally {
@@ -760,7 +788,7 @@ test("when the fix fails too, the figure is dropped and the answer around it is 
       chats[0]!.id,
     )) as { messages: Array<{ role: string; body: string; figures?: Record<string, string> }> };
     const reply = saved.messages.find((message) => message.role === "assistant")!;
-    expect(Object.keys(reply.figures ?? {})).toHaveLength(1);
+    expectFigures(reply.figures, 1);
     expect(reply.body).toBe(
       [
         "Un partitore di tensione divide la tensione in proporzione alle resistenze.",
@@ -829,7 +857,7 @@ test("a graph the drawing window cannot read shows its working state while it is
       messages: Array<{ role: string; body: string; figures?: Record<string, string> }>;
     };
     const reply = saved.messages.find((message) => message.role === "assistant")!;
-    expect(Object.keys(reply.figures ?? {})).toHaveLength(1);
+    expectFigures(reply.figures, 1);
     expect(reply.body).toBe(graphAnswer(figure("Un automa con due stati.", automaton, "graph")));
     expect(reply.body).not.toContain(unreadable);
   } finally {
@@ -873,7 +901,7 @@ test("when the fix fails too, a graph is dropped and the answer around the other
       messages: Array<{ role: string; body: string; figures?: Record<string, string> }>;
     };
     const reply = saved.messages.find((message) => message.role === "assistant")!;
-    expect(Object.keys(reply.figures ?? {})).toHaveLength(1);
+    expectFigures(reply.figures, 1);
     expect(reply.body).toBe(graphAnswer(figure("Un albero che si disegna.", tree, "graph")));
   } finally {
     await app.close();
@@ -1020,7 +1048,7 @@ test("the figures that are fine are shown while another is being corrected, whic
     };
     const reply = saved.messages.find((message) => message.role === "assistant")!;
     expect(reply.stopped).toBe(true);
-    expect(Object.keys(reply.figures ?? {})).toHaveLength(2);
+    expectFigures(reply.figures, 2);
     expect(reply.body).toContain("parabola");
     expect(reply.body).toContain("automa con tre stati");
     expect(reply.body).not.toContain("DotOpen");
@@ -1128,7 +1156,7 @@ test("the figures a stopped answer kept are still there after it is continued, s
     const stoppedAgain = await readReply();
     expect(stoppedAgain).toHaveLength(1);
     expect(stoppedAgain[0]!.stopped).toBe(true);
-    expect(Object.keys(stoppedAgain[0]!.figures ?? {})).toHaveLength(2);
+    expectFigures(stoppedAgain[0]!.figures, 2);
 
     // Continued once more and let finish: the two pictures are kept without being drawn again, and the corrected circuit joins.
     writeFileSync(release, "go");
@@ -1137,7 +1165,7 @@ test("the figures a stopped answer kept are still there after it is continued, s
     expect(finished).toHaveLength(1);
     expect(finished[0]!.id).not.toBe(stoppedAgain[0]!.id);
     expect(finished[0]!.stopped).toBeFalsy();
-    expect(Object.keys(finished[0]!.figures ?? {})).toHaveLength(3);
+    expectFigures(finished[0]!.figures, 3);
     // A reload shows all three, and none is still being drawn.
     await page.evaluate((id) => {
       location.hash = `/ask/${id}`;

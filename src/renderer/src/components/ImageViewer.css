@@ -1,0 +1,109 @@
+/* The picture viewer: the figure or photo at the size of the window over a dim scrim. */
+.px-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  background: rgba(8, 10, 14, 0.78);
+  outline: none;
+}
+.px-viewer-tools {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+}
+.px-viewer-btn {
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-md);
+  height: var(--control-md);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-micro) var(--ease-out),
+    color var(--duration-micro) var(--ease-out);
+}
+.px-viewer-btn:hover:not(:disabled) {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-viewer-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.px-viewer-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.px-viewer-percent {
+  min-width: 46px;
+  color: var(--ink-muted);
+  font: 600 calc(13px * var(--text-scale, 1)) / 1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.px-viewer-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 var(--space-1);
+  background: var(--border);
+}
+.px-viewer-stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 64px var(--space-8) var(--space-6);
+}
+/* `margin: auto` centres the figure while it fits and lets the stage scroll when a zoom step makes it larger. */
+.px-viewer-figure {
+  --fit: min(880px, calc(100vw - 64px), calc((100vh - 140px) * 1.6));
+  width: calc(var(--fit) * var(--zoom, 1));
+  margin: auto;
+}
+.px-viewer-card {
+  box-sizing: border-box;
+  padding: 22px;
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+  box-shadow: var(--shadow-overlay);
+}
+.px-viewer-card.is-dark {
+  background: #171b22;
+}
+.px-viewer-figure:has(.is-photo) {
+  --fit: min(560px, calc(100vw - 64px), calc((100vh - 140px) * 1.32));
+}
+.px-viewer-card.is-photo {
+  padding: 0;
+  overflow: hidden;
+}
+.px-viewer-card.is-photo img {
+  border-radius: 0;
+}
+.px-viewer-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+.px-viewer-figure figcaption {
+  margin-top: var(--space-3);
+  color: #f2f3f5;
+  font: 400 calc(14px * var(--text-scale, 1)) / 1.45 var(--font-sans);
+  text-align: center;
+}

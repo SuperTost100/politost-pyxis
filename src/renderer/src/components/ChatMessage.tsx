@@ -1,5 +1,4 @@
 import { Button as AntButton } from "antd";
-import { ArrowRight } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Chip } from "./Chip";
@@ -13,6 +12,8 @@ import "./ChatMessage.css";
 
 export function ChatMessage({
   role = "tutor",
+  messageId,
+  attachments,
   children,
   engine,
   suggestions,
@@ -28,11 +29,14 @@ export function ChatMessage({
   stopped,
   failure,
   failureAction,
-  onContinue,
   checking,
   streaming,
 }: {
   role?: "user" | "tutor";
+  /** The stored message this is, for a page that finds it again (the conversation outline). */
+  messageId?: string;
+  /** The files a question carried, above its text. */
+  attachments?: ReactNode;
   children: ReactNode;
   engine?: string;
   suggestions?: string[];
@@ -54,7 +58,6 @@ export function ChatMessage({
   failure?: string;
   /** What fixes the failure, such as signing in to the engine again. */
   failureAction?: { label: string; onClick: () => void };
-  onContinue?: () => void;
   /** The math check for this reply is still running. */
   checking?: boolean;
   /** The reply is still being written, so there is nothing yet to copy, rate or rewrite. */
@@ -69,7 +72,8 @@ export function ChatMessage({
   }, [copied]);
   if (role === "user") {
     return (
-      <div className="px-msg px-msg-user">
+      <div className="px-msg px-msg-user" data-message={messageId}>
+        {attachments}
         <div className="px-msg-bubble">
           <span className="visually-hidden">{t("components.chat.you")}: </span>
           {children}
@@ -85,16 +89,13 @@ export function ChatMessage({
       <div className="px-msg-body">
         <span className="visually-hidden">{t("components.chat.pyxis")}: </span>
         {lead}
-        {stopped ? (
-          <div className="px-msg-tags">
-            <Tag>{failure ? t("components.chat.cutOff") : t("ask.stopped")}</Tag>
-          </div>
-        ) : null}
         <div className="px-msg-text">
           <RunnablePython.Provider value>{children}</RunnablePython.Provider>
         </div>
-        {failure || (stopped && onContinue) ? (
+        {/* Where the text stops: the tag says why, and what fixes it sits beside it. Continuing is in the composer. */}
+        {stopped || failure ? (
           <div className="px-msg-cut">
+            {stopped ? <Tag>{failure ? t("components.chat.cutOff") : t("ask.stopped")}</Tag> : null}
             {failure ? <p className="px-msg-status">{failure}</p> : null}
             {failureAction ? (
               <AntButton
@@ -103,18 +104,6 @@ export function ChatMessage({
                 onClick={failureAction.onClick}
               >
                 {failureAction.label}
-              </AntButton>
-            ) : null}
-            {onContinue ? (
-              <AntButton
-                shape="round"
-                size="small"
-                icon={<ArrowRight size={14} aria-hidden />}
-                iconPlacement="end"
-                disabled={regenerateDisabled}
-                onClick={onContinue}
-              >
-                {t("components.chat.continue")}
               </AntButton>
             ) : null}
           </div>

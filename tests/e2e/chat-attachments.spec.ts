@@ -67,7 +67,7 @@ test("a document is read when it is attached, the question lists it, and it open
     await expect
       .poll(() => rows<{ status: string; library: number }>(userData, "SELECT status, library FROM sources"))
       .toEqual([{ status: "ready", library: 0 }]);
-    await expect(chip).not.toContainText("Lettura");
+    await expect(chip).not.toContainText("Leggo");
     expect(await page.evaluate(() => window.pyxis.invoke("sources.list", {}))).toEqual([]);
 
     const box = page.getByRole("textbox", { name: "Messaggio" });
@@ -178,7 +178,7 @@ test("a send that is stopped puts its files back as ready chips, and sending aga
     await expect(chips).toHaveCount(2);
     await expect(chips.filter({ hasText: "appunti.txt" })).toBeVisible();
     await expect(chips.filter({ hasText: "dispensa.txt" })).toBeVisible();
-    await expect(chips.filter({ hasText: /Lettura|supera|non riesce|fermata/ })).toHaveCount(0);
+    await expect(chips.filter({ hasText: /Leggo|supera|non riesce|fermata/ })).toHaveCount(0);
     await expect(page.getByRole("alert")).toHaveCount(0);
     // Core still holds them, so a window reload finds them too.
     await page.reload();

@@ -54,12 +54,19 @@ test("a scanned PDF is read page by page on its chip, then sent, and the chat ho
 
     const chip = page.locator(".ask-attachments li").filter({ hasText: "scansione.pdf" });
     // The scan is not refused: its chip says which page is being read, and no banner appears.
-    await expect(chip).toContainText(/Lettura della scansione, pagina \d+ di 20/, { timeout: 120000 });
+    await expect(chip).toContainText(/Leggo la scansione, pagina \d+ di 20/, { timeout: 120000 });
+    // The reading has a bar along the chip's lower edge, and Invia says what it waits for and goes quiet.
+    await expect(chip.locator(".px-att-bar")).toBeVisible();
+    await expect(page.getByText("Leggo 1 file…")).toBeVisible();
+    const send = page.locator(".px-composer-bar").getByRole("button", { name: "Invia", exact: true });
+    await expect(send).toHaveClass(/px-btn-secondary/);
     await saveShot(page, "chat-attachments/1-scanned-pdf-is-read-page-by-page.png");
     await expect(page.getByRole("alert")).toHaveCount(0);
     // The Library's jobs list does not show it: the chip is where the reading is.
     expect(await page.evaluate(() => window.pyxis.invoke("jobs.list", {}))).toEqual([]);
-    await expect(chip).not.toContainText("Lettura", { timeout: 240000 });
+    await expect(chip).not.toContainText("Leggo", { timeout: 240000 });
+    await expect(page.getByText("Leggo 1 file…")).toHaveCount(0);
+    await expect(send).toHaveClass(/px-btn-primary/);
 
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { readOnly: true, timeout: 10000 });
     try {
