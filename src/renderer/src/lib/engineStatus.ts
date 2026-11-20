@@ -5,6 +5,8 @@ export type EngineState = {
   loggedIn: boolean;
   refused: boolean;
   disabled: boolean;
+  /** The installed program is older than Pyxis can run (Antigravity before 1.5): it is left out until it is updated. */
+  outdated?: boolean;
   /** Models the engine's subscription refused today. It still works on its other models. */
   refusedModels?: readonly string[];
   /** When its usage limit resets, in milliseconds since the epoch, while it is out of requests. */
@@ -22,7 +24,7 @@ export type EngineStatus = {
 
 /**
  * One reading of an engine's state for setup and Settings: ready, out of requests for now, ready without some models
- * (its subscription refused one), signed out, sign-in refused (the CLI says signed in but the provider turned a call away), not installed, or not
+ * (its subscription refused one), too old to run (Antigravity before 1.5), signed out, sign-in refused (the CLI says signed in but the provider turned a call away), not installed, or not
  * offered by this build.
  */
 export function engineStatus(row: EngineState, now = Date.now()): EngineStatus {
@@ -34,6 +36,9 @@ export function engineStatus(row: EngineState, now = Date.now()): EngineStatus {
       label: "engines.notInstalled",
       fix: row.kind === "cli" ? "install" : null,
     };
+  // Installed and signed in, but too old to run: nothing to sign in to, the program has to be updated outside Pyxis.
+  if (row.outdated)
+    return { tone: "warn", label: "engines.state.outdated", fix: null };
   // An API key has no sign-in: its row keeps the test, which checks the key again.
   if (row.refused)
     return {
@@ -111,8 +116,8 @@ export function manualChoice<T extends ChoiceRow>(
  * unticked. With none ready, the installed ones.
  */
 export function chosenStart(rows: readonly ChoiceRow[]): string[] {
-  const ready = rows.filter((row) => row.installed && row.loggedIn);
-  return (ready.length ? ready : rows.filter((row) => row.installed)).map(
+  const ready = rows.filter((row) => row.installed && row.loggedIn && !row.outdated);
+  return (ready.length ? ready : rows.filter((row) => row.installed && !row.outdated)).map(
     (row) => row.id,
   );
 }

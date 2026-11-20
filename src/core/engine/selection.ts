@@ -4,7 +4,7 @@ import type Database from "better-sqlite3";
 import { nearestEffort, studentEffort } from "../../shared/effort";
 import { planAuto, type AutoFeature, type AutoProvider } from "./auto";
 import { isBenched, isModelBenched } from "./bench";
-import { effortsOf, runsAs, wasReported } from "./efforts";
+import { effortsOf, runsAs, unfoldVariant, wasReported } from "./efforts";
 import { automaticEffortOn, isForeignModel, isOwnModel } from "./model-roles";
 import type { ProviderId } from "./funnel";
 import { LOCAL_PROVIDER, localData, readLocal } from "./local";
@@ -49,9 +49,12 @@ export function selectionFor(
   feature: string,
 ): StoredSelection {
   const own = readRow(db, feature);
-  const row = own ?? readRow(db, "default");
-  if (!row)
+  const stored0 = own ?? readRow(db, "default");
+  if (!stored0)
     throw new IpcError("engine-missing", "engines.errors.engine-missing");
+  // A row an earlier build saved with a level folded into the model id (`gemini-4-neon-xhigh`) is the model at that level.
+  const unfolded = unfoldVariant(stored0.provider, stored0.model);
+  const row = unfolded ? { ...stored0, model: unfolded.model, effort: unfolded.effort } : stored0;
   // The automatic choice leaves plans and grading without an engine for a local model that never passed the structured
   // check. They must not borrow the default engine when that is this model.
   if (
@@ -214,6 +217,11 @@ export function offLimits(provider: string, model: string): boolean {
  * on the next one otherwise. With no tool ready to take it the call stops, so the tool is never asked for that model.
  */
 export function currentSelection<T extends { provider: string; model: string; chosenFor?: string }>(selection: T): T {
+  // A job an earlier build saved can hold a level folded into the model id (`gemini-4-neon-xhigh`): it resumes as that
+  // model at that effort, which is what cli-funnel 1.0 accepts (or, for a tool that still lists the level as a model, as
+  // that id with no effort flag).
+  const unfolded = unfoldVariant(selection.provider, selection.model);
+  if (unfolded) selection = runnable({ ...selection, ...unfolded });
   if (!offLimits(selection.provider, selection.model)) return selection;
   const feature = selection.chosenFor ?? "default";
   // The same tool first, so a job keeps its tool whatever order the student put their tools in; the plan for all the

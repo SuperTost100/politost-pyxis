@@ -43,7 +43,7 @@ function useFunnel(options: { installed?: Record<string, boolean>; rateLimits?: 
           ids.map((id) => ({
             id,
             displayName: id,
-            installation: { installed: options.installed?.[id] ?? true, version: "1.0.0" },
+            installation: { installed: options.installed?.[id] ?? true, version: id === "antigravity" ? "1.5.13" : "1.0.0" },
             auth: { loggedIn: true },
             capabilities: provider.capabilities,
           })),

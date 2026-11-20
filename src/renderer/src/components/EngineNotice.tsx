@@ -23,12 +23,13 @@ export function unacknowledged<
   T extends NoticeEngine & {
     installed: boolean;
     loggedIn: boolean;
+    outdated?: boolean;
     allowed?: boolean;
   },
 >(rows: readonly T[] | undefined): T[] {
   return (rows ?? []).filter(
     (row) =>
-      row.installed && row.loggedIn && row.allowed !== false && !row.acknowledged,
+      row.installed && row.loggedIn && !row.outdated && row.allowed !== false && !row.acknowledged,
   );
 }
 

@@ -1,5 +1,6 @@
 import { activeSimulation } from "../study/simulation";
-import { needsSolverChecks, splitChecks, solverChecks } from "./checks";
+import { keepsFirstSystemPrompt } from "../engine/funnel";
+import { checkSelection, needsSolverChecks, splitChecks, solverChecks } from "./checks";
 import { stripCheckFences, type AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
@@ -22,7 +23,6 @@ import {
 import { isAbort, IpcError, toIpcError, type AttachmentError, type MessageFile } from "../../shared/ipc";
 import { generate, type GenerateInput } from "../engine/generate";
 import { engineSeesImages } from "../engine/capabilities";
-import { systemInPrompt } from "../engine/funnel";
 import { LOCAL_PROVIDER } from "../engine/local";
 import { selectionFor, selectionOn, strongestSelection, type StoredSelection } from "../engine/selection";
 import { withUsageScope } from "../engine/usage";
@@ -45,14 +45,12 @@ import {
 } from "./prompts";
 import { liveSubject, pickSubject, sourceSubjects, subjectSourceIds, type SubjectBy } from "./subject";
 import {
-  addSessionChars,
   contextHash,
   currentSession,
   markOutOfStep,
   recordSession,
   keepSession,
   rewindSession,
-  sessionTooLong,
 } from "./sessions";
 
 export type ChatContext = {
@@ -1199,24 +1197,24 @@ async function answer(
   // stopped, failed, was not kept, or another engine answered it) gets the full context block and what the student sees
   // since the last turn that was in step, and is in step again once this turn completes. A new session gets the context
   // block and the whole conversation instead.
-  const stored = currentSession(db, chatId);
-  const long = Boolean(stored && sessionTooLong(stored));
-  const session = stored && !long ? stored : undefined;
-  // A session keeps the instructions it was opened under. Antigravity carries them inside the first prompt,
-  // so when the chat's system prompt is not the one the session has (an edit of the template since), it is out of step and
-  // this turn delivers the current one. The tools that take a system prompt on every call need nothing more.
+  const session = currentSession(db, chatId);
+  // A session goes on answering by the system prompt it was opened under, whatever system a resumed call gives (checked on
+  // Claude Code, Codex and Antigravity). When the chat's system prompt is not the one the session has (an edit of the
+  // template since), the session is out of step and this turn delivers the current instructions in the message, with a line
+  // that they replace the earlier ones. A session opened before the hash was kept (null) is taken to hold the current one.
   const instructions = contextHash(system);
-  const instructionsChanged = Boolean(session && session.instructions !== instructions);
+  const instructionsChanged = Boolean(session && session.instructions !== null && session.instructions !== instructions);
   const outOfStep = Boolean(session && (!session.inStep || instructionsChanged));
   const newQuestion = citations.length
     ? `New question. Its passages are numbered from P1 again; cite only these.\n\n${question.trimStart()}`
     : question.trimStart();
   // The follow-up depends on the tool that resumes the session, which an automatic choice can change inside
-  // `generate()`: whether the instructions travel in the prompt, and the size of the replay. So it is built for the
-  // provider of each attempt, and only when that attempt resumes.
+  // `generate()`: the size of the replay follows the tool's window. So it is built for the provider of each attempt, and
+  // only when that attempt resumes. Whether the instructions travel in the message does not depend on whether the call
+  // also sends the `system` field: a resumed session of a subscription tool keeps its first system prompt either way.
   const followUpFor = (provider: string) => {
     const newInstructions =
-      instructionsChanged && systemInPrompt(provider)
+      instructionsChanged && keepsFirstSystemPrompt(provider)
         ? `<instructions>\n${system}\n</instructions>\nThese instructions replace any you were given before.\n\n`
         : "";
     const replay = outOfStep ? historyText(db, chatId, exclude, handoverChars(provider), session!.syncedTo) : "";
@@ -1283,8 +1281,6 @@ async function answer(
   };
   // From here no open session of the chat can be trusted to hold the conversation until one completes this turn.
   markOutOfStep(db, chatId);
-  // A session the tool opened during this turn received the whole prompt, not the follow-up.
-  let startedSession = false;
   // A photo read as text for a planned text-only tool still goes as a picture to the tool that answers, if that one reads
   // images (an automatic choice that fell back to it). It is decided for each attempt, as the prompt is. A pinned chat, and a
   // photo turn on a local model, have no fallback.
@@ -1324,8 +1320,7 @@ async function answer(
         onSession: (sessionId, provider, cwd) => {
           const open = currentSession(db, chatId);
           if (open?.provider === provider && open.sessionId === sessionId) return;
-          startedSession = true;
-          recordSession(db, chatId, open, { provider, sessionId, cwd, model: answering.model, effort: answering.effort ?? null, told: "", instructions, chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion }, long ? "long" : "gone");
+          recordSession(db, chatId, open, { provider, sessionId, cwd, model: answering.model, effort: answering.effort ?? null, told: "", instructions, chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion }, "gone");
         },
       },
       cache: true,
@@ -1358,7 +1353,7 @@ async function answer(
           finished: true,
           syncedTo: beforeQuestion,
         },
-        long ? "long" : "gone",
+        "gone",
       );
     }
     // The engine ended the stream without finishing the answer: out of room, or no final event. That is a failure
@@ -1375,15 +1370,6 @@ async function answer(
     // What arrived is kept when the student stops, and when the engine fails mid-answer (a dropped connection, a usage
     // limit), as a reply marked with the failure that offers Continue. A regenerated reply that fails keeps the earlier
     // one instead, and a Continue that added nothing leaves the reply as it was.
-    // The tool kept what it was sent, and with Antigravity the start of the reply too, which counts toward the size at
-    // which a session starts over.
-    const sent = !startedSession && session && answering.provider === session.provider ? followUpFor(answering.provider) : promptFor(answering.provider);
-    addSessionChars(
-      db,
-      chatId,
-      answering.provider,
-      answering.provider === "antigravity" ? sent.length + streamed.length : sent.length,
-    );
     const kept = streamed.trim() !== "" && streamed !== resume;
     if (kept && (aborted || !replacing || resume))
       return stopReply(streamed, aborted ? null : toIpcError(err).messageKey);
@@ -1456,15 +1442,14 @@ async function answer(
         chatId,
       );
   }
-  // The check stays on the chat's own engine: it is a short extraction, not part of a stronger answer. It is a model call
-  // of its own, a new session in the tool's history, so it runs only for an answer that states maths and has no check
-  // blocks of its own (the template asks for them inline). The engine is looked up only when a check is needed: with none
-  // assigned at this moment the saved reply is returned as it is.
+  // The check is a short extraction, not part of a stronger answer, so it runs on the cheapest ready tool (`checkSelection`).
+  // It is a model call of its own that the tool does not save where it can skip that, so it runs only for an answer that
+  // states maths and has no check blocks of its own (the template asks for them inline). The engine is looked up only when
+  // a check is needed: with none assigned at this moment the saved reply is returned as it is.
   let checking = false;
   if (needsSolverChecks(parsed.body)) {
     try {
-      const checkSelection = selectionFor(db, "chat");
-      startChecks(db, { chatId, messageId, body: parsed.body }, { selection: checkSelection, run: input.run });
+      startChecks(db, { chatId, messageId, body: parsed.body }, { selection: checkSelection(db), run: input.run });
       checking = true;
     } catch (err) {
       if (!(err instanceof IpcError && err.code === "engine-missing")) throw err;

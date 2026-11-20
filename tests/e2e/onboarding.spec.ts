@@ -315,7 +315,7 @@ test("First setup: each tool shows its real state, an expired sign-in is never c
     agy,
     `#!/bin/sh
 case "$1" in
-  --version) echo "1.3.0";;
+  --version) echo "1.5.13";;
   models) printf 'gemini-3.8-flash\\tGemini 3.8 Flash\\n';;
   *) echo "Error: request failed with status 401 Unauthorized" >&2; exit 1;;
 esac
@@ -384,6 +384,53 @@ esac
     await expect(box("ChatGPT")).toBeChecked();
     await page.getByRole("radio", { name: /^Automatico/ }).click();
     await expect.poll(choice).toEqual({ allowed: null, order: null });
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
+
+test("First setup: an Antigravity program older than 1.5 says it needs an update, is not connected, and is not offered for the plan", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-old-agy-"));
+  const { bin, env } = fakeBins({ claude: true, codex: false });
+  const agy = join(bin, "agy");
+  writeFileSync(
+    agy,
+    `#!/bin/sh
+case "$1" in
+  --version) echo "1.4.0";;
+  models) printf 'gemini-3.8-flash\\tGemini 3.8 Flash\\n';;
+  *) exit 1;;
+esac
+`,
+  );
+  chmodSync(agy, 0o755);
+  const app = await launch(userData, { ...env, CLI_FUNNEL_AGY_BIN: agy, GEMINI_API_KEY: "test-key" });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await button(page, "Continua").click();
+    await expect(cardState(page, "Claude")).toHaveText("Collegato", { timeout: 30000 });
+    await expect(cardState(page, "Gemini")).toHaveText("Da aggiornare");
+    await expect(card(page, "Gemini")).toContainText("Gemini richiede Antigravity 1.5 o successivo. Aggiorna il programma e Pyxis tornerà a usarlo.");
+    // It cannot be picked, so no sign-in is offered for a tool that is signed in.
+    await expect(button(card(page, "Gemini"), "Gemini")).toBeDisabled();
+    await page
+      .getByRole("region", { name: "Cosa esce da questo computer" })
+      .getByRole("button", { name: "Ho capito" })
+      .click();
+    await advanced(page).click();
+    await expect(engineRow(page, "Gemini")).toContainText("Da aggiornare");
+    await expect(engineRow(page, "Gemini")).toContainText("Gemini richiede Antigravity 1.5 o successivo");
+    await expect
+      .poll(async () =>
+        Object.values(await page.evaluate(() => window.pyxis.invoke("engines.features", {}))).map((selection) => selection.provider),
+      )
+      .not.toContain("antigravity");
+    await noAxeViolations(page);
   } finally {
     await app.close();
     removeTestFolder(userData);

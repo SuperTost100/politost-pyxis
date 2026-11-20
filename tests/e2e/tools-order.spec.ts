@@ -63,7 +63,7 @@ test("Strumenti AI: the connected tools are put in order with the mouse, the key
       "Pyxis usa il primo della lista. Se finisce le richieste del giorno, passa al successivo.",
     );
     await expect.poll(() => order(page)).toEqual(["antigravity", "claude", "codex"]);
-    // The tasks follow: lessons go to the first tool, and photos to the next one, since Gemini reads no pictures.
+    // The tasks follow: lessons, the chat and photos go to the first tool, since Gemini reads pictures over ACP.
     await expect
       .poll(async () => {
         const features = (await page.evaluate(() => window.pyxis.invoke("engines.features", {}))) as Record<
@@ -72,7 +72,7 @@ test("Strumenti AI: the connected tools are put in order with the mouse, the key
         >;
         return [features.lesson?.provider, features.chat?.provider, features.vision?.provider];
       })
-      .toEqual(["antigravity", "antigravity", "claude"]);
+      .toEqual(["antigravity", "antigravity", "antigravity"]);
     await saveShot(page, "tools/order-listed-it.png", { fullPage: true });
 
     // ---- The keyboard: Space picks ChatGPT up, the arrows move it to the top, Space drops it. Each step is said.
