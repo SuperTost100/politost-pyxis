@@ -4,24 +4,33 @@ import {
   normalizeMathDelimiters,
   repairLatexInProse,
 } from "../../../shared/math-delimiters";
+import { mapFigureBlocks } from "../../../shared/smart-text";
 import { linkCitations, type CitationResolver } from "./citations";
 
 /**
  * A marker after the paragraph of each step: `[check](mathcheck:<index>)` in a paragraph of its own, for the math check of
- * the step at that index. A step the text no longer holds gets none.
+ * the step at that index. A step the text no longer holds gets none. The marker of a step in a list item or a quote is
+ * indented like the step's line, so it stays in the item and the list goes on after it.
  */
 function markChecks(body: string, steps: readonly string[]): string {
-  const inserts = new Map<number, string[]>();
+  const inserts = new Map<number, { lead: string; markers: string[] }>();
   steps.forEach((step, index) => {
     const start = body.indexOf(step);
     if (start < 0) return;
     const next = body.indexOf("\n\n", start + step.length);
     const at = next < 0 ? body.length : next;
-    inserts.set(at, [...(inserts.get(at) ?? []), `[check](mathcheck:${index})`]);
+    // The step's line, which starts with its list marker when the step is the item's first paragraph.
+    const line = body.slice(body.lastIndexOf("\n", start - 1) + 1, start + step.length);
+    const lead = (/^(?:[ \t>]|[-*+](?=[ \t])|\d+[.)](?=[ \t]))*/.exec(line)?.[0] ?? "").replace(/[-*+]|\d+[.)]/g, (marker) =>
+      " ".repeat(marker.length),
+    );
+    const insert = inserts.get(at) ?? { lead, markers: [] };
+    insert.markers.push(`[check](mathcheck:${index})`);
+    inserts.set(at, insert);
   });
   let marked = body;
-  for (const [at, markers] of [...inserts].sort((a, b) => b[0] - a[0])) {
-    marked = `${marked.slice(0, at)}\n\n${markers.join(" ")}\n\n${marked.slice(at)}`;
+  for (const [at, { lead, markers }] of [...inserts].sort((a, b) => b[0] - a[0])) {
+    marked = `${marked.slice(0, at)}\n\n${lead}${markers.join(" ")}\n\n${marked.slice(at)}`;
   }
   return marked;
 }
@@ -40,8 +49,9 @@ export function markdownSource(
   writing = false,
   checkSteps: readonly string[] = [],
 ): string {
+  // A figure block indented as far as Markdown's indented code, in a list item, is lifted to where it reads as a figure.
   // The text is classified as it will be drawn: its LaTeX escapes (a `\times` that arrived as a tab) are back first.
-  const repaired = repairLatexInProse(body);
+  const repaired = repairLatexInProse(mapFigureBlocks(body, () => null));
   const held = writing ? holdOpenMath(repaired) : repaired;
   const steps = checkSteps.map(repairLatexInProse);
   return displayMathLines(normalizeMathDelimiters(linkCitations(markChecks(held, steps), resolver)));

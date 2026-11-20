@@ -44,3 +44,17 @@ export function walk(node: MdNode, visit: (node: MdNode, parent: MdNode | null) 
   if (visit(node, parent) === false) return;
   for (const child of node.children ?? []) walk(child, visit, node);
 }
+
+/** Whether `offset` of `text` lies in a list item, as the parser reads the text. */
+export function inListItem(text: string, offset: number): boolean {
+  let found = false;
+  walk(parseMarkdown(text), (node) => {
+    if (found || !node.position || offset < start(node) || offset >= end(node)) return false;
+    if (node.type === "listItem") found = true;
+  });
+  return found;
+}
+
+/** How many columns a line's leading spaces and tabs take, a tab reaching the next multiple of four. */
+export const indentWidth = (indent: string): number =>
+  [...indent].reduce((column, char) => (char === "\t" ? column + 4 - (column % 4) : column + 1), 0);
