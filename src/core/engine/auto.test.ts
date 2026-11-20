@@ -80,7 +80,8 @@ function summary(plan: ReturnType<typeof planAuto>) {
 describe("automatic engine policy", () => {
   it("splits work between Claude Code and Codex by tier and keeps the load even", () => {
     expect(summary(planAuto([claude, codex]))).toEqual({
-      chat: "codex:gpt-6-luna:low",
+      // The model file runs the chat on the mid role of Claude and ChatGPT, whichever of them gets it.
+      chat: "codex:gpt-6.1-terra:medium",
       map: "codex:gpt-6-luna:low",
       cards: "codex:gpt-6-luna:low",
       grading: "codex:gpt-6.1-terra:medium",
@@ -99,7 +100,7 @@ describe("automatic engine policy", () => {
 
   it("puts everything on Claude Code by tier when it is the only engine", () => {
     expect(summary(planAuto([claude]))).toEqual({
-      chat: "claude:claude-haiku-5-5:low",
+      chat: "claude:claude-sonnet-5-5:medium",
       map: "claude:claude-haiku-5-5:low",
       cards: "claude:claude-haiku-5-5:low",
       lesson: "claude:claude-sonnet-5-5:medium",
@@ -130,7 +131,7 @@ describe("automatic engine policy", () => {
 
   it("puts everything on Codex by tier when it is the only engine", () => {
     expect(summary(planAuto([codex]))).toEqual({
-      chat: "codex:gpt-6-luna:low",
+      chat: "codex:gpt-6.1-terra:medium",
       map: "codex:gpt-6-luna:low",
       cards: "codex:gpt-6-luna:low",
       lesson: "codex:gpt-6.1-terra:medium",
@@ -212,10 +213,11 @@ describe("automatic engine policy", () => {
   });
 
   it("never plans photos on a provider that refuses images, whatever its model ids say", () => {
-    const cursorLike: AutoProvider = { ...claude, id: "agent", images: false };
+    // Antigravity lists Claude and GPT models that match the catalog, but its CLI cannot take a picture.
+    expect(antigravity.images).toBe(false);
     // Only the provider that takes images gets the photo feature.
-    expect(planAuto([cursorLike, claude]).vision?.provider).toBe("claude");
-    expect(planAuto([cursorLike, codex]).vision?.provider).toBe("codex");
+    expect(planAuto([antigravity, claude]).vision?.provider).toBe("claude");
+    expect(planAuto([antigravity, codex]).vision?.provider).toBe("codex");
   });
 
   it("omits effort for models that do not list it", () => {
@@ -228,30 +230,7 @@ describe("automatic engine policy", () => {
   });
 });
 
-// Cursor Agent and Antigravity as `agent --list-models` and `agy models` report them: a mix of makers, of which only
-// the Grok models (Cursor) and the Gemini models (Antigravity) may be used.
-const agent: AutoProvider = {
-  id: "agent",
-  kind: "cli",
-  effort: true,
-  images: false,
-  models: [
-    model("gpt-5.3-codex", []),
-    model("composer-2.5", []),
-    model("claude-opus-5-thinking"),
-    model("gpt-5.6-sol"),
-    model("claude-fable-5-thinking"),
-    model("cursor-grok-4.5", all.slice(0, 3)),
-    model("grok-4.7", all.slice(0, 4)),
-    model("cursor-grok-4.6", all.slice(0, 4)),
-    model("claude-opus-5-5"),
-    model("gemini-3.8-flash", all.slice(0, 3)),
-    model("claude-sonnet-5-5"),
-    model("gemini-4-argon", all.slice(0, 3)),
-    model("gpt-5.6-luna"),
-    model("kimi-k3", []),
-  ],
-};
+// Antigravity as `agy models` reports it: a mix of makers, of which only the Gemini models may be used.
 const antigravity: AutoProvider = {
   id: "antigravity",
   kind: "cli",
@@ -272,30 +251,14 @@ const antigravity: AutoProvider = {
 
 /** provider/model per feature, in the order default chat plan lesson grading map vision cards. */
 const combinations: Record<string, string> = {
-  agent:
-    "agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7",
   antigravity:
-    "antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-argon antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen",
-  "claude+agent":
-    "claude/claude-sonnet-5-5 agent/grok-4.7 claude/claude-opus-5-5 claude/claude-sonnet-5-5 agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 agent/grok-4.7",
-  "codex+agent":
-    "agent/grok-4.7 codex/gpt-6-luna codex/gpt-6.2-sol agent/grok-4.7 agent/grok-4.7 codex/gpt-6-luna codex/gpt-6.1-terra codex/gpt-6-luna",
+    "antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash antigravity/gemini-4-argon antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash",
   "claude+antigravity":
-    "claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen claude/claude-opus-5-5 claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen",
+    "claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash",
   "codex+antigravity":
-    "codex/gpt-6.1-terra antigravity/gemini-4-hydrogen codex/gpt-6.2-sol codex/gpt-6.1-terra antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen codex/gpt-6.1-terra antigravity/gemini-4-hydrogen",
-  "agent+antigravity":
-    "agent/grok-4.7 antigravity/gemini-4-hydrogen agent/grok-4.7 agent/grok-4.7 antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen agent/grok-4.7 antigravity/gemini-4-hydrogen",
-  "claude+codex+agent":
-    "claude/claude-sonnet-5-5 codex/gpt-6-luna agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 codex/gpt-6-luna claude/claude-sonnet-5-5 codex/gpt-6-luna",
+    "codex/gpt-6.1-terra antigravity/gemini-3.8-flash codex/gpt-6.2-sol codex/gpt-6.1-terra antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash codex/gpt-6.1-terra antigravity/gemini-3.8-flash",
   "claude+codex+antigravity":
-    "claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen codex/gpt-6.2-sol codex/gpt-6.1-terra claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen",
-  "claude+agent+antigravity":
-    "claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen",
-  "codex+agent+antigravity":
-    "agent/grok-4.7 antigravity/gemini-4-hydrogen codex/gpt-6.2-sol agent/grok-4.7 codex/gpt-6.1-terra antigravity/gemini-4-hydrogen codex/gpt-6.1-terra antigravity/gemini-4-hydrogen",
-  "claude+codex+agent+antigravity":
-    "claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen claude/claude-opus-5-5 codex/gpt-6.1-terra agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen",
+    "claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash codex/gpt-6.2-sol codex/gpt-6.1-terra claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash",
 };
 const order = [
   "default",
@@ -310,17 +273,15 @@ const order = [
 const makers: Record<string, RegExp> = {
   claude: /^claude-/,
   codex: /^gpt-/,
-  agent: /^(?:cursor-)?grok-/,
   antigravity: /^gemini-/,
 };
 const byId: Record<string, AutoProvider> = {
   claude,
   codex,
-  agent,
   antigravity,
 };
 
-describe("automatic choice with Cursor Agent and Antigravity", () => {
+describe("automatic choice with Antigravity", () => {
   it.each(Object.entries(combinations))(
     "gives %s a balanced default",
     (combo, expected) => {
@@ -331,9 +292,9 @@ describe("automatic choice with Cursor Agent and Antigravity", () => {
     },
   );
 
-  it("covers every mix of the four CLIs, using each engine and only its maker's models", () => {
-    const ids = ["claude", "codex", "agent", "antigravity"];
-    for (let mask = 1; mask < 16; mask++) {
+  it("covers every mix of the three CLIs, using each engine and only its maker's models", () => {
+    const ids = ["claude", "codex", "antigravity"];
+    for (let mask = 1; mask < 8; mask++) {
       const ready = ids
         .filter((_, i) => mask & (1 << i))
         .map((id) => byId[id]!);
@@ -342,7 +303,7 @@ describe("automatic choice with Cursor Agent and Antigravity", () => {
         Object.values(plan).map((choice) => choice!.provider),
       );
       expect(Object.keys(plan).sort()).toEqual([...order].sort());
-      expect(used.size).toBe(Math.min(ready.length, 4));
+      expect(used.size).toBe(ready.length);
       for (const choice of Object.values(plan)) {
         expect(choice!.model).not.toMatch(/thinking|fable/);
         expect(choice!.model).toMatch(makers[choice!.provider]!);
@@ -355,9 +316,9 @@ describe("the order the student put their tools in", () => {
   const providersOf = (plan: ReturnType<typeof planAuto>) =>
     Object.fromEntries(Object.entries(plan).map(([feature, choice]) => [feature, choice.provider]));
 
-  it("gives every task to the first tool of the list, each on the model of its tier", () => {
+  it("gives every task to the first tool of the list, each on the model of its role", () => {
     expect(summary(planAuto([claude, codex], undefined, ["codex", "claude"]))).toEqual({
-      chat: "codex:gpt-6-luna:low",
+      chat: "codex:gpt-6.1-terra:medium",
       map: "codex:gpt-6-luna:low",
       cards: "codex:gpt-6-luna:low",
       grading: "codex:gpt-6.1-terra:medium",
@@ -427,7 +388,9 @@ describe("the three roles of a tool, as its row shows them", () => {
   it("agrees with what planAuto gives each task, so the row never says one thing and the choice another", () => {
     const plan = planAuto([claude]);
     const roles = rolesOf("claude", ids(claude));
-    expect(plan.chat?.model).toBe(roles.fast);
+    // The chat runs on Claude's mid role (featureRoles), the other fast tasks on its fast role.
+    expect(plan.chat?.model).toBe(roles.mid);
+    expect(plan.map?.model).toBe(roles.fast);
     expect(plan.lesson?.model).toBe(roles.mid);
     expect(plan.plan?.model).toBe(roles.strong);
   });
@@ -461,7 +424,7 @@ describe("the three roles of a tool, as its row shows them", () => {
 
   it("names the file's preferred model of each role for a tool that is not connected", () => {
     expect(rolesOf("antigravity", null)).toEqual({
-      fast: "gemini-4-hydrogen",
+      fast: "gemini-3.8-flash",
       mid: "gemini-4-hydrogen",
       strong: "gemini-4-carbon",
     });
@@ -475,18 +438,25 @@ describe("the three roles of a tool, as its row shows them", () => {
   describe("the role each task runs in on a tool", () => {
     afterEach(() => resetModelFile());
 
-    it("is the task's tier while the file gives the tool no featureRoles", () => {
-      expect(taskRolesOf("claude")).toMatchObject({ chat: "fast", map: "fast", cards: "fast", lesson: "mid", grading: "mid", plan: "strong" });
+    it("is the task's tier on a tool the file gives no featureRoles", () => {
+      expect(taskRolesOf("antigravity")).toMatchObject({ chat: "fast", map: "fast", cards: "fast", lesson: "mid", grading: "mid", plan: "strong" });
+    });
+
+    it("runs the chat on the mid role of Claude and ChatGPT, as the shipped file says, and nothing else", () => {
+      for (const tool of ["claude", "codex"]) {
+        expect(taskRolesOf(tool)).toMatchObject({ chat: "mid", map: "fast", cards: "fast", lesson: "mid", grading: "mid", plan: "strong" });
+      }
     });
 
     it("follows featureRoles on the tool that has them and only on that tool", () => {
       const file = JSON.parse(JSON.stringify(modelFile())) as ModelFile;
       file.updatedAt = "2099-01-01T00:00:00Z";
-      file.tools.claude!.featureRoles = { chat: "mid" };
+      file.tools.antigravity!.featureRoles = { chat: "mid" };
+      delete file.tools.claude!.featureRoles;
       expect(adoptModelFile(file)).toBe(true);
-      expect(taskRolesOf("claude").chat).toBe("mid");
-      expect(taskRolesOf("claude").map).toBe("fast");
-      expect(taskRolesOf("codex").chat).toBe("fast");
+      expect(taskRolesOf("antigravity").chat).toBe("mid");
+      expect(taskRolesOf("antigravity").map).toBe("fast");
+      expect(taskRolesOf("claude").chat).toBe("fast");
     });
   });
 });

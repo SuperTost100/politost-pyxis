@@ -52,9 +52,9 @@ test("a plan build the engine's subscription refused names the engine and offers
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     await fromChiediToExams(page);
-    // What the walkthrough's build stopped with when Cursor Agent refused Claude Opus 5.5.
+    // What the walkthrough's build stopped with when Antigravity refused Claude Opus 5.5.
     const reason =
-      "model-not-included [agent]: agent exited (1) without a result. ActionRequiredError: Claude Opus 5.5 is not included in your weekly usage Buy credits or switch to a Grok model to continue.";
+      "model-not-included [antigravity]: agy exited (1) without a result. Claude Opus 5.5 is not included in your subscription.";
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     const now = Date.now();
     seedPlan(db, { id: "m", title: "Fisica 1", status: "building", language: "it" });
@@ -69,7 +69,7 @@ test("a plan build the engine's subscription refused names the engine and offers
     await page.evaluate(() => { window.location.hash = "/plans/new?build=m"; });
     const state = page.getByRole("alert");
     await expect(state.locator(".px-notice-text")).toHaveText(
-      "Il tuo abbonamento a Cursor non include il modello che serviva qui. Scegli un altro modello o un altro strumento nelle Impostazioni. Riprova per continuare dall\u2019ultimo passaggio salvato.",
+      "Il tuo abbonamento a Gemini non include il modello che serviva qui. Scegli un altro modello o un altro strumento nelle Impostazioni. Riprova per continuare dall\u2019ultimo passaggio salvato.",
     );
     await expect(state).not.toContainText("Un passaggio si \u00e8 fermato");
     await expect(state.getByRole("button", { name: "Riprova", exact: true })).toBeVisible();

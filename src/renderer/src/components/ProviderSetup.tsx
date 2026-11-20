@@ -20,7 +20,6 @@ const makers: Record<InstallableProvider, { vendor: string; account: string }> =
   {
     claude: { vendor: "Anthropic", account: "Claude" },
     codex: { vendor: "OpenAI", account: "ChatGPT" },
-    agent: { vendor: "Cursor", account: "Cursor" },
     antigravity: { vendor: "Google", account: "Google" },
   };
 

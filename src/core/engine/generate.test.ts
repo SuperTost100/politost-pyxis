@@ -15,7 +15,7 @@ import {
 import { forgetModels, rememberModels } from "./efforts";
 import { generate, setFallbackListener, type GenerateInput } from "./generate";
 import { FunnelError, type EngineResult } from "./funnel";
-import { chooseJobEngine, rememberOrder, rememberReady, selectionFor } from "./selection";
+import { chooseJobEngine, FIRST_PLAN_WAIT_MS, forgetFirstPlan, rememberOrder, rememberReady, selectionFor } from "./selection";
 import { currentUsageScope, withUsageScope } from "./usage";
 
 const selection = { provider: "claude" as const, model: "claude-sonnet-4-6" };
@@ -527,9 +527,9 @@ describe("switching engines on a usage limit or sign-out", () => {
     expect(heard).toEqual(["job-1"]);
   });
 
-  // Cursor's words when a subscription leaves out the model Pyxis chose (seen on 2026-10-27).
+  // A subscription that leaves out the model Pyxis chose.
   const notIncluded = new FunnelError(
-    "Claude Sonnet 5.5 is not included in your weekly usage Buy credits or switch to a Grok model to continue.",
+    "Claude Sonnet 5.5 is not included in your subscription.",
     "cli-failed",
   );
 
@@ -722,7 +722,7 @@ describe("switching engines on a usage limit or sign-out", () => {
     const db = automaticChat();
     rememberReady([
       ready[0]!,
-      { id: "agent", kind: "cli", effort: true, models: [{ id: "grok-4.7", efforts: [] }] },
+      { id: "antigravity", kind: "cli", effort: true, images: false, models: [{ id: "gemini-4-hydrogen", efforts: [] }] },
     ]);
     const asked: string[] = [];
     const call = (jobId: string, attachments?: GenerateInput["attachments"]) =>
@@ -737,14 +737,14 @@ describe("switching engines on a usage limit or sign-out", () => {
           },
         }),
       );
-    // A job told to go on with Cursor goes there with text, as before.
-    chooseJobEngine("job-text", "agent");
+    // A job told to go on with Gemini goes there with text, as before.
+    chooseJobEngine("job-text", "antigravity");
     await call("job-text");
-    expect(asked).toEqual(["agent"]);
+    expect(asked).toEqual(["antigravity"]);
     // With a picture it stays on the tool it was on, as an automatic move would not leave it for one that cannot see.
-    chooseJobEngine("job-picture", "agent");
+    chooseJobEngine("job-picture", "antigravity");
     await call("job-picture", [{ type: "image", mediaType: "image/png", data: "aGk=" }]);
-    expect(asked).toEqual(["agent", "claude"]);
+    expect(asked).toEqual(["antigravity", "claude"]);
     db.close();
   });
 
@@ -752,7 +752,7 @@ describe("switching engines on a usage limit or sign-out", () => {
     const db = automaticChat();
     rememberReady([
       ready[0]!,
-      { id: "agent", kind: "cli", effort: true, models: [{ id: "grok-4.7", efforts: [] }] },
+      { id: "antigravity", kind: "cli", effort: true, images: false, models: [{ id: "gemini-4-hydrogen", efforts: [] }] },
     ]);
     let calls = 0;
     await expect(
@@ -772,45 +772,37 @@ describe("switching engines on a usage limit or sign-out", () => {
 });
 
 describe("a chosen engine whose subscription refuses the model", () => {
-  /** Cursor Agent's models as `agent --list-models` lists them on a plan with Grok included, newest first per family. */
-  const cursor: AutoProvider = {
-    id: "agent",
+  /** Antigravity's models as `agy models` lists them, with the other makers' mixed in. */
+  const gemini: AutoProvider = {
+    id: "antigravity",
     kind: "cli",
     effort: true,
+    images: false,
     models: [
-      "gpt-5.3-codex",
-      "composer-2.5",
-      "claude-opus-5-thinking",
-      "gpt-5.6-sol",
-      "cursor-grok-4.4",
-      "cursor-grok-4.5",
-      "gemini-3.7-flash",
-      "grok-4.7",
-      "cursor-grok-4.6",
       "claude-opus-5-5",
-      "claude-opus-5",
-      "claude-opus-4-8",
+      "gemini-4-neon",
+      "gpt-oss-120b-medium",
+      "gemini-4-hydrogen",
       "claude-sonnet-5-5",
+      "gemini-4-argon",
+      "gemini-4-carbon",
     ].map((id) => ({ id, efforts: [{ id: "low" }, { id: "medium" }, { id: "high" }] })),
   };
-  /** What Cursor Agent printed in the walkthrough when the plan step ran on Claude Opus 5.5. */
-  const refusal = (model: string, hint = " Buy credits or switch to a Grok model to continue.") =>
-    Object.assign(
-      new Error(
-        `agent exited (1) without a result. ActionRequiredError: ${model} is not included in your weekly usage${hint}`,
-      ),
-      { code: "cli-failed" },
-    );
+  /** A plan that leaves one model out. */
+  const refusal = (model: string) =>
+    Object.assign(new Error(`agy exited (1) without a result. ${model} is not included in your subscription.`), {
+      code: "cli-failed",
+    });
 
-  /** The plan task on Cursor Agent alone, as "Scelgo io" with only Cursor ticked leaves it. */
-  function cursorOnly(model = "grok-4.7") {
+  /** The plan task on Antigravity alone, as "Scelgo io" with only Gemini ticked leaves it. */
+  function geminiOnly(model = "gemini-4-carbon") {
     const db = openDatabase(":memory:");
     db.prepare(
       "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('plan', ?, 1)",
     ).run(
-      JSON.stringify({ provider: "agent", model, effort: "high", auto: true }),
+      JSON.stringify({ provider: "antigravity", model, effort: "high", auto: true }),
     );
-    rememberReady([cursor]);
+    rememberReady([gemini]);
     return db;
   }
 
@@ -821,8 +813,8 @@ describe("a chosen engine whose subscription refuses the model", () => {
     forgetModels();
   });
 
-  it("moves a job's saved selection to the model the refusal points to", async () => {
-    const db = cursorOnly();
+  it("moves a job's saved selection to the engine's next model of the role", async () => {
+    const db = geminiOnly();
     // A background job keeps its selection in its saved parameters, so it comes back as plain JSON.
     const saved = JSON.parse(JSON.stringify(selectionFor(db, "plan"))) as ReturnType<
       typeof selectionFor
@@ -833,15 +825,15 @@ describe("a chosen engine whose subscription refuses the model", () => {
       prompt: "hi",
       run: async (input) => {
         asked.push(input.selection.model);
-        if (input.selection.model === "grok-4.7") throw refusal("Grok 4.7");
-        return result({ text: "ciao", provider: "agent", model: input.selection.model });
+        if (input.selection.model === "gemini-4-carbon") throw refusal("Gemini 4 Carbon");
+        return result({ text: "ciao", provider: "antigravity", model: input.selection.model });
       },
     });
-    expect(asked).toEqual(["grok-4.7", "cursor-grok-4.6"]);
+    expect(asked).toEqual(["gemini-4-carbon", "gemini-4-argon"]);
     expect(output.text).toBe("ciao");
     expect(output.fallback).toEqual({
-      from: "Cursor",
-      to: "Cursor (Grok 4.6)",
+      from: "Gemini",
+      to: "Gemini (Gemini 4 Argon)",
       reason: "model",
     });
     db.close();
@@ -849,10 +841,11 @@ describe("a chosen engine whose subscription refuses the model", () => {
 
   describe("a job saved by an earlier build", () => {
     /** Runs one call with a saved selection and returns the models the engine was asked for. */
-    async function asking(selection: object): Promise<{ asked: string[]; fallback: unknown }> {
-      const db = cursorOnly();
-      // What Cursor reported when the app last listed its models: Composer and the others are not Grok.
-      rememberModels("agent", cursor.models.filter((model) => /grok/.test(model.id)), cursor.models);
+    async function asking(selection: object, ready: AutoProvider[] = [gemini]): Promise<{ asked: string[]; fallback: unknown }> {
+      const db = geminiOnly();
+      rememberReady(ready);
+      // What Antigravity reported when the app last listed its models: the others' models are not Gemini's own.
+      rememberModels("antigravity", gemini.models.filter((model) => /gemini/.test(model.id)), gemini.models);
       const asked: string[] = [];
       const output = await generate({
         selection: JSON.parse(JSON.stringify(selection)) as ReturnType<typeof selectionFor>,
@@ -868,46 +861,156 @@ describe("a chosen engine whose subscription refuses the model", () => {
 
     it("goes back to the automatic choice when it names another maker's model on the tool, and asks the tool for no such model", async () => {
       const { asked, fallback } = await asking({
-        provider: "agent",
+        provider: "antigravity",
         model: "claude-opus-5-5",
         effort: "high",
         chosenFor: "plan",
       });
-      expect(asked).toEqual(["agent/grok-4.7"]);
+      expect(asked).toEqual(["antigravity/gemini-4-carbon"]);
       expect(fallback).toBeUndefined();
     });
 
     it("does the same for a selection the student had pinned, which names no task", async () => {
-      expect((await asking({ provider: "agent", model: "composer-2.5" })).asked).toEqual(["agent/grok-4.7"]);
-      expect((await asking({ provider: "agent", model: "claude-sonnet-5-5", effort: "high" })).asked).toEqual([
-        "agent/grok-4.7",
+      expect((await asking({ provider: "antigravity", model: "gpt-oss-120b-medium" })).asked).toEqual([
+        "antigravity/gemini-4-hydrogen",
+      ]);
+      expect((await asking({ provider: "antigravity", model: "claude-sonnet-5-5", effort: "high" })).asked).toEqual([
+        "antigravity/gemini-4-hydrogen",
       ]);
     });
 
     it("keeps the tool's own models and ids nobody knows as they were", async () => {
-      expect((await asking({ provider: "agent", model: "cursor-grok-4.5", chosenFor: "chat" })).asked).toEqual([
-        "agent/cursor-grok-4.5",
+      expect((await asking({ provider: "antigravity", model: "gemini-4-neon", chosenFor: "chat" })).asked).toEqual([
+        "antigravity/gemini-4-neon",
       ]);
-      expect((await asking({ provider: "agent", model: "recorded-fixture" })).asked).toEqual([
-        "agent/recorded-fixture",
+      expect((await asking({ provider: "antigravity", model: "recorded-fixture" })).asked).toEqual([
+        "antigravity/recorded-fixture",
       ]);
     });
 
+    it("moves a job that named Cursor, a tool Pyxis no longer offers, to the automatic choice for its task", async () => {
+      // The job's task decides the role: the plan runs on the strong model, the default task on the middle one.
+      expect(
+        (await asking({ provider: "agent", model: "grok-4.7", effort: "high", chosenFor: "plan" })).asked,
+      ).toEqual(["antigravity/gemini-4-carbon"]);
+      const pinned = await asking({ provider: "agent", model: "cursor-grok-4.6" });
+      expect(pinned.asked).toEqual(["antigravity/gemini-4-hydrogen"]);
+      // Nothing says the job ran on another tool than the one the student has now.
+      expect(pinned.fallback).toBeUndefined();
+    });
+
+    it("holds a job that names Cursor until the first plan exists, then moves it, so the first launch after the update does not fail it", async () => {
+      forgetFirstPlan();
+      rememberReady([]);
+      forgetFirstPlan();
+      const asked: string[] = [];
+      let finished = false;
+      const answer = generate({
+        selection: { provider: "agent", model: "grok-4.7", chosenFor: "plan" } as ReturnType<typeof selectionFor>,
+        prompt: "hi",
+        run: async (input) => {
+          asked.push(`${input.selection.provider}/${input.selection.model}`);
+          return result({ text: "ciao", provider: input.selection.provider, model: input.selection.model });
+        },
+      }).then((output) => {
+        finished = true;
+        return output;
+      });
+      // The runner is up and no plan was made: nothing is asked, and nothing fails.
+      await new Promise((resume) => setTimeout(resume, 30));
+      expect(finished).toBe(false);
+      expect(asked).toEqual([]);
+      // The plan arrives with Gemini: the job goes on there.
+      rememberReady([gemini]);
+      await answer;
+      expect(asked).toEqual(["antigravity/gemini-4-carbon"]);
+    });
+
+    it("stops a held job with no engine when no plan arrives in time", async () => {
+      vi.useFakeTimers();
+      try {
+        forgetFirstPlan();
+        const stopped = generate({
+          selection: { provider: "agent", model: "grok-4.7", chosenFor: "plan" } as ReturnType<typeof selectionFor>,
+          prompt: "hi",
+          run: async () => result({ text: "never", provider: "agent" }),
+        }).catch((err: unknown) => err);
+        await vi.advanceTimersByTimeAsync(FIRST_PLAN_WAIT_MS + 1);
+        expect(await stopped).toMatchObject({ code: "engine-missing" });
+      } finally {
+        vi.useRealTimers();
+        rememberReady([]);
+      }
+    });
+
+    it("ends a held job as cancelled when the student cancels it, at once, and leaves no timer or waiter behind", async () => {
+      vi.useFakeTimers();
+      try {
+        forgetFirstPlan();
+        const controller = new AbortController();
+        const stopped = generate({
+          selection: { provider: "agent", model: "grok-4.7", chosenFor: "plan" } as ReturnType<typeof selectionFor>,
+          prompt: "hi",
+          signal: controller.signal,
+          run: async () => result({ text: "never", provider: "agent" }),
+        }).catch((err: unknown) => err);
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(vi.getTimerCount()).toBe(1);
+        controller.abort();
+        const error = await stopped;
+        // The cancellation, not engine-missing 60 seconds later.
+        expect(error).toMatchObject({ name: "AbortError" });
+        expect(vi.getTimerCount()).toBe(0);
+        // A plan that arrives later finds nobody waiting and changes nothing.
+        rememberReady([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not wait at all for a job that was already cancelled", async () => {
+      forgetFirstPlan();
+      const controller = new AbortController();
+      controller.abort();
+      await expect(
+        generate({
+          selection: { provider: "agent", model: "grok-4.7", chosenFor: "plan" } as ReturnType<typeof selectionFor>,
+          prompt: "hi",
+          signal: controller.signal,
+          run: async () => result({ text: "never", provider: "agent" }),
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      rememberReady([]);
+    });
+
+    it("stops with no engine when the tool the job named was the only one and nothing else is ready", async () => {
+      const db = openDatabase(":memory:");
+      rememberReady([]);
+      await expect(
+        generate({
+          selection: { provider: "agent", model: "grok-4.7", chosenFor: "plan" } as ReturnType<typeof selectionFor>,
+          prompt: "hi",
+          run: async () => result({ text: "never", provider: "agent" }),
+        }),
+      ).rejects.toMatchObject({ code: "engine-missing" });
+      db.close();
+    });
+
     it("keeps the job on its own tool, whatever order the student put their tools in", async () => {
-      const db = cursorOnly();
+      const db = geminiOnly();
       const codex: AutoProvider = {
         id: "codex",
         kind: "cli",
         effort: true,
         models: [{ id: "gpt-6.2-sol", efforts: [{ id: "low" }, { id: "high" }] }, { id: "gpt-6-luna", efforts: [{ id: "low" }] }],
       };
-      rememberReady([cursor, codex]);
-      // ChatGPT first: the plan for a new task would give it to ChatGPT, but this job ran on Cursor.
-      rememberOrder(["codex", "agent"]);
+      rememberReady([gemini, codex]);
+      // ChatGPT first: the plan for a new task would give it to ChatGPT, but this job ran on Gemini.
+      rememberOrder(["codex", "antigravity"]);
       try {
         for (const saved of [
-          { provider: "agent", model: "claude-opus-5-5", effort: "high", chosenFor: "plan" },
-          { provider: "agent", model: "claude-sonnet-5-5" },
+          { provider: "antigravity", model: "claude-opus-5-5", effort: "high", chosenFor: "plan" },
+          { provider: "antigravity", model: "claude-sonnet-5-5" },
         ]) {
           const asked: string[] = [];
           await generate({
@@ -918,13 +1021,13 @@ describe("a chosen engine whose subscription refuses the model", () => {
               return result({ text: "ciao", provider: input.selection.provider, model: input.selection.model });
             },
           });
-          expect(asked, JSON.stringify(saved)).toEqual(["agent/grok-4.7"]);
+          expect(asked[0], JSON.stringify(saved)).toMatch(/^antigravity\/gemini-4-/);
         }
-        // When Cursor cannot take the task, the plan for the ready tools gives it to the next one.
+        // When Gemini cannot take the task, the plan for the ready tools gives it to the next one.
         rememberReady([codex]);
         const moved: string[] = [];
         await generate({
-          selection: { provider: "agent", model: "claude-opus-5-5", chosenFor: "plan" },
+          selection: { provider: "antigravity", model: "claude-opus-5-5", chosenFor: "plan" },
           prompt: "hi",
           run: async (input) => {
             moved.push(`${input.selection.provider}/${input.selection.model}`);
@@ -939,57 +1042,57 @@ describe("a chosen engine whose subscription refuses the model", () => {
     });
 
     it("still moves on afterwards like any automatic call, because the new selection is automatic", async () => {
-      const db = cursorOnly();
+      const db = geminiOnly();
       const asked: string[] = [];
       await generate({
-        selection: { provider: "agent", model: "claude-opus-5-5", chosenFor: "plan" },
+        selection: { provider: "antigravity", model: "claude-opus-5-5", chosenFor: "plan" },
         prompt: "hi",
         run: async (input) => {
           asked.push(input.selection.model);
-          if (input.selection.model === "grok-4.7") throw refusal("Grok 4.7", ".");
-          return result({ text: "ciao", provider: "agent", model: input.selection.model });
+          if (input.selection.model === "gemini-4-carbon") throw refusal("Gemini 4 Carbon");
+          return result({ text: "ciao", provider: "antigravity", model: input.selection.model });
         },
       });
-      expect(asked).toEqual(["grok-4.7", "cursor-grok-4.6"]);
+      expect(asked).toEqual(["gemini-4-carbon", "gemini-4-argon"]);
       db.close();
     });
   });
 
   it("sends the engine only the selection, without Pyxis's own bookkeeping", async () => {
-    const db = cursorOnly();
+    const db = geminiOnly();
     const sent: object[] = [];
     await generate({
       selection: selectionFor(db, "plan"),
       prompt: "hi",
       run: async (input) => {
         sent.push(input.selection);
-        return result({ text: "ciao", provider: "agent" });
+        return result({ text: "ciao", provider: "antigravity" });
       },
     });
-    expect(sent).toEqual([{ provider: "agent", model: "grok-4.7", effort: "high" }]);
+    expect(sent).toEqual([{ provider: "antigravity", model: "gemini-4-carbon", effort: "high" }]);
     db.close();
   });
 
-  it("tries a few more of the engine's own models when the refusal names none, in the file's order", async () => {
-    const db = cursorOnly();
+  it("tries a few more of the engine's own models after a refusal, in the file's order", async () => {
+    const db = geminiOnly();
     const asked: string[] = [];
     const output = await generate({
       selection: selectionFor(db, "plan"),
       prompt: "hi",
       run: async (input) => {
         asked.push(input.selection.model);
-        if (["grok-4.7", "cursor-grok-4.6"].includes(input.selection.model)) throw refusal("Grok", ".");
-        return result({ text: "ciao", provider: "agent", model: input.selection.model });
+        if (["gemini-4-carbon", "gemini-4-argon"].includes(input.selection.model)) throw refusal("Gemini");
+        return result({ text: "ciao", provider: "antigravity", model: input.selection.model });
       },
     });
-    // Never a Claude, GPT or Gemini model of the account: after Grok 4.7 and 4.6 the file's next Grok model is used.
-    expect(asked).toEqual(["grok-4.7", "cursor-grok-4.6", "cursor-grok-4.5"]);
+    // Never a Claude or GPT model of the account: after Carbon and Argon the file's next Gemini model is used.
+    expect(asked).toEqual(["gemini-4-carbon", "gemini-4-argon", "gemini-4-neon"]);
     expect(output.text).toBe("ciao");
     db.close();
   });
 
   it("stops after three more models and names the refusal", async () => {
-    const db = cursorOnly();
+    const db = geminiOnly();
     let calls = 0;
     await expect(
       generate({
@@ -997,42 +1100,42 @@ describe("a chosen engine whose subscription refuses the model", () => {
         prompt: "hi",
         run: async () => {
           calls += 1;
-          throw refusal("This model", ".");
+          throw refusal("This model");
         },
       }),
     ).rejects.toMatchObject({
       code: "model-not-included",
-      params: { provider: "agent" },
+      params: { provider: "antigravity" },
     });
     expect(calls).toBe(4);
     db.close();
   });
 
   it("never walks to another company's model on its way down the refusals", async () => {
-    const db = cursorOnly();
+    const db = geminiOnly();
     const asked: string[] = [];
     await generate({
       selection: selectionFor(db, "plan"),
       prompt: "hi",
       run: async (input) => {
         asked.push(input.selection.model);
-        if (asked.length < 4) throw refusal("This model", ".");
-        return result({ text: "ciao", provider: "agent", model: input.selection.model });
+        if (asked.length < 4) throw refusal("This model");
+        return result({ text: "ciao", provider: "antigravity", model: input.selection.model });
       },
     });
-    expect(asked.every((model) => /grok/.test(model))).toBe(true);
+    expect(asked.every((model) => /gemini/.test(model))).toBe(true);
     db.close();
   });
 
-  it("lets a tool reached after three out of requests try its next model, since no model was refused before", async () => {
+  it("lets a tool reached after two out of requests try its next model, since no model was refused before", async () => {
     const db = openDatabase(":memory:");
     db.prepare(
       "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('plan', ?, 1)",
     ).run(JSON.stringify({ provider: "claude", model: "claude-opus-5-5", auto: true }));
     const other = (id: string, model: string): AutoProvider => ({ id, kind: "cli", effort: false, models: [{ id: model, efforts: [] }] });
-    rememberReady([other("claude", "claude-opus-5-5"), other("codex", "gpt-5.6-sol"), other("antigravity", "gemini-3.7-pro"), cursor]);
-    // The student's order puts Cursor last: three tools are out of requests before it is reached.
-    rememberOrder(["claude", "codex", "antigravity", "agent"]);
+    rememberReady([other("claude", "claude-opus-5-5"), other("codex", "gpt-5.6-sol"), gemini]);
+    // The student's order puts Gemini last: two tools are out of requests before it is reached.
+    rememberOrder(["claude", "codex", "antigravity"]);
     const asked: string[] = [];
     try {
       const output = await generate({
@@ -1040,15 +1143,15 @@ describe("a chosen engine whose subscription refuses the model", () => {
         prompt: "hi",
         run: async (input) => {
           asked.push(`${input.selection.provider}:${input.selection.model}`);
-          if (input.selection.provider !== "agent")
+          if (input.selection.provider !== "antigravity")
             throw Object.assign(new Error("You've hit your usage limit"), { code: "cli-failed" });
-          // Cursor refuses its first model; its next one answers.
-          if (asked.filter((entry) => entry.startsWith("agent")).length === 1) throw refusal("Claude Opus 5.5", ".");
-          return result({ text: "ciao", provider: "agent", model: input.selection.model });
+          // Gemini refuses its first model; its next one answers.
+          if (asked.filter((entry) => entry.startsWith("antigravity")).length === 1) throw refusal("Gemini 4 Carbon");
+          return result({ text: "ciao", provider: "antigravity", model: input.selection.model });
         },
       });
       expect(output.text).toBe("ciao");
-      expect(asked.map((entry) => entry.split(":")[0])).toEqual(["claude", "codex", "antigravity", "agent", "agent"]);
+      expect(asked.map((entry) => entry.split(":")[0])).toEqual(["claude", "codex", "antigravity", "antigravity"]);
     } finally {
       rememberOrder(null);
     }
@@ -1056,9 +1159,9 @@ describe("a chosen engine whose subscription refuses the model", () => {
   });
 
   it("leaves the student's pinned model alone and names the refusal", async () => {
-    const db = cursorOnly();
+    const db = geminiOnly();
     db.prepare("UPDATE feature_engines SET selection_json = ?").run(
-      JSON.stringify({ provider: "agent", model: "grok-4.7" }),
+      JSON.stringify({ provider: "antigravity", model: "gemini-4-carbon" }),
     );
     let calls = 0;
     await expect(
@@ -1067,13 +1170,13 @@ describe("a chosen engine whose subscription refuses the model", () => {
         prompt: "hi",
         run: async () => {
           calls += 1;
-          throw refusal("Grok 4.7");
+          throw refusal("Gemini 4 Carbon");
         },
       }),
-    ).rejects.toMatchObject({ code: "model-not-included", params: { provider: "agent" } });
+    ).rejects.toMatchObject({ code: "model-not-included", params: { provider: "antigravity" } });
     expect(calls).toBe(1);
     // The refused model is still marked, so Settings can say the engine is missing it.
-    expect(isModelBenched("agent", "grok-4.7")).toBe(true);
+    expect(isModelBenched("antigravity", "gemini-4-carbon")).toBe(true);
     db.close();
   });
 });

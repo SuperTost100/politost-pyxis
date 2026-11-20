@@ -29,7 +29,7 @@ describe("the engines the student can pick", () => {
       row("codex", "cli", { installed: false, loggedIn: false }),
       row("openai-api", "api"),
       row("anthropic-api", "api", { loggedIn: false }),
-      row("agent", "cli", { disabled: true }),
+      row("antigravity", "cli", { disabled: true }),
     ];
     expect(choiceRows(rows, ["openai"]).map((item) => item.id)).toEqual([
       "claude",

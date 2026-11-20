@@ -8,11 +8,10 @@ import { chatSystemPrompt, contextBlock } from "../src/core/chat/prompts";
 import { figureKinds } from "../src/shared/figure-kinds";
 import { judge, type Conversation } from "./judge-chat-rules";
 
-/** The fast and the middle model of each tool, which a Gemini and a Cursor run take from the Gemini and Grok families. */
+/** The fast and the middle model of each tool, which a Gemini run takes from the Gemini family. */
 const MODELS: Record<string, { fast: [string, string]; mid: [string, string] }> = {
   claude: { fast: ["claude-haiku-5-5", "low"], mid: ["claude-sonnet-5-5", "medium"] },
   codex: { fast: ["gpt-6-luna", "low"], mid: ["gpt-6.1-terra", "medium"] },
-  agent: { fast: ["cursor-grok-4.5", "low"], mid: ["grok-4.7", "medium"] },
   antigravity: { fast: ["gemini-3.8-flash", "low"], mid: ["gemini-4-argon", "low"] },
 };
 

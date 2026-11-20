@@ -49,7 +49,8 @@ describe("effort by task", () => {
     expect(
       Object.fromEntries(tasks.map((f) => [f, selectionFor(db, f).effort])),
     ).toEqual({
-      chat: "low",
+      // Claude's chat runs in the mid role (featureRoles in the model file), so it gets the mid effort.
+      chat: "medium",
       map: "low",
       cards: "low",
       lesson: "medium",
@@ -77,7 +78,8 @@ describe("effort by task", () => {
       }),
     );
     expect(selectionFor(db, "plan").effort).toBe("high");
-    expect(selectionFor(db, "chat").effort).toBe("low");
+    expect(selectionFor(db, "map").effort).toBe("low");
+    expect(selectionFor(db, "chat").effort).toBe("medium");
     db.close();
   });
 
@@ -101,7 +103,7 @@ describe("effort by task", () => {
     rememberModels("antigravity", [
       { id: "gemini-3.1-pro", efforts: levels("low", "high") },
     ]);
-    rememberModels("agent", [
+    rememberModels("codex", [
       { id: "claude-4.6-sonnet", efforts: levels("medium") },
       { id: "claude-4.6-opus", efforts: levels("high", "max") },
       { id: "composer-2.5", efforts: [] },
@@ -120,12 +122,12 @@ describe("effort by task", () => {
     expect(at("antigravity", "gemini-3.1-pro", "lesson")).toBe("low");
     expect(at("antigravity", "gemini-3.1-pro", "plan")).toBe("high");
     // Low is not listed: medium is the only way up.
-    expect(at("agent", "claude-4.6-sonnet", "chat")).toBe("medium");
-    expect(at("agent", "claude-4.6-sonnet", "plan")).toBe("medium");
-    expect(at("agent", "claude-4.6-opus", "chat")).toBe("high");
-    expect(at("agent", "claude-4.6-opus", "plan")).toBe("high");
+    expect(at("codex", "claude-4.6-sonnet", "chat")).toBe("medium");
+    expect(at("codex", "claude-4.6-sonnet", "plan")).toBe("medium");
+    expect(at("codex", "claude-4.6-opus", "chat")).toBe("high");
+    expect(at("codex", "claude-4.6-opus", "plan")).toBe("high");
     // A model that lists no efforts runs without one.
-    expect(at("agent", "composer-2.5", "plan")).toBeUndefined();
+    expect(at("codex", "composer-2.5", "plan")).toBeUndefined();
     expect(at("claude", "claude-haiku-4-5-20251001", "chat")).toBeUndefined();
     db.close();
   });
@@ -243,7 +245,7 @@ describe("the student's own effort", () => {
     handlers.setEffort({ feature: "chat", effort: "max" });
     expect(selectionFor(db, "chat").effort).toBe("max");
     handlers.setEffort({ feature: "chat" });
-    expect(selectionFor(db, "chat").effort).toBe("low");
+    expect(selectionFor(db, "chat").effort).toBe("medium");
     db.close();
   });
 
@@ -359,9 +361,10 @@ describe("automatic choice and effort", () => {
         ["gemini-4-hydrogen", ["low", "high"]],
       ]),
     ]);
-    // Hydrogen comes first in the fast and mid lists. It lists low and high, so medium takes the lower of the two.
+    // Flash comes first in the fast list and Hydrogen in the mid one. Hydrogen lists low and high, so medium takes the
+    // lower of the two.
     expect(plan.chat).toMatchObject({
-      model: "gemini-4-hydrogen",
+      model: "gemini-3.8-flash",
       effort: "low",
     });
     expect(plan.lesson).toMatchObject({
@@ -451,8 +454,8 @@ describe("automatic choice keeps the student's effort", () => {
     const handlers = engineHandlers(db, () => undefined);
     await handlers.autoConfigure({});
     expect(handlers.features().chat).toMatchObject({
-      model: "claude-haiku-5-5",
-      effort: "low",
+      model: "claude-sonnet-5",
+      effort: "medium",
       auto: true,
     });
     handlers.setEffort({ feature: "chat", effort: "low" });
@@ -495,24 +498,24 @@ describe("model names core learns", () => {
     setModelNamesListener((provider) => heard.push(provider));
     const list = [{ id: "gpt-5.3-codex", name: "Codex 5.3", efforts: [] }];
     // A test or a model listing reads the list outside the automatic choice, which broadcasts nothing of its own.
-    rememberModels("agent", list);
-    expect(heard).toEqual(["agent"]);
-    expect(modelName("agent", "gpt-5.3-codex")).toBe("Codex 5.3");
-    rememberModels("agent", list);
-    expect(heard).toEqual(["agent"]);
-    rememberModels("agent", [...list, { id: "grok-4.7", name: "Grok 4.7", efforts: [] }]);
-    expect(heard).toEqual(["agent", "agent"]);
+    rememberModels("antigravity", list);
+    expect(heard).toEqual(["antigravity"]);
+    expect(modelName("antigravity", "gpt-5.3-codex")).toBe("Codex 5.3");
+    rememberModels("antigravity", list);
+    expect(heard).toEqual(["antigravity"]);
+    rememberModels("antigravity", [...list, { id: "gemini-4-argon", name: "Gemini 4 Argon", efforts: [] }]);
+    expect(heard).toEqual(["antigravity", "antigravity"]);
   });
 
   it("tells the listener when an engine's names are gone, so screens drop the old ones", () => {
     const heard: string[] = [];
     setModelNamesListener((provider) => heard.push(provider));
-    rememberModels("agent", [{ id: "gpt-5.3-codex", name: "Codex 5.3", efforts: [] }]);
-    rememberModels("agent", [{ id: "gpt-5.3-codex", efforts: [] }]);
-    expect(heard).toEqual(["agent", "agent"]);
-    expect(modelName("agent", "gpt-5.3-codex")).toBe("GPT-5.3 Codex");
+    rememberModels("antigravity", [{ id: "gpt-5.3-codex", name: "Codex 5.3", efforts: [] }]);
+    rememberModels("antigravity", [{ id: "gpt-5.3-codex", efforts: [] }]);
+    expect(heard).toEqual(["antigravity", "antigravity"]);
+    expect(modelName("antigravity", "gpt-5.3-codex")).toBe("GPT-5.3 Codex");
     // A list that had no names and still has none changes nothing a screen shows.
-    rememberModels("agent", []);
-    expect(heard).toEqual(["agent", "agent"]);
+    rememberModels("antigravity", []);
+    expect(heard).toEqual(["antigravity", "antigravity"]);
   });
 });

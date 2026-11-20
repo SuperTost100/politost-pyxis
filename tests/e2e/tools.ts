@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 
 /** The AI tools a test can stand in for, by the id Pyxis knows them by. */
-export type ToolId = "claude" | "codex" | "agent" | "antigravity";
+export type ToolId = "claude" | "codex" | "antigravity";
 
 /**
  * Stand-ins for the AI tools' programs: shell scripts that report a version, a signed-in account and, where the real
@@ -32,17 +32,6 @@ export function standInTools(signedIn: readonly ToolId[]): { bin: string; env: R
       "CLI_FUNNEL_CODEX_BIN",
       "codex",
       `case "$1" in --version) echo "codex-cli 0.150.0";; login) echo "Logged in using ChatGPT";; *) exit 1;; esac`,
-    ],
-    agent: [
-      "CLI_FUNNEL_AGENT_BIN",
-      "agent",
-      `case "$1" in
-  --version) echo "2026.09.28-64d2043";;
-  status) echo '{"isAuthenticated":true}';;
-  about) echo '{}';;
-  --list-models) printf 'grok-4.7-low - Grok 4.7  Low\\ngrok-4.7-high - Grok 4.7  High\\ncursor-grok-4.6-low - Grok 4.6 Low\\ncursor-grok-4.6-high - Grok 4.6\\ngemini-3.8-flash - Gemini 3.8 Flash\\nclaude-sonnet-5-5 - Claude Sonnet 5.5\\nclaude-opus-5-5 - Claude Opus 5.5\\n';;
-  *) exit 1;;
-esac`,
     ],
     antigravity: [
       "CLI_FUNNEL_AGY_BIN",

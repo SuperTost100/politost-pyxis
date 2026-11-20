@@ -213,6 +213,9 @@ test("the exam page suggests the next part of a lesson in parts, picks up from i
       await expect(page.getByRole("menuitem")).toHaveCount(0);
       await other.evaluate((button: HTMLElement, keys) => {
         button.click();
+        // The menu's open state is committed inside the click (the popup library flushes it), so the keys that follow in this
+        // task find the menu open and are kept for it. If that ever stops being so, say it here and not as a wrong item.
+        if (button.getAttribute("aria-expanded") !== "true") throw new Error("the menu was not open when the keys were sent");
         for (const key of keys) button.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
       }, keys);
       await expect(page.getByRole("menuitem", { name: item })).toBeFocused();
