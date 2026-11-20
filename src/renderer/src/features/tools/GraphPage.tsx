@@ -621,8 +621,31 @@ function GraphCurve({
   const w = plotWidth,
     h = height,
     pad = 36;
+  // The left margin holds the widest y label as drawn, in the font the page really uses, plus the gap to the axis and a
+  // little air: a fixed margin cut the first characters of a long label ("-0.337" read "0.337").
+  const yLabels = Array.from({ length: 5 }, (_, i) => String(Number((yMin + ((yMax - yMin) * i) / 4).toPrecision(3))));
+  const [labelWidth, setLabelWidth] = useState(0);
+  const labelKey = yLabels.join("|");
+  useLayoutEffect(() => {
+    const svg = ref.current;
+    if (!svg) return;
+    const measure = () => {
+      const widest = Math.max(0, ...[...svg.querySelectorAll<SVGTextElement>("text[data-y-label]")].map((text) => text.getBBox().width));
+      setLabelWidth((before) => (Math.abs(before - widest) < 0.5 ? before : widest));
+    };
+    measure();
+    // A font that arrives after the first paint has other widths.
+    let live = true;
+    void document.fonts?.ready.then(() => {
+      if (live) measure();
+    });
+    return () => {
+      live = false;
+    };
+  }, [labelKey]);
+  const padLeft = Math.max(pad, Math.ceil(labelWidth) + 9);
   const X = (x: number) =>
-    pad + ((x - range[0]) / (range[1] - range[0])) * (w - 2 * pad);
+    padLeft + ((x - range[0]) / (range[1] - range[0])) * (w - padLeft - pad);
   const Y = (y: number) =>
     h - pad - ((y - yMin) / (yMax - yMin)) * (h - 2 * pad);
   return (
@@ -668,7 +691,7 @@ function GraphCurve({
     >
       <defs>
         <clipPath id={clipId}>
-          <rect x={pad} y={pad} width={w - pad * 2} height={h - pad * 2} />
+          <rect x={padLeft} y={pad} width={w - padLeft - pad} height={h - pad * 2} />
         </clipPath>
       </defs>
       {Array.from({ length: 5 }, (_, i) => {
@@ -684,7 +707,7 @@ function GraphCurve({
               className="px-graph-grid"
             />
             <line
-              x1={pad}
+              x1={padLeft}
               y1={Y(y)}
               x2={w - pad}
               y2={Y(y)}
@@ -693,15 +716,15 @@ function GraphCurve({
             <text x={X(x)} y={h - 12} textAnchor="middle">
               {Number(x.toPrecision(3))}
             </text>
-            <text x={pad - 5} y={Y(y) + 4} textAnchor="end">
-              {Number(y.toPrecision(3))}
+            <text x={padLeft - 5} y={Y(y) + 4} textAnchor="end" data-y-label>
+              {yLabels[i]}
             </text>
           </g>
         );
       })}
       <g clipPath={`url(#${clipId})`}>
         <line
-          x1={pad}
+          x1={padLeft}
           y1={Y(0)}
           x2={w - pad}
           y2={Y(0)}

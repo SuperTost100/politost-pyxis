@@ -1,4 +1,5 @@
 import { isInstallable } from "../../../shared/installers";
+import { isRetiredProvider } from "../../../shared/limits";
 import { RETIRED_TOOL_NAMES, TOOL_NAMES } from "../../../shared/tool-names";
 
 /** Engine names for an error read before the engine list has loaded. */
@@ -30,6 +31,14 @@ export function engineErrorView(
   provider: string | undefined,
   name?: string,
 ): EngineErrorView {
+  // A saved error that names a tool Pyxis no longer offers is history: it says what the work was set to run on, and
+  // offers no sign-in and no choice of its models, which no longer exist.
+  if (
+    provider &&
+    isRetiredProvider(provider) &&
+    ["engines.errors.not-logged-in", "engines.errors.model-not-included", "engines.errors.quota"].includes(key)
+  )
+    return { key: "engines.errors.retiredTool", params: { name: ENGINE_NAMES[provider] ?? provider } };
   if (key === "engines.errors.model-not-included" && provider)
     return {
       key: "engines.errors.modelNotIncludedNamed",

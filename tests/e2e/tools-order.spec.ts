@@ -205,8 +205,10 @@ test("Strumenti AI: work goes on with the next tool when the first is out of req
     await expect(chatgpt.locator(".px-ctl-description").filter({ hasText: "Le richieste tornano" })).toHaveText(
       "Le richieste tornano domani alle 06:00.",
     );
-    // ChatGPT runs the chat on its balanced model, which its row says on a line of its own.
-    await expect(chatgpt).toContainText("Qui «Chat» usa il modello equilibrato.");
+    // ChatGPT and Claude run the chat on the balanced model: the line under the list says so for both, and the row has no
+    // line of its own about it.
+    await expect(page.locator(".engines-roles-note")).toContainText("equilibrato per chat, lezioni e correzione");
+    await expect(chatgpt).not.toContainText("Qui «Chat»");
     await expect(page.locator('.engines-tool[data-tool="claude"] .engines-tool-state')).toHaveText("Collegato");
     await saveShot(page, "tools/limit-it.png", { fullPage: true });
     await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
