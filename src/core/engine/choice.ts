@@ -20,13 +20,13 @@ export function readAllowed(db: Database.Database): string[] | null {
 }
 
 /**
- * A stored list of tools without the ones Pyxis no longer offers. A list that held nothing else is the same as no
- * choice at all: a student whose only tool was a retired one has none connected, and a tool they connect next is used.
+ * A stored list of tools without the ones Pyxis no longer offers. A choice of tools that held only a retired one stays
+ * a choice, now of none: the tools the student left out stay out until they enable one themselves, so nothing starts
+ * to receive their material without their say. For an order the same list is no order.
  */
 function offered(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
-  const kept = value.filter((id): id is string => typeof id === "string" && !isRetiredProvider(id));
-  return kept.length ? kept : value.length ? null : [];
+  return value.filter((id): id is string => typeof id === "string" && !isRetiredProvider(id));
 }
 
 export function writeAllowed(
@@ -53,7 +53,8 @@ export function readOrder(db: Database.Database): string[] | null {
   const row = db
     .prepare("SELECT value_json FROM settings WHERE key = ?")
     .get(ORDER_KEY) as { value_json: string } | undefined;
-  return offered(row ? JSON.parse(row.value_json) : null);
+  const order = offered(row ? JSON.parse(row.value_json) : null);
+  return order?.length ? order : null;
 }
 
 export function writeOrder(

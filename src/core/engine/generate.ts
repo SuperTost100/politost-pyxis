@@ -16,6 +16,7 @@ import {
   markSignedOut,
 } from "./bench";
 import { modelName } from "./efforts";
+import { isRetiredProvider } from "../../shared/limits";
 import { engineIpcError, fallbackReason } from "./errors";
 import {
   endConversation,
@@ -25,7 +26,7 @@ import {
   type Selection,
   type TurnInput,
 } from "./funnel";
-import { currentSelection, fallbackSelection, jobEngine, selectionOn, type FallbackReason } from "./selection";
+import { afterFirstPlan, currentSelection, fallbackSelection, jobEngine, selectionOn, type FallbackReason } from "./selection";
 import { currentUsageScope, reportUsage, withUsageScope, type UsageScope } from "./usage";
 
 export type GenerateInput = {
@@ -240,7 +241,9 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
     const { usage, ...rest } = input;
     return withUsageScope(usage, () => generate(rest));
   }
-  // A selection saved by an earlier build may name a model its tool may no longer run.
+  // A selection saved by an earlier build may name a model its tool may no longer run, or a tool Pyxis no longer offers;
+  // the latter is moved to the automatic choice, which needs the first plan.
+  if (isRetiredProvider(input.selection.provider)) await afterFirstPlan();
   const current = currentSelection(input.selection);
   if (current !== input.selection) input = { ...input, selection: current };
   const start = startingMove(input);

@@ -456,12 +456,13 @@ describe("a database that still holds Cursor, a tool Pyxis no longer offers", ()
     db.close();
   });
 
-  it("reads a list that held only Cursor as no choice at all, so the next tool they connect is used", () => {
+  it("reads an order that held only Cursor as no order, and a choice that held only Cursor as nothing allowed", () => {
     const db = openDatabase(":memory:");
     put(db, "engines.order", ["agent"]);
     put(db, "engines.allowed", ["agent"]);
     expect(readOrder(db)).toBeNull();
-    expect(readAllowed(db)).toBeNull();
+    // The student had left every other tool out, so none becomes usable by itself: that would be a choice they never made.
+    expect(readAllowed(db)).toEqual([]);
     db.close();
   });
 
@@ -489,6 +490,32 @@ describe("a database that still holds Cursor, a tool Pyxis no longer offers", ()
     expect(ready).toEqual(["claude", "codex"]);
     expect(providersIn(features)).not.toContain("agent");
     expect(handlers.choice()).toEqual({ allowed: null, order: ["claude", "codex"] });
+    db.close();
+  });
+
+  it("keeps a tool the student had left out unused when Cursor was the only one they ticked", async () => {
+    useFunnelWithCursor({ claude: true, codex: true });
+    const db = openDatabase(":memory:");
+    put(db, "engines.allowed", ["agent"]);
+    const handlers = engineHandlers(db, () => undefined);
+    const { ready, features } = await handlers.autoConfigure({});
+    // Claude and ChatGPT are signed in but the student never allowed them: nothing is planned, nothing is sent.
+    expect(ready).toEqual([]);
+    expect(features).toEqual({});
+    expect(handlers.choice().allowed).toEqual([]);
+    expect(() => selectionFor(db, "chat")).toThrow(expect.objectContaining({ code: "engine-missing" }));
+    db.close();
+  });
+
+  it("keeps the other tool they ticked beside Cursor, and only that one", async () => {
+    useFunnelWithCursor({ claude: true, codex: true });
+    const db = openDatabase(":memory:");
+    put(db, "engines.allowed", ["agent", "claude"]);
+    const handlers = engineHandlers(db, () => undefined);
+    const { ready, features } = await handlers.autoConfigure({});
+    expect(ready).toEqual(["claude"]);
+    expect(providersIn(features)).toEqual(["claude"]);
+    expect(handlers.choice().allowed).toEqual(["claude"]);
     db.close();
   });
 
@@ -521,7 +548,7 @@ describe("a database that still holds Cursor, a tool Pyxis no longer offers", ()
     const { ready, features } = await handlers.autoConfigure({});
     expect(ready).toEqual([]);
     expect(features).toEqual({});
-    expect(handlers.choice().allowed).toBeNull();
+    expect(handlers.choice().allowed).toEqual([]);
     // The normal "no tool connected" state: a task finds no engine, and the stored Cursor rows are gone from the plan.
     expect(() => selectionFor(db, "chat")).toThrow(expect.objectContaining({ code: "engine-missing" }));
     db.close();

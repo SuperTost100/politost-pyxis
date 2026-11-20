@@ -15,7 +15,7 @@ import {
 import { forgetModels, rememberModels } from "./efforts";
 import { generate, setFallbackListener, type GenerateInput } from "./generate";
 import { FunnelError, type EngineResult } from "./funnel";
-import { chooseJobEngine, rememberOrder, rememberReady, selectionFor } from "./selection";
+import { chooseJobEngine, FIRST_PLAN_WAIT_MS, forgetFirstPlan, rememberOrder, rememberReady, selectionFor } from "./selection";
 import { currentUsageScope, withUsageScope } from "./usage";
 
 const selection = { provider: "claude" as const, model: "claude-sonnet-4-6" };
@@ -897,6 +897,50 @@ describe("a chosen engine whose subscription refuses the model", () => {
       expect(pinned.asked).toEqual(["antigravity/gemini-4-hydrogen"]);
       // Nothing says the job ran on another tool than the one the student has now.
       expect(pinned.fallback).toBeUndefined();
+    });
+
+    it("holds a job that names Cursor until the first plan exists, then moves it, so the first launch after the update does not fail it", async () => {
+      forgetFirstPlan();
+      rememberReady([]);
+      forgetFirstPlan();
+      const asked: string[] = [];
+      let finished = false;
+      const answer = generate({
+        selection: { provider: "agent", model: "grok-4.7", chosenFor: "plan" } as ReturnType<typeof selectionFor>,
+        prompt: "hi",
+        run: async (input) => {
+          asked.push(`${input.selection.provider}/${input.selection.model}`);
+          return result({ text: "ciao", provider: input.selection.provider, model: input.selection.model });
+        },
+      }).then((output) => {
+        finished = true;
+        return output;
+      });
+      // The runner is up and no plan was made: nothing is asked, and nothing fails.
+      await new Promise((resume) => setTimeout(resume, 30));
+      expect(finished).toBe(false);
+      expect(asked).toEqual([]);
+      // The plan arrives with Gemini: the job goes on there.
+      rememberReady([gemini]);
+      await answer;
+      expect(asked).toEqual(["antigravity/gemini-4-carbon"]);
+    });
+
+    it("stops a held job with no engine when no plan arrives in time", async () => {
+      vi.useFakeTimers();
+      try {
+        forgetFirstPlan();
+        const stopped = generate({
+          selection: { provider: "agent", model: "grok-4.7", chosenFor: "plan" } as ReturnType<typeof selectionFor>,
+          prompt: "hi",
+          run: async () => result({ text: "never", provider: "agent" }),
+        }).catch((err: unknown) => err);
+        await vi.advanceTimersByTimeAsync(FIRST_PLAN_WAIT_MS + 1);
+        expect(await stopped).toMatchObject({ code: "engine-missing" });
+      } finally {
+        vi.useRealTimers();
+        rememberReady([]);
+      }
     });
 
     it("stops with no engine when the tool the job named was the only one and nothing else is ready", async () => {

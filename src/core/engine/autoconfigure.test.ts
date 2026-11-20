@@ -319,12 +319,12 @@ describe("the roles a tool's row names", () => {
     db.close();
   });
 
-  it("leave out a refused model, and a model the refusal's own family left out, as the planner does", async () => {
+  it("leave out a refused model, as the planner does", async () => {
     const db = openDatabase(":memory:");
     const handlers = engineHandlers(db, () => undefined);
     await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
-    // Opus is refused and the refusal says to use a Sonnet model: only Claude's Sonnet models stay in the plan.
-    benchModel("claude", "claude-opus-5-5", Date.now(), "sonnet");
+    // Opus is refused: the strong role steps to the next model the plan holds.
+    benchModel("claude", "claude-opus-5-5");
     try {
       const { features } = await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
       const { roles } = handlers.roles({ provider: "claude" });

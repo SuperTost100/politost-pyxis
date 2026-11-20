@@ -252,13 +252,13 @@ const antigravity: AutoProvider = {
 /** provider/model per feature, in the order default chat plan lesson grading map vision cards. */
 const combinations: Record<string, string> = {
   antigravity:
-    "antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-argon antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen",
+    "antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash antigravity/gemini-4-argon antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash",
   "claude+antigravity":
-    "claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen claude/claude-opus-5-5 claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen",
+    "claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash claude/claude-opus-5-5 claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash",
   "codex+antigravity":
-    "codex/gpt-6.1-terra antigravity/gemini-4-hydrogen codex/gpt-6.2-sol codex/gpt-6.1-terra antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen codex/gpt-6.1-terra antigravity/gemini-4-hydrogen",
+    "codex/gpt-6.1-terra antigravity/gemini-3.8-flash codex/gpt-6.2-sol codex/gpt-6.1-terra antigravity/gemini-4-hydrogen antigravity/gemini-3.8-flash codex/gpt-6.1-terra antigravity/gemini-3.8-flash",
   "claude+codex+antigravity":
-    "claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen codex/gpt-6.2-sol codex/gpt-6.1-terra claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen",
+    "claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash codex/gpt-6.2-sol codex/gpt-6.1-terra claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash claude/claude-sonnet-5-5 antigravity/gemini-3.8-flash",
 };
 const order = [
   "default",
@@ -424,7 +424,7 @@ describe("the three roles of a tool, as its row shows them", () => {
 
   it("names the file's preferred model of each role for a tool that is not connected", () => {
     expect(rolesOf("antigravity", null)).toEqual({
-      fast: "gemini-4-hydrogen",
+      fast: "gemini-3.8-flash",
       mid: "gemini-4-hydrogen",
       strong: "gemini-4-carbon",
     });

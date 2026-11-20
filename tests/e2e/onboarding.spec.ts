@@ -937,3 +937,40 @@ test("First setup: a new profile starts in the computer's language, and a choice
     removeTestFolder(userData);
   }
 });
+
+test("First setup: the three tools sit in one row when they fit and in one column when they do not, never two and one", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-grid-"));
+  const { bin, env } = fakeBins({ claude: true, codex: false });
+  const app = await launch(userData, env);
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await button(page, "Continua").click();
+    await expect(cardState(page, "Claude")).toHaveText("Collegato", { timeout: 30000 });
+    const rows: Array<[string, number]> = [];
+    for (const textSize of ["md", "lg"] as const)
+      for (const width of [1440, 1280, 1100, 960, 800, 640]) {
+        await page.evaluate((size) => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: size }), textSize);
+        await page.setViewportSize({ width, height: 900 });
+        // The three cards' own boxes: how many rows they make, and whether the ones in a row have the same width.
+        const layout = await page.locator(".px-tools > .px-tool").evaluateAll((nodes) => {
+          const boxes = nodes.map((node) => node.getBoundingClientRect());
+          return { tops: new Set(boxes.map((box) => Math.round(box.top))).size, widths: new Set(boxes.map((box) => Math.round(box.width))).size };
+        });
+        rows.push([`${textSize} ${width}`, layout.tops]);
+        // One row of three, or three rows of one; the cards share one width either way.
+        expect([1, 3], `${textSize}, ${width} px`).toContain(layout.tops);
+        expect(layout.widths, `${textSize}, ${width} px`).toBe(1);
+      }
+    // The wide windows hold the three in a row.
+    expect(rows.find(([key]) => key === "md 1280")![1]).toBe(1);
+    expect(rows.find(([key]) => key === "lg 1440")![1]).toBe(1);
+    expect(rows.find(([key]) => key === "md 640")![1]).toBe(3);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(bin, { recursive: true, force: true });
+  }
+});

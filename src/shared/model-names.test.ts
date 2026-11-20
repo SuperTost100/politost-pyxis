@@ -9,6 +9,9 @@ describe("readableModel", () => {
     expect(readableModel("gemini-3.8-flash")).toBe("Gemini 3.8 Flash");
     expect(readableModel("gpt-5.3-codex")).toBe("GPT-5.3 Codex");
     expect(readableModel("gpt-5.6-terra")).toBe("GPT-5.6 Terra");
+    // Models of Cursor in saved messages and quiz results.
+    expect(readableModel("grok-4.7")).toBe("Grok 4.7");
+    expect(readableModel("cursor-grok-4.6")).toBe("Grok 4.6");
     expect(readableModel("composer-2.5")).toBe("Composer 2.5");
     expect(readableModel("gemma3:12b")).toBe("Gemma3 12B");
   });

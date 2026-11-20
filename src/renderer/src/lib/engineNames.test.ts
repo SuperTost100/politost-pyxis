@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { engineLabel, engineModelsLine, modelName } from "./engineNames";
+import { engineLabel, engineModelsLine, engineName, modelName } from "./engineNames";
 
 const names = {
   engines: { antigravity: "Gemini" },
@@ -14,6 +14,12 @@ describe("engineLabel", () => {
   it("makes an id readable when core has not listed the model", () => {
     expect(engineLabel(names, "antigravity", "gemini-3.8-flash")).toBe("Gemini · Gemini 3.8 Flash");
     expect(engineLabel(undefined, "claude", "claude-sonnet-4-6")).toBe("Claude · Claude Sonnet 4.6");
+  });
+
+  it("names Cursor on an old record that still says agent, with no names from core", () => {
+    expect(engineName(undefined, "agent")).toBe("Cursor");
+    expect(engineLabel(undefined, "agent", "cursor-grok-4.6")).toBe("Cursor · Grok 4.6");
+    expect(engineName({ engines: {}, models: {} }, "agent")).toBe("Cursor");
   });
 
   it("leaves out a part an old record lacks", () => {

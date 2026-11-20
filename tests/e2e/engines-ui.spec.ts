@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
@@ -634,8 +635,8 @@ test("Settings: a tool's row says its three roles with the model each one runs, 
             .filter({ hasText: "Gemini" }),
         ).toContainText(
           language === "en"
-            ? "Uses Gemini 4 Hydrogen and Gemini 4 Carbon."
-            : "Usa Gemini 4 Hydrogen e Gemini 4 Carbon.",
+            ? "Uses Gemini 3.8 Flash, Gemini 4 Hydrogen and Gemini 4 Carbon."
+            : "Usa Gemini 3.8 Flash, Gemini 4 Hydrogen e Gemini 4 Carbon.",
         );
         // Under Advanced each kind of work names its role, and a pinned one is tinted until everything goes back.
         const chat = page.getByRole("combobox", { name: "Chat", exact: true });
@@ -749,6 +750,52 @@ test("Settings: the model field of each kind of work shows the whole model name 
       }
   } finally {
     await app.close();
+    removeTestFolder(userData);
+    rmSync(tools.bin, { recursive: true, force: true });
+  }
+});
+
+test("Settings: a workspace whose only allowed tool was Cursor keeps Claude and ChatGPT unused until the student turns one on", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-retired-"));
+  const tools = standInTools(["claude", "codex"]);
+  try {
+    // A first run makes the workspace; then the saved choice of tools is what an earlier build left: Cursor, alone.
+    let app = await launchPyxis({ userData, env: tools.env });
+    let page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("engines.acknowledge", { providers: ["claude", "codex"] }));
+    await app.close();
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    db.prepare("INSERT OR REPLACE INTO settings(key,value_json,updated_at) VALUES('engines.allowed',?,?)").run(JSON.stringify(["agent"]), Date.now());
+    db.prepare("INSERT OR REPLACE INTO settings(key,value_json,updated_at) VALUES('engines.order',?,?)").run(JSON.stringify(["agent"]), Date.now());
+    db.close();
+
+    app = await launchPyxis({ userData, env: tools.env });
+    page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.evaluate(() => {
+      localStorage.setItem("pyxis.lang", "en");
+      localStorage.removeItem("pyxis.engines.advanced");
+      location.hash = "/settings/engines";
+    });
+    await page.reload();
+    // Both tools are connected and neither is in use: nothing is planned, and the page says no tool is ready.
+    await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(2, { timeout: 30000 });
+    await expect(page.locator(".engines-tool-state")).toHaveText(["Not in use", "Not in use"]);
+    await expect(page.locator(".engines-summary")).toHaveText("No AI tool is ready.");
+    expect(await page.evaluate(() => window.pyxis.invoke("engines.choice", {}))).toEqual({ allowed: [], order: null });
+    expect(await page.evaluate(() => window.pyxis.invoke("engines.features", {}))).toEqual({});
+    await saveShot(page, "engines-only-cursor-en.png", { fullPage: true });
+    // The student turns Claude on: it is the only tool in use, and ChatGPT stays off.
+    await choose(page, "Claude", "Use again");
+    await expect(tool(page, "claude").locator(".engines-tool-state")).toHaveText("Connected");
+    await expect(tool(page, "codex").locator(".engines-tool-state")).toHaveText("Not in use");
+    expect(await page.evaluate(() => window.pyxis.invoke("engines.choice", {}))).toEqual({ allowed: ["claude"], order: null });
+    await app.close();
+  } finally {
     removeTestFolder(userData);
     rmSync(tools.bin, { recursive: true, force: true });
   }

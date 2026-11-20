@@ -104,8 +104,42 @@ let ready: AutoProvider[] = [];
 /** The order the student put their tools in, or null while they never set one (see `planAuto`). */
 let order: readonly string[] | null = null;
 
+/** Whether the automatic choice has made a plan since Pyxis started: before that the list above is empty by default. */
+let planned = false;
+const waitingForPlan: Array<() => void> = [];
+
 export function rememberReady(providers: AutoProvider[]): void {
   ready = providers;
+  planned = true;
+  for (const resume of waitingForPlan.splice(0)) resume();
+}
+
+/**
+ * How long a job that names a tool Pyxis no longer offers waits for the first plan. The plan reads every tool's model
+ * list, which takes seconds, and a plan that cannot read any list never comes, so the wait is bounded.
+ * shortcut: a fixed bound; replace it with the plan's own failure signal if autoConfigure ever reports one.
+ */
+export const FIRST_PLAN_WAIT_MS = 60_000;
+
+/**
+ * Resolves once the first plan exists, or after `FIRST_PLAN_WAIT_MS`. A job saved by an earlier build that names a
+ * retired tool is moved to the automatic choice, which needs the plan: the runner starts before it, so such a job waits
+ * here instead of failing with `engine-missing` on the first launch after an update.
+ */
+export function afterFirstPlan(): Promise<void> {
+  if (planned) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, FIRST_PLAN_WAIT_MS);
+    waitingForPlan.push(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+/** Tests: no plan has been made yet. */
+export function forgetFirstPlan(): void {
+  planned = false;
 }
 
 /** Jobs the student told to go on with a given tool: the job's id and the tool, until Pyxis closes. */

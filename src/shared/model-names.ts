@@ -11,6 +11,8 @@ export function readableModel(id: string): string {
     .replace(/[-@](?:\d{8}|\d{4}-\d{2}-\d{2})$/, "")
     .split(/[-_:\s]+/)
     .filter(Boolean);
+  // Cursor named its own builds of a model "cursor-grok-…": the model is Grok. Only old records hold such ids now.
+  if (tokens.length > 1 && tokens[0]!.toLowerCase() === "cursor") tokens.shift();
   const words: string[] = [];
   for (const token of tokens) {
     const previous = words[words.length - 1];

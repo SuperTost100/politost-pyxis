@@ -19,6 +19,7 @@ import { clearSignOut } from "./bench";
 import { shellPathReady } from "./shell-path";
 import { setRedact, startCall } from "../debug/log";
 import { currentUsageScope, reportUsage } from "./usage";
+import { retiredProviders } from "../../shared/limits";
 import { TOOL_NAMES } from "../../shared/tool-names";
 
 // Debug mode's log masks every line with cli-funnel's redact before it writes it.
@@ -134,7 +135,7 @@ export function setApiKeys(next: Keys): void {
 }
 
 export function getFunnel(): Funnel {
-  if (!funnel)
+  if (!funnel) {
     funnel = createFunnel({
       providers: Object.fromEntries(apiIds.map((id) => [id, apiProvider(id)])),
       // Claude Code and Codex keep a chat's process between questions. Other runs close theirs when they end.
@@ -143,6 +144,10 @@ export function getFunnel(): Funnel {
       // A local model stays loaded as long as a chat's conversation lasts, so a follow-up question does not reload it.
       ollama: { keepAlive: `${CONVERSATION_IDLE_MS / 60_000}m` },
     });
+    // A tool Pyxis no longer offers is left out of this funnel's registry, so `overview()` never runs its program to
+    // detect or ask for its sign-in (two calls with 15 second deadlines on a machine that still has it installed).
+    for (const id of retiredProviders) delete (funnel.providers as Partial<Record<string, unknown>>)[id];
+  }
   return funnel;
 }
 
