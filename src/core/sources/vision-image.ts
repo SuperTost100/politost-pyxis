@@ -30,6 +30,12 @@ const PROVIDER_MAX_EDGE = 8000;
 /** RGBA is 4 bytes a pixel, so 60 MP is 240 MB. A 48 MP phone photo fits. */
 export const MAX_DECODE_PIXELS = 60_000_000;
 const MIN_EDGE = 640;
+/**
+ * What the JPEG decoder may use, by its own estimate. A 6000x8000 photo decodes in 768 MB when it is 4:2:0, and needs
+ * about 900 MB when it is 4:4:4 or progressive, so the old 768 called such a valid photo damaged. 1536 MB reads a 48 MP
+ * photo of any kind, and a decode past it is refused as too large (`vision-image-too-large`).
+ */
+export const JPEG_MEMORY_MB = 1536;
 
 export function sniffImage(bytes: Uint8Array): VisionMime | null {
   if (
@@ -185,14 +191,18 @@ function orient(
 }
 
 /** The caller has run `assertDecodable`, so the header is readable and the pixel count is bounded. */
-function decode(bytes: Uint8Array, mime: VisionMime): { data: Uint8Array; width: number; height: number; orientation: number } {
+function decode(
+  bytes: Uint8Array,
+  mime: VisionMime,
+  jpegMemoryMb = JPEG_MEMORY_MB,
+): { data: Uint8Array; width: number; height: number; orientation: number } {
   try {
     if (mime === "image/jpeg") {
       const image = jpeg.decode(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength), {
         useTArray: true,
         formatAsRGBA: true,
         maxResolutionInMP: MAX_DECODE_PIXELS / 1e6,
-        maxMemoryUsageInMB: 768,
+        maxMemoryUsageInMB: jpegMemoryMb,
       });
       return { data: image.data, width: image.width, height: image.height, orientation: exifOrientation((image as { exifBuffer?: Uint8Array }).exifBuffer) };
     }
@@ -205,6 +215,10 @@ function decode(bytes: Uint8Array, mime: VisionMime): { data: Uint8Array; width:
     }
     return { data: png.data, width: png.width, height: png.height, orientation: 1 };
   } catch (error) {
+    // The decoder refuses a photo that needs more memory than it may take by name: that is a size, not a damaged file. It has
+    // its own code, since a photo only past a provider's limit can still be read locally and this one cannot: the local
+    // reading decodes it with the same limit.
+    if (/maxMemoryUsageInMB|maxResolutionInMP/.test(error instanceof Error ? error.message : "")) throw new Error("vision-image-decode-limit");
     throw new Error("vision-image-unsupported");
   }
 }
@@ -215,16 +229,17 @@ function decode(bytes: Uint8Array, mime: VisionMime): { data: Uint8Array; width:
  * decoded, turned upright by EXIF, shrunk to 2560 px and re-encoded as JPEG, stepping quality and size down
  * until it fits. A small JPEG whose EXIF orientation is not upright takes this path too, since providers
  * ignore the tag. WebP has no decoder here, so an oversized one is refused (`vision-image-too-large`).
- * Errors: `vision-image-unsupported` (not a readable JPEG, PNG or WebP, or a header that declares no size), `vision-image-too-large`.
+ * Errors: `vision-image-unsupported` (not a readable JPEG, PNG or WebP, or a header that declares no size), `vision-image-too-large`,
+ * `vision-image-decode-limit` (a JPEG that needs more memory to decode than `JPEG_MEMORY_MB`).
  */
-export function normalizeForVision(bytes: Uint8Array): VisionImage {
+export function normalizeForVision(bytes: Uint8Array, options: { jpegMemoryMb?: number } = {}): VisionImage {
   const asIs = visionAsIs(bytes);
   if (asIs) return asIs;
   const mime = sniffImage(bytes);
   if (!mime) throw new Error("vision-image-unsupported");
   assertDecodable(bytes, mime);
   if (mime === "image/webp") throw new Error("vision-image-too-large");
-  const source = decode(bytes, mime);
+  const source = decode(bytes, mime, options.jpegMemoryMb);
   let edge = Math.min(VISION_MAX_EDGE, Math.max(source.width, source.height));
   let quality = 85;
   // Lower quality at the same edge encodes the same pixels again, so they are shrunk only when the edge changes.

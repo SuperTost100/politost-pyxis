@@ -450,6 +450,7 @@ export const ATTACHMENT_ERRORS = [
   "unreadable",
   "empty",
   "too-large",
+  "picture-too-large",
   "too-many",
   "unsupported",
   "denied",

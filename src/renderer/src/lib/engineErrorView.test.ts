@@ -47,6 +47,13 @@ describe("engineErrorView", () => {
     });
   });
 
+  it("reads an error of a tool Pyxis no longer offers as history: named, with no sign-in and no choice of model to offer", () => {
+    for (const key of ["engines.errors.not-logged-in", "engines.errors.model-not-included", "engines.errors.quota"])
+      expect(engineErrorView(key, "agent")).toEqual({ key: "engines.errors.retiredTool", params: { name: "Cursor" } });
+    // A tool Pyxis does offer keeps its own messages.
+    expect(engineErrorView("engines.errors.quota", "codex").key).toBe("engines.errors.quota");
+  });
+
   it("reads the engine an error body carries", () => {
     expect(errorProvider({ params: { provider: "codex" } })).toBe("codex");
     expect(errorProvider({ params: {} })).toBeUndefined();

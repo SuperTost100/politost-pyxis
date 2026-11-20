@@ -3,6 +3,7 @@ import { closeSync, ftruncateSync, mkdtempSync, openSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import jpeg from "jpeg-js";
 import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -507,6 +508,58 @@ test("the notice of files sent without does not follow the student to another ch
     }, other.chatId);
     await expect(page).toHaveURL(new RegExp(`#/ask/${other.chatId}`));
     await expect(page.getByText("Ho mandato la domanda senza rotto.pdf.")).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/** A JPEG of `width` x `height` pixels that is a few hundred KB, with an EXIF block that turns it when `orientation` is above 1. */
+function photoJpeg(width: number, height: number, orientation = 1): Buffer {
+  const data = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      const at = (y * width + x) * 4;
+      const noise = (x * 7 + y * 13 + ((x * y) % 17)) % 64;
+      data.set([(x / 6) % 256 | noise, (y / 5) % 256, ((x + y) / 7) % 256 | noise, 255], at);
+    }
+  const bytes = Buffer.from(jpeg.encode({ data, width, height }, 85).data);
+  if (orientation === 1) return bytes;
+  // SOI, an APP1 EXIF block holding one tag, the orientation, then the rest of the file.
+  const tiff = Buffer.from([0x4d, 0x4d, 0, 0x2a, 0, 0, 0, 8, 0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, orientation, 0, 0, 0, 0, 0, 0]);
+  const exif = Buffer.concat([Buffer.from("Exif\0\0"), tiff]);
+  const app1 = Buffer.concat([Buffer.from([0xff, 0xe1, (exif.length + 2) >> 8, (exif.length + 2) & 255]), exif]);
+  return Buffer.concat([bytes.subarray(0, 2), app1, bytes.subarray(2)]);
+}
+
+test("a JPEG photo ends ready on its chip, however fast it is read, and never stays on Leggo… with nothing running", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-jpeg-"));
+  try {
+    const files = { "esercizio.jpg": photoJpeg(1036, 1328), "ruotata.jpg": photoJpeg(1036, 1328, 6), "mezza.jpg": photoJpeg(518, 664) };
+    for (const [name, bytes] of Object.entries(files)) {
+      expect(bytes.length, name).toBeLessThan(1_500_000);
+      const path = join(dir, name);
+      writeFileSync(path, bytes);
+      await pick(app, path);
+      await attach(page);
+      const chip = page.locator(".ask-attachments li").filter({ hasText: name });
+      await expect(chip, name).toBeVisible();
+      // Core has nothing running for it, so the chip says what core says: ready, with the size.
+      await expect(chip, name).not.toContainText("Leggo", { timeout: 15000 });
+      // Ready, not failed: a failed chip has no "Leggo" either. It is the ready kind with the file's size under its name.
+      await expect(chip.locator(".px-att"), name).toHaveClass(/is-ready/);
+      await expect(chip.locator(".px-att"), name).not.toHaveClass(/is-failed/);
+      await expect(chip.locator(".px-att-text small"), name).toHaveText(/\d[\d.,]*\s?(?:byte|kB|MB)/i);
+      await expect(chip.locator(".px-att-bar")).toHaveCount(0);
+      expect(await page.evaluate(() => window.pyxis.invoke("jobs.list", {}))).toEqual([]);
+    }
+    await saveShot(page, "chat-attachments/jpeg-photos-ready.png", { animations: "disabled" });
+    // All three are held, and ready.
+    await expect(page.locator(".ask-attachments li")).toHaveCount(3);
+    await expect(page.locator(".ask-attachments .px-att.is-ready")).toHaveCount(3);
   } finally {
     await app.close();
     removeTestFolder(userData);

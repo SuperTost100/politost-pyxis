@@ -250,3 +250,26 @@ describe("putting a question's files back", () => {
     expect(mergeFiles([], sent)).toEqual(sent);
   });
 });
+
+describe("a file that is read before core's answer to its attach reaches the window", () => {
+  const view = (state: AttachmentView["state"]): AttachmentView => ({ id: "f1", name: "esercizio.jpg", kind: "photo", size: 559_000, state });
+
+  it("keeps the state core announced: the answer to the attach is older than the announcement and never takes its place", async () => {
+    const drafts = createDraftFiles(store());
+    // A small photo is fitted in the same turn of the event loop: core announces it ready (`chats.attachment`), and only
+    // then does the answer to the attach arrive, still carrying the reading it was made with.
+    const queue = createAttachQueue(drafts, async () => {
+      drafts.views.put(view("ready"));
+      return view("reading");
+    });
+    await queue.attach("", ["/x/esercizio.jpg"]);
+    expect(drafts.views.get()["f1"]).toMatchObject({ state: "ready" });
+  });
+
+  it("takes the answer when nothing was announced, which is how every file gets its first view", async () => {
+    const drafts = createDraftFiles(store());
+    const queue = createAttachQueue(drafts, async () => view("reading"));
+    await queue.attach("", ["/x/esercizio.jpg"]);
+    expect(drafts.views.get()["f1"]).toMatchObject({ state: "reading" });
+  });
+});
