@@ -5,12 +5,21 @@
 export const engineProviders = [
   "claude",
   "codex",
-  "agent",
   "antigravity",
   "anthropic-api",
   "openai-api",
 ] as const;
 export type EngineProvider = (typeof engineProviders)[number];
+
+/**
+ * Tools Pyxis offered once and no longer does ("agent" is Cursor). A student's data can still name one: an order of
+ * tools, a choice of tools, a pinned task, a saved job or a chat session. Core reads such a name as if it were not
+ * there and never deletes the data. CLI Funnel keeps its own adapter for them.
+ */
+export const retiredProviders = ["agent"] as const;
+export function isRetiredProvider(id: string): boolean {
+  return (retiredProviders as readonly string[]).includes(id);
+}
 
 /**
  * Longest text the tutor takes. A pasted page of notes is about 3,000 characters, so 20,000 leaves room for several,

@@ -28,44 +28,42 @@ test("Strumenti AI: the connected tools are put in order with the mouse, the key
   test.skip(process.platform === "win32", "stand-in tools are shell scripts");
   test.setTimeout(180_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-tools-order-"));
-  const tools = standInTools(["claude", "codex", "agent"]);
+  const tools = standInTools(["claude", "codex", "antigravity"]);
   const app = await launchPyxis({ userData, env: tools.env });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     await expect(page).toHaveURL(/#\/ask$/);
-    await useTools(page, ["claude", "codex", "agent"]);
+    await useTools(page, ["claude", "codex", "antigravity"]);
     await openTools(page);
 
     // Never put in order: the tools are listed as Pyxis found them, without a place, and the page says the work is shared.
-    await expect(listed(page)).toHaveText(["Claude", "ChatGPT", "Cursor"]);
+    await expect(listed(page)).toHaveText(["Claude", "ChatGPT", "Gemini"]);
     await expect(page.locator(".engines-tool-n")).toHaveCount(0);
     await expect(page.locator(".engines-summary")).toContainText("Pyxis sceglie da solo lo strumento adatto a ogni lavoro");
     await expect(page.getByRole("button", { name: "Lascia decidere a Pyxis" })).toHaveCount(0);
     expect(await order(page)).toBeNull();
-    // The tool that is not on this computer waits under "Da collegare".
-    const toConnect = page.getByRole("region", { name: "Da collegare" });
-    await expect(toConnect.getByText("Gemini", { exact: true })).toBeVisible();
-    await expect(toConnect.getByRole("button", { name: "Installa e accedi a Gemini" })).toBeVisible();
+    // Every tool is connected, so nothing waits under "Da collegare".
+    await expect(page.getByRole("region", { name: "Da collegare" })).toHaveCount(0);
     await saveShot(page, "tools/order-shared-it.png", { fullPage: true });
 
-    // ---- The mouse: Cursor's grip is dragged above Claude.
+    // ---- The mouse: Gemini's grip is dragged above Claude.
     const grip = (name: string) => page.getByRole("button", { name: `Riordina ${name}` });
-    const from = (await grip("Cursor").boundingBox())!;
+    const from = (await grip("Gemini").boundingBox())!;
     const to = (await page.locator('.engines-tool[data-tool="claude"]').boundingBox())!;
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
     await page.mouse.down();
     await page.mouse.move(from.x + from.width / 2, from.y - 20, { steps: 5 });
     await page.mouse.move(from.x + from.width / 2, to.y + 4, { steps: 10 });
     await page.mouse.up();
-    await expect(listed(page)).toHaveText(["Cursor", "Claude", "ChatGPT"]);
+    await expect(listed(page)).toHaveText(["Gemini", "Claude", "ChatGPT"]);
     // Each tool now has its place, and the page says the first one does the work.
     await expect(page.locator(".engines-tool-n")).toHaveText(["1", "2", "3"]);
     await expect(page.locator(".engines-summary")).toHaveText(
       "Pyxis usa il primo della lista. Se finisce le richieste del giorno, passa al successivo.",
     );
-    await expect.poll(() => order(page)).toEqual(["agent", "claude", "codex"]);
-    // The tasks follow: lessons go to the first tool, and photos to the next one, since Cursor reads no pictures.
+    await expect.poll(() => order(page)).toEqual(["antigravity", "claude", "codex"]);
+    // The tasks follow: lessons go to the first tool, and photos to the next one, since Gemini reads no pictures.
     await expect
       .poll(async () => {
         const features = (await page.evaluate(() => window.pyxis.invoke("engines.features", {}))) as Record<
@@ -74,7 +72,7 @@ test("Strumenti AI: the connected tools are put in order with the mouse, the key
         >;
         return [features.lesson?.provider, features.chat?.provider, features.vision?.provider];
       })
-      .toEqual(["agent", "agent", "claude"]);
+      .toEqual(["antigravity", "antigravity", "claude"]);
     await saveShot(page, "tools/order-listed-it.png", { fullPage: true });
 
     // ---- The keyboard: Space picks ChatGPT up, the arrows move it to the top, Space drops it. Each step is said.
@@ -93,8 +91,8 @@ test("Strumenti AI: the connected tools are put in order with the mouse, the key
     await expect(live).toHaveText("ChatGPT, posizione 1 di 3.");
     await page.keyboard.press("Space");
     await expect(live).toHaveText("ChatGPT è in posizione 1 di 3.");
-    await expect(listed(page)).toHaveText(["ChatGPT", "Cursor", "Claude"]);
-    await expect.poll(() => order(page)).toEqual(["codex", "agent", "claude"]);
+    await expect(listed(page)).toHaveText(["ChatGPT", "Gemini", "Claude"]);
+    await expect.poll(() => order(page)).toEqual(["codex", "antigravity", "claude"]);
     // The grip keeps the focus, so the next move starts from where the hands are.
     await expect(grip("ChatGPT")).toBeFocused();
 
@@ -103,32 +101,32 @@ test("Strumenti AI: the connected tools are put in order with the mouse, the key
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Escape");
     await expect(live).toHaveText("Riordino annullato, ChatGPT torna dov'era.");
-    await expect(listed(page)).toHaveText(["ChatGPT", "Cursor", "Claude"]);
-    expect(await order(page)).toEqual(["codex", "agent", "claude"]);
+    await expect(listed(page)).toHaveText(["ChatGPT", "Gemini", "Claude"]);
+    expect(await order(page)).toEqual(["codex", "antigravity", "claude"]);
 
     // ---- The row's menu, on a right-click as on its dots, moves a tool one place and says where it is now.
     // A menu that closes stays on the page while it shrinks away, so each one is found by the tool it belongs to.
     const menu = (name: string) => page.getByRole("region", { name: `Azioni su ${name}` });
     await page.locator('.engines-tool[data-tool="claude"] .px-ctl-title').click({ button: "right" });
     await clickSettled(page, menu("Claude").getByRole("menuitem", { name: "Sposta su" }));
-    await expect(listed(page)).toHaveText(["ChatGPT", "Claude", "Cursor"]);
+    await expect(listed(page)).toHaveText(["ChatGPT", "Claude", "Gemini"]);
     await expect(page.locator(".engines-panel p[role=status].visually-hidden")).toHaveText(
       "Claude è in posizione 2 di 3.",
     );
-    await expect.poll(() => order(page)).toEqual(["codex", "claude", "agent"]);
+    await expect.poll(() => order(page)).toEqual(["codex", "claude", "antigravity"]);
     // The first tool cannot go further up, nor the last one further down.
     await page.getByRole("button", { name: "Azioni su ChatGPT" }).click();
     await expect(menu("ChatGPT").getByRole("menuitem", { name: "Sposta su" })).toBeDisabled();
     await expect(menu("ChatGPT").getByRole("menuitem", { name: "Sposta giù" })).toBeEnabled();
     await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Azioni su Cursor" }).click();
-    await expect(menu("Cursor").getByRole("menuitem", { name: "Sposta giù" })).toBeDisabled();
+    await page.getByRole("button", { name: "Azioni su Gemini" }).click();
+    await expect(menu("Gemini").getByRole("menuitem", { name: "Sposta giù" })).toBeDisabled();
     await page.keyboard.press("Escape");
     await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
 
     // The order is kept: the page read again shows it.
     await page.reload();
-    await expect(listed(page)).toHaveText(["ChatGPT", "Claude", "Cursor"], { timeout: 30_000 });
+    await expect(listed(page)).toHaveText(["ChatGPT", "Claude", "Gemini"], { timeout: 30_000 });
     await expect(page.locator(".engines-tool-n")).toHaveText(["1", "2", "3"]);
 
     // ---- Handing the order back: Pyxis shares the work among the tools again.

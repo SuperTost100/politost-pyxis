@@ -16,7 +16,7 @@ describe("translateEngineError", () => {
     const err = Object.assign(new Error("Please run agent login"), {
       code: "not-logged-in",
     });
-    expect(translateEngineError(err, "agent").code).toBe("not-logged-in");
+    expect(translateEngineError(err, "antigravity").code).toBe("not-logged-in");
   });
 
   it("names a stream that closed before the answer finished", () => {
@@ -35,16 +35,16 @@ describe("translateEngineError", () => {
   it("reads a model the plan leaves out as that, even when the provider sends it with a 401", () => {
     const err = Object.assign(
       new Error(
-        "HTTP 401: Claude Sonnet 5.5 is not included in your weekly usage. Buy credits or switch to a Grok model.",
+        "HTTP 401: Claude Sonnet 5.5 is not included in your weekly usage. Buy credits or switch to another model.",
       ),
       { code: "cli-failed" },
     );
-    expect(translateEngineError(err, "agent").code).toBe("model-not-included");
+    expect(translateEngineError(err, "antigravity").code).toBe("model-not-included");
     // A plain 401 is still a refused sign-in.
     expect(
       translateEngineError(
         Object.assign(new Error("HTTP 401 Unauthorized"), { code: "cli-failed" }),
-        "agent",
+        "antigravity",
       ).code,
     ).toBe("not-logged-in");
   });
@@ -114,25 +114,25 @@ describe("translateEngineError", () => {
 
   it("reads a 429 that names a model the plan leaves out as that model's refusal, while a reported limit still wins", () => {
     const named = Object.assign(
-      new Error("HTTP 429: Claude Opus 5.5 is not included in your weekly usage. Buy credits or switch to a Grok model."),
+      new Error("HTTP 429: Claude Opus 5.5 is not included in your weekly usage. Buy credits or switch to another model."),
       { code: "cli-failed" },
     );
     // The wording is about one model: the engine's other models still answer, so it must not leave the whole engine.
-    expect(translateEngineError(named, "agent").code).toBe("model-not-included");
-    expect(fallbackReason(named, "agent")).toBe("model");
+    expect(translateEngineError(named, "antigravity").code).toBe("model-not-included");
+    expect(fallbackReason(named, "antigravity")).toBe("model");
     // A rate limit CLI Funnel attached to the error is firmer than any wording.
     const limited = Object.assign(named, { limit: { kind: "rate" } });
-    expect(translateEngineError(limited, "agent").code).toBe("quota");
-    expect(fallbackReason(limited, "agent")).toBe("limit");
+    expect(translateEngineError(limited, "antigravity").code).toBe("quota");
+    expect(fallbackReason(limited, "antigravity")).toBe("limit");
   });
 
   it("names a model the subscription does not include", () => {
     for (const message of [
-      "Claude Sonnet 5.5 is not included in your weekly usage Buy credits or switch to a Grok model to continue.",
+      "Claude Sonnet 5.5 is not included in your weekly usage Buy credits or switch to another model to continue.",
       "This model is not included in your plan. Upgrade your plan to use it.",
       "Upgrade your subscription to use this model.",
     ])
-      expect(translateEngineError(new Error(message), "agent")).toEqual({
+      expect(translateEngineError(new Error(message), "antigravity")).toEqual({
         code: "model-not-included",
         messageKey: "engines.errors.model-not-included",
       });
@@ -142,10 +142,10 @@ describe("translateEngineError", () => {
       "Insufficient credits. Buy more credits to continue.",
       "You are out of credits. Upgrade your plan to use more credits.",
     ])
-      expect(translateEngineError(new Error(message), "agent").code).toBe("quota");
+      expect(translateEngineError(new Error(message), "antigravity").code).toBe("quota");
     // Ordinary words around a plan or credits are not a refusal.
     expect(
-      translateEngineError(new Error("Credits: the plan was included in the lesson"), "agent").code,
+      translateEngineError(new Error("Credits: the plan was included in the lesson"), "antigravity").code,
     ).toBe("cli-failed");
   });
 

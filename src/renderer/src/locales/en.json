@@ -229,8 +229,7 @@
         "claude": "Needs a Claude account on the Pro plan, which is paid.",
         "chatgpt": "Needs a ChatGPT account. The free plan gives you a few requests a day, Plus gives you many more.",
         "gemini": "Needs a Google account.",
-        "geminiFree": "Free for university students, with the AI Pro plan.",
-        "cursor": "Needs a Cursor account. The free one is enough to start."
+        "geminiFree": "Free for university students, with the AI Pro plan."
       },
       "plans": "See the plans",
       "plansOf": "See the plans for {{name}}",
@@ -3183,9 +3182,7 @@
       "intro": "When you use an AI tool, the text, the retrieved passages and the attachments leave this computer. Pyxis sends nothing until you confirm.",
       "item": "{{name}} sends them to {{vendor}}.",
       "item_vowel": "{{name}} sends them to {{vendor}}.",
-      "later": "Not now",
-      "itemRelay": "{{name}} sends them to {{vendor}}, which passes them to the maker of the model you use (Anthropic, OpenAI or Google).",
-      "itemRelay_vowel": "{{name}} sends them to {{vendor}}, which passes them to the maker of the model you use (Anthropic, OpenAI or Google)."
+      "later": "Not now"
     },
     "loading": "Looking for installed AI tools.",
     "loadFailed": "The AI tool list did not load.",
@@ -3902,7 +3899,6 @@
     "plan": {
       "claude": "Needs a Claude Pro or Max plan.",
       "codex": "Needs ChatGPT Plus or a higher plan.",
-      "agent": "Works with your Cursor account.",
       "antigravity": "Works with any Google account. Free accounts have a weekly limit."
     },
     "stepDone": "done",

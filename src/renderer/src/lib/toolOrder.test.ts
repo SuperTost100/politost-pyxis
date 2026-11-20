@@ -21,13 +21,8 @@ describe("the list of connected tools", () => {
   });
 
   it("follows the saved order and puts a tool connected since at the end", () => {
-    const found = [tool("claude"), tool("codex"), tool("agent"), tool("antigravity")];
-    expect(shownOrder(found, ["antigravity", "claude"]).map((row) => row.id)).toEqual([
-      "antigravity",
-      "claude",
-      "codex",
-      "agent",
-    ]);
+    const found = [tool("claude"), tool("codex"), tool("antigravity")];
+    expect(shownOrder(found, ["antigravity"]).map((row) => row.id)).toEqual(["antigravity", "claude", "codex"]);
   });
 
   it("leaves out of the list a saved tool that is no longer connected", () => {
@@ -71,14 +66,14 @@ describe("turning a tool off and on", () => {
   it("lets a tool be turned on before it works, as when it is connected while the only tool in use is signed out", () => {
     // Claude, the only allowed tool, is signed out, so nothing works yet. Connecting ChatGPT, which was off, must keep it on.
     expect(toggledUse(["claude"], [], "codex", true)).toBeNull();
-    expect(toggledUse(["claude"], ["agent"], "codex", true)).toEqual(["claude", "codex"]);
+    expect(toggledUse(["claude"], ["antigravity"], "codex", true)).toEqual(["claude", "codex"]);
   });
 
   it("refuses to turn off the only tool in use", () => {
     expect(toggledUse(["claude"], ready, "claude", false)).toBeUndefined();
     expect(toggledUse(null, ["claude"], "claude", false)).toBeUndefined();
     // A tool that is allowed but signed out does not count as one left in use.
-    expect(toggledUse(["claude", "agent"], ["claude"], "claude", false)).toBeUndefined();
+    expect(toggledUse(["claude", "antigravity"], ["claude"], "claude", false)).toBeUndefined();
   });
 });
 
@@ -117,13 +112,13 @@ const row = (id: string, over: Partial<Row> = {}): Row => ({
 
 describe("which tools are out of requests", () => {
   it("lists the tools whose requests are not back yet, with the time", () => {
-    const rows = [row("claude"), row("codex", { limitedUntil: 5_000 }), row("agent", { limitedUntil: 500 })];
+    const rows = [row("claude"), row("codex", { limitedUntil: 5_000 }), row("antigravity", { limitedUntil: 500 })];
     expect([...limitsOf(rows, NOW)]).toEqual([["codex", 5_000]]);
   });
 });
 
 describe("the tool a stopped job goes on with", () => {
-  const rows = [row("claude"), row("codex"), row("agent"), row("antigravity")];
+  const rows = [row("claude"), row("codex"), row("antigravity")];
 
   it("is the first tool of the student's order, other than the one that ran out", () => {
     expect(nextTool(rows, ["antigravity", "codex", "claude"], "antigravity", NOW)?.id).toBe("codex");
@@ -138,10 +133,10 @@ describe("the tool a stopped job goes on with", () => {
     const some = [
       row("claude"),
       row("codex", { limitedUntil: 9_000 }),
-      row("agent", { allowed: false }),
-      row("antigravity", { loggedIn: false }),
+      row("antigravity", { allowed: false }),
     ];
     expect(nextTool(some, null, "claude", NOW)).toBeUndefined();
+    expect(nextTool([row("claude"), row("antigravity", { loggedIn: false })], null, "claude", NOW)).toBeUndefined();
     expect(nextTool([...some, row("openai-api", { kind: "api" })], null, "claude", NOW)).toBeUndefined();
   });
 

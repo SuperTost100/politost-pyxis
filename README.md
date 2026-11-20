@@ -32,7 +32,7 @@
 
 A fluent answer is no use if you can't check it. Pyxis answers from the material you import. Lessons and chat replies carry numbered citations that open the exact passage they came from, and each flashcard shows its source passage on the back. When Pyxis writes from general knowledge instead, it labels the text that way.
 
-Pyxis has no account, no subscription and no server of its own. The workspace is a SQLite file and a folder of blobs on your disk. You connect the AI tools you already use: Claude Code, Codex, Cursor Agent or Antigravity, or an Anthropic or OpenAI API key. Your provider may charge for usage. Pyxis doesn't.
+Pyxis has no account, no subscription and no server of its own. The workspace is a SQLite file and a folder of blobs on your disk. You connect the AI tools you already use: Claude Code, Codex or Antigravity, or an Anthropic or OpenAI API key. Your provider may charge for usage. Pyxis doesn't.
 
 The app is in English and Italian, with dark and light themes.
 
@@ -127,7 +127,6 @@ To go through it again, open Settings → Profile and choose "Run setup again". 
 | ------------- | ----------------------------------------- |
 | Claude Code   | Your installed and signed-in `claude` CLI |
 | Codex         | Your installed and signed-in `codex` CLI  |
-| Cursor Agent  | Your installed and signed-in `agent` CLI  |
 | Antigravity   | Your installed and signed-in `agy` CLI    |
 | Anthropic API | API key, encrypted with the OS key store  |
 | OpenAI API    | API key, encrypted with the OS key store  |
@@ -142,7 +141,7 @@ These actions send data off your computer:
 
 - **Generating or grading.** The prompt, the source passages it needs and any attachments go to the provider you picked. Its retention and billing rules apply.
 - **Importing a link.** Pyxis fetches the page from that site.
-- **Installing an engine.** Setup downloads the maker's install script from claude.ai, chatgpt.com, cursor.com or antigravity.google and runs it. Signing in happens in your browser with that maker.
+- **Installing an engine.** Setup downloads the maker's install script from claude.ai, chatgpt.com or antigravity.google and runs it. Signing in happens in your browser with that maker.
 - **Free PoliTost books.** While the Library is open, or the books list, Pyxis reads the catalog on books.politost.it. A book named like one of your subjects is offered quietly on that subject's shelf, and you can read it in the reader before deciding. Nothing is downloaded until you open a book or add it, and a book you only read is kept in memory and never stored. The same book is offered as a ticked source when a new exam is named like it (the exam step reads the catalog too) and with the first file of a new subject, and one tick leaves it out. A newer version of a book you have is offered the same way, and Update downloads it in place. Each book is checked against the catalog's SHA-256.
 - **Downloads.** The search model and the Python runtime are fetched once, after you agree. The OCR language files download by themselves once setup is done. All of them are checked against pinned SHA-256 hashes.
 - **Update check.** Pyxis asks GitHub for the latest release tag, at most once a day, or again after 15 minutes if the check failed. **Check for updates** asks again at once, at most once a minute. It sends no workspace content.

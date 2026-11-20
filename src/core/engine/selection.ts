@@ -1,8 +1,9 @@
 import { IpcError } from "../../shared/ipc";
+import { isRetiredProvider } from "../../shared/limits";
 import type Database from "better-sqlite3";
 import { nearestEffort, studentEffort } from "../../shared/effort";
 import { planAuto, type AutoFeature, type AutoProvider } from "./auto";
-import { isBenched, isModelBenched, pointedModels } from "./bench";
+import { isBenched, isModelBenched } from "./bench";
 import { effortsOf, runsAs, wasReported } from "./efforts";
 import { automaticEffortOn, isForeignModel, isOwnModel } from "./model-roles";
 import type { ProviderId } from "./funnel";
@@ -148,13 +149,15 @@ export function selectionOn(
 }
 
 /**
- * A model that this tool must not run: one the tool reported that is not its maker's (Composer on Cursor), or one that
- * belongs to another tool's maker (a Claude model on Cursor). An id nobody knows is not ruled out here.
+ * A model that this tool must not run: any model of a tool Pyxis no longer offers, one the tool reported that is not
+ * its maker's (a Composer model), or one that belongs to another tool's maker (a Claude model on Antigravity). An id
+ * nobody knows is not ruled out here.
  */
 export function offLimits(provider: string, model: string): boolean {
   return (
-    !isOwnModel(provider, model) &&
-    (wasReported(provider, model) || isForeignModel(provider, model))
+    isRetiredProvider(provider) ||
+    (!isOwnModel(provider, model) &&
+      (wasReported(provider, model) || isForeignModel(provider, model)))
   );
 }
 
@@ -224,19 +227,10 @@ export function fallbackSelection(
     : undefined;
 }
 
-/**
- * The providers with only the models their subscription has not refused today. When a refusal pointed to a kind of
- * model ("switch to a Grok model"), only the provider's models of that kind stay, if it lists any.
- */
+/** The providers with only the models their subscription has not refused today. */
 export function withoutRefusedModels(providers: AutoProvider[]): AutoProvider[] {
-  return providers.map((provider) => {
-    const open = provider.models.filter(
-      (model) => !isModelBenched(provider.id, model.id),
-    );
-    const word = pointedModels(provider.id);
-    const pointed = word
-      ? open.filter((model) => model.id.toLowerCase().includes(word))
-      : [];
-    return { ...provider, models: pointed.length ? pointed : open };
-  });
+  return providers.map((provider) => ({
+    ...provider,
+    models: provider.models.filter((model) => !isModelBenched(provider.id, model.id)),
+  }));
 }

@@ -35,7 +35,7 @@ function fakeFunnel(state: State, listing: "ok" | "offline" = "ok") {
       row("claude", "Claude Code", state.claude),
       row("codex", "Codex", state.codex),
       // Signed in but without text-only access, so it never gets a feature.
-      row("agent", "Cursor Agent", true, ["full"]),
+      row("antigravity", "Antigravity", true, ["full"]),
     ],
     models: async (id: "claude" | "codex") => {
       if (listing === "offline") throw new Error("offline");
@@ -65,7 +65,7 @@ describe("automatic engine choice", () => {
     const result = await withFunnel({ claude: true, codex: true }, () =>
       handlers.autoConfigure({}),
     );
-    // Cursor Agent is disabled, so it is never counted as ready.
+    // Antigravity is disabled, so it is never counted as ready.
     expect(result.ready).toEqual(["claude", "codex"]);
     expect(Object.keys(result.features).sort()).toEqual(
       ["cards", "chat", "default", "grading", "lesson", "map", "plan", "vision"].sort(),

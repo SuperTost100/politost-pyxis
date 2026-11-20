@@ -20,8 +20,8 @@ describe("engineSeesImages", () => {
   it("also needs a provider that takes images, whatever the model id says", () => {
     expect(engineSeesImages({ provider: "claude", model: "claude-sonnet-5" })).toBe(true);
     expect(engineSeesImages({ provider: "codex", model: "gpt-5.6-sol" })).toBe(true);
-    // Cursor Agent and Antigravity list claude-* and gpt-* ids but refuse attachments.
-    expect(engineSeesImages({ provider: "agent", model: "claude-sonnet-5" })).toBe(false);
+    // Antigravity lists claude-* and gpt-* ids but refuses attachments.
+    expect(engineSeesImages({ provider: "antigravity", model: "claude-sonnet-5" })).toBe(false);
     expect(engineSeesImages({ provider: "antigravity", model: "claude-sonnet-4-6" })).toBe(false);
     expect(engineSeesImages({ provider: "claude", model: "text-only-small" })).toBe(false);
   });

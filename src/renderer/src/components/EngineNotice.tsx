@@ -12,7 +12,6 @@ const vendors: Record<EngineProvider, string> = {
   "anthropic-api": "Anthropic",
   codex: "OpenAI",
   "openai-api": "OpenAI",
-  agent: "Cursor",
   antigravity: "Google",
 };
 
@@ -85,18 +84,12 @@ function EngineNoticeBody({
           const vendor = vendors[engine.id as EngineProvider] ?? engine.name;
           return (
             <li key={engine.id}>
-              {/* Cursor passes the text on to the maker of the model the student picked. */}
-              {t(
-                engine.id === "agent"
-                  ? "engines.notice.itemRelay"
-                  : "engines.notice.item",
-                {
-                  name: engine.name,
-                  vendor,
-                  // Italian says "ad Anthropic" before a vowel; the `_vowel` strings carry that.
-                  context: /^[aeiouàèéìòù]/i.test(vendor) ? "vowel" : undefined,
-                },
-              )}
+              {t("engines.notice.item", {
+                name: engine.name,
+                vendor,
+                // Italian says "ad Anthropic" before a vowel; the `_vowel` strings carry that.
+                context: /^[aeiouàèéìòù]/i.test(vendor) ? "vowel" : undefined,
+              })}
             </li>
           );
         })}

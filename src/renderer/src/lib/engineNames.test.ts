@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { engineLabel, engineModelsLine, modelName } from "./engineNames";
 
 const names = {
-  engines: { agent: "Cursor", antigravity: "Gemini" },
-  models: { agent: { "gpt-5.3-codex": "Codex 5.3" } },
+  engines: { antigravity: "Gemini" },
+  models: { antigravity: { "gpt-5.3-codex": "Codex 5.3" } },
 };
 
 describe("engineLabel", () => {
   it("names the engine and the model the way the model picker does", () => {
-    expect(engineLabel(names, "agent", "gpt-5.3-codex")).toBe("Cursor · Codex 5.3");
+    expect(engineLabel(names, "antigravity", "gpt-5.3-codex")).toBe("Gemini · Codex 5.3");
   });
 
   it("makes an id readable when core has not listed the model", () => {
@@ -18,7 +18,7 @@ describe("engineLabel", () => {
 
   it("leaves out a part an old record lacks", () => {
     expect(engineLabel(names, undefined, "claude-opus-4-6-thinking")).toBe("Claude Opus 4.6 Thinking");
-    expect(engineLabel(names, "agent", null)).toBe("Cursor");
+    expect(engineLabel(names, "antigravity", null)).toBe("Gemini");
     expect(modelName(names, "codex", "gpt-5.3-codex")).toBe("GPT-5.3 Codex");
   });
 });
@@ -26,28 +26,28 @@ describe("engineLabel", () => {
 describe("engineModelsLine", () => {
   const notIncluded = (count: number, models: string) => `${models} (${count}) not included`;
   const features = {
-    plan: { provider: "agent", model: "grok-4.7" },
-    chat: { provider: "agent", model: "gpt-5.3-codex" },
+    plan: { provider: "antigravity", model: "gemini-4-argon" },
+    chat: { provider: "antigravity", model: "gpt-5.3-codex" },
     lesson: { provider: "claude", model: "claude-sonnet-5" },
   };
 
   it("names the models the plan gives the engine, then the ones its subscription refused", () => {
     expect(
-      engineModelsLine({ names, provider: "agent", features, refused: ["claude-opus-5-5"], notIncluded }),
-    ).toBe("Grok 4.7 · Codex 5.3 · Claude Opus 5.5 (1) not included");
+      engineModelsLine({ names, provider: "antigravity", features, refused: ["claude-opus-5-5"], notIncluded }),
+    ).toBe("Gemini 4 Argon · Codex 5.3 · Claude Opus 5.5 (1) not included");
   });
 
   it("keeps the refused models on an engine the student left out, without the plan's models", () => {
     expect(
       engineModelsLine({
         names,
-        provider: "agent",
+        provider: "antigravity",
         features,
         refused: ["claude-opus-5-5"],
         allowed: false,
         notIncluded,
       }),
     ).toBe("Claude Opus 5.5 (1) not included");
-    expect(engineModelsLine({ names, provider: "agent", features, allowed: false, notIncluded })).toBe("");
+    expect(engineModelsLine({ names, provider: "antigravity", features, allowed: false, notIncluded })).toBe("");
   });
 });

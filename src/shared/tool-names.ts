@@ -5,7 +5,6 @@
 export const TOOL_NAMES: Readonly<Record<string, string>> = {
   claude: "Claude",
   codex: "ChatGPT",
-  agent: "Cursor",
   antigravity: "Gemini",
 };
 
@@ -16,7 +15,6 @@ export const TOOL_NAMES: Readonly<Record<string, string>> = {
 export const TOOL_PROGRAMS: Readonly<Record<string, string>> = {
   claude: "Claude Code",
   codex: "Codex",
-  agent: "Cursor Agent",
   antigravity: "Antigravity",
 };
 

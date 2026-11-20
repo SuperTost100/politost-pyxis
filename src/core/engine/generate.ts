@@ -16,7 +16,7 @@ import {
   markSignedOut,
 } from "./bench";
 import { modelName } from "./efforts";
-import { engineIpcError, fallbackReason, suggestedModel } from "./errors";
+import { engineIpcError, fallbackReason } from "./errors";
 import {
   endConversation,
   providerName,
@@ -81,7 +81,7 @@ let onFallback: ((event: EngineFallback) => void) | undefined;
 
 /**
  * How many more models a call tries after the subscription refused the one it was on. A plan that refuses one model
- * often refuses its neighbours too (Cursor's weekly usage covers whole families), so one step is not enough, and an
+ * often refuses its neighbours too (some plans count usage by whole model families), so one step is not enough, and an
  * unbounded walk would keep the student waiting through every model the engine lists.
  */
 export const MODEL_STEPS = 3;
@@ -282,7 +282,7 @@ function markFailure(
   if (input.signal?.aborted || isAbort(err)) return undefined;
   const reason = fallbackReason(err, selection.provider);
   if (reason === "model")
-    benchModel(selection.provider, selection.model, Date.now(), suggestedModel(err));
+    benchModel(selection.provider, selection.model);
   if (reason === "signed-out") markSignedOut(selection.provider);
   if (reason === "not-installed") markMissing(selection.provider);
   if (reason === "limit")

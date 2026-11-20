@@ -1,6 +1,3 @@
-import { existsSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { tierData } from "./tiers";
 import { createDisclosure } from "./disclosure";
@@ -47,8 +44,6 @@ export type EngineResult = {
   sessionId?: string;
   /** The folder the tool keyed that session by. */
   cwd?: string;
-  /** For Cursor Agent: its own folder holds the chat after this turn, so a later absence means the student cleared it. */
-  seen?: boolean;
   /** The turn went on in the stored session. False when it started a new one (another tool, a folder that changed, a session the tool no longer knew). */
   continued?: boolean;
 };
@@ -171,7 +166,7 @@ type Conversation = {
 const conversations = new Map<string, Conversation>();
 
 /**
- * A chat on a subscription CLI (Claude Code, Codex, Cursor Agent, Antigravity) keeps its session in the database and
+ * A chat on a subscription CLI (Claude Code, Codex, Antigravity) keeps its session in the database and
  * continues it by id, in a live process or in a new one. API providers and Ollama keep their conversation as history
  * in this process.
  */
@@ -179,58 +174,19 @@ function isToolProvider(provider: ProviderId): boolean {
   return !provider.endsWith("-api") && provider !== "ollama";
 }
 
-/** Cursor Agent and Antigravity get `system` as a block at the start of the prompt, so a turn in a session they hold leaves it out. */
+/** Antigravity gets `system` as a block at the start of the prompt, so a turn in a session it holds leaves it out. */
 export function systemInPrompt(provider: string): boolean {
-  return provider === "agent" || provider === "antigravity";
+  return provider === "antigravity";
 }
 
 /**
  * The CLIs word the failure of a resume differently: Claude Code "No conversation found with session ID", Codex "no
- * rollout found for thread id", Antigravity "Conversation ... was not found". Cursor Agent starts a new chat without a
- * word, so a session it lost cannot be told from one it holds.
+ * rollout found for thread id", Antigravity "Conversation ... was not found".
  */
 const SESSION_GONE = /no conversation found|no rollout found|conversation .{0,80}was not found|session .{0,80}not found/i;
 
 export function isSessionGone(err: unknown): boolean {
   return SESSION_GONE.test(err instanceof Error ? err.message : String(err));
-}
-
-let cursorChats: string | null | undefined;
-/** Tests point the check below at a folder of their own (null: none); undefined restores Cursor's own. */
-export function setCursorChatsRoot(root: string | null | undefined): void {
-  cursorChats = root;
-}
-
-/** Whether Cursor's chat folders hold the chat: `held`, `absent` (they hold other chats and not this one), or `unknown` (nothing there to read). */
-export function cursorChatState(id: string): "held" | "absent" | "unknown" {
-  const root = cursorChats === undefined ? join(homedir(), ".cursor", "chats") : cursorChats;
-  if (!root || !/^[\w-]+$/.test(id)) return "unknown";
-  try {
-    const workspaces = readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory());
-    if (workspaces.some((dir) => existsSync(join(root, dir.name, id)))) return "held";
-    // Other chats must be there to say this one is gone: a workspace folder that holds a chat folder. A folder with only
-    // files in it, or workspaces with nothing in them, is a layout this does not understand.
-    const knowsChats = workspaces.some((dir) =>
-      readdirSync(join(root, dir.name), { withFileTypes: true }).some((entry) => entry.isDirectory()),
-    );
-    return knowsChats ? "absent" : "unknown";
-  } catch {
-    return "unknown";
-  }
-}
-
-/**
- * True when Cursor Agent no longer holds the chat. Given an id it does not know, `agent --resume` answers as a new chat
- * under that same id, with the same `session_id` in every event, so nothing in the stream tells the loss: the reply comes
- * back as if the conversation had been there. Cursor keeps its chats in `~/.cursor/chats/<workspace>/<id>`. The chat is
- * gone when that folder holds other chats and none is this one. When it is missing or empty, which is also what another
- * layout looks like, the chat counts as held, unless it was seen there before (`seen`): a chat that was in the folder
- * and is not now was cleared by the student, who may have cleared everything.
- * shortcut: reads Cursor's private folder layout, checked on agent 2026.11.13; drop it when `agent` reports a lost resume.
- */
-export function cursorSessionLost(id: string, seen = false): boolean {
-  const state = cursorChatState(id);
-  return state === "absent" || (seen && state === "unknown");
 }
 
 /** Thrown inside a turn when the tool started another session than the one it was asked to resume. */
@@ -356,7 +312,7 @@ export type TurnInput = {
      * Left out, the caller stores nothing (a lesson's tool rounds), and a tool's session is continued from the id this
      * process tracked for the key.
      */
-    session?: { provider: string; id: string; cwd: string; seen?: boolean } | null;
+    session?: { provider: string; id: string; cwd: string } | null;
     onSession?: (sessionId: string, provider: string, cwd: string) => void;
   };
   /** Mark the system prompt and the conversation so far for the provider's prompt cache, where it has one. */
@@ -414,8 +370,6 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         ? stored.id
         : undefined
     : talk?.sessionId;
-  // Cursor Agent answers a resume of a chat it lost as a new chat, so its folder says whether it still holds the session.
-  if (tool && selection.provider === "agent" && resumeId && stored && cursorSessionLost(resumeId, stored.seen)) resumeId = undefined;
   // agy 1.4 fills a --json-schema with a report on its own run, not with the answer: Sonnet graded its own work 1 and
   // narrated it, and Gemini returned nothing. Antigravity gets the schema in the prompt and answers in text, which
   // `generate` parses and repairs like any other reply.
@@ -438,7 +392,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
       const prompt = schemaInPrompt
         ? `${asked}\n\n${SCHEMA_REPLY}\n${JSON.stringify(schemaInPrompt.schema)}`
         : asked;
-      // The tool already holds the instructions the first prompt of a Cursor or Antigravity session carried.
+      // The tool already holds the instructions the first prompt of an Antigravity session carried.
       const system = continuing && systemInPrompt(selection.provider) ? undefined : input.system;
       const log = startCall(scope?.jobId, {
         provider: selection.provider,
@@ -479,7 +433,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         // finished answer. Either way the student stopped it.
         if (result.finishReason === "cancelled" || input.signal?.aborted) {
           // The tokens of a turn the student stopped were spent all the same. Codex reports them for a cancelled turn;
-          // Claude Code, Cursor Agent and Antigravity report none, and then nothing is recorded.
+          // Claude Code and Antigravity report none, and then nothing is recorded.
           reportUsage({
             text: "",
             model: result.model,
@@ -520,7 +474,6 @@ async function turn(input: TurnInput): Promise<EngineResult> {
                 sessionId: result.sessionId ?? sessionId,
                 cwd: selection.cwd,
                 continued,
-                ...(selection.provider === "agent" ? { seen: cursorChatState(result.sessionId ?? sessionId!) === "held" } : {}),
               }
             : {}),
         };

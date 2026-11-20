@@ -29,21 +29,10 @@ const levels = ["low", "medium", "high"].map((id) => ({ id }));
 const model = (id: string) => ({ id, efforts: levels });
 const copy = (): ModelFile => JSON.parse(JSON.stringify(shipped)) as ModelFile;
 
-/** Everything each tool reports on a signed-in account today, makers mixed the way Cursor and Antigravity mix them. */
+/** Everything each tool reports on a signed-in account today, makers mixed the way Antigravity mixes them. */
 const reported: Record<string, string[]> = {
   claude: ["claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
   codex: ["gpt-6.2-sol", "gpt-6.1-terra", "gpt-6-luna"],
-  agent: [
-    "composer-2.5",
-    "claude-opus-5-5",
-    "gpt-5.6-sol",
-    "gemini-3.8-flash",
-    "claude-fable-5-2",
-    "cursor-grok-4.5",
-    "grok-4.7",
-    "cursor-grok-4.6",
-    "kimi-k3",
-  ],
   antigravity: [
     "gemini-4-argon",
     "gemini-4-hydrogen",
@@ -57,7 +46,6 @@ const reported: Record<string, string[]> = {
 const makers: Record<string, RegExp> = {
   claude: /^claude-/,
   codex: /^gpt-/,
-  agent: /^(?:cursor-)?grok-/,
   antigravity: /^gemini-/,
 };
 
@@ -88,7 +76,7 @@ afterEach(() => {
 describe("the model file", () => {
   it("is valid as shipped, and every role names models", () => {
     expect(modelFileSchema.safeParse(shipped).success).toBe(true);
-    expect(Object.keys(shipped.tools).sort()).toEqual(["agent", "anthropic-api", "antigravity", "claude", "codex", "openai-api"]);
+    expect(Object.keys(shipped.tools).sort()).toEqual(["anthropic-api", "antigravity", "claude", "codex", "openai-api"]);
   });
 
   it("puts no Fable model in any role", () => {
@@ -114,7 +102,7 @@ describe("the model file", () => {
   });
 
   it("reads the newest models of a tool as able to read images, with no second file to change", () => {
-    for (const id of ["gpt-6.1-terra", "gpt-6.2-sol", "gpt-6-luna", "claude-sonnet-5-5", "gemini-4-hydrogen", "grok-4.7"])
+    for (const id of ["gpt-6.1-terra", "gpt-6.2-sol", "gpt-6-luna", "claude-sonnet-5-5", "gemini-4-hydrogen"])
       expect(capabilityOf(id)?.vision, id).toBe(true);
     for (const id of ["gpt-oss-120b", "gpt-audio", "composer-2.5", "text-only-small"]) expect(capabilityOf(id)?.vision ?? false, id).toBe(false);
   });
@@ -178,14 +166,11 @@ describe("the model file", () => {
 
 describe("a tool only runs its maker's models", () => {
   it("recognises the maker's ids and another maker's", () => {
-    expect(isOwnModel("agent", "grok-4.7")).toBe(true);
-    expect(isOwnModel("agent", "cursor-grok-4.5")).toBe(true);
-    expect(isOwnModel("agent", "composer-2.5")).toBe(false);
-    expect(isOwnModel("agent", "claude-opus-5-5")).toBe(false);
+    expect(isOwnModel("antigravity", "gpt-oss-120b-medium")).toBe(false);
     expect(isOwnModel("antigravity", "claude-sonnet-5-5")).toBe(false);
     expect(isOwnModel("antigravity", "gemini-3.8-flash")).toBe(true);
-    expect(isForeignModel("agent", "claude-opus-5-5")).toBe(true);
-    expect(isForeignModel("agent", "composer-2.5")).toBe(false);
+    expect(isForeignModel("antigravity", "claude-opus-5-5")).toBe(true);
+    expect(isForeignModel("antigravity", "gpt-oss-120b-medium")).toBe(false);
     expect(isForeignModel("claude", "claude-opus-5-5")).toBe(false);
     // The local model has no rule: nothing is ruled out for it.
     expect(isOwnModel("ollama", "gemma3:12b")).toBe(true);
@@ -197,10 +182,10 @@ describe("a tool only runs its maker's models", () => {
       expect(own.length).toBeGreaterThan(0);
       for (const name of own) expect(name).toMatch(makers[id]!);
     }
-    expect(ownModels("agent", reported.agent!.map((name) => ({ id: name }))).map((entry) => entry.id)).toEqual([
-      "cursor-grok-4.5",
-      "grok-4.7",
-      "cursor-grok-4.6",
+    expect(ownModels("antigravity", reported.antigravity!.map((name) => ({ id: name }))).map((entry) => entry.id)).toEqual([
+      "gemini-4-argon",
+      "gemini-4-hydrogen",
+      "gemini-3.8-flash",
     ]);
   });
 
@@ -220,7 +205,7 @@ describe("a tool only runs its maker's models", () => {
   });
 
   it("never falls back to another maker's model after a refusal, a limit or a missing program", () => {
-    const ready: AutoProvider[] = ["agent", "antigravity"].map((id) => ({
+    const ready: AutoProvider[] = ["claude", "antigravity"].map((id) => ({
       id,
       kind: "cli",
       effort: true,
@@ -229,7 +214,7 @@ describe("a tool only runs its maker's models", () => {
     }));
     rememberReady(ready);
     for (const reason of ["model", "limit", "signed-out", "not-installed"] as const) {
-      for (const provider of ["agent", "antigravity"]) {
+      for (const provider of ["claude", "antigravity"]) {
         const next = fallbackSelection({ provider, chosenFor: "plan" }, reason);
         if (next) expect(next.model).toMatch(makers[next.provider]!);
       }
@@ -327,7 +312,7 @@ describe("through the engine handlers", () => {
     db.close();
   });
 
-  it("gives every task a model of its tool's maker, with all four tools ready", async () => {
+  it("gives every task a model of its tool's maker, with every tool ready", async () => {
     const { db, handlers } = setup();
     const { features } = await handlers.autoConfigure({});
     expect(Object.keys(features).length).toBe(8);
@@ -344,36 +329,34 @@ describe("through the engine handlers", () => {
     await handlers.autoConfigure({});
     const pin = (provider: string, model: string) => () =>
       handlers.setFeature({ feature: "chat", provider: provider as never, model });
-    // Cursor reported Composer in the listing above, so it is known as not Cursor's own to run.
+    // Antigravity reported GPT-OSS in the listing above, so it is known as not Gemini's own to run.
     for (const [provider, name] of [
-      ["agent", "claude-opus-5-5"],
-      ["agent", "gpt-5.6-sol"],
-      ["agent", "composer-2.5"],
+      ["antigravity", "gpt-oss-120b-medium"],
       ["antigravity", "claude-sonnet-5-5"],
       ["codex", "gemini-3.8-flash"],
       ["claude", "gpt-6.2-sol"],
     ] as const)
       expect(pin(provider, name), `${provider} ${name}`).toThrow(expect.objectContaining({ code: "invalid-selection" }));
-    expect(pin("agent", "grok-4.7")).not.toThrow();
+    expect(pin("antigravity", "gemini-4-argon")).not.toThrow();
     db.close();
   });
 
   it("returns a stored pin on another maker's model to automatic, without an error, and keeps the effort pick", async () => {
     const { db, handlers } = setup();
     await handlers.autoConfigure({});
-    // What an earlier build allowed: a Claude model and Composer pinned on Cursor, and a good pin on Claude.
+    // What an earlier build allowed: a Claude model and GPT-OSS pinned on Antigravity, and a good pin on Claude.
     const stored = (feature: string, selection: object) =>
       db
         .prepare("INSERT OR REPLACE INTO feature_engines (feature, selection_json, updated_at) VALUES (?, ?, 1)")
         .run(feature, JSON.stringify(selection));
-    stored("lesson", { provider: "agent", model: "claude-opus-5-5", effort: "high" });
-    stored("map", { provider: "agent", model: "composer-2.5" });
+    stored("lesson", { provider: "antigravity", model: "claude-opus-5-5", effort: "high" });
+    stored("map", { provider: "antigravity", model: "gpt-oss-120b-medium" });
     stored("plan", { provider: "claude", model: "claude-opus-5-5", effort: "high" });
     const { features } = await handlers.autoConfigure({});
     expect(features.lesson).toMatchObject({ auto: true, effortChoice: "high" });
     expect(features.lesson!.model).toMatch(makers[features.lesson!.provider]!);
     expect(features.map).toMatchObject({ auto: true });
-    expect(features.map!.model).not.toBe("composer-2.5");
+    expect(features.map!.model).not.toBe("gpt-oss-120b-medium");
     // A pin on the maker's own model stays where it is.
     expect(features.plan).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "high" });
     db.close();

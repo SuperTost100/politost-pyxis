@@ -212,10 +212,11 @@ describe("automatic engine policy", () => {
   });
 
   it("never plans photos on a provider that refuses images, whatever its model ids say", () => {
-    const cursorLike: AutoProvider = { ...claude, id: "agent", images: false };
+    // Antigravity lists Claude and GPT models that match the catalog, but its CLI cannot take a picture.
+    expect(antigravity.images).toBe(false);
     // Only the provider that takes images gets the photo feature.
-    expect(planAuto([cursorLike, claude]).vision?.provider).toBe("claude");
-    expect(planAuto([cursorLike, codex]).vision?.provider).toBe("codex");
+    expect(planAuto([antigravity, claude]).vision?.provider).toBe("claude");
+    expect(planAuto([antigravity, codex]).vision?.provider).toBe("codex");
   });
 
   it("omits effort for models that do not list it", () => {
@@ -228,30 +229,7 @@ describe("automatic engine policy", () => {
   });
 });
 
-// Cursor Agent and Antigravity as `agent --list-models` and `agy models` report them: a mix of makers, of which only
-// the Grok models (Cursor) and the Gemini models (Antigravity) may be used.
-const agent: AutoProvider = {
-  id: "agent",
-  kind: "cli",
-  effort: true,
-  images: false,
-  models: [
-    model("gpt-5.3-codex", []),
-    model("composer-2.5", []),
-    model("claude-opus-5-thinking"),
-    model("gpt-5.6-sol"),
-    model("claude-fable-5-thinking"),
-    model("cursor-grok-4.5", all.slice(0, 3)),
-    model("grok-4.7", all.slice(0, 4)),
-    model("cursor-grok-4.6", all.slice(0, 4)),
-    model("claude-opus-5-5"),
-    model("gemini-3.8-flash", all.slice(0, 3)),
-    model("claude-sonnet-5-5"),
-    model("gemini-4-argon", all.slice(0, 3)),
-    model("gpt-5.6-luna"),
-    model("kimi-k3", []),
-  ],
-};
+// Antigravity as `agy models` reports it: a mix of makers, of which only the Gemini models may be used.
 const antigravity: AutoProvider = {
   id: "antigravity",
   kind: "cli",
@@ -272,30 +250,14 @@ const antigravity: AutoProvider = {
 
 /** provider/model per feature, in the order default chat plan lesson grading map vision cards. */
 const combinations: Record<string, string> = {
-  agent:
-    "agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7 agent/grok-4.7",
   antigravity:
     "antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-argon antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen",
-  "claude+agent":
-    "claude/claude-sonnet-5-5 agent/grok-4.7 claude/claude-opus-5-5 claude/claude-sonnet-5-5 agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 agent/grok-4.7",
-  "codex+agent":
-    "agent/grok-4.7 codex/gpt-6-luna codex/gpt-6.2-sol agent/grok-4.7 agent/grok-4.7 codex/gpt-6-luna codex/gpt-6.1-terra codex/gpt-6-luna",
   "claude+antigravity":
     "claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen claude/claude-opus-5-5 claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen",
   "codex+antigravity":
     "codex/gpt-6.1-terra antigravity/gemini-4-hydrogen codex/gpt-6.2-sol codex/gpt-6.1-terra antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen codex/gpt-6.1-terra antigravity/gemini-4-hydrogen",
-  "agent+antigravity":
-    "agent/grok-4.7 antigravity/gemini-4-hydrogen agent/grok-4.7 agent/grok-4.7 antigravity/gemini-4-hydrogen antigravity/gemini-4-hydrogen agent/grok-4.7 antigravity/gemini-4-hydrogen",
-  "claude+codex+agent":
-    "claude/claude-sonnet-5-5 codex/gpt-6-luna agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 codex/gpt-6-luna claude/claude-sonnet-5-5 codex/gpt-6-luna",
   "claude+codex+antigravity":
     "claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen codex/gpt-6.2-sol codex/gpt-6.1-terra claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen",
-  "claude+agent+antigravity":
-    "claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen",
-  "codex+agent+antigravity":
-    "agent/grok-4.7 antigravity/gemini-4-hydrogen codex/gpt-6.2-sol agent/grok-4.7 codex/gpt-6.1-terra antigravity/gemini-4-hydrogen codex/gpt-6.1-terra antigravity/gemini-4-hydrogen",
-  "claude+codex+agent+antigravity":
-    "claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen claude/claude-opus-5-5 codex/gpt-6.1-terra agent/grok-4.7 agent/grok-4.7 claude/claude-sonnet-5-5 antigravity/gemini-4-hydrogen",
 };
 const order = [
   "default",
@@ -310,17 +272,15 @@ const order = [
 const makers: Record<string, RegExp> = {
   claude: /^claude-/,
   codex: /^gpt-/,
-  agent: /^(?:cursor-)?grok-/,
   antigravity: /^gemini-/,
 };
 const byId: Record<string, AutoProvider> = {
   claude,
   codex,
-  agent,
   antigravity,
 };
 
-describe("automatic choice with Cursor Agent and Antigravity", () => {
+describe("automatic choice with Antigravity", () => {
   it.each(Object.entries(combinations))(
     "gives %s a balanced default",
     (combo, expected) => {
@@ -331,9 +291,9 @@ describe("automatic choice with Cursor Agent and Antigravity", () => {
     },
   );
 
-  it("covers every mix of the four CLIs, using each engine and only its maker's models", () => {
-    const ids = ["claude", "codex", "agent", "antigravity"];
-    for (let mask = 1; mask < 16; mask++) {
+  it("covers every mix of the three CLIs, using each engine and only its maker's models", () => {
+    const ids = ["claude", "codex", "antigravity"];
+    for (let mask = 1; mask < 8; mask++) {
       const ready = ids
         .filter((_, i) => mask & (1 << i))
         .map((id) => byId[id]!);
@@ -342,7 +302,7 @@ describe("automatic choice with Cursor Agent and Antigravity", () => {
         Object.values(plan).map((choice) => choice!.provider),
       );
       expect(Object.keys(plan).sort()).toEqual([...order].sort());
-      expect(used.size).toBe(Math.min(ready.length, 4));
+      expect(used.size).toBe(ready.length);
       for (const choice of Object.values(plan)) {
         expect(choice!.model).not.toMatch(/thinking|fable/);
         expect(choice!.model).toMatch(makers[choice!.provider]!);

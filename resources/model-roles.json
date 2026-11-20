@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-19T16:00:00Z",
+  "updatedAt": "2026-11-20T12:00:00Z",
   "tools": {
     "claude": {
       "own": "^claude-",
@@ -41,23 +41,6 @@
             "gpt-6.2-astra",
             "gpt-6-astra"
           ]
-        }
-      }
-    },
-    "agent": {
-      "own": "^(?:cursor-)?grok-\\d",
-      "roles": {
-        "fast": {
-          "effort": "low",
-          "models": ["grok-4.7", "cursor-grok-4.6", "cursor-grok-4.5"]
-        },
-        "mid": {
-          "effort": "medium",
-          "models": ["grok-4.7", "cursor-grok-4.6", "cursor-grok-4.5"]
-        },
-        "strong": {
-          "effort": "high",
-          "models": ["grok-4.7", "cursor-grok-4.6", "cursor-grok-4.5"]
         }
       }
     },
@@ -145,12 +128,6 @@
       "vision": true,
       "structured": true,
       "contextTokens": 1000000
-    },
-    {
-      "pattern": "^(?:cursor-)?grok-\\d",
-      "vision": true,
-      "structured": true,
-      "contextTokens": 256000
     },
     {
       "pattern": "^gemma3:(?:4b|12b|27b)",

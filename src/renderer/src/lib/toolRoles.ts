@@ -13,7 +13,7 @@ export const sentenceTasks: Record<Role, readonly string[]> = {
 
 /**
  * A model's name inside its own tool's row. "Claude Haiku 5.5" reads "Haiku 5.5" under Claude, which the row already
- * names. The other makers' names carry the model's family ("GPT-6 Luna", "Grok 4.7") and stay, except that the tool
+ * names. The other makers' names carry the model's family ("GPT-6 Luna", "Gemini 4 Argon") and stay, except that the tool
  * spells some GPT names with a hyphen before the model's own name ("GPT-6-Luna", "GPT-6.1-Sol") and others with a
  * space ("GPT-6.1 Terra"), so all of them are spelled with the space.
  */
