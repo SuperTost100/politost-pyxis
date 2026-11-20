@@ -2,7 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { KeyRound } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { studentEffort, taskTier } from "@shared/effort";
 import type { RequestOutput } from "@shared/ipc";
@@ -22,7 +22,7 @@ import { engineStatus, keyStatus, manualChoice } from "../../lib/engineStatus";
 import { invoke, onBroadcast } from "../../lib/ipc";
 import { engineChoiceQuery, engineFeaturesQuery, enginesQuery } from "../../lib/queries";
 import { isConnected, limitWhen, movedOrder, shownOrder, toggledUse } from "../../lib/toolOrder";
-import { roleExceptions, roleItems, roleModelName, rolesOfModel } from "../../lib/toolRoles";
+import { roleItems, roleModelName, roleSummary, roles as roleOrder, rolesOfModel, type Role } from "../../lib/toolRoles";
 import { useEngineNames } from "../../lib/useEngineNames";
 import { useStillHere } from "../../lib/useStillHere";
 import { DebugSwitch, debugQuery } from "./DebugSwitch";
@@ -80,6 +80,56 @@ export function limitText(t: TFunction, language: string, until: number, now = D
   return t("engines.limit.later", {
     day: new Intl.DateTimeFormat(language, { weekday: "long", day: "numeric", month: "long" }).format(until),
   });
+}
+
+/**
+ * The line under the list of tools: each tool uses only its maker's models, and the roles Pyxis picks among, with the
+ * tasks that run in each. Built from the roles the connected tools really give each task, so it is true of every tool
+ * shown: a task they agree on is listed under its role, and one they do not (the chat is balanced on Claude and
+ * ChatGPT and fast on Gemini) is said apart with the tools of each role.
+ */
+function RolesNote({ tools }: { tools: ReadonlyArray<{ name: string; tasks: Partial<Record<string, Role>> }> }) {
+  const { t, i18n } = useTranslation();
+  const list = (items: string[]) =>
+    new Intl.ListFormat(i18n.language.startsWith("it") ? "it" : "en-GB", { style: "long", type: "conjunction" }).format(items);
+  const word = (role: Role) => t(`engines.roles.${role}`).toLowerCase();
+  const { agreed, split } = roleSummary(tools);
+  const parts = roleOrder.flatMap((role) =>
+    agreed[role].length
+      ? [
+          <span key={role}>
+            <b>{word(role)}</b> {t("engines.roles.for", { tasks: list(agreed[role].map((task) => t(`engines.roles.task.${task}`))) })}
+          </span>,
+        ]
+      : [],
+  );
+  return (
+    <p className="small engines-hint engines-roles-note">
+      {t("engines.roles.lead")}{" "}
+      {parts.map((part, index) => (
+        <span key={index}>
+          {index ? ", " : ""}
+          {part}
+        </span>
+      ))}
+      .
+      {split.map((item) => (
+        <span key={item.task}>
+          {" "}
+          {item.roles
+            .map((entry, index) =>
+              t(index ? "engines.roles.splitNext" : "engines.roles.splitFirst", {
+                task: t(`engines.roles.task.${item.task}`),
+                role: word(entry.role),
+                tools: list(entry.tools),
+              }),
+            )
+            .join(", ")}
+          .
+        </span>
+      ))}
+    </p>
+  );
 }
 
 /** Order in which tasks are named in the plain-words summary. */
@@ -580,15 +630,6 @@ export function EnginesPanel() {
       notes: [
         ...(limitedNow ? [limitText(t, i18n.language, row.limitedUntil!)] : []),
         ...(refused.length ? [t("engines.notIncluded", { count: refused.length, models: refused.join(", ") })] : []),
-        // A task the model file moves to another role on this tool makes the sentence under the list untrue for it.
-        ...(roleData
-          ? roleExceptions(roleData.tasks as Record<string, "fast" | "mid" | "strong">).map(({ feature, role }) =>
-              t("engines.roles.exception", {
-                task: t(`engines.feature.${feature}`),
-                role: t(`engines.roles.${role}`).toLowerCase(),
-              }),
-            )
-          : []),
       ],
       position: order && using ? place : undefined,
       state: stateOf(row),
@@ -678,6 +719,12 @@ export function EnginesPanel() {
     }).format(used);
     return t("engines.toConnect.uses", { models: list });
   }
+  // The tools the sentence under the list speaks of: those in use, or all the connected ones when none is.
+  const speaking = connected.filter(inUse).length ? connected.filter(inUse) : connected;
+  const rolesNoteTools = speaking.map((row) => ({
+    name: row.name,
+    tasks: (rolesByProvider[row.id]?.tasks ?? {}) as Partial<Record<string, Role>>,
+  }));
   const connectedTitle = useId();
   const toConnectTitle = useId();
   const keyRowId = useId();
@@ -705,11 +752,7 @@ export function EnginesPanel() {
         ) : overview.isSuccess ? (
           <p className="engines-empty">{t("engines.connected.none")}</p>
         ) : null}
-        {connected.length > 0 ? (
-          <p className="small engines-hint engines-roles-note">
-            <Trans i18nKey="engines.roles.note" components={{ b: <b /> }} />
-          </p>
-        ) : null}
+        {connected.length > 0 ? <RolesNote tools={rolesNoteTools} /> : null}
         <p className="visually-hidden" role="status">
           {said}
         </p>

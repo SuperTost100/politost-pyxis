@@ -66,15 +66,23 @@ export function EngineTasks({
         <h3 className="px-ctl-group-title" id={headingId}>
           {t("engines.perFeature")}
         </h3>
+        {/* One state, one label: with something set by hand the count says it and the button undoes it; with nothing set
+            there is only the statement and no control to press. */}
         <span className="small engines-hint" role="status">
-          {pinned > 0 ? t("engines.pinnedCount", { count: pinned }) : t("engines.allAuto")}
+          {pinned > 0
+            ? t("engines.pinnedCount", { count: pinned })
+            : customised
+              ? t("engines.effortsPicked")
+              : t("engines.allAuto")}
         </span>
       </div>
       <div className="engines-pinhead">
         <p className="small engines-hint">{t("engines.perFeatureHint")}</p>
-        <Button variant="secondary" size="sm" disabled={busy || !customised} onClick={() => onAutomatic()}>
-          {t("engines.backToAuto")}
-        </Button>
+        {customised ? (
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => onAutomatic()}>
+            {t("engines.backToAuto")}
+          </Button>
+        ) : null}
       </div>
       <div className="engines-feature-table">
         <div className="engines-feature-head small" aria-hidden="true">
@@ -108,7 +116,10 @@ export function EngineTasks({
             <div className="engines-feature-row" key={feature}>
               <div className="engines-feature-work">
                 <label htmlFor={`engine-${feature}`}>{t(`engines.feature.${feature}`)}</label>
-                <small className="small">{t(`engines.roles.${roleOf(selection?.provider, feature)}`)}</small>
+                {/* A pinned model runs whatever the student chose, not a role: the label says it is pinned. */}
+                <small className="small">
+                  {isAuto ? t(`engines.roles.${roleOf(selection?.provider, feature)}`) : t("engines.pinnedWork")}
+                </small>
               </div>
               <div className="engines-feature-model">
                 <select

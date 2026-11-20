@@ -112,7 +112,8 @@ test("ENG-10 tool details, the key dialog and the secure key-storage notice in b
               `${language}, ${name}`,
             ).toHaveCount(3);
           }
-          // Every function starts automatic. Nothing is pinned on a fresh profile.
+          // Every function starts automatic. Nothing is pinned on a fresh profile, so the page says so and offers no
+          // control to undo what was never done.
           await expect(
             page.getByRole("button", {
               name:
@@ -120,7 +121,10 @@ test("ENG-10 tool details, the key dialog and the secure key-storage notice in b
                   ? "Everything back to Automatic"
                   : "Torna tutto ad Automatico",
             }),
-          ).toBeDisabled();
+          ).toHaveCount(0);
+          await expect(
+            page.getByText(language === "en" ? "Everything automatic" : "Tutto automatico"),
+          ).toBeVisible();
           // A tool's details open from its menu, on the dots as on a right-click.
           await choose(page, "Claude", language === "en" ? "Details" : "Dettagli");
           const details = page.getByRole("dialog", { name: "Claude", exact: true });
@@ -302,7 +306,8 @@ test("Automatic engines: the page says it in one sentence, and Advanced can pin 
     await expect.poll(() => picked(chat)).toMatch(/^Automatic · today \S/);
     await expect(chat).not.toHaveClass(/is-pinned/);
     await expect(page.getByText("Everything automatic")).toBeVisible();
-    await expect(back).toBeDisabled();
+    // Nothing is pinned any more: the statement stays and the button is gone, not disabled.
+    await expect(back).toHaveCount(0);
     // Back to automatic also returns the efforts to the tasks' own levels.
     await expect.poll(() => picked(effortOf("Exams"))).toBe("Automatic · High");
   } finally {
@@ -611,17 +616,16 @@ test("Settings: a tool's row says its three roles with the model each one runs, 
               .color,
           }));
         expect(colours.role).not.toBe(colours.model);
-        for (const id of ["claude", "codex"])
-          await expect(tool(page, id)).toContainText(
-            language === "en" ? "Here “Chat” uses the balanced model." : "Qui «Chat» usa il modello equilibrato.",
-          );
-        // One line under the list says which role does what, and says nothing about when the list was updated.
+        // One line under the list says which role does what, true of both tools: the chat is balanced on Claude and ChatGPT,
+        // so it is listed under balanced, and the rows add no line of their own about it. It says nothing about when the
+        // list was updated.
         const note = page.locator(".engines-roles-note");
         await expect(note).toHaveText(
           language === "en"
-            ? "Each tool uses only its maker's models, and Pyxis picks among three: fast for chat, flashcards and maps, balanced for lessons and grading, strong for the study plan."
-            : "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: veloce per chat, flashcard e mappe, equilibrato per lezioni e correzione, forte per il piano di studio.",
+            ? "Each tool uses only its maker's models, and Pyxis picks among three: fast for flashcards and maps, balanced for chat, lessons and grading, strong for the study plan."
+            : "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: veloce per flashcard e mappe, equilibrato per chat, lezioni e correzione, forte per il piano di studio.",
         );
+        for (const id of ["claude", "codex"]) await expect(tool(page, id)).not.toContainText(/Qui «Chat»|Here “Chat”/);
         await expect(
           page.getByText(/last updated|aggiornato oggi|Elenco dei modelli/i),
         ).toHaveCount(0);
@@ -680,6 +684,11 @@ test("Settings: a tool's row says its three roles with the model each one runs, 
         });
         await expect(chat).toHaveClass(/is-pinned/);
         await expect(pinned).toBeVisible();
+        // The label under "Chat" says it is pinned, not a role the pinned model does not have; the other kinds of work keep theirs.
+        await expect(page.locator(".engines-feature-work small").first()).toHaveText(
+          language === "en" ? "Pinned" : "Fissato",
+        );
+        await expect(page.locator(".engines-feature-work small").nth(1)).toHaveText(words.fast);
         await expectNoAxeViolations(page, {
           tags: ["wcag2a", "wcag2aa", "wcag21aa"],
         });
@@ -701,6 +710,13 @@ test("Settings: a tool's row says its three roles with the model each one runs, 
             language === "en" ? "Everything automatic" : "Tutto automatico",
           ),
         ).toBeVisible();
+        // The role is back under "Chat", and there is no control left to press.
+        await expect(page.locator(".engines-feature-work small").first()).toHaveText(words.mid);
+        await expect(
+          page.getByRole("button", {
+            name: language === "en" ? "Everything back to Automatic" : "Torna tutto ad Automatico",
+          }),
+        ).toHaveCount(0);
       }
   } finally {
     await app.close();
@@ -889,5 +905,46 @@ test("Settings: a tool signed in or out in a terminal while the page is open sho
     await app?.close();
     removeTestFolder(userData);
     rmSync(bin, { recursive: true, force: true });
+  }
+});
+
+test("Settings: the line under the list says what is true of every tool, with the chat's role told apart when the tools differ", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-split-"));
+  const tools = standInTools(["claude", "codex", "antigravity"]);
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchPyxis({ userData, env: tools.env });
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("engines.acknowledge", { providers: ["claude", "codex", "antigravity"] }));
+    for (const language of ["en", "it"] as const) {
+      await page.evaluate((lang) => {
+        localStorage.setItem("pyxis.lang", lang);
+        location.hash = "/settings/engines";
+      }, language);
+      await page.reload();
+      await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(3, { timeout: 30000 });
+      // The chat is balanced on Claude and ChatGPT and fast on Gemini: it is not listed under one role, it is said apart.
+      await expect(page.locator(".engines-roles-note")).toHaveText(
+        language === "en"
+          ? "Each tool uses only its maker's models, and Pyxis picks among three: fast for flashcards and maps, balanced for lessons and grading, strong for the study plan. For chat: the balanced model of Claude and ChatGPT, the fast one of Gemini."
+          : "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: veloce per flashcard e mappe, equilibrato per lezioni e correzione, forte per il piano di studio. Per chat: il modello equilibrato di Claude e ChatGPT, quello veloce di Gemini.",
+        { timeout: 30000 },
+      );
+      // The word under "Chat" in Avanzate is the role on the tool that runs it today: the automatic choice gives the chat
+      // to Gemini first, where it is the fast role, and the line under the list says the other tools run it balanced.
+      const chatTool = await page.evaluate(async () => ((await window.pyxis.invoke("engines.features", {})) as Record<string, { provider: string }>).chat?.provider);
+      expect(chatTool).toBe("antigravity");
+      await expect(page.locator(".engines-feature-work small").first()).toHaveText(language === "en" ? "Fast" : "Veloce");
+      await saveShot(page, `engines-roles-note-${language}.png`, { fullPage: true });
+    }
+  } finally {
+    await app?.close();
+    removeTestFolder(userData);
+    rmSync(tools.bin, { recursive: true, force: true });
   }
 });

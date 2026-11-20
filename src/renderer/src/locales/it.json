@@ -2817,7 +2817,8 @@
         "later": "Aspetta fino a {{day}}"
       },
       "waiting": "Riparto da sola quando tornano le richieste di {{tool}}, {{when}}",
-      "stopWaiting": "Smetti di aspettare"
+      "stopWaiting": "Smetti di aspettare",
+      "waitingRetired": "Riparto da sola {{when}}, con un altro strumento: Pyxis non usa più {{tool}}."
     },
     "waiting_one": "{{count}} in attesa",
     "waiting_other": "{{count}} in attesa",
@@ -3277,7 +3278,8 @@
       "disclosure-required": "Prima conferma cosa riceve questo strumento, nelle Impostazioni, Strumenti AI.",
       "stream-truncated": "Lo strumento si è fermato prima di finire la risposta.",
       "signedOutNamed": "{{name}} ha rifiutato l'accesso, che probabilmente è scaduto. Finché non accedi di nuovo, Pyxis non lo usa.",
-      "modelNotIncludedNamed": "Il tuo abbonamento a {{name}} non include il modello che serviva qui. Scegli un altro modello o un altro strumento nelle Impostazioni."
+      "modelNotIncludedNamed": "Il tuo abbonamento a {{name}} non include il modello che serviva qui. Scegli un altro modello o un altro strumento nelle Impostazioni.",
+      "retiredTool": "Questa richiesta era affidata a {{name}}, che Pyxis non usa più. Riprova e la farà un altro strumento."
     },
     "feature": {
       "default": "Strumento predefinito",
@@ -3447,13 +3449,25 @@
       "fast": "Veloce",
       "mid": "Equilibrato",
       "strong": "Forte",
-      "note": "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: <b>veloce</b> per chat, flashcard e mappe, <b>equilibrato</b> per lezioni e correzione, <b>forte</b> per il piano di studio.",
-      "exception": "Qui «{{task}}» usa il modello {{role}}."
+      "lead": "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre:",
+      "for": "per {{tasks}}",
+      "splitFirst": "Per {{task}}: il modello {{role}} di {{tools}}",
+      "splitNext": "quello {{role}} di {{tools}}",
+      "task": {
+        "chat": "chat",
+        "cards": "flashcard",
+        "map": "mappe",
+        "lesson": "lezioni",
+        "grading": "correzione",
+        "plan": "il piano di studio"
+      }
     },
     "autoToday": "Automatico · oggi {{model}}",
     "pinnedCount_one": "{{count}} fissato da te",
     "pinnedCount_other": "{{count}} fissati da te",
-    "allAuto": "Tutto automatico"
+    "allAuto": "Tutto automatico",
+    "pinnedWork": "Fissato",
+    "effortsPicked": "Ragionamento scelto da te"
   },
   "graph": {
     "title": "Grafico",
