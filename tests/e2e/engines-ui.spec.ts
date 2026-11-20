@@ -803,3 +803,47 @@ test("Settings: a workspace whose only allowed tool was Cursor keeps Claude and 
     rmSync(tools.bin, { recursive: true, force: true });
   }
 });
+
+test("Settings: a tool signed in or out in a terminal while the page is open shows up on its own, with no click and no reload", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-live-"));
+  const bin = mkdtempSync(join(tmpdir(), "pyxis-engine-bin-"));
+  // Claude Code's own check follows a file: the student signs in or out in a terminal, here by creating or removing it.
+  const signedIn = join(bin, "signed-in");
+  const claude = join(bin, "claude");
+  writeFileSync(
+    claude,
+    `#!/bin/sh\ncase "$1" in --version) echo "2.1.0";; auth) if [ -f "${signedIn}" ]; then echo '{"loggedIn":true,"authMethod":"claude.ai"}'; else echo '{"loggedIn":false}'; fi;; *) exit 1;; esac\n`,
+  );
+  chmodSync(claude, 0o755);
+  const env = { HOME: bin, PATH: "/usr/bin:/bin", CLI_FUNNEL_NO_SHELL_PATH: "1", CLI_FUNNEL_CLAUDE_BIN: claude };
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchPyxis({ userData, env });
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(async () => {
+      await window.pyxis.invoke("engines.acknowledge", { providers: ["claude"] });
+      localStorage.setItem("pyxis.lang", "en");
+      location.hash = "/settings/engines";
+    });
+    await page.reload();
+    // Nothing is signed in: the page says so.
+    await expect(page.getByText("No tool is connected. Connect one below to start.")).toBeVisible({ timeout: 30000 });
+    // The student signs in from a terminal. The window never loses focus and nothing is clicked.
+    writeFileSync(signedIn, "");
+    await expect(tool(page, "claude")).toBeVisible({ timeout: 45000 });
+    await expect(tool(page, "claude").locator(".engines-tool-state")).toHaveText("Connected");
+    // And out again: the row leaves the list on its own.
+    rmSync(signedIn);
+    await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(0, { timeout: 45000 });
+    await expect(page.getByText("No tool is connected. Connect one below to start.")).toBeVisible();
+  } finally {
+    await app?.close();
+    removeTestFolder(userData);
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
