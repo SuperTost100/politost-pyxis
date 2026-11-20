@@ -421,7 +421,8 @@ export function ReaderEnd({
           </Button>
         )}
         {done && hasNext ? (
-          <Button shape="round" onClick={onExam}>
+          // While Continue opens the next step, the way to the exam waits, so the two do not both navigate.
+          <Button shape="round" disabled={busy === "continue"} onClick={onExam}>
             {t("places.backToExam")}
           </Button>
         ) : null}

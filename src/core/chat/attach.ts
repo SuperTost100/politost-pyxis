@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { hasBlob, putBlob, readBlob, removeBlob } from "../blobs";
 import { base64, sha256 } from "../sources/quality";
@@ -54,9 +54,12 @@ export type PreparedFiles = {
 export type StagedBlob = { sha: string; bytes: Uint8Array; mime: string; ext: string };
 type HeldPhoto = TakenFiles["photos"][number];
 
-/** Turns a HEIC file into PNG pixels, in the extract worker. */
-const decodeInWorker = (path: string, signal?: AbortSignal): Promise<Uint8Array> =>
-  runSourceWorker<Uint8Array>("extract-worker", { path, ext: extname(path).toLowerCase(), mode: "pixels" }, signal);
+/**
+ * Turns a held HEIC photo into PNG pixels, in the extract worker. The worker decodes by extension, and a stored blob's file
+ * has none, so the photo's own extension goes with it.
+ */
+const decodeInWorker = (ext: string) => (path: string, signal?: AbortSignal): Promise<Uint8Array> =>
+  runSourceWorker<Uint8Array>("extract-worker", { path, ext: ext.toLowerCase(), mode: "pixels" }, signal);
 
 /**
  * The stored and sent forms of a photo that was fitted when it was attached. `read` says whether the model that answers
@@ -66,7 +69,7 @@ export async function stagePhoto(
   photo: HeldPhoto,
   read: boolean,
   signal?: AbortSignal,
-  decodeHeic: (path: string, signal?: AbortSignal) => Promise<Uint8Array> = decodeInWorker,
+  decodeHeic: (path: string, signal?: AbortSignal) => Promise<Uint8Array> = decodeInWorker(photo.ext),
 ): Promise<{ blobs: StagedBlob[]; image: PreparedFiles["images"][number] }> {
   const bytes = new Uint8Array(await readFile(photo.file));
   const heic = isHeicExt(photo.ext);
@@ -115,7 +118,7 @@ export async function recognisePhoto(
   workspace: string,
   recognize: (bytes: Uint8Array, cachePath: string, signal?: AbortSignal) => Promise<string> = ocrBytes,
   signal?: AbortSignal,
-  decodeHeic: (path: string, signal?: AbortSignal) => Promise<Uint8Array> = decodeInWorker,
+  decodeHeic: (path: string, signal?: AbortSignal) => Promise<Uint8Array> = decodeInWorker(photo.ext),
 ): Promise<string> {
   const pixels = isHeicExt(photo.ext) ? await decodeHeic(photo.file, signal) : new Uint8Array(await readFile(photo.file));
   try {

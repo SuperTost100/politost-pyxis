@@ -1,4 +1,5 @@
 // The rules of tests/fixtures/chat-conversations.json, applied to a reply. Pure, so a unit test can run them.
+import { stripCheckFences } from "../src/shared/math-check";
 import { mapFigureBlocks } from "../src/shared/smart-text";
 
 export type Conversation = {
@@ -7,7 +8,7 @@ export type Conversation = {
   history: Array<{ role: "user" | "assistant"; text: string }>;
   message: string;
   rule: string;
-  /** Patterns tested on what the student sees: the reply without its fenced blocks (a `check` block never shows). */
+  /** Patterns tested on what the student sees: the reply without the blocks the chat hides (`check` blocks, figure blocks). */
   must?: string[];
   mustNot?: string[];
   /** Patterns tested on the raw reply, for what forbids a fence. */
@@ -50,8 +51,9 @@ export function judge(conv: Conversation, reply: string, options: { followups?: 
     .split("\n")
     .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").trim())
     .filter(Boolean);
-  // What the student sees: a `check` block carries claims for Pyxis, and a figure block is drawn, so neither is text.
-  const seen = body.replace(/```[\s\S]*?(?:```|$)/g, "").trim();
+  // What the student sees: a `check` block carries claims for Pyxis, and a figure block is drawn, so neither is text. Any
+  // other fence shows in the chat as code, so what it holds counts.
+  const seen = mapFigureBlocks(stripCheckFences(body), () => "").trim();
   const forms = formulaForms(seen);
   const fails: string[] = [];
   for (const pattern of conv.rawMustNot ?? []) if (new RegExp(pattern).test(body)) fails.push(`has ${pattern}`);

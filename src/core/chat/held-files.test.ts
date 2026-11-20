@@ -1,6 +1,6 @@
 import { closeSync, ftruncateSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { hasBlob } from "../blobs";
 import { openDatabase } from "../db/connection";
 import type { AttachmentView } from "../../shared/ipc";
@@ -12,9 +12,27 @@ import { tempDir } from "../test-temp";
 import { createHeldFiles, heldFiles, setHeldFiles } from "./held-files";
 import { chatHandlers } from "./handlers";
 import { createRunner } from "../jobs/runner";
-import { registerSourceJobs } from "../sources/jobs";
+import { enqueueSourceFile, registerSourceJobs } from "../sources/jobs";
 import { heldFilesFor } from "./test-attach";
 import { heldMark } from "../sources/jobs";
+
+vi.mock("../sources/jobs", async (original) => {
+  const actual = await original<typeof import("../sources/jobs")>();
+  return { ...actual, enqueueSourceFile: vi.fn(actual.enqueueSourceFile) };
+});
+
+/** Holds the next registration of a document until `release`, then runs it, or fails it with `fail`. */
+function holdRegistration(fail?: Error) {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const run = vi.mocked(enqueueSourceFile).getMockImplementation()!;
+  vi.mocked(enqueueSourceFile).mockImplementationOnce(async (...args) => {
+    await gate;
+    if (fail) throw fail;
+    return run(...args);
+  });
+  return release;
+}
 
 const opened: Array<{ close: () => void }> = [];
 afterEach(() => {
@@ -701,18 +719,36 @@ describe("a held document that the student cancelled is a terminal state", () =>
 describe("an import that finishes after its draft was removed", () => {
   it("leaves no source, stored file or job behind", async () => {
     const { files, db, workspace, sources } = setup();
-    // A file big enough that its registration is still reading it when the draft goes.
     const big = join(workspace, "grande.txt");
-    writeFileSync(big, "Il calore si trasmette per conduzione. ".repeat(1_500_000));
+    writeFileSync(big, "Il calore si trasmette per conduzione.");
+    // The registration is held until the draft has gone.
+    const release = holdRegistration();
     const picked = files.held.attach(big, "chat-a");
     await until(() => db.prepare(`SELECT COUNT(*) FROM held_files`).pluck().get() === 1);
     files.held.discardDraft("chat-a");
+    release();
     const view = await picked;
     expect(view).toMatchObject({ state: "failed", error: "cancelled" });
     await until(() => sources().length === 0);
     expect(db.prepare(`SELECT COUNT(*) FROM held_files`).pluck().get()).toBe(0);
     expect(db.prepare(`SELECT COUNT(*) FROM jobs WHERE dismissed = 0 AND state IN ('queued', 'running')`).pluck().get()).toBe(0);
     expect(hasBlob(workspace, sha256(readFileSync(big)))).toBe(false);
+  });
+});
+
+describe("a registration that fails after its draft was removed", () => {
+  it("is cancelled, and leaves no failed chip or held row for the draft that is gone", async () => {
+    const { files, db, write, events } = setup();
+    const release = holdRegistration(new Error("disk full"));
+    const picked = files.held.attach(write("appunti.txt", "Il calore si trasmette per conduzione."), "chat-a");
+    await until(() => db.prepare(`SELECT COUNT(*) FROM held_files`).pluck().get() === 1);
+    files.held.discardDraft("chat-a");
+    release();
+    const view = await picked;
+    expect(view).toMatchObject({ state: "failed", error: "cancelled" });
+    expect(db.prepare(`SELECT COUNT(*) FROM held_files`).pluck().get()).toBe(0);
+    expect(files.held.list([view.id])).toEqual([]);
+    expect(events.filter((event) => event.id === view.id && event.state === "failed")).toEqual([]);
   });
 });
 

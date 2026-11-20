@@ -120,7 +120,7 @@
         "[Rr]ight|[Cc]orrect|[Ee]xactly|[Yy]es|[Gg]iust|[Ee]satt|[Cc]orrett|[Ss]ì"
       ],
       "mustNot": [
-        "[^.!?\\n]*(f ?\\( ?2 ?\\)|value of x|valore di x)[^.!?\\n]*\\?"
+        "(?:[Ww]hat(?: is|'s)|[Ww]hich|[Ff]ind|[Cc]ompute|[Qq]uanto (?:vale|fa)|[Qq]uale|[Cc]alcola|[Tt]rova)[^.!?\\n]*(f ?\\( ?2 ?\\)|value of x|valore di x)[^.!?\\n]*\\?"
       ]
     },
     {

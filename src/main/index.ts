@@ -1252,9 +1252,9 @@ function requireMainSender(event: IpcMainInvokeEvent, code: string): void {
 
 // A backup, restore, move or wipe stopped core on purpose and starts it again itself. A core started now could open the
 // workspace mid-swap, and the operation's own start would then leave two cores on one database. A wipe that could not
-// put the data back keeps core stopped too.
+// put the data back keeps core stopped too, and so does a quit, which nothing would stop a new core in.
 const retryCore = createCoreRetry({
-  blocked: () => workspaceBusy || holdCore,
+  blocked: () => workspaceBusy || holdCore || quitting,
   current: () => coreChild,
   start: () => {
     coreRestartFailures = 0;

@@ -206,6 +206,7 @@ test("after a quit, a file that was attached and never sent is gone, and one a m
   test.setTimeout(180000);
   const { app, page, userData } = await launch();
   const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-files-"));
+  let running = true;
   try {
     const sentNote = join(dir, "inviato.txt");
     const unsentNote = join(dir, "mai-inviato.txt");
@@ -223,6 +224,7 @@ test("after a quit, a file that was attached and never sent is gone, and one a m
     await expect(page.locator(".ask-attachments li").filter({ hasText: "mai-inviato.txt" })).toBeVisible();
     await expect.poll(() => rows(userData, "SELECT id FROM sources WHERE library = 0").length).toBe(2);
     await app.close();
+    running = false;
 
     const reopened = await launchPyxis({ userData, env: { PYXIS_E2E_REPLY: REPLY } });
     try {
@@ -236,6 +238,8 @@ test("after a quit, a file that was attached and never sent is gone, and one a m
       await reopened.close();
     }
   } finally {
+    // A failure before the quit leaves the first window open: it closes before its folder goes.
+    if (running) await app.close();
     removeTestFolder(userData);
     rmSync(dir, { recursive: true, force: true });
   }
@@ -277,6 +281,43 @@ function sparse(path: string, megabytes: number) {
   closeSync(fd);
 }
 
+/**
+ * Holds core's registration of picked files while it is closed: `chats.attach` waits until the gate file exists, so a spec
+ * decides when the files still being attached are applied, whatever the machine's speed. Open at the start.
+ */
+function attachGate(dir: string) {
+  const file = join(dir, "attach-open");
+  writeFileSync(file, "");
+  return {
+    hold: `chats.attach=until:${file}`,
+    close: () => rmSync(file, { force: true }),
+    open: () => writeFileSync(file, ""),
+  };
+}
+
+/**
+ * Picks the first file and waits for its chip, then closes the gate and picks the others, which stay being attached until
+ * the gate opens: a pick that Enter or Stop catches half way.
+ */
+async function pickHalfWay(
+  app: Awaited<ReturnType<typeof launch>>["app"],
+  page: Page,
+  gate: ReturnType<typeof attachGate>,
+  paths: string[],
+) {
+  const choose = (selected: string[]) =>
+    app.evaluate(({ dialog }, files) => {
+      delete process.env["PYXIS_E2E_FILE"];
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: files });
+    }, selected);
+  await choose(paths.slice(0, 1));
+  await attach(page);
+  await expect(page.locator(".ask-attachments li")).toHaveCount(1, { timeout: 30000 });
+  gate.close();
+  await choose(paths.slice(1));
+  await attach(page);
+}
+
 test("a file being attached when the student moves to another chat stays in the draft it was picked for", async () => {
   test.setTimeout(120000);
   const { app, page, userData } = await launch();
@@ -309,26 +350,37 @@ test("a file being attached when the student moves to another chat stays in the 
 
 test("Enter pressed while several picked files are still being attached sends the question with all of them", async () => {
   test.setTimeout(120000);
-  const { app, page, userData } = await launch();
   const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-files-"));
+  const gate = attachGate(dir);
+  // The question is held too, so the page can be seen with the question sent and not yet stored.
+  const asked = join(dir, "asked");
+  const { app, page, userData } = await launch({ PYXIS_E2E_READ_DELAY: `${gate.hold},chats.ask=until:${asked}` });
   try {
     const paths = ["uno.pdf", "due.pdf", "tre.pdf"].map((name) => join(dir, name));
-    for (const path of paths) sparse(path, 150);
-    await app.evaluate(({ dialog }, selected) => {
-      delete process.env["PYXIS_E2E_FILE"];
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: selected });
-    }, paths);
+    for (const path of paths) writeFileSync(path, "%PDF-1.7 ");
     const box = page.getByRole("textbox", { name: "Messaggio" });
     await box.fill("Riassumi");
-    await attach(page);
+    await pickHalfWay(app, page, gate, paths);
     // The first file is in the composer and the others are still being registered when Enter is pressed.
-    await expect(page.locator(".ask-attachments li")).toHaveCount(1, { timeout: 30000 });
     await box.press("Enter");
+    await expect(page.getByRole("button", { name: "Interrompi", exact: true })).toBeVisible();
+    gate.open();
+    // The question shown while it goes lists every file it carries, the ones that were still being attached too.
+    const sent = page.locator(".ask-sent-files");
+    for (const name of ["uno.pdf", "due.pdf", "tre.pdf"]) await expect(sent.getByText(name)).toBeVisible({ timeout: 30000 });
+    expect(rows(userData, "SELECT id FROM messages")).toEqual([]);
+    writeFileSync(asked, "");
     await expect(page).toHaveURL(/#\/ask\/.+/, { timeout: 60000 });
     // The files are not real PDFs, so each one is sent without and named. All three being named means all three went with
     // the question: it waited for the pick to finish registering.
-    for (const name of ["uno.pdf", "due.pdf", "tre.pdf"])
-      await expect(page.getByText(`Ho mandato la domanda senza ${name}.`)).toBeVisible({ timeout: 60000 });
+    const notices = ["uno.pdf", "due.pdf", "tre.pdf"].map((name) => page.getByText(`Ho mandato la domanda senza ${name}.`));
+    for (const notice of notices) await expect(notice).toBeVisible({ timeout: 60000 });
+    // Closing one notice leaves the others where they are: the second is the same element, not one made again.
+    const notice = (name: string) => page.locator(".px-notice", { hasText: `senza ${name}.` });
+    const second = await notice("due.pdf").elementHandle();
+    await notice("uno.pdf").getByRole("button").last().click();
+    await expect(notice("uno.pdf")).toHaveCount(0);
+    expect(await second!.evaluate((node) => node.isConnected)).toBe(true);
     // Nothing is left behind for the next draft.
     await expect(page.locator(".ask-attachments")).toHaveCount(0);
   } finally {
@@ -340,22 +392,18 @@ test("Enter pressed while several picked files are still being attached sends th
 
 test("a send that waits for files belongs to its draft: the composer works and stops, and another chat's draft is left alone", async () => {
   test.setTimeout(120000);
-  const { app, page, userData } = await launch();
   const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-files-"));
+  const gate = attachGate(dir);
+  const { app, page, userData } = await launch({ PYXIS_E2E_READ_DELAY: gate.hold });
   try {
     const paths = ["uno.pdf", "due.pdf", "tre.pdf"].map((name) => join(dir, name));
-    for (const path of paths) sparse(path, 150);
+    for (const path of paths) writeFileSync(path, "%PDF-1.7 ");
     const other = await page.evaluate(() =>
       window.pyxis.invoke("chats.seed", { kind: "passage", title: "Altra chat", body: "Un passaggio." }),
     );
-    await app.evaluate(({ dialog }, selected) => {
-      delete process.env["PYXIS_E2E_FILE"];
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: selected });
-    }, paths);
     const box = page.getByRole("textbox", { name: "Messaggio" });
     await box.fill("Riassumi");
-    await attach(page);
-    await expect(page.locator(".ask-attachments li")).toHaveCount(1, { timeout: 30000 });
+    await pickHalfWay(app, page, gate, paths);
     await box.press("Enter");
     // While the send waits for the pick, the composer shows it working, with a way to stop, and is not editable.
     const stop = page.getByRole("button", { name: "Interrompi", exact: true });
@@ -367,6 +415,8 @@ test("a send that waits for files belongs to its draft: the composer works and s
     }, other.chatId);
     await expect(page).toHaveURL(new RegExp(`#/ask/${other.chatId}`));
     await box.fill("Una bozza di questa chat");
+    // The pick finishes only now, with the student in the other chat.
+    gate.open();
     await expect.poll(() => rows(userData, "SELECT id FROM chats").length, { timeout: 60000 }).toBe(2);
     await expect(box).toHaveText("Una bozza di questa chat");
     expect(await page.evaluate((id) => sessionStorage.getItem(`pyxis-draft:${id}`), other.chatId)).toBe("Una bozza di questa chat");
@@ -379,24 +429,22 @@ test("a send that waits for files belongs to its draft: the composer works and s
 
 test("Stop while a send waits for its files puts the question and the chips back", async () => {
   test.setTimeout(120000);
-  const { app, page, userData } = await launch();
   const dir = mkdtempSync(join(tmpdir(), "pyxis-chat-files-"));
+  const gate = attachGate(dir);
+  const { app, page, userData } = await launch({ PYXIS_E2E_READ_DELAY: gate.hold });
   try {
     const paths = ["uno.pdf", "due.pdf", "tre.pdf"].map((name) => join(dir, name));
-    for (const path of paths) sparse(path, 150);
-    await app.evaluate(({ dialog }, selected) => {
-      delete process.env["PYXIS_E2E_FILE"];
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: selected });
-    }, paths);
+    for (const path of paths) writeFileSync(path, "%PDF-1.7 ");
     const box = page.getByRole("textbox", { name: "Messaggio" });
     await box.fill("Riassumi");
-    await attach(page);
-    await expect(page.locator(".ask-attachments li")).toHaveCount(1, { timeout: 30000 });
+    await pickHalfWay(app, page, gate, paths);
     await box.press("Enter");
     const stop = page.getByRole("button", { name: "Interrompi", exact: true });
     await stop.click();
     await expect(stop).toHaveCount(0);
     await expect(box).toHaveText("Riassumi");
+    // The files still being attached finish after the stop and join the chips.
+    gate.open();
     await expect(page.locator(".ask-attachments li")).toHaveCount(3, { timeout: 60000 });
     expect(rows(userData, "SELECT id FROM chats")).toEqual([]);
   } finally {
