@@ -39,7 +39,7 @@ import { listImportable, MAX_FOLDER_FILES } from "./folder";
 import { checkLinkPath, linkedFolders } from "./linked";
 import { linkedFile } from "./linked-file";
 import { panelPage, panelSource, readOriginal } from "./panel";
-import { markForSorting, moveSource, registerLibrarySort, sortingNow, sortView, startLibrarySort } from "./library-subjects";
+import { markForSorting, moveSource, registerLibrarySort, sortEnded, sortingNow, sortView, startLibrarySort } from "./library-subjects";
 import { watchFolder } from "./linked-watch";
 import type { LinkMode } from "../../shared/linked-folders";
 import type { FileKind } from "../../shared/file-kind";
@@ -545,6 +545,7 @@ export function sourceHandlers(
          AND json_extract(params_json, '$.sourceId') = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
       );
       const sorting = sortingNow(db);
+      const sortEnds = sortEnded(db);
       return listSources(db).map(({ subjectSort, ...source }) => {
         // A missing original is shown without an invented size.
         const bytes = source.blobSha ? blobSize(workspace, source.blobSha) : null;
@@ -563,7 +564,7 @@ export function sourceHandlers(
             : undefined;
         return {
           ...source,
-          sort: sortView(subjectSort, source.id, sorting),
+          sort: sortView(subjectSort, source.id, sorting, sortEnds),
           bytes,
           ...(off > 0 ? { syllabusOff: off } : {}),
           ...(failed ? { error: failed.error, errorJobId: failed.id } : {}),

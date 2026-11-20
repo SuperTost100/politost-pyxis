@@ -12,7 +12,7 @@ export function coverColour(subjectId: string): number {
   return ((hash >>> 0) % COVER_COLOURS) + 1;
 }
 
-type SortState = "working" | "stopped" | "created" | "unsure" | "no-ai" | null;
+type SortState = "working" | "stopped" | "failed" | "interrupted" | "created" | "unsure" | "no-ai" | null;
 
 /**
  * The row of "Da sistemare" whose choice takes focus once `movedId` has left it: the nearest row below that has a
@@ -32,7 +32,9 @@ export function nextPickerRow(rows: { id: string; sort: SortState }[], movedId: 
  * happened to a file the Library asked about; `none` is a file it never asked about (a loose file of a linked folder,
  * one from before the sort existed).
  */
-export function unsortedReasons(sources: { sort: SortState }[]): Set<"working" | "stopped" | "unsure" | "no-ai" | "none"> {
+export function unsortedReasons(
+  sources: { sort: SortState }[],
+): Set<"working" | "stopped" | "failed" | "interrupted" | "unsure" | "no-ai" | "none"> {
   return new Set(sources.map((source) => (source.sort === null || source.sort === "created" ? "none" : source.sort)));
 }
 

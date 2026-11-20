@@ -12,7 +12,8 @@ import { stepPath } from "../plans/reopen";
 import "./Reader.css";
 import { StudyBar, type StudyTitleMenu } from "./StudyBar";
 import type { BackTarget } from "../../app/usePlace";
-import { recommendQuery, useRecommend } from "../../lib/queries";
+import { planQuery, recommendQuery, useRecommend, usePlan } from "../../lib/queries";
+import { lessonNext } from "./lessonNext";
 import { renderedText, wordCount } from "../../lib/renderedText";
 
 /** About how many words a student reads a minute, for the time left in a lesson. */
@@ -314,23 +315,40 @@ export function ReaderLoading({ label }: { label: string }) {
  * After a reading is done, opens the plan's next suggested step, or the plan when there is none or the suggestion is
  * this same page.
  */
-export function useOpenNext(planId: string) {
+export function useOpenNext(planId: string, lessonOf?: string) {
   const client = useQueryClient();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   return async () => {
     const guide = await client.fetchQuery(recommendQuery(planId));
-    const next = guide?.next;
+    // After a lesson, the plan's introduction and diagnostic are not what follows it (`lessonNext`).
+    const steps = lessonOf ? ((await client.fetchQuery(planQuery(planId)))?.steps ?? []) : [];
+    const next = lessonOf
+      ? lessonNext({
+          next: guide?.next ?? null,
+          topicId: lessonOf,
+          mastery: guide?.topics.find((topic) => topic.topicId === lessonOf)?.mastery ?? null,
+          done: steps,
+        })
+      : guide?.next;
     const to = next ? stepPath(planId, next.activity, next.topicId) : null;
     navigate(to && to.split("?")[0] !== pathname ? to : `/plans/${planId}`);
   };
 }
 
 /** Whether the plan has a step to suggest after this page, which "Continua" would open. */
-function useHasNextStep(planId: string): boolean {
+function useHasNextStep(planId: string, lessonOf?: string): boolean {
   const guide = useRecommend(planId);
+  const plan = usePlan(planId);
   const { pathname } = useLocation();
-  const next = guide.data?.next;
+  const next = lessonOf
+    ? lessonNext({
+        next: guide.data?.next ?? null,
+        topicId: lessonOf,
+        mastery: guide.data?.topics.find((topic) => topic.topicId === lessonOf)?.mastery ?? null,
+        done: plan.data?.steps ?? [],
+      })
+    : guide.data?.next;
   const to = next ? stepPath(planId, next.activity, next.topicId) : null;
   // Until the plan says, the next step is assumed, as the button was before it could be told.
   return guide.isPending || Boolean(to && to.split("?")[0] !== pathname);
@@ -343,6 +361,7 @@ function useHasNextStep(planId: string): boolean {
  */
 export function ReaderEnd({
   planId,
+  lessonOf,
   state,
   doneLabel,
   pendingHint,
@@ -353,6 +372,8 @@ export function ReaderEnd({
   failed,
 }: {
   planId: string;
+  /** The topic whose lesson this is, so the step offered after it skips the plan's introduction and diagnostic. */
+  lessonOf?: string;
   state: "done" | "current" | "other";
   doneLabel: string;
   /** Why the page is not done yet, such as the unanswered recap. */
@@ -368,7 +389,7 @@ export function ReaderEnd({
   failed?: boolean;
 }) {
   const { t } = useTranslation();
-  const hasNext = useHasNextStep(planId);
+  const hasNext = useHasNextStep(planId, lessonOf);
   if (state === "other") return null;
   const done = state === "done";
   return (

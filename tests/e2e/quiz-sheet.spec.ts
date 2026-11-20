@@ -273,7 +273,7 @@ test("the quiz answers in one column: keys, the Domande card, Non lo so, Segna p
     await page.locator(".px-qz-nav").getByRole("button", { name: "Consegna" }).click();
     await page.locator(".px-qz-nav-confirm").getByRole("button", { name: "Consegna" }).click();
     // Blank answers count as "Non lo so": two right answers of eight.
-    await expect(page.locator(".px-res-headline")).toContainText("2 punti su 8.");
+    await expect(page.locator(".px-res-headline")).toContainText("2 giuste, 6 sbagliate");
     await expect(page.locator(".px-qz-sheet")).toHaveCount(0);
   } finally {
     await done();

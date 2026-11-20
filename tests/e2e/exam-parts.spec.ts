@@ -370,12 +370,12 @@ test("a recap read before the parts leaves the lesson unread on the exam page un
     await expect(page.getByRole("list", { name: "Passi di Funzioni di più variabili" }).getByRole("button", { name: /^Lezione/ })).toHaveCount(0);
     await expect(page.getByText("Lezione in 8 parti e un ripasso")).toBeVisible();
 
-    // The recap's own page ends with Continua going back to the path, because the lesson is still the suggestion there,
+    // The recap's own page ends with one button going back to the exam, because the lesson is still the suggestion there,
     // not on to the exercises as it would be if the recap had read the lesson.
     await page.evaluate(() => {
       location.hash = "/plans/p-an2/lesson/t-fun?part=9";
     });
-    await expect(page.locator(".px-part-continue button")).toHaveText("Torna al percorso");
+    await expect(page.locator(".px-part-continue button")).toHaveText("Torna all'esame");
 
     // Every part but one: the card still names it and the lesson is not read. Part 3 is written with its question, which
     // only answering finishes, so it is marked done as that does.
@@ -547,7 +547,10 @@ test("the exam page and the part page meet: Continua, Per oggi basta, a part row
     await expect(page).toHaveURL(/#\/plans\/p-walk\/lesson\/t-fun\?part=5$/);
     await expect(title).toHaveText("Ripasso del capitolo");
     await expect(page.getByRole("heading", { level: 2, name: "Il capitolo in breve" })).toBeVisible({ timeout: 20_000 });
-    await enough.click();
+    // The recap ends the lesson, which is still the suggestion, so nothing follows it: the one action goes to the exam,
+    // named for it, and "Per oggi basta" is not beside it.
+    await expect(enough).toHaveCount(0);
+    await page.locator(".px-part-continue button").click();
 
     // On a later day, Riprendi da names the part after the last one read, and Riprendi opens it.
     withDb(userData, (db) => {

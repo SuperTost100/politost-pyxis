@@ -844,7 +844,6 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   // The results screen: the score counts every answer not marked wrong by the student.
   const points = new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 });
   const countedResults = finalResult?.results.filter((row) => !row.flagged) ?? [];
-  const resultPoints = countedResults.reduce((sum, row) => sum + row.score, 0);
   const excludedResults = (finalResult?.results.length ?? 0) - countedResults.length;
   const hasMistakes = !review && !redo && countedResults.some((row) => row.score < 1);
   // Only the saved session knows each question's topic; a quiz just started has not read it back yet.
@@ -886,6 +885,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       id: row.id,
       stem: item?.stem ?? "",
       topic: topicTitle(row.id),
+      topicId: topicOf(row.id),
       mark,
       value: row.score,
       ...(mark === "partial" ? { score: t("quiz.questionPoints", { points: questionPoints(row.score, i18n.language) }) } : {}),
@@ -1508,11 +1508,6 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           detail={
             finalResult
               ? [
-                  t("results.points", {
-                    count: resultPoints,
-                    points: points.format(resultPoints),
-                    total: countedResults.length,
-                  }),
                   excludedResults
                     ? `${t("quiz.excludedCount", { count: excludedResults })}.`
                     : "",

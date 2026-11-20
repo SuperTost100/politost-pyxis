@@ -261,6 +261,7 @@ async function withFailingSort(
   run: (context: {
     app: ElectronApplication;
     page: Page;
+    userData: string;
     files: ReturnType<typeof studyFiles>;
     open: (tab?: string) => Promise<Locator>;
     waiting: (title: string | RegExp) => Locator;
@@ -279,7 +280,7 @@ async function withFailingSort(
     };
     const waiting = (title: string | RegExp) =>
       page.getByRole("region", { name: "Da sistemare" }).locator(".px-unsorted-row", { hasText: title });
-    await run({ app, page, files, open, waiting });
+    await run({ app, page, userData, files, open, waiting });
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -287,12 +288,48 @@ async function withFailingSort(
 }
 
 test("A failed request to choose subjects leaves a file from the picker imported and listed", async () => {
-  await withFailingSort(async ({ app, files, open, waiting }) => {
+  await withFailingSort(async ({ app, page, files, open, waiting }) => {
     await answerPicker(app, [files.limits]);
     const dialog = await open();
     await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
     await expect(dialog).toBeHidden();
     await expect(waiting("Esercizi sui limiti")).toBeVisible();
+    // The request never started a sort, so nothing was stopped and nothing failed: the line is the one for any file with no subject.
+    const group = page.getByRole("region", { name: "Da sistemare" });
+    await expect(group).toContainText("Questi file non hanno ancora una materia: scegli tu.");
+    await expect(group).not.toContainText("Hai fermato");
+  });
+});
+
+test("A sort that ended without placing a file says how it ended: stopped by the student, failed, or cut off", async () => {
+  await withFailingSort(async ({ app, page, userData, files, open, waiting }) => {
+    await answerPicker(app, [files.limits]);
+    const dialog = await open();
+    await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(waiting("Esercizi sui limiti")).toBeVisible();
+    const group = page.getByRole("region", { name: "Da sistemare" });
+    // A sort job of that file ends, as the runner records it, and the Library is read again.
+    for (const [state, line] of [
+      ["cancelled", "Hai fermato la scelta della materia"],
+      ["failed", "Non sono riuscito a scegliere la materia: lo strumento AI ha dato un errore."],
+      ["interrupted", "La scelta della materia si è interrotta con la chiusura di Pyxis"],
+    ] as const) {
+      const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+      db.exec("DELETE FROM jobs WHERE kind = 'library-sort'");
+      db.prepare("UPDATE sources SET subject_sort = 'waiting' WHERE title = 'Esercizi sui limiti'").run();
+      const { id } = db.prepare("SELECT id FROM sources WHERE title = 'Esercizi sui limiti'").get() as { id: string };
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,error,created_at,updated_at) VALUES('j-sort','library-sort',?,?,?,1,1)",
+      ).run(JSON.stringify({ sourceIds: [id] }), state, state === "failed" ? "subject-sort-failed" : null);
+      db.close();
+      await page.reload();
+      await expect(group).toContainText(line);
+      // Each end has its own line, and the others are not said.
+      for (const other of ["Hai fermato", "Non sono riuscito a scegliere la materia", "si è interrotta con la chiusura"])
+        if (!line.includes(other)) await expect(group).not.toContainText(other);
+      if (state === "failed") await saveShot(page, "library-subjects/3-sort-failed.png");
+    }
   });
 });
 
@@ -892,7 +929,7 @@ async function allRead(page: Page) {
     .poll(() =>
       page.evaluate(async () => {
         const unsorted = (source: { subjectId: string | null; sort: string | null }) =>
-          !source.subjectId || source.sort === "stopped" || source.sort === "unsure" || source.sort === "no-ai";
+          !source.subjectId || ["stopped", "failed", "interrupted", "unsure", "no-ai"].includes(source.sort ?? "");
         const rows = new Set([...document.querySelectorAll(".px-unsorted-row[data-source-id]")].map((node) => node.getAttribute("data-source-id")));
         const covers = new Set([...document.querySelectorAll("[data-source-id]:not(.px-unsorted-row)")].map((node) => node.getAttribute("data-source-id")));
         return (await window.pyxis.invoke("sources.list", {}))

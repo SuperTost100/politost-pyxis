@@ -4,7 +4,7 @@ import type { GenerateInput } from "../engine/generate";
 import { loadTemplate } from "../engine/prompts";
 import { createRunner } from "../jobs/runner";
 import { addSubject, renameSubject } from "../plans/subjects";
-import { markForSorting, moveSource, registerLibrarySort, sortingNow, sortView, startLibrarySort } from "./library-subjects";
+import { markForSorting, moveSource, registerLibrarySort, sortEnded, sortingNow, sortView, startLibrarySort } from "./library-subjects";
 import { listSources } from "./smartbook";
 
 type Run = NonNullable<GenerateInput["run"]>;
@@ -76,7 +76,7 @@ describe("choosing the subject of files added to the Library", () => {
     const notes = app.added("Calcolo delle probabilità, dispense");
     const jobId = startLibrarySort(app.db, app.runner, [limits, notes])!;
     // The rows say Pyxis is choosing while the job runs.
-    expect(sortView("waiting", limits, sortingNow(app.db))).toBe("working");
+    expect(sortView("waiting", limits, sortingNow(app.db), sortEnded(app.db))).toBe("working");
     await app.ended(jobId);
     expect(app.state(jobId)).toBe("succeeded");
     expect(app.row(limits)).toEqual({ sort: "sorted", subject: "Analisi 1" });
@@ -302,7 +302,8 @@ describe("choosing the subject of files added to the Library", () => {
     await app.ended(jobId);
     expect(app.state(jobId)).toBe("cancelled");
     expect(app.row(id)).toEqual({ sort: "waiting", subject: null });
-    expect(sortView("waiting", id, sortingNow(app.db))).toBe("stopped");
+    // The student stopped it, and the row says so.
+    expect(sortView("waiting", id, sortingNow(app.db), sortEnded(app.db))).toBe("stopped");
     expect(app.runner.resumeAll([jobId])).toEqual([jobId]);
     await expect.poll(() => app.state(jobId), { timeout: 5_000 }).toBe("succeeded");
     expect(app.row(id)).toEqual({ sort: "sorted", subject: "Analisi 1" });
@@ -323,9 +324,24 @@ describe("choosing the subject of files added to the Library", () => {
     expect(app.state(jobId)).toBe("failed");
     expect(app.db.prepare(`SELECT error FROM jobs WHERE id = ?`).pluck().get(jobId)).toBe("subject-sort-failed");
     expect(app.row(id)).toEqual({ sort: "waiting", subject: null });
+    // The tool failed and nobody stopped anything: the row says it failed, not that it was stopped.
+    expect(sortView("waiting", id, sortingNow(app.db), sortEnded(app.db))).toBe("failed");
     app.runner.retry(jobId);
     await expect.poll(() => app.state(jobId), { timeout: 5_000 }).toBe("succeeded");
     expect(app.row(id)).toEqual({ sort: "sorted", subject: "Analisi 1" });
+  });
+
+  it("says how the last sort of a waiting file ended, and nothing when no job covers it", () => {
+    const ended = new Map<string, "stopped" | "failed" | "interrupted">([
+      ["a", "failed"],
+      ["b", "interrupted"],
+    ]);
+    expect(sortView("waiting", "a", new Set(), ended)).toBe("failed");
+    expect(sortView("waiting", "b", new Set(), ended)).toBe("interrupted");
+    expect(sortView("waiting", "c", new Set(), ended)).toBeNull();
+    // A sort that is live now wins over how an earlier one ended, and a file that is not waiting has no such state.
+    expect(sortView("waiting", "a", new Set(["a"]), ended)).toBe("working");
+    expect(sortView("unsure", "a", new Set(), ended)).toBe("unsure");
   });
 
   it("never sorts a chat or plan copy, a source with a subject or one the Library did not ask for", async () => {
