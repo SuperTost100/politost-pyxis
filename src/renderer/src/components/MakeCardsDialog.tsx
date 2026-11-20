@@ -147,6 +147,8 @@ export function MakeCardsDialog() {
   // An exam and its topic are somewhere to file them without a subject, so only a card with no exam needs one.
   const needSubject = asking && !nowhere && !subjectFixed && !subjectId && !planId;
   const needTopic = asking && Boolean(plan) && !topicId;
+  // An exam with no subject keeps its cards to itself: they have no subject to be found under, and the dialog says so.
+  const examHasNoSubject = places !== null && Boolean(plan) && !plan?.subjectId;
 
   async function make() {
     if (!source || !placed) return;
@@ -371,7 +373,11 @@ export function MakeCardsDialog() {
               </div>
             ) : null}
           </div>
-          {exams.length ? <p className="small px-mc-hint">{t("makeCards.examHint")}</p> : null}
+          {exams.length ? (
+            <p className="small px-mc-hint">
+              {t(examHasNoSubject ? "makeCards.examNoSubject" : "makeCards.examHint")}
+            </p>
+          ) : null}
           {nowhere ? <Notice tone="info">{t("makeCards.noSubjects")}</Notice> : null}
           {error ? (
             <Notice

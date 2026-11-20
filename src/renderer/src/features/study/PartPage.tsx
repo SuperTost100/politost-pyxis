@@ -325,7 +325,8 @@ export function PartPage({
   ) : pathNextTitle ? (
     t("lesson.partContinue", { title: pathNextTitle })
   ) : (
-    t("lesson.backToPath")
+    // Nothing follows this lesson: Continua is the one action, and it is the exam's, named for it.
+    t("places.backToExam")
   );
   const goOn = () => {
     // The next part is a move inside the page, so it takes this entry's place in history: one Back leaves the lesson.
@@ -625,7 +626,8 @@ export function PartPage({
                   reread,
                 }}
                 onOther={onOther}
-                onEnough={() => (back ? back.go() : navigate(`/plans/${planId}`))}
+                // With nothing after the lesson, "Continua" already goes to the exam: a second way out would repeat it.
+                onEnough={data.next || pathNext ? () => (back ? back.go() : navigate(`/plans/${planId}`)) : undefined}
                 // Named for the exam, so it goes there whatever the lesson was opened from; "Per oggi basta" goes back.
                 onExam={!data.next && pathNext ? toPath : undefined}
                 continueRef={continueRef}

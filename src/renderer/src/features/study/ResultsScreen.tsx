@@ -167,12 +167,11 @@ export function ResultsScreen({
   /** The button of the step while its drill is written, with the way to stop it under it. */
   const working = (
     <>
-      <Button size="lg" block disabled className="px-res-busy">
-        <span className="px-res-working-label">
-          <Logo working decorative size={18} />
-          {t("results.preparing")}
-        </span>
-      </Button>
+      {/* A status region, which a screen reader announces as it appears: a disabled button would be passed over. */}
+      <div className="px-res-busy" role="status" aria-live="polite">
+        <Logo working decorative size={18} />
+        {t("results.preparing")}
+      </div>
       <Button variant="ghost" block onClick={drill.stop}>
         {t("results.stopPreparing")}
       </Button>

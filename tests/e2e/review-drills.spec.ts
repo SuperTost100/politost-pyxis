@@ -431,9 +431,14 @@ test("the results prepare the drill in place: the page stays, the button is at w
     const step = page.getByRole("button", { name: /^Rivedi (l'errore|i \d+ errori)$/ });
     await step.click();
     // The work shows where the student pressed: the results stay, the button is at work and can be stopped.
-    const working = page.getByRole("button", { name: "Preparo gli errori da rivedere" });
+    // The work is told in a polite status region, which a screen reader announces; it is not a disabled button, which it
+    // would pass over, and the stop control is a button of its own beside it.
+    const working = page.getByRole("status").filter({ hasText: "Preparo gli errori da rivedere" });
     await expect(working).toBeVisible();
-    await expect(working).toBeDisabled();
+    await expect(working).toHaveAttribute("aria-live", "polite");
+    await expect(working.getByRole("button")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Preparo gli errori da rivedere" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Ferma la preparazione" })).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`#${results.replace(/[?]/g, "\\?")}$`));
     await expect(page.locator(".px-res-title")).toBeVisible();
     await expect(page.getByText("Preparo il ripasso")).toHaveCount(0);

@@ -444,14 +444,55 @@ test("the end of a lesson opened without the plan's diagnostic does not offer it
   }
 });
 
+test("the end of the lesson the plan suggests has the one exam action, with the exam's name, and no other way to leave", async () => {
+  test.setTimeout(120_000);
+  const { page, userData, done } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 832 });
+    // Something is studied, and the lesson of Cinematica is what the plan suggests next: no step follows this lesson.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    db.exec(
+      "DELETE FROM gap_answers; DELETE FROM gaps; DELETE FROM attempt_answers; DELETE FROM attempts; DELETE FROM learning_events; DELETE FROM items;",
+    );
+    seedOutline(db as unknown as Database.Database, {
+      planId: "p-fis",
+      topicId: "t-kin",
+      parts: [{ title: "Cinematica del punto", minutes: 8, markdown: partMarkdown("Cinematica del punto") }],
+    });
+    db.prepare(
+      "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES('e-1','answer_given','p-fis','t-din',?,?)",
+    ).run(JSON.stringify({ score: 1, scores: [1, 1, 1, 1], evidenceKind: "quiz" }), Date.now() - 3_600_000);
+    db.close();
+    const guide = (await page.evaluate(() => window.pyxis.invoke("plans.recommend", { planId: "p-fis" }))) as {
+      next: { activity: string; topicId: string | null } | null;
+    };
+    expect(guide.next).toMatchObject({ activity: "lesson", topicId: "t-kin" });
+    await page.evaluate(() => {
+      location.hash = "/plans/p-fis/lesson/t-kin?part=1";
+    });
+    const foot = page.locator(".px-part-foot");
+    await expect(foot).toBeVisible();
+    // One button goes to the exam, named for it; the old "Torna al percorso" and "Per oggi basta" would be a second one.
+    await expect(foot.getByRole("button", { name: "Torna all'esame", exact: true })).toHaveCount(1);
+    await expect(foot.getByRole("button", { name: "Torna all'esame", exact: true })).toHaveClass(/px-btn/);
+    await expect(foot.getByRole("button", { name: "Torna al percorso" })).toHaveCount(0);
+    await expect(foot.getByRole("button", { name: "Per oggi basta" })).toHaveCount(0);
+    await expect(foot.getByRole("button", { name: /^Continua/ })).toHaveCount(0);
+    await foot.getByRole("button", { name: "Torna all'esame", exact: true }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-fis$/);
+  } finally {
+    await done();
+  }
+});
+
 test("a flashcard made from a wrong answer is filed under its topic and its exam's subject, and says what is missing", async () => {
   test.setTimeout(120_000);
   const { page, userData, done } = await launch();
   try {
     await page.setViewportSize({ width: 1280, height: 832 });
-    // The exam belongs to no subject and neither do its files.
+    // The exam belongs to no subject, though its files are in one: its cards go with the exam, which has none.
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-    db.exec("UPDATE plans SET subject_id = NULL; UPDATE sources SET subject_id = NULL;");
+    db.exec("UPDATE plans SET subject_id = NULL; UPDATE sources SET subject_id = 'sub-fis';");
     db.close();
     await open(page);
     const dialog = page.getByRole("dialog", { name: "Crea flashcard" });
@@ -465,6 +506,9 @@ test("a flashcard made from a wrong answer is filed under its topic and its exam
     await expect(needSubject).toHaveCount(0);
     await expect(needTopic).toHaveCount(0);
     await expect(make).toBeEnabled();
+    // The exam has no subject, so its cards will have none either, and the dialog says so instead of showing one.
+    await expect(dialog.getByText("Questo esame non ha una materia: le flashcard restano nell'esame")).toBeVisible();
+    await expect(dialog.locator("#mc-subject").locator("xpath=ancestor::div[contains(@class,'ant-select')][1]")).not.toContainText("Fisica");
     await saveShot(page, "quiz-results/flashcard-dialog-it.png", { animations: "disabled" });
     // Without an exam the card needs a subject, and the dialog says so beside the field.
     await dialog.locator("#mc-plan").click();
@@ -475,13 +519,15 @@ test("a flashcard made from a wrong answer is filed under its topic and its exam
     await expect(make).toBeDisabled();
     await dialog.getByRole("button", { name: "Annulla" }).click();
     await expect(dialog).toBeHidden();
-    // Once the exam's files belong to a subject, the card's subject is filled in without an exam too.
+    // An exam that has a subject: it is the card's subject too, since the exam's cards are saved with it.
     const again = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-    again.exec("UPDATE sources SET subject_id = 'sub-fis'; UPDATE plans SET subject_id = 'sub-fis';");
+    again.exec("UPDATE plans SET subject_id = 'sub-fis';");
     again.close();
     await page.reload();
     await expect(page.locator(".px-res-title")).toBeVisible();
     await page.getByRole("button", { name: "Crea una flashcard" }).first().click();
+    await expect(dialog.getByText("Questo esame non ha una materia")).toHaveCount(0);
+    await expect(dialog.locator("#mc-subject").locator("xpath=ancestor::div[contains(@class,'ant-select')][1]")).toContainText("Fisica");
     await dialog.locator("#mc-plan").click();
     await page.locator(".ant-select-item-option", { hasText: /^Nessun esame$/ }).click();
     await expect(dialog.locator("#mc-subject").locator("xpath=ancestor::div[contains(@class,'ant-select')][1]")).toContainText("Fisica");

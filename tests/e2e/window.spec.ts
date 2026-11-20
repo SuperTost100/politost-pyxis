@@ -409,7 +409,8 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
         })
         .click({ timeout: 120000 });
     }
-    await expect(page.locator(".px-res-headline")).toContainText(/su 10\./);
+    // Graded: the line under the grade counts the answers, all ten right.
+    await expect(page.locator(".px-res-headline")).toContainText("10 giuste");
     await clean(page);
     await page.evaluate(
       ({ planId, topicId }) => {

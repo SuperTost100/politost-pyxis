@@ -138,22 +138,9 @@ export function cardPlaces(
         .pluck()
         .get(cited) as string | undefined
     ) ?? null;
-  // An exam with no subject of its own is filed where most of its files are.
-  const planSubject = () =>
-    plan
-      ? ((
-          db
-            .prepare(
-              `SELECT s.subject_id FROM plan_sources ps JOIN sources s ON s.id = ps.source_id
-               WHERE ps.plan_id = ? AND s.subject_id IS NOT NULL
-               GROUP BY s.subject_id ORDER BY COUNT(*) DESC, s.subject_id LIMIT 1`,
-            )
-            .pluck()
-            .get(plan.id) as string | undefined
-        ) ?? null)
-      : null;
-  const subjectId =
-    fixedSubject ?? plan?.subjectId ?? (input.passageIds?.length ? sourceSubject() : null) ?? planSubject();
+  // A card of an exam takes the exam's own subject (`cards_take_plan_subject`), so an exam that has none has none to
+  // report: a subject read from its files or its cited passages would name a place the cards do not go to.
+  const subjectId = fixedSubject ?? plan?.subjectId ?? (plan || !input.passageIds?.length ? null : sourceSubject());
   return {
     subjects,
     plans,
