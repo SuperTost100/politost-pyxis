@@ -202,7 +202,9 @@ test("Strumenti AI: work goes on with the next tool when the first is out of req
     await openTools(page);
     const chatgpt = page.locator('.engines-tool[data-tool="codex"]');
     await expect(chatgpt.locator(".engines-tool-state")).toHaveText("Richieste finite");
-    await expect(chatgpt.locator(".px-ctl-description")).toHaveText("Le richieste tornano domani alle 06:00.");
+    // The row keeps its three roles and says when the requests return on a line of its own under them.
+    await expect(chatgpt.locator("[data-roles] [data-role]")).toHaveCount(3);
+    await expect(chatgpt.locator(".px-ctl-description").last()).toHaveText("Le richieste tornano domani alle 06:00.");
     await expect(page.locator('.engines-tool[data-tool="claude"] .engines-tool-state')).toHaveText("Collegato");
     await saveShot(page, "tools/limit-it.png", { fullPage: true });
     await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
@@ -219,7 +221,7 @@ test("Strumenti AI: work goes on with the next tool when the first is out of req
     expect(limited).toBe(tomorrow.getTime());
     await openTools(page);
     await expect(page.locator('.engines-tool[data-tool="codex"] .engines-tool-state')).toHaveText("Richieste finite");
-    await expect(page.locator('.engines-tool[data-tool="codex"] .px-ctl-description')).toHaveText(
+    await expect(page.locator('.engines-tool[data-tool="codex"] .px-ctl-description').last()).toHaveText(
       "Le richieste tornano domani alle 06:00.",
     );
   } finally {

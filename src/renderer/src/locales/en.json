@@ -3159,7 +3159,7 @@
     "removeKey": "Remove API key",
     "clearChoices": "Clear {{name}} choices",
     "effortDefault": "Automatic for each task",
-    "taskHeading": "Task",
+    "taskHeading": "Work",
     "effortAuto": "Automatic · {{level}}",
     "effortNone": "Not adjustable",
     "effortFellBack": "This model does not offer {{level}}, so Pyxis uses the automatic level.",
@@ -3259,10 +3259,10 @@
       "map": "Maps",
       "vision": "Images"
     },
-    "perFeature": "AI tools by feature",
+    "perFeature": "Model for each kind of work",
     "advanced": "Advanced",
     "automatic": "Automatic",
-    "backToAuto": "Back to automatic choice",
+    "backToAuto": "Everything back to Automatic",
     "installHelp": "Pyxis needs an AI tool to answer. Connect the AI you already pay for above: Pyxis chooses the model.",
     "auto": {
       "summary": "Pyxis picks the right tool for each job by itself, out of {{names}}, and uses the cheapest model that is good enough.",
@@ -3360,7 +3360,7 @@
     "debug": "Show technical details and debug",
     "debugHint": "Pyxis keeps a log of every AI call the jobs in Activity make, on this computer: which AI and model, how long it took, the request and the reply. Keys and tokens are hidden, and nothing is sent anywhere.",
     "debugFailed": "This choice couldn't be saved. Try again.",
-    "perFeatureHint": "Pyxis picks the AI tool and reasoning level for each function by itself. Here you can change them one by one.",
+    "perFeatureHint": "Pyxis picks the model for each kind of work by itself. Here you can pin one for a single kind of work: the others stay automatic.",
     "intro": {
       "listed": "Pyxis uses the first one on the list. If it runs out of requests for the day, it moves on to the next."
     },
@@ -3371,7 +3371,8 @@
     "toConnect": {
       "title": "To connect",
       "install": "Install and sign in",
-      "installNamed": "Install and sign in to {{name}}"
+      "installNamed": "Install and sign in to {{name}}",
+      "uses": "Uses {{models}}."
     },
     "order": {
       "hint": "Drag them to change the order.",
@@ -3410,7 +3411,18 @@
     "key": {
       "hint": "For those who pay for a service by use. The key stays on this computer.",
       "add": "Add a key"
-    }
+    },
+    "roles": {
+      "fast": "Fast",
+      "mid": "Balanced",
+      "strong": "Strong",
+      "note": "Each tool uses only its maker's models, and Pyxis picks among three: <b>fast</b> for chat, flashcards and maps, <b>balanced</b> for lessons and grading, <b>strong</b> for the study plan.",
+      "exception": "Here “{{task}}” uses the {{role}} model."
+    },
+    "autoToday": "Automatic · today {{model}}",
+    "pinnedCount_one": "{{count}} pinned by you",
+    "pinnedCount_other": "{{count}} pinned by you",
+    "allAuto": "Everything automatic"
   },
   "graph": {
     "title": "Graph",

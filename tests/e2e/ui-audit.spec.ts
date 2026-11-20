@@ -3175,7 +3175,7 @@ async function openState(page: Page, name: string) {
     case "settings-engines":
       await openAdvancedEngines(page);
       await expect(page.getByRole("region", { name: both("Da collegare", "To connect") })).toBeVisible();
-      await expect(page.locator(".engines-section")).not.toHaveAttribute("open");
+      await expect(page.locator(".engines-section")).toBeVisible();
       break;
     // Two tools in the student's order, each with its place. Cursor, the first, answers a call with a usage limit, so
     // its row says it is out of requests and when they are back.
@@ -3192,7 +3192,6 @@ async function openState(page: Page, name: string) {
     }
     case "settings-engines-advanced":
       await openAdvancedEngines(page);
-      await page.locator(".engines-section > summary").click();
       await expect(page.locator(".engines-feature-row")).toHaveCount(8);
       await expect(page.locator(".engines-feature-row").first()).toBeVisible();
       break;

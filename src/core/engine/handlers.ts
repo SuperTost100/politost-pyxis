@@ -5,6 +5,8 @@ import {
   autoFeatures,
   pickModel,
   planAuto,
+  rolesOf,
+  taskRolesOf,
   type AutoProvider,
 } from "./auto";
 import {
@@ -64,6 +66,7 @@ import {
   rememberReady,
   withoutRefusedModels,
   type StoredSelection,
+  plannedModels,
 } from "./selection";
 import { hardware as probeHardware, type Hardware } from "./hardware";
 import {
@@ -614,6 +617,15 @@ export function engineHandlers(
         ),
         models: modelNames(),
       };
+    },
+    /**
+     * The model of each role of a tool and the role of each task on it, from the catalog the automatic choice plans
+     * from (`plannedModels`), so the row says what the planner runs. A tool the planner does not hold gets the file's preferred
+     * models, and `known` is false.
+     */
+    roles(input: { provider: string }) {
+      const models = plannedModels(input.provider);
+      return { roles: rolesOf(input.provider, models ?? null), tasks: taskRolesOf(input.provider), known: models !== undefined };
     },
     /**
      * The engines the student lets Pyxis use (null means automatic, every engine that is ready) and the order they put
