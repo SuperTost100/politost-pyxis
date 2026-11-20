@@ -20,13 +20,14 @@ export function PartFoot({
   active,
   continueLabel,
   continueMinutes,
+  continueNote,
   onContinue,
   busy,
   done,
   other,
   onOther,
   onEnough,
-  lastStep,
+  onExam,
   continueRef,
   failed,
 }: {
@@ -36,6 +37,8 @@ export function PartFoot({
   active: boolean;
   continueLabel: ReactNode;
   continueMinutes?: number;
+  /** Quiet text beside the label of Continua, such as how many questions the quiz it opens has. */
+  continueNote?: string;
   onContinue: () => void;
   /** What is running: Fatto or Continua. */
   busy?: "done" | "continue";
@@ -45,7 +48,7 @@ export function PartFoot({
   onOther: (choice: OtherChoice) => void;
   onEnough: () => void;
   /** The end of the lesson with a step after it: "Torna all'esame" replaces "Per oggi basta" and follows Continua. */
-  lastStep?: boolean;
+  onExam?: () => void;
   continueRef: RefObject<HTMLDivElement | null>;
   failed?: boolean;
 }) {
@@ -115,18 +118,20 @@ export function PartFoot({
             <span className="px-part-continue-label">{continueLabel}</span>
             {continueMinutes ? (
               <span className="px-part-continue-minutes">{t("lesson.minutesShort", { count: continueMinutes })}</span>
+            ) : continueNote ? (
+              <span className="px-part-continue-minutes">{continueNote}</span>
             ) : null}
           </Button>
         </div>
-        {lastStep ? (
-          <Button variant="secondary" size="lg" onClick={onEnough}>
+        {onExam ? (
+          <Button variant="secondary" size="lg" onClick={onExam}>
             {t("places.backToExam")}
           </Button>
         ) : null}
         <div className="px-part-foot-other">
           <ChoiceMenu label={t("lesson.chooseOther")} items={items} onSelect={(key) => onOther(key as OtherChoice)} />
         </div>
-        {lastStep ? null : (
+        {onExam ? null : (
           <Button variant="ghost" className="px-part-enough" onClick={onEnough}>
             {t("lesson.enough")}
           </Button>

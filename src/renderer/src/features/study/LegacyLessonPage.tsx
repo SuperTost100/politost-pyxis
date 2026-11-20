@@ -519,6 +519,8 @@ export function LegacyLessonPage({
       {data && !writing ? (
         <>
           {readOnly ? null : <ReaderEnd
+            planId={planId}
+            onExam={() => returnTo(back, `/plans/${planId}`, navigate)}
             state={!plan.data || !topic ? "other" : read ? "done" : "current"}
             doneLabel={t("lesson.doneTitle")}
             pendingHint={recapOpen ? t("lesson.recapPrompt") : undefined}

@@ -1164,6 +1164,112 @@ test("a study page opened from outside the exam goes back to where it was opened
   await expect(page).toHaveURL(/#\/flashcards$/);
 });
 
+/**
+ * Opens `path` as a link inside the app would, a push on the window's history. The app has no link from a chat or a map
+ * to a study page of an exam yet, so the test asks the router, which the root component holds, to go there.
+ */
+async function pushRoute(page: Page, path: string) {
+  await page.evaluate((to) => {
+    const node = document.querySelector("main") ?? document.body;
+    const key = Object.keys(node).find((name) => name.startsWith("__reactFiber$"))!;
+    type Fiber = { return: Fiber | null; memoizedProps?: { router?: { navigate: (to: string) => Promise<void> } } };
+    let fiber = (node as unknown as Record<string, Fiber>)[key] ?? null;
+    while (fiber && !fiber.memoizedProps?.router?.navigate) fiber = fiber.return;
+    void fiber!.memoizedProps!.router!.navigate(to);
+  }, path);
+}
+
+test("a button that says «Torna all'esame» goes to the exam, also when the study session began outside it", async () => {
+  test.setTimeout(120_000);
+  const { page } = walk;
+  await page.evaluate(() => {
+    location.hash = "#/ask/c-bayes";
+  });
+  await expect(page.locator(".ask-bar-name")).toHaveText("Teorema di Bayes");
+  await pushRoute(page, `${exam}/lesson/t-serie?part=1`);
+  await expect(page.getByRole("heading", { level: 1, name: "Successioni e serie di funzioni" })).toBeVisible();
+  // The bar's control goes back to the chat the lesson was opened from, and the foot's button to the exam.
+  await expect(backControl(page)).toHaveAccessibleName("Torna a Teorema di Bayes");
+  await page.getByRole("button", { name: "Torna all'esame", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#${exam}$`));
+  // The results of a quiz opened from a chat: the bar's control goes to the chat, the button to the exam.
+  await page.evaluate(() => {
+    location.hash = "#/ask/c-bayes";
+  });
+  await expect(page.locator(".ask-bar-name")).toHaveText("Teorema di Bayes");
+  await pushRoute(page, `${exam}/quiz/t-fun?attempt=a-fun`);
+  await expect(page.locator(".px-res-title")).toBeVisible();
+  await expect(backControl(page)).toHaveAccessibleName("Torna a Teorema di Bayes");
+  await page.getByRole("button", { name: "Torna all'esame", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#${exam}$`));
+  // Opened from the exam instead, the same button goes back through history, so the exam is not on the trail twice.
+  await page.getByRole("button", { name: /^Successioni e serie di funzioni/ }).click();
+  await page.getByRole("button", { name: "Lezione, da fare" }).click();
+  const length = await page.evaluate(() => history.length);
+  await page.getByRole("button", { name: "Torna all'esame", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#${exam}$`));
+  expect(await page.evaluate(() => history.length)).toBe(length);
+});
+
+/** Answers the card on screen "La sapevo", until the session's end screen shows. */
+async function answerAllCards(page: Page) {
+  for (let card = 0; card < 4 && !(await page.locator(".px-end-text").isVisible()); card += 1) {
+    await page.getByRole("button", { name: "Gira", exact: true }).click();
+    await page.getByRole("button", { name: /^La sapevo/ }).click();
+    await expect(page.locator(".px-end-text").or(page.getByRole("button", { name: "Gira", exact: true }))).toBeVisible();
+  }
+  await expect(page.locator(".px-end-text")).toBeVisible();
+}
+
+test("the end of a flashcard session of an exam names the exam when it began there, and says nothing of it when it began in Flashcard", async () => {
+  test.setTimeout(120_000);
+  const { page } = walk;
+  // Began in the Flashcard section: the end of the session has no button for the exam, whose name would not be where back goes.
+  await start(page, "#/flashcards", "Flashcard");
+  await page.getByRole("link", { name: /^Funzioni di più variabili/ }).click();
+  await expect(backControl(page)).toHaveAccessibleName("Torna a Flashcard");
+  await answerAllCards(page);
+  // Learning cards come back in minutes, so the session waits, and "Per oggi basta" is what ends it.
+  await expect(page.getByRole("button", { name: "Per oggi basta", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Torna all'esame", exact: true })).toHaveCount(0);
+  // Began on the exam: "Torna all'esame" takes its place, and goes back to the exam in one step.
+  withWorkspace((db) => {
+    db.exec(`INSERT INTO cards(id,plan_id,topic_id,front,back,passage_id,grounding,created_at) VALUES
+      ('c-3','p-an2','t-fun','Che cos''è una frontiera?','I punti ogni cui intorno incontra l''insieme e il suo complemento.','ps-3','sources',1),
+      ('c-4','p-an2','t-fun','Che cos''è un punto interno?','Un punto con un intorno contenuto nell''insieme.','ps-4','sources',1);`);
+  });
+  await start(page, `#${exam}`, EXAM);
+  await side(page).getByRole("button", { name: /^Ripassa/ }).click();
+  await expect(backControl(page)).toHaveAccessibleName(`Torna a ${EXAM}`);
+  await answerAllCards(page);
+  const toExam = page.getByRole("button", { name: "Torna all'esame", exact: true });
+  await expect(toExam).toBeVisible();
+  await expect(page.getByRole("button", { name: "Per oggi basta", exact: true })).toHaveCount(0);
+  const length = await page.evaluate(() => history.length);
+  await toExam.click();
+  await expect(page).toHaveURL(new RegExp(`#${exam}$`));
+  expect(await page.evaluate(() => history.length)).toBe(length);
+});
+
+test("the end of a read page offers the next step, with the way to the exam as the quiet second action", async () => {
+  test.setTimeout(120_000);
+  const { page } = walk;
+  await start(page, `#${exam}`, EXAM);
+  await pushRoute(page, `${exam}/intro`);
+  await expect(page).toHaveURL(/#\/plans\/p-an2\/intro$/);
+  // Read and done: Continua opens the step the plan suggests, and the exam is the quiet second action.
+  await page.getByRole("button", { name: "Fatto", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#${exam}$`));
+  await pushRoute(page, `${exam}/intro`);
+  const end = page.locator(".px-reader-end");
+  await expect(end.getByRole("button", { name: "Continua", exact: true })).toBeVisible();
+  await expect(end.locator(".ant-btn-primary")).toHaveText("Continua");
+  const length = await page.evaluate(() => history.length);
+  await end.getByRole("button", { name: "Torna all'esame", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#${exam}$`));
+  expect(await page.evaluate(() => history.length)).toBe(length);
+});
+
 test("every page with a back control has a row", () => {
   const router = readFileSync(join(process.cwd(), "src/renderer/src/app/router.tsx"), "utf8");
   const routes = [...router.matchAll(/\bpath: "([^"]+)"/g)]

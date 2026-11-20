@@ -7,6 +7,8 @@ import { launchPyxis, setUp } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import type Database from "better-sqlite3";
+import { partMarkdown, seedOutline } from "../../src/core/study/test-parts";
 import { seedPlan, seedSource } from "./seed";
 import { SHOTS, saveShot } from "./shots";
 
@@ -323,6 +325,64 @@ test("a redo with an open gap offers the Rivedi gli errori its summary announces
     await page.getByRole("button", { name: "Rivedi gli errori", exact: true }).click();
     // The exam page takes the request (`?drill=`) out of the address as it starts the drill.
     await expect(page).toHaveURL(/#\/plans\/p-fis$/);
+  } finally {
+    await done();
+  }
+});
+
+test("the end of a lesson offers the quiz of its topic, with its size once the quiz exists", async () => {
+  test.setTimeout(120_000);
+  const { page, userData, done } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 832 });
+    const at = Date.now();
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    // Cinematica is read and well known except for what the plan still asks: its quiz is what comes after its lesson.
+    db.exec(
+      "DELETE FROM gap_answers; DELETE FROM gaps; DELETE FROM attempt_answers; DELETE FROM attempts; DELETE FROM learning_events; DELETE FROM items;",
+    );
+    seedOutline(db as unknown as Database.Database, {
+      planId: "p-fis",
+      topicId: "t-kin",
+      parts: [{ title: "Cinematica del punto", minutes: 8, markdown: partMarkdown("Cinematica del punto") }],
+    });
+    const event = db.prepare(
+      "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES(?,'answer_given','p-fis',?,?,?)",
+    );
+    for (const [i, topic] of ["t-din", "t-din", "t-kin"].entries())
+      event.run(`e-${i}`, topic, JSON.stringify({ score: 1, scores: [1, 1, 1, 1], evidenceKind: "quiz" }), at - 3_600_000 * (i + 1));
+    db.close();
+    await page.evaluate(() => window.pyxis.invoke("plans.complete", { planId: "p-fis", activity: "lesson", topicId: "t-din" }));
+    const endOfLesson = async () => {
+      await page.evaluate(() => {
+        location.hash = "/plans/p-fis/lesson/t-kin?part=1";
+      });
+      await expect(page.locator(".px-part-foot")).toBeVisible();
+      if (!(await page.locator(".px-part-foot.is-active").count())) {
+        await page.getByRole("group", { name: "Opzioni" }).getByRole("button").first().click();
+        await expect(page.locator(".px-part-foot.is-active")).toBeVisible();
+      }
+    };
+    await endOfLesson();
+    // The exercises came after the lesson, so the quiz is the step that follows.
+    await page.evaluate(() => window.pyxis.invoke("plans.complete", { planId: "p-fis", activity: "practice", topicId: "t-kin" }));
+    await page.reload();
+    const quiz = page.getByRole("button", { name: /^Fai il quiz/ });
+    await expect(quiz).toBeVisible();
+    // No quiz exists yet, so there is no size to say.
+    await expect(quiz).toHaveText("Fai il quiz");
+    await expect(page.getByRole("button", { name: "Torna all'esame", exact: true })).toBeVisible();
+    // A quiz started and left, written in full: its size is said beside the button.
+    const again = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    again
+      .prepare(
+        "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES('i-open','p-fis','t-kin','quiz',?,'fixture','sources',?)",
+      )
+      .run(JSON.stringify({ questions, config: { count: 8, feedback: true, types: ["mcq"] }, complete: true }), at);
+    again.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES('a-open','p-fis','i-open',?)").run(at);
+    again.close();
+    await page.reload();
+    await expect(page.getByRole("button", { name: /^Fai il quiz/ })).toHaveText(/^Fai il quiz\s*8 domande$/);
   } finally {
     await done();
   }

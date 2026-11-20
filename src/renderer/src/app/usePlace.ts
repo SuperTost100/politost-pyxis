@@ -107,11 +107,16 @@ export function usePlace(input: {
   return target;
 }
 
+/** Whether the back control leads to the page at `path`, so a button that names it can go back the same way. */
+export function leadsTo(back: BackTarget | null, path: string): boolean {
+  return back !== null && pageOf(back.to) === pageOf(path);
+}
+
 /**
  * For a button that names the place it returns to, such as "Torna al percorso": when the back control leads to that
  * page, the button goes back the same way, so history keeps one entry per page; otherwise it opens the page.
  */
 export function returnTo(back: BackTarget | null, path: string, navigate: NavigateFunction): void {
-  if (back && pageOf(back.to) === pageOf(path)) back.go();
+  if (leadsTo(back, path)) back!.go();
   else void navigate(path);
 }

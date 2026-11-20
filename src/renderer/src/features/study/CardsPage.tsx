@@ -29,7 +29,7 @@ import { refreshPlan } from "../../lib/refreshPlan";
 import { CardFaceFields } from "../../components/CardFaceFields";
 import { NewCardButton } from "./NewCardButton";
 import { BarTool, StudyLayout } from "./StudyBar";
-import { usePlace } from "../../app/usePlace";
+import { leadsTo, usePlace } from "../../app/usePlace";
 import { focusInOpenSurface } from "../../lib/pageKeys";
 import { reviewSeconds } from "@shared/review-time";
 import { cardsLine } from "./barLines";
@@ -607,6 +607,11 @@ export function CardsPage() {
     beforeLeave: () => (reviewing || seen.length === 0 || recorded ? Promise.resolve(true) : finishSession()),
   });
 
+  // A session of an exam's cards that began on the exam: its end names the exam and goes back there. One that began
+  // elsewhere (the Flashcard section, a chat) keeps "Per oggi basta", which goes back to where it began.
+  const examId = planId ?? examOnly;
+  const toExam = examId && leadsTo(back, `/plans/${examId}`) ? () => back!.go() : undefined;
+
   useEffect(() => {
     function key(event: KeyboardEvent) {
       if (
@@ -859,6 +864,7 @@ export function CardsPage() {
                 upcoming={upcoming}
                 onRetry={() => void dueLater.refetch()}
                 stopBusy={Boolean(back?.busy)}
+                onExam={toExam}
                 review={
                   reviewing
                     ? {
