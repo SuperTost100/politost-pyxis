@@ -873,7 +873,7 @@ test("A menu stays open when the page gets shorter under a student who has scrol
 });
 
 /**
- * Waits until no file of the library is still being read. A file being read sorts before the ones that are ready, so its
+ * Waits until no file of the library is still being read, in the backend and on the shelf. A file being read sorts before the ones that are ready, so its
  * cover changes places when its read ends, and a pointer, a menu's owner or the page under a menu is left over another
  * cover. A spec that points at covers waits for this first; one that needs a file to arrive while a menu is open waits for
  * the files before it only.
@@ -882,6 +882,26 @@ async function allRead(page: Page) {
   await expect
     .poll(() => page.evaluate(async () => (await window.pyxis.invoke("sources.list", {})).filter((source) => source.status !== "ready").length))
     .toBe(0);
+  // The shelf draws from a list it refreshes after the read, so a file that was just added, or just moved to a subject, may
+  // not be where the backend has it yet, and the cover that arrives later moves the others. Every ready file is in its
+  // place: a cover on its subject's shelf, or a row of "Da sistemare" when it has no subject or one the student has to
+  // choose (the rule `isUnsorted` and the shelf use). A row carries `data-source-id` as a cover does, so a file that moved
+  // to a shelf is not in place while its row is still there. And none is being read, by the mark on a cover or on the art
+  // of a row, before a pointer is put on one. Zero marks is not enough: with nothing drawn there is nothing to carry one.
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const unsorted = (source: { subjectId: string | null; sort: string | null }) =>
+          !source.subjectId || source.sort === "stopped" || source.sort === "unsure" || source.sort === "no-ai";
+        const rows = new Set([...document.querySelectorAll(".px-unsorted-row[data-source-id]")].map((node) => node.getAttribute("data-source-id")));
+        const covers = new Set([...document.querySelectorAll("[data-source-id]:not(.px-unsorted-row)")].map((node) => node.getAttribute("data-source-id")));
+        return (await window.pyxis.invoke("sources.list", {}))
+          .filter((source) => source.status === "ready" && !(unsorted(source) ? rows : covers).has(source.id))
+          .map((source) => `${source.title} (${unsorted(source) ? "row" : "cover"})`);
+      }),
+    )
+    .toEqual([]);
+  await expect(page.locator('.px-cover-badge[data-mark="reading"], .px-unsorted-row .px-cover-art.is-reading')).toHaveCount(0);
 }
 
 /**

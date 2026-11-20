@@ -653,6 +653,122 @@ test("a click on the title while an answer is saved keeps the focus there", asyn
   }
 });
 
+test("a click on the title before the page's own focus on it has run keeps the focus there when the answer is saved", async () => {
+  test.setTimeout(120_000);
+  const { page, close } = await start(
+    [{ markdown: partText("Intorni") }, { markdown: partText("Frontiera") }],
+    [{ id: "t-funzioni", title: "Funzioni di più variabili", passages }],
+    { PYXIS_E2E_READ_DELAY: "study.lessonAnswer=2500" },
+  );
+  try {
+    await page.evaluate(() => (location.hash = "/plans/p-an2"));
+    await expect(page.getByRole("heading", { level: 1, name: "Analisi Matematica 2" })).toBeVisible();
+    await holdFrames(page);
+    await page.locator(".px-xpath-list").getByRole("button", { name: /^Funzioni di più variabili/ }).click();
+    await page.getByRole("list", { name: "Passi di Funzioni di più variabili" }).getByRole("button", { name: /^Lezione/ }).click();
+    const title = page.getByRole("heading", { level: 1, name: /Intorni e distanza/ });
+    await expect(title).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Fine della parte 1")).toBeVisible();
+    // The page's focus on the title waits in a held frame. The student answers and then clicks the title before it runs;
+    // the mouse is used because a locator's click waits for animation frames, which are held.
+    await expect.poll(() => page.evaluate(() => (window as unknown as { frames: { pending: () => number } }).frames.pending())).toBeGreaterThan(0);
+    const options = page.getByRole("region", { name: "Verifica" }).locator(".px-opt");
+    const right = (await letterOf(page, "La cosa giusta")).charCodeAt(0) - 97;
+    for (const target of [options.nth(right), title]) {
+      await target.scrollIntoViewIfNeeded();
+      const box = (await target.boundingBox())!;
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    }
+    await expect(title).toBeFocused();
+    await page.evaluate(() => (window as unknown as { frames: { release: () => void } }).frames.release());
+    const done = page.locator(".px-reader-side li[data-done]");
+    await expect(done).toHaveCount(0);
+    await expect(done.first()).toBeVisible({ timeout: 20_000 });
+    await expect(continueButton(page)).toContainText("Continua: Interno, esterno, frontiera");
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))),
+    );
+    await expect(title).toBeFocused();
+  } finally {
+    await close();
+  }
+});
+
+test("an answer saved after the student opened another part does not take the focus from that part", async () => {
+  test.setTimeout(180_000);
+  const second = partText("Intorni").replaceAll("## Intorni:", "## Frontiera:");
+  const { page, close } = await start(
+    [{ markdown: partText("Intorni") }, { markdown: second }, { markdown: partText("Aperti") }],
+    [{ id: "t-funzioni", title: "Funzioni di più variabili", passages }],
+    // Part 2 is read in 3 seconds and the answer to part 1 is saved in 8: part 2 is on screen, with the focus on its title,
+    // well before the answer is back.
+    { PYXIS_E2E_READ_DELAY: "study.part=3000,study.lessonAnswer=8000" },
+  );
+  try {
+    await open(page, "t-funzioni", 1);
+    const first = page.getByRole("heading", { level: 1, name: /Intorni e distanza/ });
+    await expect(first).toBeVisible({ timeout: 30_000 });
+    const right = page.getByRole("region", { name: "Verifica" }).getByRole("button", { name: /La cosa giusta/ });
+    await expect(right).toBeEnabled();
+    await right.click();
+    await parts(page).getByRole("link", { name: /Interno, esterno, frontiera/ }).click();
+    const nextTitle = page.getByRole("heading", { level: 1, name: "Interno, esterno, frontiera" });
+    await expect(nextTitle).toBeVisible({ timeout: 20_000 });
+    await expect(nextTitle).toBeFocused();
+    // The answer to part 1 is still on its way: part 1 is not done yet.
+    const done = page.locator(".px-reader-side li[data-done]");
+    await expect(done).toHaveCount(0);
+    await expect(done.first()).toBeVisible({ timeout: 30_000 });
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))),
+    );
+    await expect(nextTitle).toBeFocused();
+  } finally {
+    await close();
+  }
+});
+
+test("an answer that finishes part 1 does not take the focus in part 2, which opened before the page's frame for Continua ran", async () => {
+  test.setTimeout(120_000);
+  const { page, close } = await start(
+    [{ markdown: partText("Intorni") }, { markdown: partText("Frontiera") }],
+    [{ id: "t-funzioni", title: "Funzioni di più variabili", passages }],
+    { PYXIS_E2E_READ_DELAY: "study.lessonAnswer=1000" },
+  );
+  try {
+    await page.evaluate(() => (location.hash = "/plans/p-an2"));
+    await expect(page.getByRole("heading", { level: 1, name: "Analisi Matematica 2" })).toBeVisible();
+    await holdFrames(page);
+    await page.locator(".px-xpath-list").getByRole("button", { name: /^Funzioni di più variabili/ }).click();
+    await page.getByRole("list", { name: "Passi di Funzioni di più variabili" }).getByRole("button", { name: /^Lezione/ }).click();
+    await expect(page.getByRole("heading", { level: 1, name: /Intorni e distanza/ })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Fine della parte 1")).toBeVisible();
+    const pending = () => page.evaluate(() => (window as unknown as { frames: { pending: () => number } }).frames.pending());
+    // The page's focus on part 1's title waits in a held frame, and so will its move to Continua once the answer is saved.
+    await expect.poll(pending).toBeGreaterThan(0);
+    const before = await pending();
+    const pressed = await page.evaluate(() => (window as unknown as { frames: { mark: () => number } }).frames.mark());
+    await page.keyboard.press(await letterOf(page, "La cosa giusta"));
+    // The answer is saved and the part is done: the move to Continua is queued, in a frame that is held.
+    await expect.poll(pending, { timeout: 20_000 }).toBeGreaterThan(before);
+    // Part 2 opens, and is on screen, before that frame runs.
+    await page.evaluate(() => (location.hash = "/plans/p-an2/lesson/t-funzioni?part=2"));
+    const next = page.getByRole("heading", { level: 1, name: "Interno, esterno, frontiera" });
+    await expect(next).toBeVisible({ timeout: 20_000 });
+    await page.evaluate(() => (window as unknown as { frames: { release: () => void } }).frames.release());
+    await expect(next).toBeFocused();
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))),
+    );
+    // Part 1's answer must not have put the focus on part 2's Continua, not even for a frame.
+    const log = await page.evaluate(() => (window as unknown as { frames: { log: () => Array<{ at: number; on: string }> } }).frames.log());
+    expect(log.filter((move) => move.at >= pressed).map((move) => move.on)).toEqual(["H1"]);
+    await expect(next).toBeFocused();
+  } finally {
+    await close();
+  }
+});
+
 test("while the next part is read, the part before it stays on screen but cannot be answered, and nothing it saves lands on the next part", async () => {
   test.setTimeout(180_000);
   // Part 2 asks the same question as part 1, so both texts give it the same id.
