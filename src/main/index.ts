@@ -28,6 +28,7 @@ import {
   reminderText,
   type ReminderSummary,
 } from "../shared/reminder";
+import { createCoreRetry } from "./core-retry";
 import { coreExited, stopCoreProcess, watchCoreExit } from "./core-stop";
 import type { RestoreOutcome } from "../core/share/backup";
 import packageMetadata from "../../package.json";
@@ -971,6 +972,9 @@ function startCore(strict = false): Promise<void> {
     workspacePath,
     // A linked study folder may not lie inside the app's own data.
     userDataPath: app.getPath("userData"),
+    // The model file is fetched from the branch of this build: `next` for a pre-release, `main` for a release.
+    version: app.isPackaged ? app.getVersion() : packageMetadata.version,
+    repository: githubRepository(packageMetadata.repository),
     grants: [...pickedGrants.values()],
     dev: e2eSeam(),
     // Seams that run code, such as the installer stand-in, stay off in a packaged app even with PYXIS_E2E=1.
@@ -1246,16 +1250,22 @@ function requireMainSender(event: IpcMainInvokeEvent, code: string): void {
   if (event.sender.id !== mainWindow?.webContents.id) throw new Error(code);
 }
 
+// A backup, restore, move or wipe stopped core on purpose and starts it again itself. A core started now could open the
+// workspace mid-swap, and the operation's own start would then leave two cores on one database. A wipe that could not
+// put the data back keeps core stopped too.
+const retryCore = createCoreRetry({
+  blocked: () => workspaceBusy || holdCore,
+  current: () => coreChild,
+  start: () => {
+    coreRestartFailures = 0;
+    return startCore();
+  },
+});
+
 function registerIpc(): void {
   ipcMain.handle(mainChannels.coreRetry, async (event) => {
     requireMainSender(event, "core-untrusted-sender");
-    // A backup, restore, move or wipe stopped core on purpose and starts it again itself. A core started now could
-    // open the workspace mid-swap, and the operation's own start would then leave two cores on one database. A wipe
-    // that could not put the data back keeps core stopped too.
-    if (workspaceBusy || holdCore) return;
-    if (coreChild && !coreExited(coreChild)) return;
-    coreRestartFailures = 0;
-    await startCore();
+    await retryCore();
   });
   ipcMain.on(mainChannels.crashReport, (event, raw: unknown) => {
     if (event.sender.id !== mainWindow?.webContents.id || !raw || typeof raw !== "object") return;

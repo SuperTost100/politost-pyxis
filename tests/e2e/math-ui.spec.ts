@@ -334,12 +334,14 @@ test("MATH-02 ASK-05 live Solver verification and attached drawing vision", asyn
     await expect(attachment).toBeVisible();
     const drawingPath = join(tmpdir(), (await attachment.innerText()).trim());
     const vision = (await page.evaluate(
-      (path) =>
-        window.pyxis.invoke("chats.ask", {
+      async (path) => {
+        const file = await window.pyxis.invoke("chats.attach", { path });
+        return window.pyxis.invoke("chats.ask", {
           text: "Name the geometric shape in this drawing. One sentence.",
-          files: [path],
+          attachments: [file.id],
           allowGeneral: true,
-        }),
+        });
+      },
       drawingPath,
     )) as { message: { body: string; modelId: string } };
     expect(vision.message.body).toMatch(/triang/i);

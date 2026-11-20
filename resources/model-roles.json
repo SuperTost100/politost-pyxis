@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "updatedAt": "2026-11-19T16:00:00Z",
+  "tools": {
+    "claude": {
+      "own": "^claude-",
+      "never": "fable",
+      "roles": {
+        "fast": {
+          "effort": "low",
+          "models": ["claude-haiku-5-5", "claude-haiku-4-5-20251001"]
+        },
+        "mid": {
+          "effort": "medium",
+          "models": ["claude-sonnet-5-5", "claude-sonnet-5"]
+        },
+        "strong": {
+          "effort": "high",
+          "models": ["claude-opus-5-5", "claude-opus-4-6"]
+        }
+      }
+    },
+    "codex": {
+      "own": "^gpt-\\d",
+      "roles": {
+        "fast": {
+          "effort": "low",
+          "models": ["gpt-6-luna", "gpt-5.6-luna"]
+        },
+        "mid": {
+          "effort": "medium",
+          "models": ["gpt-6.1-terra", "gpt-5.6-terra"]
+        },
+        "strong": {
+          "effort": "high",
+          "models": [
+            "gpt-6.2-sol",
+            "gpt-6.1-sol",
+            "gpt-6-sol",
+            "gpt-5.6-sol",
+            "gpt-6.2-astra",
+            "gpt-6-astra"
+          ]
+        }
+      }
+    },
+    "agent": {
+      "own": "^(?:cursor-)?grok-\\d",
+      "roles": {
+        "fast": {
+          "effort": "low",
+          "models": ["grok-4.7", "cursor-grok-4.6", "cursor-grok-4.5"]
+        },
+        "mid": {
+          "effort": "medium",
+          "models": ["grok-4.7", "cursor-grok-4.6", "cursor-grok-4.5"]
+        },
+        "strong": {
+          "effort": "high",
+          "models": ["grok-4.7", "cursor-grok-4.6", "cursor-grok-4.5"]
+        }
+      }
+    },
+    "antigravity": {
+      "own": "^gemini-\\d",
+      "roles": {
+        "fast": {
+          "effort": "low",
+          "models": ["gemini-4-hydrogen", "gemini-3.8-flash"]
+        },
+        "mid": {
+          "effort": "medium",
+          "models": ["gemini-4-hydrogen", "gemini-4-argon", "gemini-3.8-flash"]
+        },
+        "strong": {
+          "effort": "high",
+          "models": [
+            "gemini-4-carbon",
+            "gemini-4-argon",
+            "gemini-4-neon",
+            "gemini-4-hydrogen"
+          ]
+        }
+      }
+    },
+    "anthropic-api": {
+      "own": "^claude-",
+      "never": "fable",
+      "roles": {
+        "fast": {
+          "effort": "low",
+          "models": ["claude-haiku-5-5", "claude-haiku-4-5-20251001"]
+        },
+        "mid": {
+          "effort": "medium",
+          "models": [
+            "claude-sonnet-5-5",
+            "claude-sonnet-5",
+            "claude-sonnet-4-5-20250929"
+          ]
+        },
+        "strong": {
+          "effort": "high",
+          "models": [
+            "claude-opus-5-5",
+            "claude-opus-4-6",
+            "claude-opus-4-1-20250805"
+          ]
+        }
+      }
+    },
+    "openai-api": {
+      "own": "^gpt-\\d",
+      "roles": {
+        "fast": {
+          "effort": "low",
+          "models": ["gpt-6-luna", "gpt-5.6-luna", "gpt-5-mini", "gpt-5-nano"]
+        },
+        "mid": {
+          "effort": "medium",
+          "models": ["gpt-6.1-terra", "gpt-5.6-terra", "gpt-5.1", "gpt-5"]
+        },
+        "strong": {
+          "effort": "high",
+          "models": ["gpt-6.2-sol", "gpt-6.1-sol", "gpt-6-sol", "gpt-5.6-sol"]
+        }
+      }
+    }
+  },
+  "capabilities": [
+    {
+      "pattern": "^claude-",
+      "vision": true,
+      "structured": true,
+      "contextTokens": 200000
+    },
+    {
+      "pattern": "^gpt-(?:4o(?:-mini)?|4\\.1(?:-mini|-nano)?|5(?:-mini|-nano|\\.\\d+(?:-(?:mini|nano))?)?|(?:5\\.\\d+|6(?:\\.\\d+)?)-(?:sol|terra|luna|astra))(?:-\\d{4}-\\d{2}-\\d{2})?$",
+      "vision": true,
+      "structured": true,
+      "contextTokens": 128000
+    },
+    {
+      "pattern": "^gemini-\\d",
+      "vision": true,
+      "structured": true,
+      "contextTokens": 1000000
+    },
+    {
+      "pattern": "^(?:cursor-)?grok-\\d",
+      "vision": true,
+      "structured": true,
+      "contextTokens": 256000
+    },
+    {
+      "pattern": "^gemma3:(?:4b|12b|27b)",
+      "vision": true,
+      "structured": true,
+      "contextTokens": 128000
+    }
+  ]
+}

@@ -8,8 +8,19 @@ import { openDatabase } from "../db/connection";
 import { putBlob, readBlob } from "../blobs";
 import { heicToPng } from "../sources/heic";
 import { normalizeForVision, VISION_MAX_BYTES } from "../sources/vision-image";
-import { ORIGINAL_SUFFIX, savedImages } from "./attach";
-import { prepareFiles } from "./test-attach";
+import { commitStaged, ORIGINAL_SUFFIX, recognisePhoto, savedImages, stagePhoto } from "./attach";
+import { heldFilesFor } from "./test-attach";
+
+/** Attaches one photo with the given fitting, as the composer does, and takes it as a turn does. */
+async function heldPhoto(
+  db: ReturnType<typeof openDatabase>,
+  workspace: string,
+  path: string,
+  fit: NonNullable<Parameters<typeof heldFilesFor>[2]>["fit"],
+) {
+  const { attach } = heldFilesFor(db, workspace, { fit });
+  return (await attach(path)).take().photos[0]!;
+}
 
 it("SRC-04 sends HEIC pixels to vision or OCR and preserves the original", async () => {
   const workspace = mkdtempSync(join(tmpdir(), "pyxis-heic-chat-"));
@@ -18,20 +29,29 @@ it("SRC-04 sends HEIC pixels to vision or OCR and preserves the original", async
     const path = "tests/fixtures/synthetic-note.heic";
     const decode = async (file: string) => (await heicToPng(new Uint8Array(readFileSync(file)))).png;
     const load = async (file: string) => ({ mediaType: "image/png" as const, bytes: await decode(file) });
-    const vision = await prepareFiles(db, workspace, [path], "claude-sonnet-5-5", undefined, undefined, decode, load);
-    expect(vision.images[0]?.mediaType).toBe("image/png");
-    expect(PNG.sync.read(Buffer.from(vision.images[0]!.data, "base64")).width).toBe(64);
-    const original = vision.images[0]!.original!;
+    const photo = await heldPhoto(db, workspace, path, load);
+    const vision = await stagePhoto(photo, true, undefined, decode);
+    expect(vision.image.mediaType).toBe("image/png");
+    expect(PNG.sync.read(Buffer.from(vision.image.data, "base64")).width).toBe(64);
+    const original = vision.image.original!;
     expect(original.mime).toBe("image/heic");
     expect(readFileSync(readBlob(workspace, original.sha).file)).toEqual(readFileSync(path));
+    // A model that cannot read the photo gets nothing of it. Local OCR reads the decoded pixels.
     let width = 0;
-    const ocr = await prepareFiles(db, workspace, [path], "text-only-model", async (bytes) => {
-      width = PNG.sync.read(Buffer.from(bytes)).width;
-      return "Local note text";
-    }, undefined, decode);
+    const ocr = await stagePhoto(photo, false, undefined, decode);
+    const text = await recognisePhoto(
+      photo,
+      workspace,
+      async (bytes) => {
+        width = PNG.sync.read(Buffer.from(bytes)).width;
+        return "Local note text";
+      },
+      undefined,
+      decode,
+    );
     expect(width).toBe(64);
-    expect(ocr.notes).toEqual(["Local note text"]);
-    expect(ocr.images[0]!.data).toBe("");
+    expect(text).toBe("Local note text");
+    expect(ocr.image.data).toBe("");
   } finally { db.close(); rmSync(workspace, { recursive: true, force: true }); }
 });
 
@@ -76,8 +96,11 @@ describe("SRC-04 chat images fit provider limits", () => {
     try {
       const { path, bytes } = bigPhoto(workspace);
       expect(bytes.length).toBeGreaterThan(VISION_MAX_BYTES);
-      const prepared = await prepareFiles(db, workspace, [path], "claude-sonnet-5-5", undefined, undefined, undefined, fit);
-      const image = prepared.images[0]!;
+      const staged = await stagePhoto(await heldPhoto(db, workspace, path, fit), true);
+      const { image } = staged;
+      // Nothing of the copy is stored until the message is.
+      expect(() => readBlob(workspace, image.sha)).toThrow();
+      commitStaged(db, workspace, staged.blobs, () => undefined);
       const sent = Buffer.from(image.data, "base64");
       expect(image.mediaType).toBe("image/jpeg");
       expect(sent.length).toBeLessThanOrEqual(VISION_MAX_BYTES);
@@ -173,14 +196,35 @@ describe("SRC-04 chat images fit provider limits", () => {
       const failing = async () => {
         throw new Error("vision-image-too-large");
       };
-      const prepared = await prepareFiles(db, workspace, [path], "claude-sonnet-5-5", async () => "read locally", undefined, undefined, failing);
-      expect(prepared.notes).toEqual(["read locally"]);
-      expect(prepared.images[0]!.data).toBe("");
-      expect(readFileSync(readBlob(workspace, prepared.images[0]!.sha).file)).toEqual(Buffer.alloc(8));
-      const cancelled = async () => {
-        throw new DOMException("Cancelled", "AbortError");
+      const photo = await heldPhoto(db, workspace, path, failing);
+      expect(photo.fitted).toBeNull();
+      const { image } = await stagePhoto(photo, true);
+      expect(await recognisePhoto(photo, workspace, async () => "read locally")).toBe("read locally");
+      expect(image.data).toBe("");
+      expect(readFileSync(readBlob(workspace, image.sha).file)).toEqual(Buffer.alloc(8));
+      const controller = new AbortController();
+      controller.abort();
+      await expect(
+        recognisePhoto(photo, workspace, async (_bytes, _cache, signal) => (signal?.throwIfAborted(), "x"), controller.signal),
+      ).rejects.toThrow();
+    } finally { db.close(); }
+  });
+
+  it("says the OCR data is missing instead of failing without a reason", async () => {
+    const { workspace, db } = setup();
+    try {
+      const path = join(workspace, "foto.webp");
+      writeFileSync(path, new Uint8Array(8));
+      // A valid photo past the provider's size limit: no copy for a model, so it is read locally.
+      const tooLarge = async () => {
+        throw new Error("vision-image-too-large");
       };
-      await expect(prepareFiles(db, workspace, [path], "claude-sonnet-5-5", undefined, undefined, undefined, cancelled)).rejects.toThrow("Cancelled");
+      const photo = await heldPhoto(db, workspace, path, tooLarge);
+      await expect(
+        recognisePhoto(photo, workspace, async () => {
+          throw new Error("ocr-data-missing");
+        }),
+      ).rejects.toMatchObject({ messageKey: "sources.ocrDataMissing" });
     } finally { db.close(); }
   });
 
@@ -194,12 +238,11 @@ describe("SRC-04 chat images fit provider limits", () => {
         seen = { bytes: given, signal };
         return "letto";
       };
-      const prepared = await prepareFiles(db, workspace, [path], "text-only-model", recognize, controller.signal);
-      expect(prepared.notes).toEqual(["letto"]);
+      const photo = await heldPhoto(db, workspace, path, fit);
+      expect(await recognisePhoto(photo, workspace, recognize, controller.signal)).toBe("letto");
       expect(seen!.signal).toBe(controller.signal);
       // The recognizer gets the original file at full size. Turning it upright is its own business, in the worker.
       expect(Buffer.from(seen!.bytes)).toEqual(Buffer.from(bytes));
-      expect(readFileSync(readBlob(workspace, prepared.images[0]!.sha).file)).toEqual(Buffer.from(bytes));
     } finally { db.close(); }
   }, 180_000);
 });

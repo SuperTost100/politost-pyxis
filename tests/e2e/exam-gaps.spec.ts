@@ -338,6 +338,17 @@ async function answerDrill(page: Page) {
 }
 
 const drillJobs = (run: Run) => run.db((handle) => (handle.prepare("SELECT COUNT(*) AS n FROM jobs WHERE kind = 'gap-drill'").get() as { n: number }).n);
+/**
+ * The drill jobs that are writing: past their first step, which chooses the gap and records the questions' snapshot in the
+ * job's own params, and waiting for the model, which the test holds. The page says it is preparing as soon as the question is
+ * sent, before core has made the job and long before the job has chosen its gap, so that text orders nothing.
+ */
+const drillJobsWriting = (run: Run) =>
+  run.db(
+    (handle) =>
+      (handle.prepare("SELECT COUNT(*) AS n FROM jobs WHERE kind = 'gap-drill' AND state = 'running' AND params_json LIKE '%\"snapshot\"%'").get() as { n: number })
+        .n,
+  );
 
 test.describe("Colma", () => {
   test.describe.configure({ mode: "serial" });
@@ -520,6 +531,9 @@ test.describe("Colma, when the drill's gap changes while it is written", () => {
     await openExam(page);
     await rows(page).first().getByRole("button", { name: /^Colma: Confondi/ }).click();
     await expect(page.locator(".px-gp-sheet").getByRole("status")).toContainText("Preparo una spiegazione breve");
+    // The job is writing before the analysis finds anything: a merge written before it chose its gap is another case (a job
+    // queued for a gap that merged before it began, which core tests).
+    await expect.poll(() => drillJobsWriting(run)).toBe(1);
     // The analysis finds the two gaps are the same idea while the questions are written.
     db((handle) => {
       const at = Date.now();

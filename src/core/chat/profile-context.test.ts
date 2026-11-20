@@ -5,7 +5,7 @@ import type { EngineResult } from "../engine/funnel";
 import { saveProfile } from "../profile/profile";
 import { setPlanEducation } from "../plans/education";
 import { importSmartbook } from "../sources/smartbook";
-import { askTurn, chatContext, chatPlan, chatScope, readChat, regenerateTurn, seedChat } from "./turn";
+import { askTurn, chatContext, chatPlan, chatScope, readChat, seedChat } from "./turn";
 
 const reply: EngineResult = {
   text: "Il vettore descrive il punto [P1].\n<followups>\nUno?\nDue?\nTre?\n</followups>",
@@ -44,11 +44,12 @@ async function systemFor(
   db: ReturnType<typeof setup>["db"],
   input: Parameters<typeof askTurn>[1],
 ) {
+  // Everything the model is sent: the chat's constant system prompt, then the context block that opens the message.
   let system = "";
   const result = await askTurn(db, {
     ...input,
     run: async (call) => {
-      system = call.system ?? "";
+      system = `${call.system ?? ""}\n${call.prompt}`;
       return reply;
     },
   });
@@ -123,66 +124,45 @@ describe("profile context in the tutor prompt", () => {
 });
 
 describe("the way of answering and follow-ups", () => {
-  const guided = "Guide the student one step at a time.";
-
-  it("guides a question that asks for help, solves one that asks for the answer, and the asked way wins", async () => {
+  it("sends the same instructions whatever the question asks for, and stores one template", async () => {
     const { db, sourceId } = setup();
-    const help = await systemFor(db, {
-      text: "Non ho capito il vettore posizione, mi aiuti a ragionarci?",
-      sourceIds: [sourceId],
-    });
-    expect(help.system).toContain(guided);
-    expect(readChat(db, help.result.chatId).at(-1)?.way).toBe("guided");
-    const solve = await systemFor(db, { text: question, sourceIds: [sourceId] });
-    expect(solve.system).not.toContain(guided);
-    expect(solve.system).toContain("opening line is exactly ```check");
-    expect(readChat(db, solve.result.chatId).at(-1)?.way).toBe("solved");
-    const asked = await systemFor(db, { text: question, sourceIds: [sourceId], way: "guided" });
-    expect(asked.system).toContain(guided);
-    db.close();
-  });
-
-  it("keeps guiding while the student answers a step, and Regenerate and the switch under the reply keep or change the way", async () => {
-    const { db, sourceId } = setup();
-    const first = await systemFor(db, { text: "Guidami passo passo sul vettore posizione", sourceIds: [sourceId] });
-    expect(first.system).toContain(guided);
-    // The student's answer to the step names no way: Pyxis keeps guiding.
-    const answer = await systemFor(db, { chatId: first.result.chatId, text: "Il punto rispetto all'origine" });
-    expect(answer.system).toContain(guided);
-    let again = "";
-    const run = async (call: { system?: string }) => {
-      again = call.system ?? "";
-      return reply;
-    };
-    await regenerateTurn(db, { chatId: first.result.chatId, run });
-    expect(again).toContain(guided);
-    await regenerateTurn(db, { chatId: first.result.chatId, way: "solved", run });
-    expect(again).not.toContain(guided);
-    expect(readChat(db, first.result.chatId).at(-1)?.way).toBe("solved");
-    // Asking for the solution ends the guide.
-    const solution = await systemFor(db, { chatId: first.result.chatId, text: "Dammi la soluzione" });
-    expect(solution.system).not.toContain(guided);
-    db.close();
-  });
-
-  it("guides from general knowledge too, and answers from general knowledge with chat.general when nothing is searched", async () => {
-    const { db, sourceId } = setup();
-    const asked = await systemFor(db, { text: question, sourceIds: [sourceId], way: "guided", allowGeneral: true });
-    expect(asked.system).toContain(guided);
-    const general = await systemFor(db, { text: question, allowGeneral: true });
-    expect(general.system).toContain("No passages from the student's material are attached");
+    const asks = [
+      "Non ho capito il vettore posizione, mi aiuti a ragionarci?",
+      question,
+      "Dammi la soluzione",
+    ];
+    const systems = new Set<string>();
+    for (const text of asks) {
+      let system = "";
+      await askTurn(db, {
+        text,
+        sourceIds: [sourceId],
+        run: async (call) => {
+          system = call.system ?? "";
+          return reply;
+        },
+      });
+      systems.add(system);
+      expect(system).toContain("How you answer: read what the student wants");
+      expect(system).toContain("opening line is exactly ```check");
+    }
+    expect(systems.size).toBe(1);
+    expect(db.prepare("SELECT DISTINCT prompt_template FROM messages WHERE role = 'assistant'").pluck().all()).toEqual([
+      "chat.tutor",
+    ]);
     db.close();
   });
 
   it("ASK-03: with the switch off the instruction, the stored chips and the chat view carry no follow-ups", async () => {
     const { db, sourceId } = setup();
     const on = await systemFor(db, { text: question, sourceIds: [sourceId] });
-    expect(on.system).toContain("<followups>");
+    expect(on.system).toContain("Follow-ups: end with the <followups> block.");
     expect(on.result.message?.followups).toHaveLength(3);
     saveProfile(db, { followups: false });
     expect(readChat(db, on.result.chatId).at(-1)?.followups).toEqual([]);
     const off = await systemFor(db, { text: question, sourceIds: [sourceId] });
-    expect(off.system).not.toContain("<followups>");
+    expect(off.system).toContain("Follow-ups: leave the <followups> block out.");
+    expect(off.system).not.toContain("Follow-ups: end with");
     expect(off.result.message?.followups).toEqual([]);
     expect(off.result.message?.body).not.toContain("<followups>");
     saveProfile(db, { followups: true });
@@ -215,7 +195,7 @@ describe("plan-scoped chat", () => {
     const next = await systemFor(db, { chatId: seeded.chatId, text: question });
     expect(next.result.covered).toBe(true);
     expect(next.system).toContain("Plan: Physics.");
-    expect(next.system).toContain("Write all output in English.");
+    expect(next.system).toContain("Language: English.");
     const count = db.prepare("SELECT COUNT(*) AS n FROM chats").get();
     expect(() => seedChat(db, {
       planId: "missing", kind: "passage", title: "Position", body: "Quote",
@@ -229,7 +209,7 @@ describe("plan-scoped chat", () => {
     plan(db, sourceId);
     const first = await systemFor(db, { text: question, planId: "plan" });
     expect(first.result.covered).toBe(true);
-    expect(first.system).toContain("Write all output in English.");
+    expect(first.system).toContain("Language: English.");
     expect(first.system).toContain("Plan: Physics.");
     expect(chatPlan(db, first.result.chatId)).toBe("plan");
     expect(chatScope(db, first.result.chatId)).toEqual([sourceId]);

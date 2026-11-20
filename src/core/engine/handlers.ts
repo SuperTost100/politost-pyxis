@@ -1,9 +1,5 @@
 import type Database from "better-sqlite3";
-import {
-  automaticEffort,
-  nearestEffort,
-  studentEffort,
-} from "../../shared/effort";
+import { nearestEffort, studentEffort } from "../../shared/effort";
 import { engineProviders, IpcError } from "../../shared/ipc";
 import {
   autoFeatures,
@@ -17,6 +13,8 @@ import {
   type Need,
 } from "./capabilities";
 import { suggestedModel, translateEngineError } from "./errors";
+import { offeredModels } from "./effort-variants";
+import { automaticEffortOn } from "./model-roles";
 import {
   acknowledgeProviders,
   endConversations,
@@ -61,6 +59,7 @@ import {
 import { isInstallable, runInstaller } from "./install";
 import {
   keepAllowed,
+  offLimits,
   rememberOrder,
   rememberReady,
   withoutRefusedModels,
@@ -295,8 +294,10 @@ export async function autoConfigureEngines(
   let failed = 0;
   for (const row of ready.filter((candidate) => candidate.acknowledged)) {
     try {
-      const models = await getFunnel().models(row.id as ProviderId);
-      rememberModels(row.id, models);
+      const all = await getFunnel().models(row.id as ProviderId);
+      // A tool offers only its maker's models, whatever else the account reports.
+      const models = offeredModels(row.id, all);
+      rememberModels(row.id, models, all);
       listed.push({
         id: row.id,
         kind: row.kind,
@@ -351,6 +352,11 @@ export async function autoConfigureEngines(
           .all() as StoredRow[]
       ).map((row) => [row.feature, JSON.parse(row.selection_json)]),
     ) as Map<string, StoredSelection>;
+    // A model pinned on a tool that is not its maker's, such as a Claude model on Cursor, goes back to automatic. The
+    // student's effort pick stays, as with any task handed back.
+    for (const [feature, selection] of before)
+      if (selection.auto !== true && offLimits(selection.provider, selection.model))
+        db.prepare("DELETE FROM feature_engines WHERE feature = ?").run(feature);
     // Handing one task back to Pyxis keeps the effort the student picked for it. Resetting everything does not.
     const keepsEffort = !options.reset || !!options.features?.length;
     if (options.reset) {
@@ -846,8 +852,9 @@ export function engineHandlers(
     },
     async models(input: { provider: ProviderId }) {
       await shellPathReady();
-      const list = await getFunnel().models(input.provider);
-      rememberModels(input.provider, list);
+      const all = await getFunnel().models(input.provider);
+      const list = offeredModels(input.provider, all);
+      rememberModels(input.provider, list, all);
       return list.map((model) => ({
         id: model.id,
         name: model.name,
@@ -979,6 +986,8 @@ export function engineHandlers(
       // The student left this engine out of the ones Pyxis may use.
       if (!local && !isAllowed(readAllowed(db), input.provider))
         throw invalidSelection();
+      // A tool runs its maker's models only.
+      if (offLimits(input.provider, input.model)) throw invalidSelection();
       if (!isProviderAcknowledged(input.provider))
         throw new IpcError(
           "disclosure-required",
@@ -1032,7 +1041,7 @@ export function engineHandlers(
       const effort =
         input.effort ??
         (rest.auto && listed
-          ? automaticEffort(input.feature, listed)
+          ? automaticEffortOn(rest.provider, input.feature, listed)
           : undefined);
       db.prepare(
         `UPDATE feature_engines SET selection_json = ?, updated_at = ? WHERE feature = ?`,
@@ -1220,8 +1229,9 @@ function testEffort(
 async function cheapestTest(
   provider: ProviderId,
 ): Promise<{ model: string; effort?: string }> {
-  const models = await getFunnel().models(provider);
-  rememberModels(provider, models);
+  const all = await getFunnel().models(provider);
+  const models = offeredModels(provider, all);
+  rememberModels(provider, models, all);
   const listed: AutoProvider = {
     id: provider,
     kind: kindOf(provider),

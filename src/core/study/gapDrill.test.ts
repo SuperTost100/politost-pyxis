@@ -349,6 +349,39 @@ describe("a drill built for a gap that later merged", () => {
     db.close();
   });
 
+  it("is built for the surviving gap when its own gap merged before the job began, as a start made after the merge is", async () => {
+    const db = fixture();
+    db.prepare("INSERT INTO gaps (id, plan_id, topic_id, opened_at) VALUES ('into', 'plan', 'topic', ?)").run(NOW + 2);
+    // The job was queued for `gap`, and the analysis merged it into `into` before the job reached its first step.
+    mergeGap(db, "gap", "into", NOW + 300);
+    const run: GenerateInput["run"] = async (input) => {
+      if (isExplanation(input.prompt)) return explanationReply;
+      const { count, questionKinds } = JSON.parse(input.prompt) as { count: number; questionKinds: string[] };
+      const structured = {
+        questions: Array.from({ length: count }, (_, i) => ({
+          kind: questionKinds[i],
+          stem: `Survivor ${i}${questionKinds[i] === "completion" ? " {{1}}" : ""}`,
+          explanation: "x",
+          passageIds: ["p"],
+          ...(questionKinds[i] === "mcq"
+            ? { options: ["vector", "scalar", "unit", "distance"], correct: 0 }
+            : questionKinds[i] === "completion"
+              ? { accepted: ["vector"] }
+              : { correct: false }),
+        })),
+      };
+      return { structured, text: "{}", provider: "claude", model: "m", inputTokens: 1 };
+    };
+    let saved: { gapId?: string } = {};
+    await buildGapDrill(db, { planId: "plan", topicId: "topic", gapId: "gap" }, run, undefined, (params) => (saved = params));
+    expect(db.prepare("SELECT gap_id FROM gap_items").all()).toEqual([{ gap_id: "into" }]);
+    expect(saved.gapId).toBe("into");
+    // A gap that closed by learning has no survivor, and still refuses.
+    db.prepare("UPDATE gaps SET closed_at = ? WHERE id = 'into'").run(NOW + 400);
+    await expect(buildGapDrill(db, { planId: "plan", topicId: "topic", gapId: "gap" }, run)).rejects.toThrow("gap-missing");
+    db.close();
+  });
+
   it("is saved under the surviving gap when its own gap merged while the model wrote", async () => {
     const db = fixture();
     db.prepare("INSERT INTO gaps (id, plan_id, topic_id, opened_at) VALUES ('into', 'plan', 'topic', ?)").run(NOW + 2);

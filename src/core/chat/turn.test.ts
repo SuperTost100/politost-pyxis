@@ -25,26 +25,25 @@ import {
   splitFollowups,
 } from "./turn";
 import { setRetrievalModel } from "../sources/retrieve";
+import { heldFilesFor } from "./test-attach";
 import { tempDir } from "../test-temp";
 
 describe("replyGrounding", () => {
-  const turn = { selected: true, cited: 0, attached: false, question: false, passages: 3 };
+  const turn = { selected: true, cited: 0, attached: false };
   it("badges only a turn with sources selected whose answer cites none of them", () => {
     expect(replyGrounding(turn)).toBe("general");
-    expect(replyGrounding({ ...turn, passages: 0 })).toBe("general");
     expect(replyGrounding({ ...turn, cited: 2 })).toBe("sources");
   });
   it("never badges a turn with nothing selected", () => {
     expect(replyGrounding({ ...turn, selected: false })).toBeNull();
-    expect(replyGrounding({ ...turn, selected: false, passages: 0 })).toBeNull();
   });
   it("counts the turn's own attachment as its source", () => {
     expect(replyGrounding({ ...turn, attached: true })).toBe("sources");
     expect(replyGrounding({ ...turn, selected: false, attached: true })).toBe("sources");
   });
-  it("does not expect a Socratic question to cite, unless nothing was found", () => {
-    expect(replyGrounding({ ...turn, question: true })).toBe("sources");
-    expect(replyGrounding({ ...turn, question: true, passages: 0 })).toBe("general");
+  it("asks whether the reply cites and says nothing of its kind, so a widened citation is told from a plain one", () => {
+    expect(replyGrounding({ ...turn, cited: 1, widened: true })).toBe("wider");
+    expect(replyGrounding({ ...turn, widened: true })).toBe("general");
   });
 });
 
@@ -91,8 +90,21 @@ const reply: EngineResult = {
   inputTokens: 12,
 };
 
+/** Attaches files the way the composer does, so the turn can send them. */
+async function sendable(db: ReturnType<typeof openDatabase>, workspace: string, paths: string[]) {
+  const files = heldFilesFor(db, workspace);
+  return { attachments: (await files.attach(...paths)).ids, held: files.held };
+}
+
+/** No tool of this test has a model that reads photos, so a photo can only be read with local OCR. */
+function noImageEngine(db: ReturnType<typeof openDatabase>) {
+  db.prepare(`INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('vision', ?, 1)`).run(
+    JSON.stringify({ provider: "claude", model: "text-only-small" }),
+  );
+}
+
 describe("askTurn", () => {
-  it("keeps a grounded Socratic question without requiring a factual citation", async () => {
+  it("keeps a reply that ends with a question and cites nothing, marked as not from the sources", async () => {
     const db = openDatabase(":memory:");
     db.prepare(
       "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
@@ -113,7 +125,6 @@ describe("askTurn", () => {
     const input = {
       text: "Che cos'è il vettore posizione?",
       sourceIds: [imported.sourceId],
-      way: "guided" as const,
     };
     const question = await askTurn(db, {
       ...input,
@@ -129,7 +140,6 @@ describe("askTurn", () => {
     );
     const factual = await askTurn(db, {
       ...input,
-      way: "solved",
       run: async () => ({
         ...reply,
         text: "Il vettore posizione descrive il punto.",
@@ -139,7 +149,8 @@ describe("askTurn", () => {
     expect(factual.covered).toBe(true);
     expect(factual.message?.citations).toEqual([]);
     expect(factual.message?.grounding).toBe("general");
-    expect(question.message?.grounding).toBe("sources");
+    // What it ends with does not make it grounded: it cites nothing.
+    expect(question.message?.grounding).toBe("general");
     db.close();
   });
 
@@ -243,7 +254,7 @@ describe("askTurn", () => {
       text: "Ora parliamo d altro",
       subject: "",
       run: async (input) => {
-        system = input.system ?? "";
+        system = `${input.system ?? ""}\n${input.prompt}`;
         return reply;
       },
     });
@@ -276,11 +287,11 @@ describe("askTurn", () => {
       text: "Che cos'è il vettore?",
       sourceIds: [imported.sourceId],
       run: async (input) => {
-        system = input.system ?? "";
+        system = `${input.system ?? ""}\n${input.prompt}`;
         return reply;
       },
     });
-    expect(system).toContain("Write all output in Italian.");
+    expect(system).toContain("Language: Italian.");
     expect(system).toContain(partialText("citation"));
     expect(system).not.toMatch(/\{\{[A-Za-z]/);
     expect(
@@ -290,8 +301,8 @@ describe("askTurn", () => {
         )
         .get(),
     ).toEqual({
-      prompt_template: "chat.solver",
-      prompt_version: templateVersion("chat.solver"),
+      prompt_template: "chat.tutor",
+      prompt_version: templateVersion("chat.tutor"),
     });
     expect(result.covered).toBe(true);
     expect(result.message?.modelId).toBe("gpt-6.1-sol");
@@ -506,16 +517,17 @@ describe("askTurn", () => {
       text: "ciao",
       allowGeneral: true,
       run: async (input) => {
-        system = input.system ?? "";
+        system = `${input.system ?? ""}\n${input.prompt}`;
         return reply;
       },
     });
     // The level and course go in; the student's name does not.
     expect(system).not.toContain("Ada");
     expect(system).toContain("Level: university. Course: Fisica 1.");
-    expect(system).toContain("Write all output in Italian.");
-    // General answers have no passages, so they do not carry the citation rule.
-    expect(system).not.toContain(partialText("citation"));
+    expect(system).toContain("Language: Italian.");
+    // The system prompt is the same for every chat turn, so a general answer carries the citation rule too.
+    expect(system).toContain(partialText("citation"));
+    expect(system).toContain("answer from your own knowledge without referring to passages or sources");
     expect(system).not.toMatch(/\{\{[A-Za-z]/);
   });
 
@@ -630,7 +642,7 @@ describe("askTurn", () => {
       text: "un esempio",
       allowGeneral: true,
       run: async (input) => {
-        system = input.system ?? "";
+        system = `${input.system ?? ""}\n${input.prompt}`;
         return reply;
       },
     });
@@ -711,7 +723,7 @@ describe("askTurn", () => {
     let prompt = "";
     const result = await askTurn(db, {
       text: "velocita",
-      files: [file],
+      ...(await sendable(db, dir, [file])),
       workspace: dir,
       run: async (input) => {
         prompt = input.prompt;
@@ -755,7 +767,7 @@ describe("askTurn", () => {
       return new Float32Array(384).fill(0.05);
     });
     try {
-      await askTurn(db, { text: "velocita", files, workspace: dir, run: async () => reply });
+      await askTurn(db, { text: "velocita", ...(await sendable(db, dir, files)), workspace: dir, run: async () => reply });
     } finally {
       setRetrievalModel(undefined);
     }
@@ -773,11 +785,12 @@ describe("askTurn", () => {
     db.prepare(
       `INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)`,
     ).run(JSON.stringify({ provider: "claude", model: "text-only-small" }));
+    noImageEngine(db);
     let prompt = "";
     await askTurn(db, {
       text: "cosa c'è scritto",
       allowGeneral: true,
-      files: [file],
+      ...(await sendable(db, dir, [file])),
       workspace: dir,
       recognize: async () => "F uguale m a",
       run: async (input) => {
@@ -812,9 +825,10 @@ describe("askTurn", () => {
     db.prepare(
       `INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)`,
     ).run(JSON.stringify({ provider: "claude", model: "text-only-small" }));
+    noImageEngine(db);
     const result = await askTurn(db, {
       text: "cosa c'è scritto",
-      files: [file],
+      ...(await sendable(db, dir, [file])),
       workspace: dir,
       recognize: async () => "F uguale m a",
       run: async () => reply,
@@ -834,9 +848,10 @@ describe("askTurn", () => {
     db.prepare(
       `INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)`,
     ).run(JSON.stringify({ provider: "claude", model: "text-only-small" }));
+    noImageEngine(db);
     const result = await askTurn(db, {
       text: "cosa c'è scritto",
-      files: [file],
+      ...(await sendable(db, dir, [file])),
       workspace: dir,
       recognize: async () => "",
       run: async () => reply,
@@ -844,29 +859,6 @@ describe("askTurn", () => {
     // Nothing was selected and the photo gave no text, so it is an ordinary general answer with no badge.
     expect(result.covered).toBe(true);
     expect(result.message?.grounding).toBeNull();
-  });
-
-  it("refuses an attachment over 15 MB", async () => {
-    const dir = tempDir("pyxis-big-");
-    const file = join(dir, "huge.txt");
-    writeFileSync(file, "x");
-    const { openSync, ftruncateSync, closeSync } = await import("node:fs");
-    const fd = openSync(file, "r+");
-    ftruncateSync(fd, 16 * 1024 * 1024);
-    closeSync(fd);
-    const db = openDatabase(":memory:");
-    db.prepare(
-      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
-    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
-    await expect(
-      askTurn(db, {
-        text: "leggi",
-        files: [file],
-        workspace: dir,
-        allowGeneral: true,
-        run: async () => reply,
-      }),
-    ).rejects.toMatchObject({ messageKey: "errors.attachTooBig" });
   });
 });
 

@@ -1,5 +1,5 @@
 import { activeSimulation } from "../study/simulation";
-import { needsSolverChecks, splitChecks, solverChecks } from "./checks";
+import { needsSolverChecks, NO_SEPARATE_CHECK, splitChecks, solverChecks } from "./checks";
 import { stripCheckFences, type AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
@@ -18,17 +18,18 @@ import {
   noSandbox,
   type FigureRunner,
 } from "../math/figures";
-import { isAbort, IpcError, toIpcError } from "../../shared/ipc";
-import { generate, type GenerateInput } from "../engine/generate";
-import { endConversation } from "../engine/funnel";
+import { isAbort, IpcError, toIpcError, type AttachmentError, type MessageFile } from "../../shared/ipc";
+import { generate, startingMove, type GenerateInput } from "../engine/generate";
 import { engineSeesImages } from "../engine/capabilities";
-import { selectionFor, strongestSelection } from "../engine/selection";
+import { systemInPrompt } from "../engine/funnel";
+import { LOCAL_PROVIDER } from "../engine/local";
+import { selectionFor, selectionOn, strongestSelection, type StoredSelection } from "../engine/selection";
 import { withUsageScope } from "../engine/usage";
 import type { Embedder, PassageHit } from "../sources/retrieve";
 import { contentWords, hitOf, queryEmbedder, retrieveWithModel, type PassageRow } from "../sources/retrieve";
-import { sha256 } from "../sources/quality";
 import { readingOrder } from "../sources/smartbook";
-import { commitStaged, savedImages, stageFiles, type PreparedFiles, type SkippedImage, type StagedFiles } from "./attach";
+import { commitStaged, recognisePhoto, savedImages, stagePhoto, type PreparedFiles, type SkippedImage, type StagedBlob } from "./attach";
+import type { HeldFiles, TakenFiles } from "./held-files";
 import { chatListedSources, deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
 import { latestDocument } from "../sources/documents";
 import { contentLanguage, planLanguage, promptProvenance } from "../engine/prompts";
@@ -36,13 +37,22 @@ import { plainTitle } from "../../shared/spoken-math";
 import { oneLine, profileContext } from "../profile/context";
 import { readProfile } from "../profile/profile";
 import {
-  type ChatTemplateId,
+  CHAT_TEMPLATE,
   chatSystemPrompt,
-  chatTemplateId,
+  contextBlock,
   dataBlock,
 } from "./prompts";
 import { liveSubject, pickSubject, sourceSubjects, subjectSourceIds, type SubjectBy } from "./subject";
-import { answerWay, wayOfTemplate, type AnswerWay } from "./way";
+import {
+  addSessionChars,
+  contextHash,
+  currentSession,
+  markOutOfStep,
+  recordSession,
+  keepSession,
+  rewindSession,
+  sessionTooLong,
+} from "./sessions";
 
 export type ChatContext = {
   kind: "answer" | "passage";
@@ -76,11 +86,11 @@ export type ChatMessageView = {
   id: string;
   role: "user" | "assistant";
   body: string;
+  /** The files the question carried, in the order they were attached. */
+  files?: MessageFile[];
   modelId: string | null;
   provider: string | null;
   grounding: Grounding | null;
-  /** Solved in full, or guided one step at a time. */
-  way: AnswerWay;
   followups: string[];
   citations: ChatCitation[];
   reaction: "up" | "down" | null;
@@ -108,6 +118,8 @@ export type AskResult = {
   message: ChatMessageView | null;
   /** Saved images this turn could not send, with why. The student is told, since the reply did not see them. */
   skippedImages?: SkippedImage[];
+  /** Attached files that could not be read and went without, each with its reason. */
+  leftOut?: Array<{ name: string; kind: "document" | "photo"; error: AttachmentError }>;
 };
 
 type AskInput = {
@@ -116,12 +128,13 @@ type AskInput = {
   sourceIds?: string[];
   /** ASK-07: a plan scopes the chat to the plan's sources; null clears it, undefined keeps it. */
   planId?: string | null;
-  /** The way the student asked for with the action under an answer. Without it the question decides (`answerWay`). */
-  way?: AnswerWay;
   allowGeneral?: boolean;
   /** A subject the student chose for the chat, null for the whole Library. Undefined keeps the chat's own. */
   subject?: string | null;
-  files?: string[];
+  /** The files attached in the composer, by id. The turn waits until each is read (`held`). */
+  attachments?: string[];
+  /** The files the composer holds, which `attachments` names. */
+  held?: HeldFiles | null;
   workspace?: string;
   recognize?: (bytes: Uint8Array, cachePath: string) => Promise<string>;
   embed?: Embedder | null;
@@ -179,8 +192,16 @@ const CHAT_PASSAGES = 12;
 const ATTACHED_PASSAGES = 4;
 /** At most this many passages are added for this turn's documents, on top of the ones retrieval found. */
 const ATTACHED_TOTAL = 12;
-/** Characters of earlier turns sent with a question. Whole messages are kept, newest first. */
-const HISTORY_CHARS = 6000;
+/**
+ * Characters of the earlier conversation handed to a new tool session, whole messages newest first. The smallest window
+ * among the tools' models today is 200,000 tokens (Claude Haiku), and 200,000 characters are about 55,000 tokens: a
+ * quarter of it, which leaves room for the system prompt, twelve passages, the question and a long answer, and for the
+ * session to grow before the tool compacts it. A local model runs with a 16,384-token window (about 50,000 characters),
+ * of which the system prompt, the passages and the answer take most, so it gets 12,000.
+ */
+const HANDOVER_CHARS = 200_000;
+const HANDOVER_CHARS_LOCAL = 12_000;
+const handoverChars = (provider: string) => (provider === "ollama" ? HANDOVER_CHARS_LOCAL : HANDOVER_CHARS);
 
 /** Math checks still running after their reply was saved, by the message they are for. */
 const runningChecks = new Map<
@@ -249,22 +270,19 @@ export async function settleChecks(): Promise<void> {
  * What the reply message records, and so whether the "general knowledge" badge shows. The badge is only for a turn where
  * the student had sources or a subject selected and the answer cites none of them: that is "general". A cited answer is
  * "sources", and a turn with nothing selected carries no claim (null) and no badge. A turn's own attachment counts as
- * its source. A Socratic question needs no citation, so it stays "sources" whenever passages were found.
+ * its source. What counts is whether the reply cites, not what kind of reply it is.
  */
 export function replyGrounding(turn: {
   selected: boolean;
   cited: number;
   attached: boolean;
-  /** The reply is a Socratic question, which is not expected to cite. */
-  question: boolean;
-  passages: number;
   /** The passages came from outside the chat's subject, which had nothing on the question. */
   widened?: boolean;
 }): Grounding | null {
   if (turn.cited > 0) return turn.widened ? "wider" : "sources";
   if (turn.attached) return "sources";
   if (!turn.selected) return null;
-  return turn.question && turn.passages > 0 ? (turn.widened ? "wider" : "sources") : "general";
+  return "general";
 }
 
 /** `wider` is stored as `mixed`, a value the column has allowed from the start. */
@@ -290,24 +308,72 @@ export function splitFollowups(text: string): { body: string; followups: string[
 
 /**
  * The chat so far, as the model reads it: the question being answered and the reply being replaced are left out, and an
- * answer loses its check blocks and suggestions. Messages are kept whole, newest first, while they fit; only a newest
- * message longer than the whole budget is cut, at its end.
+ * answer loses its check blocks and suggestions. A reply the student stopped is marked as what the student saw. Messages
+ * are kept whole, newest first, while they fit in `budget` characters, and no older body is read once it is met; only a
+ * newest message longer than the whole budget is cut, at its end. Older messages that do not fit are named in one line,
+ * so the model knows the conversation began earlier. With `after`, only the messages after that one (null: all).
  */
+/** The text OCR read from the photos of one question, kept beside the files and never shown as the question's own text. */
+function storedNotes(db: Database.Database, messageId: string): string[] {
+  return db
+    .prepare(`SELECT recognised FROM attachments WHERE message_id = ? AND recognised IS NOT NULL AND recognised <> '' ORDER BY created_at, rowid`)
+    .pluck()
+    .all(messageId) as string[];
+}
+
+/** Whether the chat holds a photo that a model reading images could be sent. */
+function chatHoldsPhotos(db: Database.Database, chatId: string): boolean {
+  return (
+    db
+      .prepare(
+        `SELECT 1 FROM attachments a JOIN messages m ON m.id = a.message_id
+         WHERE m.chat_id = ? AND a.mime IN ('image/png', 'image/jpeg', 'image/webp') LIMIT 1`,
+      )
+      .get(chatId) !== undefined
+  );
+}
+
+/**
+ * The engine for a turn that has a photo. The chat's own when it reads images. A model the student pinned for the chat is
+ * a pin: it never moves to another model or tool for a photo, and a photo it cannot read is read by local OCR and sent as
+ * text. An automatic choice may move to an image model, of the same tool first, then of another available tool, but never
+ * from a local model to a cloud tool: the order of tools only names subscription tools, and a local chat is automatic only
+ * when none is signed in, so nothing the student set lets a local chat's photo, question and conversation leave this
+ * computer. With no image model to move to, the chat keeps its engine and reads the photo with local OCR.
+ */
+function selectionForPhotos(db: Database.Database, chat: StoredSelection): StoredSelection {
+  if (engineSeesImages(chat)) return chat;
+  if (!chat.chosenFor) return chat;
+  const sameTool = selectionOn(chat.provider, "vision");
+  // Pyxis chose this model for the picture work, so it stays an automatic choice: at a limit, a sign-out or a refused model
+  // the call moves on to the next tool's image model (`chosenFor` is what `generate` reads for that).
+  if (sameTool && engineSeesImages(sameTool)) return { ...sameTool, chosenFor: "vision" };
+  if (chat.provider === LOCAL_PROVIDER) return chat;
+  try {
+    const vision = selectionFor(db, "vision");
+    if (engineSeesImages(vision)) return vision;
+  } catch {
+    // No engine is chosen for photos: the chat's own engine answers with the text OCR read.
+  }
+  return chat;
+}
+
 function historyText(
   db: Database.Database,
   chatId: string,
   exclude: string[],
+  budget: number,
+  after?: string | null,
 ): string {
   const ids = exclude.filter(Boolean);
+  const floor = after ? ((db.prepare(`SELECT rowid FROM messages WHERE id = ?`).pluck().get(after) as number | undefined) ?? 0) : 0;
+  const filter = `chat_id = ? AND rowid > ?${ids.length ? ` AND id NOT IN (${ids.map(() => "?").join(", ")})` : ""}`;
   const rows = db
-    .prepare(
-      `SELECT role, body FROM messages WHERE chat_id = ?${
-        ids.length ? ` AND id NOT IN (${ids.map(() => "?").join(", ")})` : ""
-      } ORDER BY created_at DESC LIMIT 8`,
-    )
-    .all(chatId, ...ids) as Array<{ role: string; body: string }>;
+    .prepare(`SELECT id, role, body, stopped FROM messages WHERE ${filter} ORDER BY created_at DESC, rowid DESC`)
+    .iterate(chatId, floor, ...ids) as Iterable<{ id: string; role: string; body: string; stopped: number }>;
   const lines: string[] = [];
   let used = 0;
+  let cut = false;
   for (const row of rows) {
     const body =
       row.role === "assistant"
@@ -315,16 +381,23 @@ function historyText(
             stripCheckFences(splitFollowups(splitChecks(row.body).body).body),
             "Figure",
           ).trim()
-        : row.body;
-    const line = `${row.role}: ${body}`;
-    if (used + line.length > HISTORY_CHARS) {
-      if (lines.length === 0) lines.push(`${line.slice(0, HISTORY_CHARS - 1)}…`);
+        : [row.body, ...storedNotes(db, row.id)].join("\n\n");
+    const line = `${row.role === "assistant" && row.stopped ? "assistant (stopped, the student saw only this)" : row.role}: ${body}`;
+    if (used + line.length > budget) {
+      if (lines.length === 0) lines.push(`${line.slice(0, budget - 1)}…`);
+      cut = true;
       break;
     }
     lines.push(line);
     used += line.length + 1;
   }
-  return lines.reverse().join("\n");
+  const kept = lines.reverse();
+  if (cut) {
+    const total = db.prepare(`SELECT COUNT(*) FROM messages WHERE ${filter}`).pluck().get(chatId, floor, ...ids) as number;
+    const left = total - kept.length;
+    if (left > 0) kept.unshift(`(${left} earlier ${left === 1 ? "message" : "messages"} left out)`);
+  }
+  return kept.join("\n");
 }
 
 /**
@@ -590,7 +663,7 @@ async function gather(
   const earlier = db
     .prepare(
       `SELECT body FROM messages WHERE chat_id = ? AND role = 'user' AND body != ?
-       ORDER BY created_at DESC LIMIT 1`,
+       ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
     .get(chatId, text) as { body: string } | undefined;
   if (earlier) {
@@ -707,17 +780,6 @@ function libraryHasPassages(db: Database.Database): boolean {
   );
 }
 
-/** How the reply before this question answered, so a student answering a guided step keeps being guided. */
-function previousWay(db: Database.Database, chatId: string, replacing?: string): AnswerWay | null {
-  const row = db
-    .prepare(
-      `SELECT prompt_template FROM messages WHERE chat_id = ? AND role = 'assistant' AND id IS NOT ?
-       ORDER BY created_at DESC LIMIT 1`,
-    )
-    .get(chatId, replacing ?? null) as { prompt_template: string | null } | undefined;
-  return row ? wayOfTemplate(row.prompt_template) : null;
-}
-
 /** Adds each citation's file title, its subject and whether it was attached to the chat, for the "I used" line. */
 function describeCitations(db: Database.Database, citations: ChatCitation[]): ChatCitation[] {
   if (citations.length === 0) return citations;
@@ -741,6 +803,23 @@ function describeCitations(db: Database.Database, citations: ChatCitation[]): Ch
   });
 }
 
+/** A regenerated reply: the session holds the old answer, which the student no longer sees once the new one is kept. */
+const ASKED_AGAIN =
+  "The student asked for this question to be answered again. Your earlier answer to it is discarded and the student sees only the new one.\n\n";
+
+/** The message just before `messageId` in its chat, or null: what the first prompt of a session started at it held. */
+function messageBefore(db: Database.Database, chatId: string, messageId: string): string | null {
+  return (
+    (db
+      .prepare(
+        `SELECT id FROM messages WHERE chat_id = ? AND rowid < (SELECT rowid FROM messages WHERE id = ?)
+         ORDER BY rowid DESC LIMIT 1`,
+      )
+      .pluck()
+      .get(chatId, messageId) as string | undefined) ?? null
+  );
+}
+
 export async function askTurn(
   db: Database.Database,
   input: AskInput,
@@ -749,14 +828,29 @@ export async function askTurn(
   requireTutorAvailable(db);
   if (input.signal?.aborted) throw new DOMException("aborted", "AbortError");
   requireIdle(input.chatId);
-  const now = Date.now();
+  // A message is stored at the turn's start and its reply one millisecond later. A turn that starts in the same
+  // millisecond as the reply before it, or after the clock stepped back, would sort before it, so a turn never starts
+  // earlier than the last message of its chat.
+  const last = input.chatId
+    ? (db.prepare(`SELECT MAX(created_at) FROM messages WHERE chat_id = ?`).pluck().get(input.chatId) as number | null)
+    : null;
+  const now = Math.max(Date.now(), (last ?? 0) + 1);
   const chat = ensureChat(db, input.chatId, input.text, now);
   // Stop also stops a math check still running for an earlier reply in this chat.
   const stopChecks = () => cancelChecks(chat.id);
   input.signal?.addEventListener("abort", stopChecks, { once: true });
   generating.add(chat.id);
   try {
-    return await answer(db, input, replacing, chat.id, now);
+    const report: { leftOut?: TakenFiles["leftOut"]; question?: string } = {};
+    const result = await answer(db, input, replacing, chat.id, now, report);
+    // The question is answered, so the files tied to it let go: the chat holds the ones its rows name, and a copy it already
+    // had or a file that could not be read goes. Until now a send that failed kept every chip as it was.
+    if (report.question) input.held?.finishSend(report.question);
+    // A new chat takes the composer the draft was in: the files left in it belong to the chat now.
+    if (chat.created) input.held?.rehome(input.chatId ?? "", chat.id);
+    return report.leftOut?.length
+      ? { ...result, leftOut: report.leftOut.map(({ name, kind, error }) => ({ name, kind, error })) }
+      : result;
   } catch (err) {
     // A chat this turn created and could not answer is removed with its question and attachments. The student's
     // message goes back to the composer, so a retry starts one new chat instead of leaving an empty one behind.
@@ -765,6 +859,7 @@ export async function askTurn(
       db.prepare(`SELECT 1 FROM chats WHERE id = ?`).get(chat.id) &&
       !db.prepare(`SELECT 1 FROM messages WHERE chat_id = ? AND role = 'assistant'`).get(chat.id)
     )
+      // The files still held in the composer stay, with the copies they made, for the retry: their rows name them.
       deleteChat(db, input.workspace ?? "", chat.id);
     throw err;
   } finally {
@@ -779,6 +874,7 @@ async function answer(
   replacing: { assistantId: string; userId: string } | undefined,
   chatId: string,
   now: number,
+  report: { leftOut?: TakenFiles["leftOut"]; question?: string },
 ): Promise<AskResult> {
   const prior = readScope(db, chatId);
   const planId = input.planId === undefined ? prior.planId : input.planId;
@@ -789,29 +885,74 @@ async function answer(
     throw new IpcError("plan-missing", "errors.internal");
   const picked0 =
     input.sourceIds ?? (planId === prior.planId ? prior.ids : []);
-  let staged: StagedFiles | undefined;
-  if (input.files && input.files.length > 0 && input.workspace) {
-    try {
-      staged = await stageFiles(
-        db,
-        input.workspace,
-        input.files,
-        selectionFor(db, "chat"),
-        input.recognize,
-        input.signal,
-      );
-    } catch (err) {
-      if (
-        err instanceof Error &&
-        (err.message === "attach-too-big" || err.message === "attach-too-many")
-      ) {
-        throw new IpcError("attach-too-big", "errors.attachTooBig");
-      }
-      throw err;
-    }
+  // The files were read when they were attached. The turn waits for any still being read and goes on without the ones that
+  // failed, which the reply names.
+  let taken: TakenFiles | undefined;
+  if (input.attachments && input.attachments.length > 0 && input.held) {
+    await input.held.settle(input.attachments, input.signal);
+    taken = input.held.take(input.attachments);
+    report.leftOut = taken.leftOut;
   }
-  const notes: string[] = staged?.notes ?? [];
-  const images: PreparedFiles["images"] = staged?.images ?? [];
+  // A question left unanswered (a failed turn, then Try again) is the chat's last row and is answered, not replaced: its
+  // own text is read from the same stored place.
+  const lastRow = db
+    .prepare(`SELECT id, role, body FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`)
+    .get(chatId) as { id: string; role: string; body: string } | undefined;
+  const reusedQuestion =
+    replacing?.userId || (lastRow?.role === "user" && lastRow.body === input.text ? lastRow.id : "");
+  // A turn with a photo runs on a model that reads it when the choice is automatic: the chat's tool has one, or another
+  // available tool. So does every later turn of a chat that holds a photo: its session holds the image, and a model without
+  // image input may not resume it, and could not answer about the photo anyway.
+  const chatSelection: StoredSelection =
+    input.engine === "strong" ? strongestSelection(db) : selectionFor(db, "chat");
+  const photosHere = (taken?.photos.length ?? 0) > 0 || chatHoldsPhotos(db, chatId);
+  const selection = photosHere ? selectionForPhotos(db, chatSelection) : chatSelection;
+  const reads = Boolean(input.workspace) && engineSeesImages(selection);
+  // The text local OCR read from photos is sent with the question and stored apart from it. A regenerated turn reads the
+  // text stored with its question.
+  const notes: string[] = reusedQuestion ? storedNotes(db, reusedQuestion) : [];
+  const images: PreparedFiles["images"] = [];
+  const blobs: StagedBlob[] = [];
+  const photoRows: Array<{ id: string; name: string; size: number; image: PreparedFiles["images"][number]; text: string }> = [];
+  for (const photo of taken?.photos ?? []) {
+    const one = await stagePhoto(photo, reads, input.signal);
+    // Local OCR is the last resort: no model of the chat reads images, or the photo has no copy a model can take (a valid
+    // photo past the provider's size limit), so the model would get neither pixels nor text.
+    let text = "";
+    if (!((reads && one.image.data) || !input.workspace)) {
+      try {
+        text = await recognisePhoto(photo, input.workspace, input.recognize, input.signal);
+      } catch (error) {
+        // A stop, and the refusals about the OCR data (which the student answers), end the turn as they did. Any other
+        // failure of local OCR leaves this photo out, named, so the question goes out and a retry does not fail again.
+        if (input.signal?.aborted || isAbort(error) || error instanceof IpcError) throw error;
+        report.leftOut = [...(report.leftOut ?? []), { id: photo.id, name: photo.name, kind: "photo", error: "unreadable" }];
+        continue;
+      }
+    }
+    input.signal?.throwIfAborted();
+    if (text && !notes.includes(text)) notes.push(text);
+    blobs.push(...one.blobs);
+    images.push(one.image);
+    photoRows.push({ id: photo.id, name: photo.name, size: photo.size, image: one.image, text });
+  }
+  // A document this chat already holds (the same file attached again, or a retry) is used from there, and the copy made
+  // for this message is dropped after the commit. Nothing awaits between this lookup and the commit.
+  const sameDocument = db.prepare(
+    `SELECT id FROM sources WHERE blob_sha = (SELECT blob_sha FROM sources WHERE id = ?) AND id <> ? AND library = 0
+     AND status = 'ready' AND id IN (SELECT value FROM json_each(?))`,
+  );
+  const scopeNow = JSON.stringify(readScope(db, chatId).ids);
+  const documents = (taken?.documents ?? []).map((doc) => {
+    const held = sameDocument.get(doc.sourceId, doc.sourceId, scopeNow) as { id: string } | undefined;
+    return { ...doc, use: held?.id ?? doc.sourceId, duplicate: held != null };
+  });
+  // A question answered again (Try again) brings the documents it was stored with, as it did when it was sent.
+  const questionDocs = reusedQuestion
+    ? (db.prepare(`SELECT source_id FROM attachments WHERE message_id = ? AND source_id IS NOT NULL`).pluck().all(reusedQuestion) as string[])
+    : [];
+  const reused = [...new Set([...documents.map((doc) => doc.use), ...questionDocs])];
+
   // The files were read while the chat could be deleted, so it is checked again here, in the one transaction that stores
   // the attached sources with the turn's scope, message and photos. A failure anywhere in it leaves none of them.
   const persist = (attachedIds: string[]) => {
@@ -842,11 +983,11 @@ async function answer(
       subject || null,
       chatId,
     );
-    const userBody =
-      notes.length > 0 ? `${input.text}\n\n${notes.join("\n")}` : input.text;
+    // The text of the question is what the student typed. What OCR read from a photo is kept beside the file.
+    const userBody = input.text;
     const pending = db
       .prepare(
-        `SELECT id, role, body FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
+        `SELECT id, role, body FROM messages WHERE chat_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
       )
       .get(chatId) as { id: string; role: string; body: string } | undefined;
     let userMessageId =
@@ -871,42 +1012,47 @@ async function answer(
           insertAttachment.run(id, messageId, sha, mime, at);
       },
     };
-    for (const image of images) {
-      attach.run(uuidv7(now + 3), userMessageId, image.sha, image.mediaType, now);
-      if (image.original)
-        attach.run(uuidv7(now + 4), userMessageId, image.original.sha, image.original.mime, now);
+    // Each file is recorded with its name, so the question shows it. A photo's fitted copy carries the name and the text OCR
+    // read, and its original (a HEIC, or a photo cut down to fit) is a plain row that a resend skips.
+    const named = db.prepare(
+      `UPDATE attachments SET name = ?, kind = ?, size = ?, source_id = ?, recognised = ? WHERE message_id = ? AND blob_sha = ? AND mime = ?`,
+    );
+    const sourceRow = db.prepare(`SELECT blob_sha AS sha, mime FROM sources WHERE id = ?`);
+    const hasDocument = db.prepare(`SELECT 1 FROM attachments WHERE message_id = ? AND source_id = ?`);
+    const order = taken?.order ?? [];
+    const listed = [
+      ...photoRows.map((row) => ({ id: row.id, photo: row })),
+      ...documents.map((doc) => ({ id: doc.id, doc })),
+    ].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    for (const item of listed) {
+      if ("photo" in item) {
+        const { image } = item.photo;
+        attach.run(uuidv7(now + 3), userMessageId, image.sha, image.mediaType, now);
+        named.run(item.photo.name, "photo", item.photo.size, null, item.photo.text || null, userMessageId, image.sha, image.mediaType);
+        if (image.original)
+          attach.run(uuidv7(now + 4), userMessageId, image.original.sha, image.original.mime, now);
+        continue;
+      }
+      const doc = item.doc;
+      const source = sourceRow.get(doc.use) as { sha: string | null; mime: string | null } | undefined;
+      if (!source?.sha || !source.mime || hasDocument.get(userMessageId, doc.use)) continue;
+      db.prepare(
+        `INSERT INTO attachments (id, message_id, blob_sha, mime, created_at, name, kind, size, source_id)
+         VALUES (?, ?, ?, ?, ?, ?, 'document', ?, ?)`,
+      ).run(uuidv7(now + 5), userMessageId, source.sha, source.mime, now, doc.name, doc.size, doc.use);
     }
     db.prepare(`UPDATE chats SET updated_at = ? WHERE id = ?`).run(now, chatId);
     return { sourceIds, subject, subjectBy, userMessageId, attachedIds };
   };
-  // A document this chat already holds (a retry after a failed turn sends the same file again) is reused, not stored twice.
-  // Nothing awaits between this lookup and the commit, so the source cannot be removed in between.
-  const reused: string[] = [];
-  if (staged) {
-    const held = db.prepare(
-      `SELECT id FROM sources WHERE blob_sha = ? AND library = 0 AND status = 'ready' AND id IN (SELECT value FROM json_each(?))`,
-    );
-    const scope = JSON.stringify(readScope(db, chatId).ids);
-    staged = {
-      ...staged,
-      documents: staged.documents.filter((doc) => {
-        const row = held.get(sha256(doc.bytes), scope) as { id: string } | undefined;
-        if (row) reused.push(row.id);
-        return !row;
-      }),
-    };
-  }
-  const { sourceIds, subject, subjectBy, userMessageId, attachedIds } = staged
-    ? commitStaged(db, input.workspace!, staged, (ids) => persist([...new Set([...reused, ...ids])])).value
-    : db.transaction(() => persist([]))();
+  const { sourceIds, subject, subjectBy, userMessageId, attachedIds } = commitStaged(db, input.workspace ?? "", blobs, () =>
+    persist(reused),
+  );
+  // The files are tied to the question they went with, whatever the send does next.
+  report.question = userMessageId;
+  input.held?.tie([...(taken?.order ?? []), ...(taken?.leftOut.map((file) => file.id) ?? [])], userMessageId);
   input.onQuestion?.(userMessageId, chatId);
 
-  const selection =
-    input.engine === "strong" ? strongestSelection(db) : selectionFor(db, "chat");
-  const seesImage =
-    Boolean(input.workspace) &&
-    engineSeesImages(selection) &&
-    images.some((image) => image.data);
+  const seesImage = reads && images.some((image) => image.data);
   const thisTurnFile = notes.length > 0 || seesImage;
   // The passages are the main reference, not a gate: a question they do not cover is still answered from the model's own
   // knowledge, and the reply shows it by citing nothing (see replyGrounding).
@@ -985,6 +1131,9 @@ async function answer(
     ],
   };
   const selected = searches || sourceIds.length > 0 || Boolean(planId) || Boolean(subject);
+  // A file attached to this question is its own source: a photo that went with it, or a document whose passages did. A reply
+  // that cites none of them is still not "general knowledge", so the line above it does not say nothing was found.
+  const ownSource = thisTurnFile || found.hits.some((hit) => attachedIds.includes(hit.sourceId));
 
   const citations: ChatCitation[] = found.hits.map((hit, index) => ({
     label: hit.sectionPath || hit.locator.paragraph || `P${kept?.numbers[index] ?? index + 1}`,
@@ -1010,53 +1159,81 @@ async function answer(
   const subjectLine = subject ? `Subject: ${oneLine(subject)}.` : "";
   const pinned = chatContext(db, chatId);
   const pinnedBlock = pinned
-    ? `Pinned context: ${oneLine(pinned.title)}\n${dataBlock("pinned", pinned.body)}\n\n`
-    : "";
+    ? `Pinned context: ${oneLine(pinned.title)}\n${dataBlock("pinned", pinned.body)}`
+    : "Pinned context: none.";
   const attachedBlock =
     notes.length > 0
       ? `Attached text:\n${dataBlock("attached", notes.join("\n"))}\n\n`
       : "";
   const profile = readProfile(db);
-  const way = answerWay({ text: input.text, previous: previousWay(db, chatId, replacing?.assistantId), asked: input.way });
-  // Nothing searched and no file: the reply can only come from the model's own knowledge.
-  const template = chatTemplateId({ way, general: !searches && !thisTurnFile && !kept });
+  const template = CHAT_TEMPLATE;
   const where = chatPrompt(db, planId);
-  // A guided step asks the student to do the next part, so only solved answers offer figures.
-  const drawer = way === "guided" ? null : await figureRunner(input.python);
-  const system = [
-    chatSystemPrompt(
-      template,
-      where.language,
-      profile?.followups !== false,
-      drawer?.kinds ?? [],
-    ),
-    profileContext(db, planId, profile),
-    where.planLine,
-    subjectLine,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const drawer = await figureRunner(input.python);
+  // The system prompt is the same for the whole chat. What changes from turn to turn is in the context block that opens
+  // the message, which a tool's session gets only when it differs from the one it last received.
+  const system = chatSystemPrompt();
+  const header = `${contextBlock({
+    language: where.language,
+    planLine: where.planLine,
+    subject: subjectLine,
+    profile: profileContext(db, planId, profile),
+    followups: profile?.followups !== false,
+    figures: drawer?.kinds ?? [],
+  })}\n${pinnedBlock}`;
+  const told = contextHash(header);
   const noPassages =
     selected && !input.allowGeneral && !thisTurnFile && citations.length === 0
       ? "No passage matches this question.\n\n"
       : "";
-  // What is new for this question goes last, after the parts that stay the same from turn to turn, so a provider's
-  // prompt cache keeps the start of the prompt. A conversation the engine still holds gets only the new part.
-  // Continue sends the reply that was cut short with the question, so the model writes only what is missing.
+  // What is new for this question goes last, after the parts that stay the same from turn to turn. Continue sends the
+  // reply that was cut short with the question, so the model writes only what is missing.
   const resume = input.resumeFrom?.text ?? "";
   const resumeBlock = resume
     ? `\n\nYour earlier answer to this question was cut off. It ends here:\n${resume}\n\nContinue from exactly where it stops. Do not repeat any of it.`
     : "";
   const question = `${attachedBlock}${passageBlock}${noPassages}\n\nQuestion:\n${input.text}${resumeBlock}`;
-  const prompt = `${pinnedBlock}Earlier turns:\n${historyText(db, chatId, [userMessageId, replacing?.assistantId ?? ""])}\n\n${question}`;
-  const followUp = citations.length
+  const exclude = [userMessageId, replacing?.assistantId ?? ""];
+  // The tool session the chat stored, when this turn can continue it. A session in step already holds the conversation,
+  // so the message is the new question, with the context block when it changed. A session out of step (a turn on it
+  // stopped, failed, was not kept, or another engine answered it) gets the full context block and what the student sees
+  // since the last turn that was in step, and is in step again once this turn completes. A new session gets the context
+  // block and the whole conversation instead.
+  const stored = currentSession(db, chatId);
+  const long = Boolean(stored && sessionTooLong(stored));
+  const session = stored && !long ? stored : undefined;
+  // A session keeps the instructions it was opened under. Cursor Agent and Antigravity carry them inside the first prompt,
+  // so when the chat's system prompt is not the one the session has (an edit of the template since), it is out of step and
+  // this turn delivers the current one. The tools that take a system prompt on every call need nothing more.
+  const instructions = contextHash(system);
+  const instructionsChanged = Boolean(session && session.instructions !== instructions);
+  const outOfStep = Boolean(session && (!session.inStep || instructionsChanged));
+  const newQuestion = citations.length
     ? `New question. Its passages are numbered from P1 again; cite only these.\n\n${question.trimStart()}`
     : question.trimStart();
-  // A regenerated reply replaces one the engine's conversation already holds, so the conversation starts over.
-  if (replacing) endConversation(chatId);
+  // The follow-up depends on the tool that resumes the session, which an automatic choice can change inside
+  // `generate()`: whether the instructions travel in the prompt, and the size of the replay. So it is built for the
+  // provider of each attempt, and only when that attempt resumes.
+  const followUpFor = (provider: string) => {
+    const newInstructions =
+      instructionsChanged && systemInPrompt(provider)
+        ? `<instructions>\n${system}\n</instructions>\nThese instructions replace any you were given before.\n\n`
+        : "";
+    const replay = outOfStep ? historyText(db, chatId, exclude, handoverChars(provider), session!.syncedTo) : "";
+    const replayBlock = replay
+      ? `The conversation as the student sees it, since the last turn you completed. This, not anything you remember differently, is the conversation. A reply marked stopped was cut off, and the student saw only the text shown.\n${replay}\n\n`
+      : "";
+    return `${newInstructions}${outOfStep || session?.told !== told ? `${header}\n\n` : ""}${replayBlock}${replacing && !resume ? ASKED_AGAIN : ""}${newQuestion}`;
+  };
+  // The conversation handed to a new session is sized to the window of the engine that answers, which an automatic choice
+  // can change inside `generate()`. It is built only when a prompt is sent: a fresh start or a retry after a lost session.
+  const promptFor = (provider: string) => {
+    const earlier = historyText(db, chatId, exclude, handoverChars(provider));
+    return `${header}\n\n${earlier ? `Earlier turns:\n${earlier}\n\n` : ""}${question}`;
+  };
+  const beforeQuestion = messageBefore(db, chatId, userMessageId);
   const messageId = uuidv7(now + 2);
   // The engine answering, which differs from the selection when an automatic one was out and another took over.
-  let answering: { provider: string; model: string } = selection;
+  let answering: { provider: string; model: string; effort?: string } = selection;
   let streamed = resume;
   let result;
   // Fitting a saved photo can take seconds, so it runs in the extract worker. A photo left out is reported, not dropped silently.
@@ -1070,7 +1247,10 @@ async function answer(
     text: string,
     error: string | null,
     drawn?: { markdown: string; figures: Record<string, string> },
-  ) => ({
+    /** The model finished the reply before it was stopped (while its figures were drawn). */
+    completed = false,
+  ) => {
+    const reply = {
     ...finishReply(
       db,
       chatId,
@@ -1080,7 +1260,7 @@ async function answer(
         provider: answering.provider,
         model: answering.model,
         selected,
-        attached: thisTurnFile,
+        attached: ownSource,
         widened: widened || Boolean(input.resumeFrom?.widened),
         within,
         searched,
@@ -1094,12 +1274,36 @@ async function answer(
       input.resumeFrom?.figures,
     ),
     ...skippedImages,
-  });
+    };
+    // A stopped reply that the model completed and that stays on screen (not a regenerated replacement, which is
+    // dropped) is what the student sees, and its session holds it whole.
+    if (completed && !(replacing && !input.resumeFrom)) keepSession(db, chatId, answering.provider, messageId);
+    return reply;
+  };
+  // From here no open session of the chat can be trusted to hold the conversation until one completes this turn.
+  markOutOfStep(db, chatId);
+  // A session the tool opened during this turn received the whole prompt, not the follow-up.
+  let startedSession = false;
+  // A photo read as text for a planned text-only tool still goes as a picture to the tool that answers, if that one reads
+  // images (an automatic choice that fell back to it). It is decided for each attempt, as the prompt is. A pinned chat, and a
+  // photo turn on a local model, have no fallback.
+  const fallbackCopies =
+    !reads
+      ? images.flatMap((image) => (image.copy ? [{ type: "image" as const, mediaType: image.mediaType, data: image.copy }] : []))
+      : [];
   try {
     result = await generate({
-      prompt,
+      prompt: "",
+      promptFor,
+      followUpFor,
       system,
-      selection,
+      // A turn that holds a photo on a local model stays on this computer: the photo, the text read from it and the
+      // conversation would all reach a cloud tool in a fallback. Without `chosenFor` the choice has no fallback, as a
+      // pinned one has none, and a failure of the local model ends the turn with its own error.
+      selection: photosHere && selection.provider === LOCAL_PROVIDER ? { ...selection, chosenFor: undefined } : selection,
+      ...(fallbackCopies.length
+        ? { attachmentsFor: (answering) => (engineSeesImages(answering) ? fallbackCopies : undefined) }
+        : {}),
       attachments: saved
         ? saved.images
         : images
@@ -1111,7 +1315,20 @@ async function answer(
               })),
       signal: input.signal,
       run: input.run,
-      conversation: { key: chatId, followUp },
+      conversation: {
+        key: chatId,
+        followUp: "",
+        session: session ? { provider: session.provider, id: session.sessionId, cwd: session.cwd, seen: session.seen } : null,
+        // A tool that keeps what it was sent keeps a turn the student stops, so the session is stored when it begins.
+        // Cursor Agent loses such a turn, so its session is stored when the turn ends.
+        onSession: (sessionId, provider, cwd) => {
+          if (provider === "agent") return;
+          const open = currentSession(db, chatId);
+          if (open?.provider === provider && open.sessionId === sessionId) return;
+          startedSession = true;
+          recordSession(db, chatId, open, { provider, sessionId, cwd, model: answering.model, effort: answering.effort ?? null, told: "", instructions, chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion }, long ? "long" : "gone");
+        },
+      },
       cache: true,
       usage: { chatId, messageId, kind: "chat" },
       onEngine: (engine) => (answering = engine),
@@ -1121,6 +1338,31 @@ async function answer(
         input.onDelta?.(streamed.replace(/<followups>[\s\S]*$/, "").trim());
       },
     });
+    // The turn's session is stored for the next one. A turn that did not continue it (another tool answered, or the
+    // tool started a new session) ends it and opens the new one.
+    if (result.sessionId && result.cwd) {
+      const open = currentSession(db, chatId);
+      recordSession(
+        db,
+        chatId,
+        open,
+        {
+          provider: result.provider,
+          sessionId: result.sessionId,
+          cwd: result.cwd,
+          model: result.model,
+          effort: answering.effort ?? null,
+          told,
+          instructions,
+          chars: (result.continued ? followUpFor(result.provider) : promptFor(result.provider)).length + result.text.length,
+          now: Date.now(),
+          finished: true,
+          syncedTo: beforeQuestion,
+          seen: result.seen,
+        },
+        long ? "long" : "gone",
+      );
+    }
     // The engine ended the stream without finishing the answer: out of room, or no final event. That is a failure
     // mid-answer like a dropped connection, so the catch below keeps what arrived marked cut off with Continue, saves
     // nothing when nothing arrived, and leaves the earlier reply in place when an answer is regenerated.
@@ -1135,6 +1377,15 @@ async function answer(
     // What arrived is kept when the student stops, and when the engine fails mid-answer (a dropped connection, a usage
     // limit), as a reply marked with the failure that offers Continue. A regenerated reply that fails keeps the earlier
     // one instead, and a Continue that added nothing leaves the reply as it was.
+    // The tool kept what it was sent, and with Antigravity the start of the reply too, which counts toward the size at
+    // which a session starts over. Cursor Agent loses a turn that did not finish.
+    const sent = !startedSession && session && answering.provider === session.provider ? followUpFor(answering.provider) : promptFor(answering.provider);
+    addSessionChars(
+      db,
+      chatId,
+      answering.provider,
+      answering.provider === "antigravity" ? sent.length + streamed.length : answering.provider === "agent" ? 0 : sent.length,
+    );
     const kept = streamed.trim() !== "" && streamed !== resume;
     if (kept && (aborted || !replacing || resume))
       return stopReply(streamed, aborted ? null : toIpcError(err).messageKey);
@@ -1165,12 +1416,12 @@ async function answer(
   } catch (err) {
     requireTutorAvailable(db);
     if (isAbort(err) || (err instanceof Error && err.name === "AbortError"))
-      return stopReply(resume + result.text, null);
+      return stopReply(resume + result.text, null, undefined, true);
     throw err;
   }
   if (drawn.stopped) {
     requireTutorAvailable(db);
-    return stopReply(resume + result.text, null, drawn);
+    return stopReply(resume + result.text, null, drawn, true);
   }
   parsed.body = drawn.markdown;
   const figures = Object.keys(drawn.figures).length ? drawn.figures : undefined;
@@ -1182,7 +1433,7 @@ async function answer(
     provider: result.provider,
     model: result.model,
     selected,
-    attached: thisTurnFile,
+    attached: ownSource,
     widened: widened || Boolean(input.resumeFrom?.widened),
     within,
     searched,
@@ -1193,6 +1444,7 @@ async function answer(
     figures,
     now,
   });
+  keepSession(db, chatId, result.provider, messageId);
   // The subject Pyxis picked is kept only with a whole reply, and only if nobody set one while it was written: a failed
   // or stopped turn leaves the chat as it was.
   if (picked) {
@@ -1204,14 +1456,25 @@ async function answer(
         chatId,
       );
   }
-  // The check stays on the chat's own engine: it is a short extraction, not part of a stronger answer.
-  const checking = way === "solved" && needsSolverChecks(parsed.body);
-  if (checking)
-    startChecks(
-      db,
-      { chatId, messageId, body: parsed.body },
-      { selection: selectionFor(db, "chat"), run: input.run },
-    );
+  // The check stays on the chat's own engine: it is a short extraction, not part of a stronger answer. It is a model call
+  // of its own, a new session in the tool's history, so it runs only for an answer that states maths and has no check
+  // blocks of its own (the template asks for them inline), and never on a tool in `NO_SEPARATE_CHECK` (see there), which
+  // `solverChecks` also applies to the tool that runs each attempt. The engine is looked up only when a check is needed:
+  // with none assigned at this moment the saved reply is returned as it is.
+  let checking = false;
+  if (needsSolverChecks(parsed.body)) {
+    try {
+      const checkSelection = selectionFor(db, "chat");
+      // The tool that would run the check is the one `generate()` starts with, which is not the chat's own when that
+      // one is out of requests.
+      const runsOn = (startingMove({ selection: checkSelection })?.to ?? checkSelection).provider;
+      checking = !NO_SEPARATE_CHECK.has(runsOn);
+      if (checking)
+        startChecks(db, { chatId, messageId, body: parsed.body }, { selection: checkSelection, run: input.run });
+    } catch (err) {
+      if (!(err instanceof IpcError && err.code === "engine-missing")) throw err;
+    }
+  }
   return { ...reply, message: { ...reply.message!, checking }, ...skippedImages };
 }
 
@@ -1298,8 +1561,6 @@ function saveReply(
     selected: meta.selected,
     cited: linked.length,
     attached: meta.attached,
-    question: meta.template === "chat.socratic" && parsed.body.trim().endsWith("?"),
-    passages: meta.citations.length,
     widened: meta.widened || (within != null && linked.some((cite) => !within.has(cite.sourceId))),
   });
   // A finished reply from general knowledge records what the search did, in the column a stopped reply keeps its passages in.
@@ -1317,7 +1578,7 @@ function saveReply(
     meta.model,
     meta.template,
     // Stored with each assistant message: the template ID and its own version.
-    promptProvenance(meta.template as ChatTemplateId).version,
+    promptProvenance(CHAT_TEMPLATE).version,
     storedGrounding(grounding),
     meta.stopped ? 1 : 0,
     meta.error,
@@ -1346,7 +1607,6 @@ function saveReply(
       modelId: meta.model || null,
       provider: meta.provider || null,
       grounding,
-      way: wayOfTemplate(meta.template),
       followups: parsed.followups,
       citations: describeCitations(db, linked),
       reaction: null,
@@ -1373,7 +1633,7 @@ export async function regenerateTurn(
   const last = db
     .prepare(
       `SELECT id, role, body, stopped, passages_json, figures_json, grounding, prompt_template FROM messages
-       WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
+       WHERE chat_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
     .get(input.chatId) as
     | {
@@ -1389,7 +1649,7 @@ export async function regenerateTurn(
     | undefined;
   const user = db
     .prepare(
-      `SELECT id, body FROM messages WHERE chat_id = ? AND role = 'user' ORDER BY created_at DESC LIMIT 1`,
+      `SELECT id, body FROM messages WHERE chat_id = ? AND role = 'user' ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
     .get(input.chatId) as { id: string; body: string } | undefined;
   if (!user) throw new Error("chat-missing");
@@ -1406,18 +1666,26 @@ export async function regenerateTurn(
           ...(last.figures_json ? { figures: figureImages(JSON.parse(last.figures_json)) } : {}),
         }
       : undefined;
-  // Regenerate and Continue answer the same way as the reply they replace, unless the student asked for the other way.
-  const way = input.way ?? (last?.role === "assistant" ? wayOfTemplate(last.prompt_template) : undefined);
+  // The tool's session was told this question is answered again and the earlier answer discarded. When the new answer
+  // fails or is stopped, the earlier one stays on screen: the session holds the conversation only up to the message before
+  // that question's earlier replies, so the next message replays the question and the answer the student sees.
+  const keepsEarlier = () => {
+    if (last?.role === "assistant" && !resumeFrom) rewindSession(db, input.chatId, user.id);
+  };
   const result = await askTurn(
     db,
-    { ...rest, way, text: user.body, resumeFrom },
+    { ...rest, text: user.body, resumeFrom },
     last?.role === "assistant"
       ? { assistantId: last.id, userId: user.id }
       : undefined,
-  );
+  ).catch((err: unknown) => {
+    keepsEarlier();
+    throw err;
+  });
   // A continued reply stopped again is still longer than before, so it replaces the earlier one like a finished reply.
   if (result.message?.stopped && last?.role === "assistant" && !resumeFrom) {
     db.prepare("DELETE FROM messages WHERE id = ? AND chat_id = ?").run(result.message.id, input.chatId);
+    keepsEarlier();
     throw new DOMException("Aborted", "AbortError");
   }
   if (result.message && last?.role === "assistant") {
@@ -1551,7 +1819,7 @@ export function readChat(
     .prepare(
       `SELECT id, role, body, model_id, engine_provider, grounding, prompt_template, reaction, stopped, figures_json, error,
               passages_json
-       FROM messages WHERE chat_id = ? ORDER BY created_at`,
+       FROM messages WHERE chat_id = ? ORDER BY created_at, rowid`,
     )
     .all(chatId) as Array<{
     id: string;
@@ -1599,6 +1867,40 @@ export function readChat(
     });
     links.set(link.message_id, list);
   }
+  // The files each question carried, in one read. A photo sent before names were kept has a row with the image type and
+  // nothing else; the plain image rows and the originals kept beside a fitted copy are not files of their own.
+  const files = new Map<string, MessageFile[]>();
+  for (const row of db
+    .prepare(
+      `SELECT a.message_id, a.id, a.name, a.kind, a.size, a.source_id, a.blob_sha, a.mime,
+              EXISTS (SELECT 1 FROM sources s WHERE s.id = a.source_id AND s.status <> 'removed') AS open
+       FROM attachments a WHERE a.message_id IN (SELECT id FROM messages WHERE chat_id = ?)
+       AND (a.kind IS NOT NULL OR a.mime IN ('image/png', 'image/jpeg', 'image/webp'))
+       ORDER BY a.created_at, a.rowid`,
+    )
+    .all(chatId) as Array<{
+    message_id: string;
+    id: string;
+    name: string | null;
+    kind: "photo" | "document" | null;
+    size: number | null;
+    source_id: string | null;
+    blob_sha: string;
+    mime: string;
+    open: number;
+  }>) {
+    const list = files.get(row.message_id) ?? [];
+    list.push({
+      id: row.id,
+      name: row.name,
+      kind: row.kind ?? "photo",
+      size: row.size,
+      sourceId: row.open ? row.source_id : null,
+      sha: row.kind === "document" ? null : row.blob_sha,
+      mime: row.mime,
+    });
+    files.set(row.message_id, list);
+  }
   // The files behind every citation, read once for the whole chat.
   const all = describeCitations(db, [...links.values()].flat());
   const described = new Map<string, ChatCitation[]>();
@@ -1621,10 +1923,10 @@ export function readChat(
       id: row.id,
       role: row.role,
       body: parsed.body,
+      ...(files.has(row.id) ? { files: files.get(row.id) } : {}),
       modelId: row.model_id,
       provider: row.engine_provider,
       grounding: row.role === "assistant" ? readGrounding(row.grounding) : null,
-      way: wayOfTemplate(row.prompt_template),
       followups: chips ? parsed.followups : [],
       citations,
       reaction:

@@ -8,7 +8,7 @@ import { extractPlain, storeExtracted } from "../sources/documents";
 import { indexVectors } from "../sources/test-import";
 import { promoteSource } from "../sources/manage";
 import { sha256 } from "../sources/quality";
-import { commitStaged } from "./attach";
+import { commitStaged } from "./test-attach";
 import { chatHandlers } from "./handlers";
 import { deleteChat } from "./turn";
 

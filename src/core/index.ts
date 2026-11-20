@@ -1,3 +1,4 @@
+import { heldFiles } from "./chat/held-files";
 import type { FileGrant } from "./ipc/file-grants";
 import { receiveRuntimeReply, setRuntimeSender } from "./math/runtime-client";
 import { recordedPlanRun } from "./engine/recorded-plan";
@@ -12,6 +13,7 @@ import {
   setScratch,
 } from "./engine/funnel";
 import { addInstallDirsToPath } from "./engine/install";
+import { syncModelFile } from "./engine/model-roles-sync";
 import {
   attachRendererPort,
   addFileGrants,
@@ -63,6 +65,9 @@ type ParentEvent = {
     type?: string;
     workspacePath?: string;
     userDataPath?: string;
+    /** The app's version and its GitHub repository, to find the model file's branch. */
+    version?: string;
+    repository?: string;
     grants?: FileGrant[];
     dev?: boolean;
     unpackaged?: boolean;
@@ -117,6 +122,7 @@ if (!parent) {
     dev: boolean,
     unpackaged: boolean,
     userDataPath?: string,
+    app: { version?: string; repository?: string } = {},
   ): void {
     setRuntimeSender((message) => port.postMessage(message));
     const db = openDatabase(join(workspacePath, "pyxis.db"));
@@ -162,6 +168,20 @@ if (!parent) {
       db,
       dev && unpackaged ? process.env["PYXIS_E2E_INSTALLER"] : undefined,
     );
+    // The model file: the copy kept from an earlier download is read now, and a newer one is asked for in the
+    // background. A run with the test seams on never reaches GitHub: it reads the file from PYXIS_E2E_MODEL_FILE_URL
+    // (a local server) or has no network at all.
+    const seamsOn = dev && process.env["PYXIS_E2E"] === "1";
+    const modelFileUrl = seamsOn ? process.env["PYXIS_E2E_MODEL_FILE_URL"] : undefined;
+    if (app.version && app.repository)
+      void syncModelFile({
+        dir: userDataPath,
+        repository: app.repository,
+        version: app.version,
+        fetch: seamsOn && !modelFileUrl ? null : fetch,
+        ...(modelFileUrl ? { url: modelFileUrl } : {}),
+        onAdopted: refreshAutoEngines,
+      });
     // End-to-end seam (PYXIS_E2E_LOCAL_JOBS=0): how many local jobs may run at once, so a spec can keep one waiting in the queue.
     const localJobsEnv = dev && process.env["PYXIS_E2E"] === "1" ? process.env["PYXIS_E2E_LOCAL_JOBS"] : undefined;
     const localJobs = localJobsEnv ? Number(localJobsEnv) : Number.NaN;
@@ -170,6 +190,8 @@ if (!parent) {
       (job) => {
         markStoppedImport(db, job);
         broadcast("job.updated", job);
+        // A file attached in the composer shows how its reading goes.
+        heldFiles()?.onJob(job);
       },
       Number.isInteger(localJobs) && localJobs >= 0 ? { ...defaultLimits(), local: localJobs } : undefined,
       true,
@@ -203,6 +225,7 @@ if (!parent) {
       dev ? Math.min(Number(process.env["PYXIS_E2E_REPLY_DELAY"]) || 0, 15_000) : 0,
       // The recorded `figureFix` replies, which answer the call that corrects a failed figure in a chat turn too.
       dev ? process.env["PYXIS_E2E_PLAN_REPLIES"] : undefined,
+      runner,
     );
     // Main keeps a copy of the crash-report switch so it can start the crash reporter before core is up. Core sends
     // the stored value now (a restore or a new workspace can change it) and again after every profile save.
@@ -333,7 +356,10 @@ if (!parent) {
       void (async () => {
         if (delay > 0) await new Promise((r) => setTimeout(r, delay));
         try {
-          bootstrap(workspacePath, dev, data.unpackaged === true, data.userDataPath);
+          bootstrap(workspacePath, dev, data.unpackaged === true, data.userDataPath, {
+            version: data.version,
+            repository: data.repository,
+          });
         } catch (err) {
           failBootstrap(err);
         }

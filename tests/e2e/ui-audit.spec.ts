@@ -14,6 +14,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  truncateSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -430,13 +431,16 @@ const routes = [
   ["ask-ocr-refused", "/ask"],
   ["ask-ocr-ready", "/ask"],
   ["ask-ocr-unreadable", "/ask"],
+  // Files attached to a message: the composer's chips, one read and one refused with its reason, and a question that carries its files.
+  ["ask-files", "/ask"],
+  ["ask-sent-files", "/ask/audit-files"],
   // The chat panel and search; the subject chip's menu on a chat with a very long subject, and on a new chat's first page.
   ["ask-panel", "/ask/audit-chat"],
   ["ask-search", "/ask/audit-chat"],
   ["ask-search-empty", "/ask/audit-chat"],
   ["ask-subject-menu", "/ask/audit-guided"],
   ["ask-new-subject-menu", "/ask"],
-  // A guided answer, with "Dammi la soluzione" under it, and an answer from general knowledge that says so.
+  // A guiding answer, with nothing to switch it under it, and an answer from general knowledge that says so.
   ["ask-guided", "/ask/audit-guided"],
   ["ask-general", "/ask/audit-general"],
   // The confirmations behind a solid danger button: delete a chat and delete a hand-made flashcard.
@@ -528,8 +532,18 @@ function seed(db: DatabaseSync) {
     INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-guided-user','audit-guided','user','Non ho capito come si trova la forza, mi aiuti?',1);
     INSERT INTO messages(id,chat_id,role,body,grounding,prompt_template,created_at) VALUES('audit-guided-reply','audit-guided','assistant','Facciamolo un passo alla volta. La forza dipende dalla massa e dall''accelerazione [P1].
 
-Passo 1 di 2: quale legge lega le tre grandezze?','sources','chat.socratic',2);
+Passo 1 di 2: quale legge lega le tre grandezze?','sources','chat.tutor',2);
     INSERT INTO message_passages(message_id,passage_id,label) VALUES('audit-guided-reply','audit-passage','P1');
+    INSERT INTO chats(id,title,created_at,updated_at) VALUES('audit-files','Appunti e lavagna',1,1);
+    INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-files-user','audit-files','user','Riassumi la dispensa e dimmi cosa c''è scritto sulla lavagna',1);
+    INSERT INTO attachments(id,message_id,blob_sha,mime,created_at,name,kind,size,source_id) VALUES
+      ('audit-files-a','audit-files-user','${"a".repeat(64)}','application/pdf',1,'Dispensa di fisica, capitolo 4.pdf','document',1048576,'audit-files-source'),
+      ('audit-files-b','audit-files-user','${"b".repeat(64)}','image/png',1,'Lavagna.png','photo',204800,NULL);
+    INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('audit-files-source','pdf','Dispensa di fisica, capitolo 4','ready',0,1,1);
+    INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('audit-files-document','audit-files-source',1,'{"kind":"pdf"}',1);
+    INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at) VALUES('audit-files-passage','audit-files-source','audit-files-document','La seconda legge di Newton lega la forza alla massa e all''accelerazione.','{"page":3}','p. 3',1);
+    INSERT INTO messages(id,chat_id,role,body,grounding,created_at) VALUES('audit-files-reply','audit-files','assistant','La dispensa spiega la seconda legge di Newton [P1]. Sulla lavagna c''è scritto $F=ma$.','sources',2);
+    INSERT INTO message_passages(message_id,passage_id,label) VALUES('audit-files-reply','audit-files-passage','P1');
     INSERT INTO chats(id,title,created_at,updated_at) VALUES('audit-general','Teorema di Bayes',1,1);
     INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-general-user','audit-general','user','Che cos''è il teorema di Bayes?',1);
     INSERT INTO messages(id,chat_id,role,body,grounding,prompt_template,passages_json,created_at) VALUES('audit-general-reply','audit-general','assistant','Il teorema di Bayes dice come cambia la probabilità di un''ipotesi dopo un fatto osservato: $P(A|B) = P(B|A)P(A)/P(B)$.','general','chat.solver','{"found":false,"where":"files"}',2);`);
@@ -1171,7 +1185,22 @@ async function openAdvancedEngines(page: Page) {
 }
 
 /** Waits for the two signed-in stand-ins in the list of connected tools, and for Pyxis to have planned with them. */
+/**
+ * A refusal an earlier state caused (`onboarding-engines` has Cursor's provider turn a call away) stays in core's memory:
+ * `prepareEngines` clears the stored rows, not what core holds. The tools are then seen signed out and signed in again,
+ * which is how a student ends a refusal, so the states that need them connected do not depend on what ran before them in
+ * the same app. Two states land in one app whenever a short list of states is run, or the parts move when a route is added.
+ */
+async function signInAgain(page: Page) {
+  const on = join(auditEngines, "on");
+  rmSync(on, { force: true });
+  await expect.poll(() => page.evaluate(async () => (await window.pyxis.invoke("engines.overview", {})).filter((row) => row.loggedIn).length)).toBe(0);
+  writeFileSync(on, "");
+  await expect.poll(() => page.evaluate(async () => (await window.pyxis.invoke("engines.overview", {})).filter((row) => row.loggedIn).length)).toBe(2);
+}
+
 async function connectedTools(page: Page) {
+  await signInAgain(page);
   await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(2, { timeout: 30000 });
   await page.evaluate(() => window.pyxis.invoke("engines.autoConfigure", {}));
 }
@@ -1796,7 +1825,7 @@ function fakeEngines(): Record<string, string> {
   --version) echo "2026.09.28-64d2043";;
   status) if [ -f "${on}" ]; then echo '{"isAuthenticated":true}'; else echo '{"isAuthenticated":false}'; fi;;
   about) echo '{}';;
-  --list-models) printf 'gemini-3.8-flash - Gemini 3.8 Flash\\n';;
+  --list-models) printf 'grok-4.7-low - Grok 4.7  Low\\ngemini-3.8-flash - Gemini 3.8 Flash\\n';;
   *) if [ -f "${limit}" ]; then echo "Error: You have hit your usage limit." >&2; else echo "Error: request failed with status 401 Unauthorized" >&2; fi; exit 1;;
 esac`,
     ),
@@ -3525,7 +3554,8 @@ async function openState(page: Page, name: string) {
       break;
     }
     case "ask-guided":
-      await expect(page.getByRole("button", { name: both("Dammi la soluzione", "Give me the solution") })).toBeVisible();
+      await expect(page.getByText(/Passo 1 di 2: quale legge lega le tre grandezze/)).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Dammi la soluzione", "Give me the solution") })).toHaveCount(0);
       break;
     case "ask-general":
       await expect(page.getByText(/^(Non ho trovato niente su questa domanda|I found nothing on this)/)).toBeVisible();
@@ -4308,6 +4338,49 @@ async function openState(page: Page, name: string) {
       }
       break;
     }
+    case "ask-files": {
+      // A note that is read, and a document past what the Library reads, which says why on its own chip.
+      // Files picked by an earlier language, theme or width of this audit are not this state's.
+      await page.evaluate(() => sessionStorage.removeItem("pyxis-files"));
+      await page.reload();
+      await expect(page.locator("h1:visible").first()).toBeVisible();
+      const note = join(auditUserData, "appunti-di-fisica.txt");
+      writeFileSync(note, "La forza è massa per accelerazione.");
+      const huge = join(auditUserData, "Registrazione della lezione.pdf");
+      writeFileSync(huge, "%PDF-1.7");
+      truncateSync(huge, 300 * 1024 * 1024);
+      for (const path of [note, huge]) {
+        await auditApp!.evaluate((_, selected) => {
+          process.env.PYXIS_E2E_FILE = selected;
+        }, path);
+        await page
+          .getByRole("button", { name: both("Aggiungi un file o una formula", "Add a file or a formula") })
+          .click();
+        await clickSettled(
+          page,
+          page.getByRole("menuitem", { name: both("Allega file o immagine", "Attach file or image") }),
+        );
+      }
+      await auditApp!.evaluate((_, path) => {
+        process.env.PYXIS_E2E_FILE = path;
+      }, auditPicked);
+      await expect(page.locator(".ask-attachments li").filter({ hasText: "appunti-di-fisica.txt" })).toBeVisible();
+      await expect(
+        page
+          .locator(".ask-attachments li")
+          .filter({ hasText: "Registrazione della lezione.pdf" })
+          .getByText(/256 MB/),
+      ).toBeVisible();
+      break;
+    }
+    case "ask-sent-files":
+      await expect(page.locator(".ask-sent-files").getByText("Lavagna.png")).toBeVisible();
+      // The reply cites the attached file, and says so.
+      await expect(page.getByText(/Ho usato il file che hai allegato|I used the file you attached/)).toBeVisible();
+      await expect(
+        page.locator(".ask-sent-files").getByRole("button", { name: "Dispensa di fisica, capitolo 4.pdf" }),
+      ).toBeVisible();
+      break;
     case "quiz-grading-failed":
       await expect(
         page.getByRole("button", {

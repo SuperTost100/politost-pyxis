@@ -20,3 +20,11 @@
 .px-chip .px-markdown.is-body {
   font: inherit;
 }
+/* A chip with no action does not answer the pointer. */
+.px-chip.is-plain {
+  cursor: default;
+}
+.px-chip.is-plain:hover {
+  color: var(--ink-muted);
+  background: transparent;
+}

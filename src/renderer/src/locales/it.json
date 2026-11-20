@@ -328,12 +328,6 @@
       "nowPyxis": "Scelgo io la materia quando trovo le fonti giuste.",
       "failed": "Non sono riuscito a cambiare la materia della chat. Riprova."
     },
-    "way": {
-      "guide": "Guidami passo passo",
-      "solve": "Dammi la soluzione",
-      "guiding": "Riscrivo la risposta un passo alla volta",
-      "solving": "Scrivo la soluzione completa"
-    },
     "notCovered": "Il materiale non copre questa domanda.",
     "answerGeneral": "Rispondi con le conoscenze generali",
     "skippedTooLarge_one": "Una foto di questa chat era troppo grande da inviare, quindi questa risposta non l'ha vista.",
@@ -377,6 +371,29 @@
     "subjectDragCancelled": "Riordino annullato.",
     "retry": "Riprova",
     "attachFilter": "Foto e documenti",
+    "attach": {
+      "sent": "File allegati",
+      "photo": "Foto",
+      "reading": "Lettura in corso…",
+      "readingPercent": "Lettura, {{percent}}%",
+      "scan": "Lettura della scansione…",
+      "scanPage": "Lettura della scansione, pagina {{page}} di {{pages}}",
+      "needsData": "Per leggere questa scansione Pyxis deve scaricare i dati di lettura.",
+      "readScan": "Leggi la scansione",
+      "leftOut": "Ho mandato la domanda senza {{name}}.",
+      "error": {
+        "password": "Il file è protetto da password. Toglila e allegalo di nuovo.",
+        "unreadable": "Pyxis non riesce a leggere questo file. Potrebbe essere danneggiato.",
+        "empty": "Non ho trovato testo in questo file.",
+        "tooLargeDocument": "Il file supera i 256 MB che Pyxis legge per un documento.",
+        "tooLargePhoto": "La foto supera i 40 MB che Pyxis legge.",
+        "tooMany": "Un messaggio porta al massimo {{max}} file. Togline uno per allegare questo.",
+        "unsupported": "Un messaggio può portare foto e file PDF, Word, PowerPoint, di testo e Markdown.",
+        "denied": "Pyxis non ha il permesso di aprire questo file.",
+        "cancelled": "La lettura è stata fermata. Togli il file e allegalo di nuovo.",
+        "data": "Non sono riuscito a leggere la scansione, perché mancano i dati di lettura."
+      }
+    },
     "replied": "Pyxis ha risposto.",
     "loadingChat": "Apertura della chat…",
     "loadFailed": "Non è stato possibile aprire la chat.",
@@ -740,6 +757,7 @@
       "catalog": "L'elenco dei libri su books.politost.it ora non si legge. Riprova più tardi.",
       "integrity": "Il libro scaricato non corrisponde all'elenco, quindi non l'ho importato. Riprova.",
       "missing": "Questo libro non è più nell'elenco.",
+      "changed": "Questo libro è stato aggiornato mentre era aperto. Pyxis sta leggendo la nuova versione.",
       "upToDate": "Questo libro è già all'ultima versione."
     },
     "panel": {
@@ -2803,11 +2821,9 @@
     "unknownRequest": "Richiesta sconosciuta",
     "aborted": "Annullato",
     "invalidOutput": "La risposta non ha la forma attesa",
-    "attachTooBig": "Il file è troppo grande. Ogni allegato sta sotto i 15 MB, e al massimo otto file.",
     "invalidSubject": "Inserisci una materia da 1 a 120 caratteri.",
     "subjectExists": "Esiste già una materia con questo nome.",
     "coreUnavailable": "Il motore interno non riesce ad avviarsi. Riprova oppure apri le Impostazioni per ripristinare una copia di sicurezza.",
-    "attachScanned": "{{name}} è una scansione, quindi qui non ci trovo testo da leggere. Aggiungila alla libreria e scegli Leggi la scansione.",
     "chatBusy": "Pyxis sta ancora rispondendo in questa chat. Aspetta la risposta o fermala, poi chiedi di nuovo."
   },
   "dev": {
@@ -2941,6 +2957,7 @@
       "use": "Usa {{name}}"
     },
     "notice": {
+      "close": "Chiudi",
       "details": "Dettagli",
       "retry": "Riprova",
       "loadFailed": "Non è stato possibile caricarlo."

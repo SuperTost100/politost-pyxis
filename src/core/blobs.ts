@@ -20,6 +20,8 @@ import { sha256 } from "./sources/quality";
 export const BLOB_REFERENCES = [
   { table: "sources", sha: "blob_sha" },
   { table: "attachments", sha: "blob_sha" },
+  { table: "held_files", sha: "blob_sha" },
+  { table: "held_files", sha: "extracted_sha" },
   { table: "whiteboards", sha: "blob_sha" },
   { table: "source_documents", sha: "json_extract(tree_json, '$.blobSha')" },
   { table: "source_documents", sha: "json_extract(tree_json, '$.sourceSha')" },

@@ -11,7 +11,7 @@ import { clickSettled } from "./settled";
 
 const CONTINUATION = " ha un massimo e un minimo su un intervallo chiuso.";
 
-/** A chat whose reply the engine cut short, and a week of token usage with prompt-cache reads. */
+/** A chat whose reply the engine cut short and one the student stopped, and a week of token usage with prompt-cache reads. */
 function seed(userData: string) {
   const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
     timeout: 10000,
@@ -22,6 +22,10 @@ function seed(userData: string) {
     INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('m-q','chat-cut','user','Che cosa dice il teorema di Weierstrass?',${now});
     INSERT INTO messages(id,chat_id,role,body,engine_provider,model_id,model_source,stopped,error,created_at)
       VALUES('m-a','chat-cut','assistant','Il teorema dice che ogni funzione continua','claude','claude-sonnet-5','reported',1,'engines.errors.stream-truncated',${now + 1});
+    INSERT INTO chats(id,title,created_at,updated_at) VALUES('chat-stopped','Teorema di Rolle',${now},${now});
+    INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('m-q2','chat-stopped','user','Che cosa dice il teorema di Rolle?',${now});
+    INSERT INTO messages(id,chat_id,role,body,engine_provider,model_id,model_source,stopped,created_at)
+      VALUES('m-a2','chat-stopped','assistant','Il teorema di Rolle dice che','claude','claude-sonnet-5','reported',1,${now + 1});
     INSERT INTO engine_usage(id,at,provider,model,kind,chat_id,message_id,input_tokens,output_tokens,cache_read_tokens,cache_write_tokens)
       VALUES('u1',${now},'claude','claude-sonnet-5','chat','chat-cut','m-a',18400,2100,0,0),
             ('u2',${now},'anthropic-api','claude-sonnet-5','lesson',NULL,NULL,52000,6300,31000,4000);
@@ -94,6 +98,34 @@ test("Ask: a reply cut short offers Continue, the reply menu answers with the st
       "31.000 (60%)",
     );
     await expect(week.getByText(/la cache dei prompt ha servito/)).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("Ask: a reply the student stopped offers Continue, with no engine failure on it", async () => {
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-stopped-"));
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_REPLY: " se f(a) = f(b) esiste un punto con derivata nulla." } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    seed(userData);
+    await page.evaluate(() => {
+      location.hash = "/ask/chat-stopped";
+    });
+    await page.reload();
+    const reply = page.locator(".px-msg:not(.px-msg-user)").last();
+    await expect(reply.getByText("Interrotta")).toBeVisible();
+    // No engine failed, so no failure line, only the way to go on.
+    await expect(reply.getByText("Lo strumento si è fermato")).toHaveCount(0);
+    await clickSettled(page, reply.getByRole("button", { name: "Continua" }));
+    await expect(
+      page.getByText("Il teorema di Rolle dice che se f(a) = f(b) esiste un punto con derivata nulla."),
+    ).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText("Interrotta")).toHaveCount(0);
   } finally {
     await app.close();
     removeTestFolder(userData);
