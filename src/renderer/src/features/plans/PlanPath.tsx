@@ -212,7 +212,7 @@ export function PlanPath({
     return [step, ...chipParts(chip), state].filter(Boolean).join(", ");
   }
   /**
-   * A step of a topic: Ripasso mirato prepares its drill; a step already done reopens what was done (the lesson as it was
+   * A step of a topic: Rivedi gli errori prepares its drill; a step already done reopens what was done (the lesson as it was
    * read, the quiz with its score and Redo); the others start.
    */
   function openStep(chip: StepChip, topicId: string) {
@@ -230,7 +230,7 @@ export function PlanPath({
       reopen(done, chip.activity, topicId);
     else go(chip.activity, topicId);
   }
-  /** Ripasso mirato on a topic with open gaps: it prepares a drill in place, then opens it. */
+  /** Rivedi gli errori on a topic with open gaps: it prepares a drill in place, then opens it. */
   function review(row: TopicRow) {
     if (row.gaps === 0) return null;
     const busy = drill.preparing === row.id;

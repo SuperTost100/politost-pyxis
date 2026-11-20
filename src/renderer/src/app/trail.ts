@@ -178,11 +178,23 @@ export function arrive(trail: Trail, nav: Navigation): Trail {
   return { visits: capped([...behind, { key: nav.key, idx: nav.idx, path: nav.path, page, section, from }], nav.key), current: nav.key };
 }
 
-/** The visit `key` was opened from, while it is still behind it in the window's history and still exists. */
-export function origin(trail: Trail, key: string): Visit | null {
+/**
+ * The visit `key` was opened from, while it is still behind it in the window's history and still exists. A study page of
+ * an exam (`examOf` names its exam) was opened from where the student began studying: the study pages of the same exam
+ * before it (a lesson, its quiz, the results, the review) are steps of one session, so they are passed over and the
+ * visit that opened the first of them is the origin.
+ */
+export function origin(trail: Trail, key: string, examOf?: (path: string) => string | null): Visit | null {
   const visit = find(trail, key);
-  const from = find(trail, visit?.from ?? null);
-  if (!visit || !from || from.gone || from.idx >= visit.idx) return null;
+  if (!visit) return null;
+  const exam = examOf?.(visit.path) ?? null;
+  let last = visit;
+  let from = find(trail, visit.from);
+  while (exam !== null && from && from.idx < last.idx && examOf!(from.path) === exam) {
+    last = from;
+    from = find(trail, from.from);
+  }
+  if (!from || from.gone || from.idx >= last.idx) return null;
   return from;
 }
 
@@ -209,9 +221,14 @@ export function lastChat(trail: Trail): string | undefined {
  * How the back control of the visit `key` leaves it: back in history to its origin, to its parent when it has one,
  * or not at all when the window no longer shows that visit (the student moved on while the page finished its work).
  */
-export function wayBack(trail: Trail, key: string, hasParent: boolean): { delta: number } | "parent" | null {
+export function wayBack(
+  trail: Trail,
+  key: string,
+  hasParent: boolean,
+  examOf?: (path: string) => string | null,
+): { delta: number } | "parent" | null {
   if (trail.current !== key) return null;
-  const behind = origin(trail, key);
+  const behind = origin(trail, key, examOf);
   const here = find(trail, key);
   if (behind && here) return { delta: behind.idx - here.idx };
   return hasParent ? "parent" : null;

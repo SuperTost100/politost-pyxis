@@ -10,6 +10,8 @@ import type { PlaceName } from "./trail";
 export type Place = {
   name: PlaceName | null;
   parent: { to: string; name: PlaceName } | null;
+  /** The id of the exam this page is a study step of (a lesson, a quiz, its results, a review), which back leads out of as one. */
+  study?: string;
 };
 
 type Row = { path: string; place: (params: Record<string, string | undefined>, search: URLSearchParams) => Place };
@@ -21,6 +23,8 @@ const ask = { to: "/ask", name: key("doors.ask") };
 const exam = (planId: string | undefined) => ({ to: `/plans/${planId ?? ""}`, name: key("places.exam") });
 /** A page under an exam, which goes back to the exam's page. */
 const underExam = (name: PlaceName) => (params: Record<string, string | undefined>) => ({ name, parent: exam(params.planId) });
+/** A study page of an exam: it goes back to the exam, and the steps before it on the trail are one visit (`origin` in `trail.ts`). */
+const studyOf = (name: PlaceName) => (params: Record<string, string | undefined>) => ({ ...underExam(name)(params), study: params.planId ?? "" });
 /** A page reached from an exam or not: `?exam=<id>` names the exam it came from. */
 const examOr = (fallback: Place["parent"], search: URLSearchParams) => {
   const planId = search.get("exam");
@@ -56,24 +60,18 @@ const rows: Row[] = [
     }),
   },
   { path: "/plans/:planId/map/:topicId", place: () => ({ name: key("map.title"), parent: { to: "/maps", name: key("doors.maps") } }) },
-  { path: "/plans/:planId/practice/:topicId", place: underExam(key("places.practice")) },
-  { path: "/plans/:planId/lesson/:topicId", place: underExam(key("lesson.title")) },
-  { path: "/plans/:planId/intro", place: underExam(key("plans.intro")) },
-  { path: "/plans/:planId/diagnostic", place: underExam(key("quiz.diagnosticTitle")) },
-  { path: "/plans/:planId/quiz/:topicId", place: underExam(key("quiz.title")) },
-  { path: "/plans/:planId/gap/:gapId", place: underExam(key("gaps.label")) },
-  { path: "/plans/:planId/redo", place: underExam(key("mistakes.redoTitle")) },
-  { path: "/plans/:planId/past", place: underExam(key("pastPapers.title")) },
-  { path: "/plans/:planId/cards/:topicId", place: underExam(key("cards.title")) },
-  { path: "/plans/:planId/review", place: underExam(key("cards.reviewTitle")) },
-  {
-    path: "/plans/:planId/review/cards",
-    place: (params) => ({ name: key("cards.reviewTitle"), parent: { to: `/plans/${params.planId ?? ""}/review`, name: key("cards.reviewTitle") } }),
-  },
-  {
-    path: "/plans/:planId/review/questions",
-    place: (params) => ({ name: key("cards.reviewTitle"), parent: { to: `/plans/${params.planId ?? ""}/review`, name: key("cards.reviewTitle") } }),
-  },
+  { path: "/plans/:planId/practice/:topicId", place: studyOf(key("places.practice")) },
+  { path: "/plans/:planId/lesson/:topicId", place: studyOf(key("lesson.title")) },
+  { path: "/plans/:planId/intro", place: studyOf(key("plans.intro")) },
+  { path: "/plans/:planId/diagnostic", place: studyOf(key("quiz.diagnosticTitle")) },
+  { path: "/plans/:planId/quiz/:topicId", place: studyOf(key("quiz.title")) },
+  { path: "/plans/:planId/gap/:gapId", place: studyOf(key("gaps.label")) },
+  { path: "/plans/:planId/redo", place: studyOf(key("mistakes.redoTitle")) },
+  { path: "/plans/:planId/past", place: studyOf(key("pastPapers.title")) },
+  { path: "/plans/:planId/cards/:topicId", place: studyOf(key("cards.title")) },
+  { path: "/plans/:planId/review", place: studyOf(key("cards.reviewTitle")) },
+  { path: "/plans/:planId/review/cards", place: studyOf(key("cards.reviewTitle")) },
+  { path: "/plans/:planId/review/questions", place: studyOf(key("cards.reviewTitle")) },
   { path: "/plans/:planId/simulation", place: underExam(key("simulation.title")) },
   { path: "/plans/:planId/exam/:attemptId", place: underExam(key("simulation.title")) },
   {
@@ -83,7 +81,14 @@ const rows: Row[] = [
         ? { name: key("examPage.material"), parent: exam(params.planId) }
         : { name: key("places.exam"), parent: exams },
   },
-  { path: "/cards/due", place: (_, search) => ({ name: key("oggi.cardsTitle"), parent: examOr(flashcards, search) }) },
+  {
+    path: "/cards/due",
+    place: (_, search) => {
+      const planId = search.get("exam");
+      const study = planId && planId !== "none" ? { study: planId } : {};
+      return { name: key("oggi.cardsTitle"), parent: examOr(flashcards, search), ...study };
+    },
+  },
   { path: "/cards/subject/:subjectId", place: () => ({ name: key("cards.title"), parent: flashcards }) },
   { path: "/settings/subjects", place: () => ({ name: key("doors.exams"), parent: null }) },
   { path: "/settings/:section?", place: () => ({ name: key("settings.title"), parent: ask }) },
@@ -105,4 +110,9 @@ export function placeOf(path: string): Place {
     if (match) return row.place(match.params, new URLSearchParams(search));
   }
   return { name: null, parent: null };
+}
+
+/** The id of the exam the page at `path` is a study step of, or null: the pages whose back control leaves the exam's study as one. */
+export function studyExam(path: string): string | null {
+  return placeOf(path).study ?? null;
 }

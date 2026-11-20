@@ -71,15 +71,25 @@ test("ENG-10 tool details, the key dialog and the secure key-storage notice in b
           await page.reload();
           await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(4, { timeout: 30000 });
           // Every tool is connected, so nothing waits to be connected.
-          await expect(page.getByRole("region", { name: language === "en" ? "To connect" : "Da collegare" })).toHaveCount(0);
-          // Advanced is open until the student closes it. The model of each task starts closed inside it and opens on
-          // its heading.
-          await expect(page.locator(".engines-advanced")).toHaveAttribute("open", "");
+          await expect(
+            page.getByRole("region", {
+              name: language === "en" ? "To connect" : "Da collegare",
+            }),
+          ).toHaveCount(0);
+          // Advanced is open until the student closes it, and the model of each kind of work is there under its heading.
+          await expect(page.locator(".engines-advanced")).toHaveAttribute(
+            "open",
+            "",
+          );
+          await expect(
+            page.getByRole("heading", {
+              name:
+                language === "en"
+                  ? "Model for each kind of work"
+                  : "Modello per tipo di lavoro",
+            }),
+          ).toBeVisible();
           await expect(page.locator(".engines-feature-row")).toHaveCount(8);
-          const perFeature = page.locator(".engines-section");
-          await expect(perFeature).not.toHaveAttribute("open");
-          await perFeature.locator("summary").click();
-          await expect(perFeature).toHaveAttribute("open", "");
           // Each task has its own reasoning effort next to its model.
           await expect(
             page.getByRole("combobox", {
@@ -87,25 +97,27 @@ test("ENG-10 tool details, the key dialog and the secure key-storage notice in b
             }),
           ).toBeVisible();
           await expect(page.locator('[id^="engine-effort-"]')).toHaveCount(8);
-          // A row reads by the tool's name, and the program behind it shows once, as the detail under it: it is what the
-          // student installed and signed in to.
-          for (const [id, name, program] of [
-            ["claude", "Claude", "Claude Code"],
-            ["codex", "ChatGPT", "Codex"],
-            ["agent", "Cursor", "Cursor Agent"],
-            ["antigravity", "Gemini", "Antigravity"],
+          // A row reads by the tool's name and says its three roles, each with the model it runs.
+          for (const [id, name] of [
+            ["claude", "Claude"],
+            ["codex", "ChatGPT"],
+            ["antigravity", "Gemini"],
           ] as const) {
-            await expect(tool(page, id).locator(".engines-tool-name")).toHaveText(name);
-            await expect(tool(page, id).locator(".px-ctl-description"), `${language}, ${name}`).toContainText(program);
-            expect(
-              (await tool(page, id).innerText()).split(program).length - 1,
-              `${language}, ${name}: the program shows once`,
-            ).toBe(1);
+            await expect(
+              tool(page, id).locator(".engines-tool-name"),
+            ).toHaveText(name);
+            await expect(
+              tool(page, id).locator("[data-roles] [data-role]"),
+              `${language}, ${name}`,
+            ).toHaveCount(3);
           }
           // Every function starts automatic. Nothing is pinned on a fresh profile.
           await expect(
             page.getByRole("button", {
-              name: language === "en" ? "Back to automatic choice" : "Torna alla scelta automatica",
+              name:
+                language === "en"
+                  ? "Everything back to Automatic"
+                  : "Torna tutto ad Automatico",
             }),
           ).toBeDisabled();
           // A tool's details open from its menu, on the dots as on a right-click.
@@ -241,11 +253,9 @@ test("Automatic engines: the page says it in one sentence, and Advanced can pin 
     await expect(page.getByRole("switch", { name: "Show technical details and debug" })).toBeHidden();
     await expect(week).toBeVisible();
     await advanced.locator("> summary").click();
-    // The table sits in a section that starts closed.
-    await page.locator(".engines-section > summary").click();
+    // The kinds of work are under Advanced, which is open, with no section to open first.
     const chat = page.getByRole("combobox", { name: "Chat", exact: true });
-    expect(await picked(chat)).toBe("Automatic");
-    await expect(page.locator(".engines-auto-model").first()).toBeVisible();
+    expect(await picked(chat)).toMatch(/^Automatic · today \S/);
     // Every task starts at its own reasoning level: low for chat, high for exams.
     const effortOf = (task: string) => page.getByRole("combobox", { name: `${task}: Reasoning effort` });
     await expect(effortOf("Chat")).toBeEnabled();
@@ -260,18 +270,37 @@ test("Automatic engines: the page says it in one sentence, and Advanced can pin 
     expect(stored.plan).toMatchObject({ effort: "max", effortChoice: "max" });
     // Pin chat to a Claude model, then return everything to automatic. Models are named with their engine as the
     // student knows it, never with an internal id such as "claude".
-    const labels = await chat.locator("option").allTextContents();
-    const claudeModel = labels.find((label) => label.startsWith("Claude · "));
+    const groups = await chat
+      .locator("optgroup")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => (node as HTMLOptGroupElement).label),
+      );
+    expect(groups).toEqual(["Claude", "ChatGPT"]);
+    const claudeModel = await chat
+      .locator('optgroup[label="Claude"] option')
+      .first()
+      .textContent();
     expect(claudeModel).toBeTruthy();
-    expect(labels.filter((label) => /^(claude|codex|agent) · /.test(label))).toEqual([]);
+    expect(await chat.locator("option").allTextContents()).not.toContainEqual(
+      expect.stringMatching(/^(claude|codex|agent)[-:]/),
+    );
     await chat.selectOption({ label: claudeModel! });
     await expect.poll(() => picked(chat)).toBe(claudeModel);
+    // A pinned field is tinted, and the heading counts what is pinned.
+    await expect(chat).toHaveClass(/is-pinned/);
+    await expect(page.getByText("1 pinned by you")).toBeVisible();
     // The list says a task is set by hand, so the order alone does not explain where chat goes.
-    await expect(page.getByText("1 feature is pinned by hand under Advanced.")).toBeVisible();
-    const back = page.getByRole("button", { name: "Back to automatic choice" });
+    await expect(
+      page.getByText("1 feature is pinned by hand under Advanced."),
+    ).toBeVisible();
+    const back = page.getByRole("button", {
+      name: "Everything back to Automatic",
+    });
     await expect(back).toBeEnabled();
     await back.click();
-    await expect.poll(() => picked(chat)).toBe("Automatic");
+    await expect.poll(() => picked(chat)).toMatch(/^Automatic · today \S/);
+    await expect(chat).not.toHaveClass(/is-pinned/);
+    await expect(page.getByText("Everything automatic")).toBeVisible();
     await expect(back).toBeDisabled();
     // Back to automatic also returns the efforts to the tasks' own levels.
     await expect.poll(() => picked(effortOf("Exams"))).toBe("Automatic · High");
@@ -496,9 +525,6 @@ esac`,
     await expect(row).not.toContainText("grok-4.7");
     await expect(row).not.toContainText("Claude");
     await expect(row).not.toContainText("Gemini");
-    // A tool with models in its row still names its program, once.
-    await expect(row.locator(".px-ctl-description")).toContainText("Cursor Agent");
-    expect((await row.innerText()).split("Cursor Agent").length - 1).toBe(1);
     // One tool has nothing to be put in order with: no grip, and no place.
     await expect(row.getByRole("button", { name: "Reorder Cursor" })).toHaveCount(0);
 
@@ -532,5 +558,205 @@ esac`,
     await app.close();
     removeTestFolder(userData);
     rmSync(bin, { recursive: true, force: true });
+  }
+});
+
+test("Settings: a tool's row says its three roles with the model each one runs, and a tool still to connect says which models it would use", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-roles-"));
+  const tools = standInTools(["claude", "codex"]);
+  const app = await launchPyxis({ userData, env: tools.env });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() =>
+      window.pyxis.invoke("engines.acknowledge", {
+        providers: ["claude", "codex"],
+      }),
+    );
+    for (const language of ["en", "it"] as const)
+      for (const theme of ["light", "dark"] as const) {
+        await page.evaluate(
+          async ({ language, theme }) => {
+            localStorage.setItem("pyxis.lang", language);
+            localStorage.removeItem("pyxis.engines.advanced");
+            await window.pyxis.setAppearance(theme);
+            location.hash = "/settings/engines";
+          },
+          { language, theme },
+        );
+        await page.reload();
+        await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(
+          2,
+          { timeout: 30000 },
+        );
+        const words =
+          language === "en"
+            ? { fast: "Fast", mid: "Balanced", strong: "Strong" }
+            : { fast: "Veloce", mid: "Equilibrato", strong: "Forte" };
+        // Each row says its three roles with the model each one runs for this account, in the roles' order.
+        const rolesOf = (id: string) =>
+          tool(page, id).locator("[data-roles] [data-role]");
+        await expect(rolesOf("claude")).toHaveText(
+          [
+            `${words.fast} Haiku 5.5`,
+            `${words.mid} Sonnet 5.5`,
+            `${words.strong} Opus 5.5`,
+          ],
+          { timeout: 30000 },
+        );
+        await expect(rolesOf("codex")).toHaveText([
+          `${words.fast} GPT-6 Luna`,
+          `${words.mid} GPT-6.1 Terra`,
+          `${words.strong} GPT-6.1 Sol`,
+        ]);
+        // The role is in the quiet colour and the model in the normal one.
+        const colours = await rolesOf("claude")
+          .first()
+          .evaluate((node) => ({
+            role: getComputedStyle(node.querySelector(".engines-role")!).color,
+            model: getComputedStyle(node.querySelector(".engines-role-model")!)
+              .color,
+          }));
+        expect(colours.role).not.toBe(colours.model);
+        // One line under the list says which role does what, and says nothing about when the list was updated.
+        const note = page.locator(".engines-roles-note");
+        await expect(note).toHaveText(
+          language === "en"
+            ? "Each tool uses only its maker's models, and Pyxis picks among three: fast for chat, flashcards and maps, balanced for lessons and grading, strong for the study plan."
+            : "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: veloce per chat, flashcard e mappe, equilibrato per lezioni e correzione, forte per il piano di studio.",
+        );
+        await expect(
+          page.getByText(/last updated|aggiornato oggi|Elenco dei modelli/i),
+        ).toHaveCount(0);
+        // A tool still to connect says which models it would use.
+        await expect(
+          page
+            .getByRole("region", {
+              name: language === "en" ? "To connect" : "Da collegare",
+            })
+            .getByRole("listitem")
+            .filter({ hasText: "Gemini" }),
+        ).toContainText(
+          language === "en"
+            ? "Uses Gemini 4 Hydrogen and Gemini 4 Carbon."
+            : "Usa Gemini 4 Hydrogen e Gemini 4 Carbon.",
+        );
+        // Under Advanced each kind of work names its role, and a pinned one is tinted until everything goes back.
+        const chat = page.getByRole("combobox", { name: "Chat", exact: true });
+        await expect(page.locator(".engines-feature-work small")).toHaveText([
+          words.fast,
+          words.fast,
+          words.fast,
+          words.mid,
+          words.mid,
+          words.strong,
+          words.mid,
+          words.mid,
+        ]);
+        expect(await picked(chat)).toMatch(
+          language === "en" ? /^Automatic · today \S/ : /^Automatico · oggi \S/,
+        );
+        const groups = await chat
+          .locator("optgroup")
+          .evaluateAll((nodes) =>
+            nodes.map((node) => (node as HTMLOptGroupElement).label),
+          );
+        expect(groups).toEqual(["Claude", "ChatGPT"]);
+        // The list offers the models with the roles they fill, in the tool's own order.
+        expect(
+          await chat
+            .locator('optgroup[label="Claude"] option')
+            .allTextContents(),
+        ).toEqual(
+          expect.arrayContaining([
+            `Haiku 5.5 · ${words.fast.toLowerCase()}`,
+            `Sonnet 5.5 · ${words.mid.toLowerCase()}`,
+            `Opus 5.5 · ${words.strong.toLowerCase()}`,
+          ]),
+        );
+        const pinned = page.getByText(
+          language === "en" ? "1 pinned by you" : "1 fissato da te",
+        );
+        await chat.selectOption({
+          label: `Opus 5.5 · ${words.strong.toLowerCase()}`,
+        });
+        await expect(chat).toHaveClass(/is-pinned/);
+        await expect(pinned).toBeVisible();
+        await expectNoAxeViolations(page, {
+          tags: ["wcag2a", "wcag2aa", "wcag21aa"],
+        });
+        await saveShot(page, `engines-roles-${language}-${theme}.png`, {
+          fullPage: true,
+        });
+        // One control puts every kind of work back to automatic.
+        await page
+          .getByRole("button", {
+            name:
+              language === "en"
+                ? "Everything back to Automatic"
+                : "Torna tutto ad Automatico",
+          })
+          .click();
+        await expect(chat).not.toHaveClass(/is-pinned/);
+        await expect(
+          page.getByText(
+            language === "en" ? "Everything automatic" : "Tutto automatico",
+          ),
+        ).toBeVisible();
+      }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(tools.bin, { recursive: true, force: true });
+  }
+});
+
+test("Settings: the model field of each kind of work shows the whole model name at narrow widths and at large text", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-fit-"));
+  const tools = standInTools(["claude", "codex"]);
+  const app = await launchPyxis({ userData, env: tools.env });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("engines.acknowledge", { providers: ["claude", "codex"] }));
+    for (const textSize of ["md", "lg"] as const)
+      for (const width of [975, 1100, 1280]) {
+        await page.evaluate(async (size) => {
+          localStorage.setItem("pyxis.lang", "it");
+          localStorage.removeItem("pyxis.engines.advanced");
+          await window.pyxis.invoke("profile.save", { dyslexia: false, textSize: size });
+          location.hash = "/settings/engines";
+        }, textSize);
+        await page.setViewportSize({ width, height: 900 });
+        await page.reload();
+        await expect(page.locator(".engines-feature-row")).toHaveCount(8, { timeout: 30000 });
+        await expect(page.locator("#engine-chat option").first()).toContainText("Automatico · oggi", { timeout: 30000 });
+        // The text of the selected option, as the browser draws it, fits inside the field it is in.
+        const clipped = await page.locator(".engines-feature-row select[id^='engine-']:not([id^='engine-effort'])").evaluateAll((nodes) => {
+          const canvas = document.createElement("canvas").getContext("2d")!;
+          return nodes.flatMap((node) => {
+            const select = node as HTMLSelectElement;
+            const style = getComputedStyle(select);
+            canvas.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+            const text = select.selectedOptions[0]?.label ?? "";
+            // Padding on both sides and the arrow the browser draws at the end.
+            const room = select.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 24;
+            return canvas.measureText(text).width > room ? [`${select.id}: "${text}" needs ${Math.ceil(canvas.measureText(text).width)} px of ${Math.floor(room)}`] : [];
+          });
+        });
+        expect(clipped, `${textSize}, ${width} px`).toEqual([]);
+      }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(tools.bin, { recursive: true, force: true });
   }
 });

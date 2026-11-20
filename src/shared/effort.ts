@@ -25,6 +25,11 @@ export function taskEffort(feature: string): string {
   return data.effort[tier]!;
 }
 
+/** The role a task runs in unless a tool's entry in the model file says otherwise: `fast`, `mid` or `strong`. */
+export function taskTier(feature: string): "fast" | "mid" | "strong" {
+  return (data.features[feature] ?? data.unknownFeature).tier as "fast" | "mid" | "strong";
+}
+
 /**
  * The effort a model can give for a wanted level. The wanted level itself when the model lists it. Otherwise the
  * nearest listed one, looking lower first for `low` and `medium` and higher first for `high`, then the other way.
