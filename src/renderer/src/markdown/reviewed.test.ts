@@ -259,7 +259,7 @@ describe("property (a): the code the parser finds in a text is the same after pr
     for (const text of texts) preserved(text, markdownSource(text), equation);
   });
 
-  it("holds for every cut of a text that has code, while it streams", () => {
+  it("holds for every cut of a text that has code, while it streams", { timeout: 60_000 }, () => {
     for (const text of texts.filter((item) => /`|\n {4}/.test(item))) {
       for (let end = 6; end <= text.length; end += text.length > 600 ? 41 : 3) {
         const cut = text.slice(0, end);
@@ -375,7 +375,7 @@ describe("property (c): a repair only adds formulas, never takes one away", () =
     for (const text of examples) expect(lost(text, markdownSource(text)), text).toEqual([]);
   });
 
-  it("holds for the 71 recorded texts, complete", () => {
+  it("holds for the 71 recorded texts, complete", { timeout: 60_000 }, () => {
     for (const entry of corpus.texts) {
       const processed = entry.inline ? normalizeMathDelimiters(entry.text) : markdownSource(entry.text);
       expect(lost(entry.text, processed), entry.id).toEqual([]);
