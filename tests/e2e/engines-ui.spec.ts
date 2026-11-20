@@ -256,10 +256,10 @@ test("Automatic engines: the page says it in one sentence, and Advanced can pin 
     // The kinds of work are under Advanced, which is open, with no section to open first.
     const chat = page.getByRole("combobox", { name: "Chat", exact: true });
     expect(await picked(chat)).toMatch(/^Automatic · today \S/);
-    // Every task starts at its own reasoning level: low for chat, high for exams.
+    // Every task starts at its own reasoning level: medium for chat (Claude and ChatGPT run it in the balanced role), high for exams.
     const effortOf = (task: string) => page.getByRole("combobox", { name: `${task}: Reasoning effort` });
     await expect(effortOf("Chat")).toBeEnabled();
-    expect(await picked(effortOf("Chat"))).toBe("Automatic · Low");
+    expect(await picked(effortOf("Chat"))).toBe("Automatic · Medium");
     expect(await picked(effortOf("Exams"))).toBe("Automatic · High");
     // The student's pick is kept, and shows after a reload of the stored choices.
     await effortOf("Exams").selectOption({ label: "Maximum" });
@@ -610,6 +610,10 @@ test("Settings: a tool's row says its three roles with the model each one runs, 
               .color,
           }));
         expect(colours.role).not.toBe(colours.model);
+        for (const id of ["claude", "codex"])
+          await expect(tool(page, id)).toContainText(
+            language === "en" ? "Here “Chat” uses the balanced model." : "Qui «Chat» usa il modello equilibrato.",
+          );
         // One line under the list says which role does what, and says nothing about when the list was updated.
         const note = page.locator(".engines-roles-note");
         await expect(note).toHaveText(
@@ -635,8 +639,9 @@ test("Settings: a tool's row says its three roles with the model each one runs, 
         );
         // Under Advanced each kind of work names its role, and a pinned one is tinted until everything goes back.
         const chat = page.getByRole("combobox", { name: "Chat", exact: true });
+        // The chat runs in the balanced role on Claude and ChatGPT, as the model file says, and the rows say it too.
         await expect(page.locator(".engines-feature-work small")).toHaveText([
-          words.fast,
+          words.mid,
           words.fast,
           words.fast,
           words.mid,

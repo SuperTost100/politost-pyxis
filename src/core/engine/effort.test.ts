@@ -49,7 +49,8 @@ describe("effort by task", () => {
     expect(
       Object.fromEntries(tasks.map((f) => [f, selectionFor(db, f).effort])),
     ).toEqual({
-      chat: "low",
+      // Claude's chat runs in the mid role (featureRoles in the model file), so it gets the mid effort.
+      chat: "medium",
       map: "low",
       cards: "low",
       lesson: "medium",
@@ -77,7 +78,8 @@ describe("effort by task", () => {
       }),
     );
     expect(selectionFor(db, "plan").effort).toBe("high");
-    expect(selectionFor(db, "chat").effort).toBe("low");
+    expect(selectionFor(db, "map").effort).toBe("low");
+    expect(selectionFor(db, "chat").effort).toBe("medium");
     db.close();
   });
 
@@ -243,7 +245,7 @@ describe("the student's own effort", () => {
     handlers.setEffort({ feature: "chat", effort: "max" });
     expect(selectionFor(db, "chat").effort).toBe("max");
     handlers.setEffort({ feature: "chat" });
-    expect(selectionFor(db, "chat").effort).toBe("low");
+    expect(selectionFor(db, "chat").effort).toBe("medium");
     db.close();
   });
 
@@ -451,8 +453,8 @@ describe("automatic choice keeps the student's effort", () => {
     const handlers = engineHandlers(db, () => undefined);
     await handlers.autoConfigure({});
     expect(handlers.features().chat).toMatchObject({
-      model: "claude-haiku-5-5",
-      effort: "low",
+      model: "claude-sonnet-5",
+      effort: "medium",
       auto: true,
     });
     handlers.setEffort({ feature: "chat", effort: "low" });

@@ -70,10 +70,11 @@ describe("automatic engine choice", () => {
     expect(Object.keys(result.features).sort()).toEqual(
       ["cards", "chat", "default", "grading", "lesson", "map", "plan", "vision"].sort(),
     );
+    // The model file runs the chat on the mid role of Claude and ChatGPT.
     expect(result.features.chat).toEqual({
       provider: "codex",
-      model: "gpt-6-luna",
-      effort: "low",
+      model: "gpt-5.6-terra",
+      effort: "medium",
       auto: true,
     });
     expect(result.features.plan).toMatchObject({
@@ -83,8 +84,8 @@ describe("automatic engine choice", () => {
     });
     expect(selectionFor(db, "chat")).toEqual({
       provider: "codex",
-      model: "gpt-6-luna",
-      effort: "low",
+      model: "gpt-5.6-terra",
+      effort: "medium",
       // Pyxis chose it, so a refusal may move it, even after a job saved it.
       chosenFor: "chat",
     });

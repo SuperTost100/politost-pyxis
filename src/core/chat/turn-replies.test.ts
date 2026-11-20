@@ -98,7 +98,7 @@ describe("strongest model", () => {
       run,
     });
     expect(seen).toEqual([
-      { model: "claude-sonnet-5", effort: "low" },
+      { model: "claude-sonnet-5", effort: "medium" },
       { model: "claude-opus-5", effort: "high" },
     ]);
     expect(strong.message?.modelId).toBe("claude-opus-5");

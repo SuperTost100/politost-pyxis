@@ -80,7 +80,8 @@ function summary(plan: ReturnType<typeof planAuto>) {
 describe("automatic engine policy", () => {
   it("splits work between Claude Code and Codex by tier and keeps the load even", () => {
     expect(summary(planAuto([claude, codex]))).toEqual({
-      chat: "codex:gpt-6-luna:low",
+      // The model file runs the chat on the mid role of Claude and ChatGPT, whichever of them gets it.
+      chat: "codex:gpt-6.1-terra:medium",
       map: "codex:gpt-6-luna:low",
       cards: "codex:gpt-6-luna:low",
       grading: "codex:gpt-6.1-terra:medium",
@@ -99,7 +100,7 @@ describe("automatic engine policy", () => {
 
   it("puts everything on Claude Code by tier when it is the only engine", () => {
     expect(summary(planAuto([claude]))).toEqual({
-      chat: "claude:claude-haiku-5-5:low",
+      chat: "claude:claude-sonnet-5-5:medium",
       map: "claude:claude-haiku-5-5:low",
       cards: "claude:claude-haiku-5-5:low",
       lesson: "claude:claude-sonnet-5-5:medium",
@@ -130,7 +131,7 @@ describe("automatic engine policy", () => {
 
   it("puts everything on Codex by tier when it is the only engine", () => {
     expect(summary(planAuto([codex]))).toEqual({
-      chat: "codex:gpt-6-luna:low",
+      chat: "codex:gpt-6.1-terra:medium",
       map: "codex:gpt-6-luna:low",
       cards: "codex:gpt-6-luna:low",
       lesson: "codex:gpt-6.1-terra:medium",
@@ -315,9 +316,9 @@ describe("the order the student put their tools in", () => {
   const providersOf = (plan: ReturnType<typeof planAuto>) =>
     Object.fromEntries(Object.entries(plan).map(([feature, choice]) => [feature, choice.provider]));
 
-  it("gives every task to the first tool of the list, each on the model of its tier", () => {
+  it("gives every task to the first tool of the list, each on the model of its role", () => {
     expect(summary(planAuto([claude, codex], undefined, ["codex", "claude"]))).toEqual({
-      chat: "codex:gpt-6-luna:low",
+      chat: "codex:gpt-6.1-terra:medium",
       map: "codex:gpt-6-luna:low",
       cards: "codex:gpt-6-luna:low",
       grading: "codex:gpt-6.1-terra:medium",
@@ -387,7 +388,9 @@ describe("the three roles of a tool, as its row shows them", () => {
   it("agrees with what planAuto gives each task, so the row never says one thing and the choice another", () => {
     const plan = planAuto([claude]);
     const roles = rolesOf("claude", ids(claude));
-    expect(plan.chat?.model).toBe(roles.fast);
+    // The chat runs on Claude's mid role (featureRoles), the other fast tasks on its fast role.
+    expect(plan.chat?.model).toBe(roles.mid);
+    expect(plan.map?.model).toBe(roles.fast);
     expect(plan.lesson?.model).toBe(roles.mid);
     expect(plan.plan?.model).toBe(roles.strong);
   });
@@ -435,18 +438,25 @@ describe("the three roles of a tool, as its row shows them", () => {
   describe("the role each task runs in on a tool", () => {
     afterEach(() => resetModelFile());
 
-    it("is the task's tier while the file gives the tool no featureRoles", () => {
-      expect(taskRolesOf("claude")).toMatchObject({ chat: "fast", map: "fast", cards: "fast", lesson: "mid", grading: "mid", plan: "strong" });
+    it("is the task's tier on a tool the file gives no featureRoles", () => {
+      expect(taskRolesOf("antigravity")).toMatchObject({ chat: "fast", map: "fast", cards: "fast", lesson: "mid", grading: "mid", plan: "strong" });
+    });
+
+    it("runs the chat on the mid role of Claude and ChatGPT, as the shipped file says, and nothing else", () => {
+      for (const tool of ["claude", "codex"]) {
+        expect(taskRolesOf(tool)).toMatchObject({ chat: "mid", map: "fast", cards: "fast", lesson: "mid", grading: "mid", plan: "strong" });
+      }
     });
 
     it("follows featureRoles on the tool that has them and only on that tool", () => {
       const file = JSON.parse(JSON.stringify(modelFile())) as ModelFile;
       file.updatedAt = "2099-01-01T00:00:00Z";
-      file.tools.claude!.featureRoles = { chat: "mid" };
+      file.tools.antigravity!.featureRoles = { chat: "mid" };
+      delete file.tools.claude!.featureRoles;
       expect(adoptModelFile(file)).toBe(true);
-      expect(taskRolesOf("claude").chat).toBe("mid");
-      expect(taskRolesOf("claude").map).toBe("fast");
-      expect(taskRolesOf("codex").chat).toBe("fast");
+      expect(taskRolesOf("antigravity").chat).toBe("mid");
+      expect(taskRolesOf("antigravity").map).toBe("fast");
+      expect(taskRolesOf("claude").chat).toBe("fast");
     });
   });
 });

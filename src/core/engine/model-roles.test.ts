@@ -242,14 +242,24 @@ describe("a tool only runs its maker's models", () => {
   describe("a task's role on one tool, as data", () => {
     const claude: AutoProvider = { id: "claude", kind: "cli", effort: true, models: ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"].map(model) };
     const codex: AutoProvider = { id: "codex", kind: "cli", effort: true, models: ["gpt-6-luna", "gpt-6.1-terra", "gpt-6.2-sol"].map(model) };
+    /** The shipped file with the chat on the mid role of exactly these tools. */
     function chatOnMid(...tools: string[]) {
       const file = copy();
       file.updatedAt = "2099-01-01T00:00:00Z";
+      for (const rule of Object.values(file.tools)) delete rule.featureRoles;
       for (const tool of tools) file.tools[tool]!.featureRoles = { chat: "mid" };
       expect(adoptModelFile(file)).toBe(true);
     }
 
+    it("runs the chat on the mid role of Claude and ChatGPT as the shipped file says", () => {
+      expect(modelFile().tools.claude!.featureRoles).toEqual({ chat: "mid" });
+      expect(modelFile().tools.codex!.featureRoles).toEqual({ chat: "mid" });
+      expect(planAuto([claude]).chat).toEqual({ provider: "claude", model: "claude-sonnet-5-5", effort: "medium" });
+      expect(planAuto([codex]).chat).toEqual({ provider: "codex", model: "gpt-6.1-terra", effort: "medium" });
+    });
+
     it("keeps every task in the tier model-tiers.json gives it while no tool says otherwise", () => {
+      chatOnMid();
       expect(planAuto([claude]).chat).toEqual({ provider: "claude", model: "claude-haiku-5-5", effort: "low" });
       expect(planAuto([codex]).chat).toEqual({ provider: "codex", model: "gpt-6-luna", effort: "low" });
     });
@@ -288,7 +298,7 @@ describe("a tool only runs its maker's models", () => {
     file.tools.codex!.roles.fast.effort = "high";
     adoptModelFile(file);
     const provider: AutoProvider = { id: "codex", kind: "cli", effort: true, models: [model("gpt-6-luna")] };
-    expect(planAuto([provider]).chat).toEqual({ provider: "codex", model: "gpt-6-luna", effort: "high" });
+    expect(planAuto([provider]).map).toEqual({ provider: "codex", model: "gpt-6-luna", effort: "high" });
   });
 });
 
