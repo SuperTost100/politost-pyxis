@@ -47,6 +47,8 @@ test("DIALOG-03 a form's select opens above the dialog, is reached by keyboard, 
     const last = list.locator(".ant-select-item-option").last();
     // The list scrolls inside itself, so the last option is brought into its view first.
     await last.scrollIntoViewIfNeeded();
+    // The list is still sliding open on a slow machine (macOS x64, run of #550), and a point on it then hits the list itself.
+    await animationsSettled(page);
     // Says what is at that point when it is not the option, as a run that failed here (macOS, run 43883525076) did not.
     const reachable = await last.evaluate((option) => {
       const box = option.getBoundingClientRect();
