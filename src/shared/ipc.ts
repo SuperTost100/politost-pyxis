@@ -3261,9 +3261,13 @@ export const requests = {
     input: z.object({ chatId: z.string() }),
     output: z.object({ ok: z.literal(true) }),
   },
-  // The chat left the screen, so core can stop the engine conversation it kept for it.
+  // The chat left the screen, so core can stop the engine conversation it kept for it, and remove it when it holds no message.
   "chats.leave": {
-    input: z.object({ chatId: z.string() }),
+    input: z.object({
+      chatId: z.string(),
+      /** The composer still holds text, so a chat with no message is kept for it. */
+      draft: z.boolean().optional(),
+    }),
     output: z.object({ ok: z.literal(true) }),
   },
   "chats.ask": {

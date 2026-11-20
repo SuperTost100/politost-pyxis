@@ -38,6 +38,7 @@ import {
   attachmentLine,
   chipLine,
   draftKey,
+  filesKey,
   filesReading,
   isLocalFile,
   type PickedFile,
@@ -94,6 +95,8 @@ type LeftOut = Array<{ name: string; kind: "document" | "photo"; error: Attachme
 
 /** Whether each chat's latest question was asked with "Answer generally", which Try again and Regenerate keep. */
 const askedGeneral = new Map<string, boolean>();
+/** The chats on screen, so a remount in the same tick does not count as leaving one. */
+const onScreen = new Set<string>();
 
 /**
  * What a turn needs from the Ask page when it ends. That can be a later mount than the one it was sent from, or none
@@ -375,11 +378,19 @@ export function AskPage() {
     [client],
   );
 
-  // Core keeps the engine's conversation, and a live CLI process, for the chat on screen. Leaving it lets that stop.
+  // Core keeps the engine's conversation, and a live CLI process, for the chat on screen. Leaving it lets that stop, and
+  // removes a chat that was opened and never sent, unless its composer holds text or files. A remount in the same tick
+  // (StrictMode in development) is not leaving.
   useEffect(() => {
     if (!chatId) return;
+    onScreen.add(chatId);
     return () => {
-      void invoke("chats.leave", { chatId }).catch(() => undefined);
+      onScreen.delete(chatId);
+      setTimeout(() => {
+        if (onScreen.has(chatId)) return;
+        const draft = Boolean(sessionStorage.getItem(draftKey(chatId)) || sessionStorage.getItem(filesKey(chatId)));
+        void invoke("chats.leave", { chatId, draft }).catch(() => undefined);
+      }, 0);
     };
   }, [chatId]);
 

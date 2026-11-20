@@ -227,7 +227,7 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     expect((await quote.innerText()).match(/Un punto/g)).toHaveLength(1);
     await expect(page.locator(".ask-bar-name")).toHaveText("Un punto P nello spazio.");
     await saveShot(page, "chat-from-selection.png");
-    // The chat is named from the selection and stored with its first message, so the list holds nothing yet.
+    // The chat is named from the selection. It has no message yet, so the list leaves it out.
     const chatId = page.url().split("/").at(-1)!;
     expect((await invoke<{ title: string }>("chats.read", { chatId })).title).toBe("Un punto P nello spazio.");
     expect(await invoke<unknown[]>("chats.list", {})).toEqual([]);

@@ -45,7 +45,7 @@ export function keepUnsentQuestion(
   if (!store.getItem(draftKey(chatId))) store.setItem(draftKey(chatId), text);
 }
 
-function filesKey(chatId?: string): string {
+export function filesKey(chatId?: string): string {
   return chatId ? `pyxis-files:${chatId}` : "pyxis-files";
 }
 

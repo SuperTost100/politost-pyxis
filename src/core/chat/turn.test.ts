@@ -14,7 +14,6 @@ import {
   chatContext,
   chatScope,
   chatSubject,
-  clearChatContext,
   chatTitle,
   chatTitleFrom,
   deleteChat,
@@ -22,12 +21,16 @@ import {
   listChats,
   rateMessage,
   readChat,
+  removeEmptyChat,
+  removeEmptyChats,
   renameChat,
   replyGrounding,
   seedChat,
   splitFollowups,
 } from "./turn";
 import { exportChat } from "./export";
+import { searchChats } from "./search";
+import { renameSubject } from "../plans/subjects";
 import { setRetrievalModel } from "../sources/retrieve";
 import { heldFilesFor } from "./test-attach";
 import { tempDir } from "../test-temp";
@@ -334,6 +337,7 @@ describe("askTurn", () => {
     // An older chat renamed stays below a newer one: a rename is not activity.
     db.prepare("UPDATE chats SET updated_at = 1 WHERE id = ?").run(result.chatId);
     db.prepare("INSERT INTO chats (id, title, created_at, updated_at) VALUES ('newer', 'Altra', 5, 5)").run();
+    db.prepare("INSERT INTO messages (id, chat_id, role, body, created_at) VALUES ('newer-m', 'newer', 'user', 'ciao', 5)").run();
     renameChat(db, result.chatId, "Moti");
     expect(listChats(db).map((chat) => [chat.title, chat.updated_at])).toEqual([["Altra", 5], ["Moti", 1]]);
     // The list carries each chat's subject, so the chat panel can filter by it.
@@ -653,45 +657,78 @@ describe("askTurn", () => {
     expect(system).toContain("Subject: Fisica");
   });
 
-  it("stores a seeded chat only with its first message, and puts it back when that send fails", async () => {
+  it("keeps a seeded chat out of the lists until its first message, and stores it as any chat from the start", async () => {
     const db = openDatabase(":memory:");
     db.prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)").run(
       JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }),
     );
     db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('s-fis', 'Fisica', 1)").run();
     const seeded = seedChat(db, { kind: "answer", title: "Entropia", body: "Il disordine cresce.", subject: "Fisica" });
-    // Opening Chiedi from a result, a lesson or a map saves nothing: no row, no entry in the list.
-    expect(db.prepare("SELECT COUNT(*) FROM chats").pluck().get()).toBe(0);
+    // The row exists, so a file, a subject, a title or a session works as for any chat; the lists leave it out.
+    expect(db.prepare("SELECT COUNT(*) FROM chats").pluck().get()).toBe(1);
     expect(listChats(db)).toEqual([]);
-    // What the page reads for the new chat comes from the seed.
-    expect(chatContext(db, seeded.chatId)).toEqual({ kind: "answer", title: "Entropia", body: "Il disordine cresce." });
-    expect(chatSubject(db, seeded.chatId)).toBe("Fisica");
+    expect(searchChats(db, "entropia").hits).toEqual([]);
     expect(chatTitle(db, seeded.chatId)).toBe("Entropia");
-    expect(readChat(db, seeded.chatId)).toEqual([]);
-    clearChatContext(db, seeded.chatId);
-    expect(chatContext(db, seeded.chatId)).toBeNull();
-    // A first send that fails removes the chat it made and leaves the seed for the retry.
+    expect(chatContext(db, seeded.chatId)).toEqual({ kind: "answer", title: "Entropia", body: "Il disordine cresce." });
+    // A title edited and a Library subject renamed before the first send still read and resolve.
+    renameChat(db, seeded.chatId, "Il mio titolo");
+    renameSubject(db, "s-fis", "Fisica 1");
+    expect(chatTitle(db, seeded.chatId)).toBe("Il mio titolo");
+    expect(chatSubject(db, seeded.chatId)).toBe("Fisica 1");
+    expect(exportChat(db, seeded.chatId, "it").markdown).toContain("# Il mio titolo");
+    // A first send that fails leaves the question stored for Try again, and the chat is listed with it.
     await expect(
       askTurn(db, { chatId: seeded.chatId, text: "perché?", allowGeneral: true, run: async () => Promise.reject(new Error("engine down")) }),
     ).rejects.toThrow("engine down");
-    expect(db.prepare("SELECT COUNT(*) FROM chats").pluck().get()).toBe(0);
-    expect(chatSubject(db, seeded.chatId)).toBe("Fisica");
-    // The first send that works stores the chat under the seeded id, with what the seed held.
     const result = await askTurn(db, { chatId: seeded.chatId, text: "perché?", allowGeneral: true, run: async () => reply });
     expect(result.chatId).toBe(seeded.chatId);
-    expect(listChats(db).map((chat) => [chat.id, chat.subject])).toEqual([[seeded.chatId, "Fisica"]]);
-    expect(readChat(db, seeded.chatId)).toHaveLength(2);
+    expect(listChats(db).map((chat) => [chat.id, chat.title, chat.subject])).toEqual([[seeded.chatId, "Il mio titolo", "Fisica 1"]]);
+    expect(searchChats(db, "titolo").hits.map((hit) => hit.id)).toEqual([seeded.chatId]);
     db.close();
   });
 
-  it("deletes and renames a chat that was only seeded", () => {
+  it("removes a chat that was opened and never sent when the student leaves it, and at start, but never one that holds something", async () => {
     const db = openDatabase(":memory:");
-    const seeded = seedChat(db, { kind: "answer", title: "Entropia", body: "Il disordine cresce." });
-    renameChat(db, seeded.chatId, "Il mio titolo");
-    expect(exportChat(db, seeded.chatId, "it").markdown).toContain("# Il mio titolo");
-    deleteChat(db, "", seeded.chatId);
-    expect(() => chatContext(db, seeded.chatId)).not.toThrow();
-    expect(chatContext(db, seeded.chatId)).toBeNull();
+    db.prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)").run(
+      JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }),
+    );
+    const seed = () => seedChat(db, { kind: "answer", title: "Entropia", body: "Il disordine cresce." }).chatId;
+    const exists = (id: string) => db.prepare("SELECT 1 FROM chats WHERE id = ?").get(id) !== undefined;
+    // Left unsent, it goes.
+    const empty = seed();
+    expect(removeEmptyChat(db, "", empty)).toBe(true);
+    expect(exists(empty)).toBe(false);
+    // A composer that holds text, or a file in any state, keeps it.
+    const typed = seed();
+    expect(removeEmptyChat(db, "", typed, { draft: true })).toBe(false);
+    const attached = seed();
+    db.prepare(
+      "INSERT INTO held_files (id, draft, name, kind, size, ext, state, created_at) VALUES ('f', ?, 'a.pdf', 'document', 1, '.pdf', 'reading', 1)",
+    ).run(attached);
+    expect(removeEmptyChat(db, "", attached)).toBe(false);
+    // A chat with a message is never removed, and neither is one a turn is answering.
+    const sent = await askTurn(db, { chatId: seed(), text: "perché?", allowGeneral: true, run: async () => reply });
+    expect(removeEmptyChat(db, "", sent.chatId)).toBe(false);
+    const running = seed();
+    let leftWhileRunning: boolean | undefined;
+    await askTurn(db, {
+      chatId: running,
+      text: "perché?",
+      allowGeneral: true,
+      run: async () => {
+        // The message is not stored before the engine runs in every path; the turn itself marks the chat busy.
+        leftWhileRunning = removeEmptyChat(db, "", running);
+        return reply;
+      },
+    });
+    expect(leftWhileRunning).toBe(false);
+    // At start no composer is open: the held files were swept first, so every chat with no message goes.
+    db.prepare("DELETE FROM held_files").run();
+    expect(removeEmptyChats(db, "")).toBe(2);
+    expect(exists(typed)).toBe(false);
+    expect(exists(attached)).toBe(false);
+    expect(exists(sent.chatId)).toBe(true);
+    expect(exists(running)).toBe(true);
     db.close();
   });
 
@@ -704,8 +741,10 @@ describe("askTurn", () => {
       title: "dove x̄ è il valore numerico, σₓ è l'incertezza e [X] è l'unità",
       body: text,
     });
+    expect(chatTitle(db, seeded.chatId)).toBe("dove x̄ è il valore numerico, σₓ è l'incertezza e [X] è l'unità");
     // A chat saved before this keeps its TeX in the database and still reads as text.
     db.prepare("INSERT INTO chats (id, title, created_at, updated_at) VALUES ('old', ?, 1, 1)").run("vale $\\sigma_x$");
+    db.prepare("INSERT INTO messages (id, chat_id, role, body, created_at) VALUES ('m', 'old', 'user', 'ciao', 1)").run();
     expect(listChats(db).map((chat) => chat.title)).toEqual(["vale σₓ"]);
   });
 

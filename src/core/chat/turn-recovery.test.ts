@@ -6,7 +6,7 @@ import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
 import { extractPlain } from "../sources/documents";
 import { heldFilesFor } from "./test-attach";
-import { askTurn, chatScope, deleteChat, readChat, regenerateTurn } from "./turn";
+import { askTurn, chatScope, deleteChat, readChat, regenerateTurn, seedChat } from "./turn";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -139,6 +139,25 @@ describe("a question stopped before any answer text is taken back", () => {
     await askTurn(db, { chatId: first.chatId, text: "spiega", allowGeneral: true, ...sent, workspace, run: async () => reply });
     expect(count("attachments")).toBe(1);
     expect(count("sources WHERE library = 0")).toBe(1);
+    db.close();
+  });
+
+  it("takes back only the documents the question added: one the chat's scope already held stays", async () => {
+    const { workspace, db, file, count, attached } = setup();
+    // A hidden document the chat already holds, as a chat seeded from it does.
+    const known = await attached(file("appunti.txt", "Il calore si trasmette per conduzione."));
+    const heldSource = db.prepare("SELECT source_id FROM held_files").pluck().get() as string;
+    const seeded = seedChat(db, { kind: "answer", title: "Calore", body: "Conduzione.", sourceIds: [heldSource] });
+    expect(known.attachments).toHaveLength(1);
+    expect(chatScope(db, seeded.chatId)).toEqual([heldSource]);
+    // The same file attached again is read from the copy the chat has, and the stop takes the question back.
+    const again = await attached(file("appunti-bis.txt", "Il calore si trasmette per conduzione."));
+    const controller = new AbortController();
+    await expect(
+      askTurn(db, { chatId: seeded.chatId, text: "spiega", allowGeneral: true, ...again, workspace, signal: controller.signal, run: stopped(controller) }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(count("messages")).toBe(0);
+    expect(chatScope(db, seeded.chatId)).toEqual([heldSource]);
     db.close();
   });
 

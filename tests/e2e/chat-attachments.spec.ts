@@ -367,8 +367,7 @@ test("a send that waits for files belongs to its draft: the composer works and s
     }, other.chatId);
     await expect(page).toHaveURL(new RegExp(`#/ask/${other.chatId}`));
     await box.fill("Una bozza di questa chat");
-    // The other chat is only seeded, so the one row is the chat the waiting send made.
-    await expect.poll(() => rows(userData, "SELECT id FROM chats").length, { timeout: 60000 }).toBe(1);
+    await expect.poll(() => rows(userData, "SELECT id FROM chats").length, { timeout: 60000 }).toBe(2);
     await expect(box).toHaveText("Una bozza di questa chat");
     expect(await page.evaluate((id) => sessionStorage.getItem(`pyxis-draft:${id}`), other.chatId)).toBe("Una bozza di questa chat");
   } finally {

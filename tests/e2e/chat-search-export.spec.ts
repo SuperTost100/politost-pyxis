@@ -77,6 +77,8 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     const more = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     for (let i = 1; i <= 5; i += 1) {
       more.prepare("INSERT INTO chats(id,title,created_at,updated_at) VALUES(?,?,1,1)").run(`c-x${i}`, `Esercizio ${i}`);
+      // A chat is listed from its first message on.
+      more.prepare("INSERT INTO messages(id,chat_id,role,body,created_at) VALUES(?,?,'user','Una domanda',1)").run(`m-x${i}`, `c-x${i}`);
     }
     more.close();
     await page.reload();

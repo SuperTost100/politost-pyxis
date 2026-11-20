@@ -1,4 +1,5 @@
 // The rules of tests/fixtures/chat-conversations.json, applied to a reply. Pure, so a unit test can run them.
+import { mapFigureBlocks } from "../src/shared/smart-text";
 
 export type Conversation = {
   id: string;
@@ -58,7 +59,12 @@ export function judge(conv: Conversation, reply: string, options: { followups?: 
   for (const pattern of conv.mustNot ?? []) if (new RegExp(pattern).test(seen)) fails.push(`has ${pattern}`);
   for (const pattern of conv.mustFormula ?? []) if (!forms.some((form) => new RegExp(pattern).test(form))) fails.push(`missing ${pattern}`);
   for (const pattern of conv.mustNotFormula ?? []) if (forms.some((form) => new RegExp(pattern).test(form))) fails.push(`has ${pattern}`);
-  const drawn = (body.match(/```pyxis-figure/g) ?? []).length;
+  // A figure counts when the app can draw it: a closed block whose payload parses, which is how the chat reads one.
+  let drawn = 0;
+  mapFigureBlocks(body, (figure) => {
+    if (figure) drawn++;
+    return null;
+  });
   if (conv.minFigures !== undefined && drawn < conv.minFigures) fails.push(`${drawn} figures, under ${conv.minFigures}`);
   if (conv.maxFigures !== undefined && drawn > conv.maxFigures) fails.push(`${drawn} figures, over ${conv.maxFigures}`);
   const words = seen.split(/\s+/).filter(Boolean).length;

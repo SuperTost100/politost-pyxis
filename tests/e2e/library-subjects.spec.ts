@@ -107,11 +107,12 @@ test("Files added from the Library go on the shelf of a subject the student has,
     await saveShot(page, "library-subjects/1-sorted.png");
 
     // A chat in the new subject: the sidebar names the subject under its title.
-    // A chat in a subject, stored as a first question stores it (a seeded chat is not stored before that).
+    // A chat is listed from its first message on, so the seeded chat gets one.
+    const { chatId } = await page.evaluate(() =>
+      window.pyxis.invoke("chats.seed", { kind: "answer", title: "Teorema di Bayes", body: "Bayes.", subject: "Probabilità e statistica" }),
+    );
     const chats = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
-    chats
-      .prepare("INSERT INTO chats(id, title, subject, created_at, updated_at) VALUES ('c-bayes', 'Teorema di Bayes', 'Probabilità e statistica', 1, 1)")
-      .run();
+    chats.prepare("INSERT INTO messages(id, chat_id, role, body, created_at) VALUES ('m-bayes', ?, 'user', 'Spiegami Bayes', 1)").run(chatId);
     chats.close();
     await page.reload();
     const sidebarChat = page.getByRole("list", { name: "Chat" }).getByRole("link", { name: /^Teorema di Bayes/ });

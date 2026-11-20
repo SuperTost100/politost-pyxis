@@ -349,6 +349,36 @@ describe("a chat's stored tool session", () => {
     db.close();
   });
 
+  it("tells the session once that a question taken back after a stop was withdrawn, since the tool still holds it", async () => {
+    const { db } = setup();
+    const first = await ask(db, "prima");
+    const controller = new AbortController();
+    await expect(
+      askTurn(db, {
+        chatId: first.chatId,
+        text: "Spiegami i vettori",
+        allowGeneral: true,
+        signal: controller.signal,
+        run: async (input) => {
+          (input as Seen).conversation?.onSession?.("s1", "claude", "/scratch");
+          controller.abort();
+          throw new DOMException("stopped", "AbortError");
+        },
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    // The question is gone from the chat, so there is nothing to replay: the session is told to disregard it.
+    expect(readChat(db, first.chatId).map((row) => row.role)).toEqual(["user", "assistant"]);
+    const next = await ask(db, "e le matrici?", { chatId: first.chatId });
+    const followUp = next.seen.conversation!.followUp;
+    expect(followUp).toContain('The student withdrew a question before you answered it: "Spiegami i vettori"');
+    expect(followUp).toContain("Disregard it");
+    expect(followUp.indexOf("withdrew a question")).toBeLessThan(followUp.indexOf("Question:\ne le matrici?"));
+    // Once a reply completed after it, the line is not sent again.
+    const after = await ask(db, "e i tensori?", { chatId: first.chatId });
+    expect(after.seen.conversation!.followUp).not.toContain("withdrew");
+    db.close();
+  });
+
   it("replays a question the engine failed on before any text arrived", async () => {
     const { db } = setup();
     const first = await ask(db, "prima");

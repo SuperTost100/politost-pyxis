@@ -99,6 +99,14 @@ describe("the conversations a chat reply is judged on", () => {
       expect(ok(three, `Ecco.\n${block("plot")}\n${block("circuit")}\nL'albero lo descrivo a parole: ha una radice e due figli.`)).toEqual([]);
       expect(ok(three, [block("plot"), block("circuit"), block("graph")].join("\n"))).toContain("3 figures, over 2");
       expect(ok(three, "Ho disegnato due figure.")).toContain("0 figures, under 1");
+      // A figure counts only when the app can draw it: a block never closed, or with a payload that is no figure, is not one.
+      const open = "```pyxis-figure\n" + JSON.stringify({ kind: "plot", caption: "c", code: "x" });
+      expect(ok(three, `${block("plot")}\n${open}`)).toEqual([]);
+      // An opening that was never closed takes the next block's fence for its own end, as the chat reads it: nothing is drawn.
+      expect(ok(three, `${open}\n${block("plot")}`)).toContain("0 figures, under 1");
+      expect(ok(three, `${open}`)).toContain("0 figures, under 1");
+      expect(ok(three, "```pyxis-figure\nnot a figure\n```")).toContain("0 figures, under 1");
+      expect(ok(three, [block("plot"), block("circuit"), "```pyxis-figure\n{}\n```"].join("\n"))).toEqual([]);
       expect(ok(three, `${block("plot")}\nL'applicazione consente al massimo due figure per risposta.`)).not.toEqual([]);
       expect(ok(three, `${block("plot")}\n\`\`\`dot\ndigraph { a -> b }\n\`\`\``)).toEqual([expect.stringContaining("has ```")]);
     });

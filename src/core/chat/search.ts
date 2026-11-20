@@ -124,7 +124,7 @@ export function searchChats(
   if (terms.length === 0) return { hits: [], capped: false };
   const chats = db
     .prepare(
-      `SELECT id, title, updated_at FROM chats WHERE ? IS NULL OR subject = ? ORDER BY updated_at DESC`,
+      `SELECT id, title, updated_at FROM chats WHERE (? IS NULL OR subject = ?) AND EXISTS (SELECT 1 FROM messages WHERE messages.chat_id = chats.id) ORDER BY updated_at DESC`,
     )
     .all(subject ?? null, subject ?? null) as Array<{ id: string; title: string | null; updated_at: number }>;
   const messages = db.prepare(

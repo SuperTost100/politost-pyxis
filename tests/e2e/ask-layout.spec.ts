@@ -193,10 +193,13 @@ test("Ask: All chats shows in the sidebar only when there are more chats than it
     // Two chats, both listed: no link.
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     const insert = db.prepare("INSERT INTO chats(id,title,created_at,updated_at) VALUES(?,?,?,?)");
+    // A chat is listed from its first message on.
+    const ask = db.prepare("INSERT INTO messages(id,chat_id,role,body,created_at) VALUES(?,?,'user','Una domanda',?)");
     const seedChats = (from: number, to: number) => {
       for (let i = from; i <= to; i += 1) {
         const n = String(i).padStart(2, "0");
         insert.run(`c${n}`, `Argomento ${n}`, 100 + i, 100 + i);
+        ask.run(`m${n}`, `c${n}`, 100 + i);
       }
     };
     seedChats(1, 2);
