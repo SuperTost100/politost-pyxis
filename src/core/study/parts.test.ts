@@ -1137,3 +1137,287 @@ describe("figures in a part", () => {
     expect(result.markdown).toContain(figureBlock(mended).replace("Una retta.", "Una curva."));
   });
 });
+
+/** A tool that keeps what it is told, like Claude Code: it continues the session it is given and names a new one otherwise. */
+function toolRun(...replies: Array<unknown | string | { api: string }>) {
+  type Call = {
+    prompt: string;
+    followUp?: string;
+    session?: { provider: string; id: string; cwd: string } | null;
+    kept: boolean;
+    system?: string;
+  };
+  const calls: Call[] = [];
+  const gate: { hold?: Promise<void>; started?: () => void } = {};
+  let opened = 0;
+  const run: GenerateInput["run"] = async (input) => {
+    calls.push({
+      prompt: input.prompt,
+      followUp: input.conversation?.followUp,
+      session: input.conversation?.session,
+      kept: Boolean(input.conversation),
+      system: input.system,
+    });
+    // The reply is chosen by this call's place in the order, before it waits, so a call that waits keeps its own.
+    const at = calls.length - 1;
+    // Only the first call after the gate is set waits.
+    const hold = gate.hold;
+    gate.hold = undefined;
+    if (hold) {
+      gate.started?.();
+      await hold;
+    }
+    const next = replies[Math.min(at, replies.length - 1)];
+    if (next instanceof Error) throw next;
+    // `{ api: text }` is an engine that keeps no session answering instead (an API provider after a fallback).
+    if (typeof next === "object" && next !== null && "api" in next)
+      return { text: (next as { api: string }).api, provider: "anthropic-api", model: "test-model", inputTokens: 1 };
+    const held = input.conversation?.session;
+    // A call outside a conversation is not kept by the tool, so it names no session of ours.
+    const id = !input.conversation ? "" : held ? held.id : `tool-session-${(opened += 1)}`;
+    if (input.conversation) input.conversation.onSession?.(id, "claude", "/scratch");
+    const session = input.conversation ? { sessionId: id, cwd: "/scratch", continued: Boolean(held) } : {};
+    const common = { provider: "claude", model: "test-model", inputTokens: 1, ...session };
+    return typeof next === "string"
+      ? { text: next, ...common }
+      : { structured: next, text: JSON.stringify(next), ...common };
+  };
+  return { calls, run, gate };
+}
+
+describe("a lesson in one tool session", () => {
+  const outlineOf = reply(["Uno", ["P1", "P2"]], ["Due", ["P3", "P4"]], ["Tre", ["P5"]], ["Quattro", ["P6"]]);
+  /** The outline planned in a call of its own, then each part written in the topic's session. */
+  async function lesson(...partReplies: Array<string | Error | { api: string }>) {
+    const db = workspace(Array(6).fill(4_000));
+    db.exec("UPDATE passages SET text = 'MARK-' || id || ' ' || text");
+    const tool = toolRun(outlineOf, ...partReplies);
+    await planParts(db, { planId: "p", topicId: "t", run: tool.run });
+    const write = (position: number) => writePart(db, { planId: "p", topicId: "t", position, run: tool.run, python: null });
+    return { db, tool, write };
+  }
+  const session = (db: ReturnType<typeof workspace>) =>
+    db.prepare("SELECT session_id, in_step, ended_at FROM tool_sessions WHERE owner = 'lesson:t'").all() as Array<{
+      session_id: string;
+      in_step: number;
+      ended_at: number | null;
+    }>;
+
+  it("plans the outline in a call of its own, which no session holds, and opens the session with the first part", async () => {
+    const { db, tool, write } = await lesson(partText("1"));
+    // The outline has rules of its own, and a session keeps the rules it was opened under.
+    expect(tool.calls[0]).toMatchObject({ kept: false });
+    expect(session(db)).toEqual([]);
+    await write(1);
+    // The part opens the session and is asked in full: the plan, what is written and its own material.
+    const call = tool.calls[1]!;
+    expect(call.session).toBeNull();
+    expect(call.prompt).toContain("Part 1 of 4.");
+    expect(call.prompt).toContain("1. Uno: Dopo Uno sai farlo. (this part)");
+    expect(call.prompt).toContain("No part is written yet.");
+    expect(call.prompt.match(/MARK-\w+/g)).toEqual(["MARK-ps001", "MARK-ps002"]);
+    expect(session(db)).toEqual([{ session_id: "tool-session-1", in_step: 1, ended_at: null }]);
+    db.close();
+  });
+
+  it("does not name the parts it wrote itself, and asks each later part from its place and material", async () => {
+    const { db, tool, write } = await lesson(partText("1"), partText("2"));
+    await write(1);
+    await write(2);
+    const follow = tool.calls[2]!;
+    expect(follow.session).toMatchObject({ id: "tool-session-1" });
+    expect(follow.followUp).toContain("Part 2 of 4.");
+    expect(follow.followUp).toContain("1. Uno: Dopo Uno sai farlo. (written)");
+    expect(follow.followUp).toContain("The parts already written are in this conversation, as you wrote them.");
+    expect(follow.followUp).not.toContain("What it taught");
+    expect(follow.followUp).not.toContain("Earlier in this conversation");
+    expect(follow.followUp!.match(/MARK-\w+/g)).toEqual(["MARK-ps003", "MARK-ps004"]);
+    // Handed to a new session, the same call names what the lesson holds, as before.
+    expect(follow.prompt).toContain("What it taught: Hai imparato il passo 1.");
+    expect(follow.prompt).not.toContain("Earlier in this conversation");
+    expect(session(db)).toHaveLength(1);
+    db.close();
+  });
+
+  it("sends only the problems to the session that holds the part's first reply, and the whole request when none can", async () => {
+    const { db, tool, write } = await lesson("Troppo poco.", partText("1"));
+    await write(1);
+    const retry = tool.calls[2]!;
+    expect(retry.followUp).toMatch(/^Problems with your previous reply:\n- /);
+    expect(retry.followUp).toContain("Write the part again.");
+    expect(retry.followUp).not.toContain("MARK-");
+    expect(retry.session).toMatchObject({ id: "tool-session-1" });
+    // A session the tool lost gets the request itself with the problems, as a one-shot always does.
+    expect(retry.prompt).toContain("MARK-ps001");
+    expect(retry.prompt).toContain("Problems with your previous reply:");
+    db.close();
+  });
+
+  it("tells the session what the lesson holds after a part that failed, and again once one is kept", async () => {
+    const { db, tool, write } = await lesson(partText("1"), "Troppo poco.", "Ancora poco.", partText("2"), partText("3"));
+    await write(1);
+    await expect(write(2)).rejects.toThrow("lesson-part-invalid");
+    // Two bad replies are in the session now: it is behind the lesson, which has only part 1.
+    expect(session(db)[0]!.in_step).toBe(0);
+    await write(2);
+    const behind = tool.calls[4]!;
+    expect(behind.session).toMatchObject({ id: "tool-session-1" });
+    expect(behind.followUp).toContain("Earlier in this conversation you wrote parts of this lesson. This is what the lesson holds now.");
+    expect(behind.followUp).toContain("What it taught: Hai imparato il passo 1.");
+    // Part 2 is kept: part 3 needs only its place and material again.
+    await write(3);
+    const held = tool.calls[5]!;
+    expect(held.followUp).toContain("The parts already written are in this conversation, as you wrote them.");
+    expect(held.followUp).not.toContain("Earlier in this conversation");
+    expect(session(db)).toHaveLength(1);
+    db.close();
+  });
+
+  it("tells it what the lesson holds when a stop or a failure came before the reply was kept", async () => {
+    const { db, tool, write } = await lesson(partText("1"), new Error("offline"), partText("2"));
+    await write(1);
+    await expect(write(2)).rejects.toThrow("offline");
+    expect(session(db)[0]!.in_step).toBe(0);
+    await write(2);
+    expect(tool.calls[3]!.followUp).toContain("Earlier in this conversation you wrote parts of this lesson.");
+    db.close();
+  });
+
+  it("tells it what the lesson holds when a part was changed outside the session", async () => {
+    const { db, tool, write } = await lesson(partText("1"), partText("2"));
+    await write(1);
+    // A section of part 1 was rewritten on its own, or the student chose another level: the text is not the one written.
+    db.prepare("UPDATE items SET body_json = json_set(body_json, '$.markdown', json_extract(body_json, '$.markdown') || ?) WHERE json_extract(body_json, '$.cacheKey') LIKE ?").run(
+      "\n\nUna riga in più.",
+      "%lesson%",
+    );
+    await write(2);
+    expect(tool.calls[2]!.followUp).toContain("Earlier in this conversation you wrote parts of this lesson.");
+    db.close();
+  });
+
+  it("drops the text of a part written again, in a session that holds it", async () => {
+    const { db, tool, write } = await lesson(partText("1"), partText("1 bis"));
+    await write(1);
+    await writePart(db, { planId: "p", topicId: "t", position: 1, run: tool.run, python: null, rewrite: "again" });
+    const again = tool.calls[2]!;
+    expect(again.followUp).toContain("This part is written again. Drop the text you wrote for it before");
+    expect(again.prompt).not.toContain("This part is written again");
+    db.close();
+  });
+
+  it("lets a part asked for while another is written run on its own, with the whole request, and leaves the session behind", async () => {
+    // Replies in the order of the calls: part 1, part 2 (in the session), part 4 (beside it), part 3.
+    const { db, tool, write } = await lesson(partText("1"), partText("2"), partText("4"), partText("3"));
+    await write(1);
+    let release!: () => void;
+    let started!: () => void;
+    const inFlight = new Promise<void>((resolve) => (started = resolve));
+    tool.gate.hold = new Promise<void>((resolve) => (release = resolve));
+    tool.gate.started = started;
+    const two = write(2);
+    await inFlight;
+    // Part 2 is being written in the session. Part 4 does not wait for it.
+    await write(4);
+    const beside = tool.calls.at(-1)!;
+    expect(beside.kept).toBe(false);
+    expect(beside.prompt).toContain("Part 4 of 4.");
+    expect(beside.prompt).toContain("Parts already written:");
+    release();
+    await two;
+    // Each part holds its own text: the call that waited kept its own reply, and the one beside it its own.
+    const text = (position: number) =>
+      db
+        .prepare(
+          "SELECT json_extract(i.body_json, '$.markdown') FROM lesson_parts p JOIN items i ON i.id = p.item_id JOIN lesson_outlines o ON o.id = p.outline_id WHERE o.retired_at IS NULL AND p.position = ?",
+        )
+        .pluck()
+        .get(position) as string;
+    expect(text(2)).toContain("Passo 2 primo");
+    expect(text(2)).not.toContain("Passo 4 primo");
+    expect(text(4)).toContain("Passo 4 primo");
+    // Part 4 is written, though the session never saw it: it is behind, and part 3 is asked with what the lesson holds.
+    await write(3);
+    expect(tool.calls.at(-1)!.followUp).toContain("Earlier in this conversation you wrote parts of this lesson.");
+    expect(tool.calls.at(-1)!.followUp).toContain("Part 4");
+    expect(session(db)).toHaveLength(1);
+    db.close();
+  });
+
+  it("starts a new session for a part asked under other rules, such as another level, and ends the old one", async () => {
+    const { db, tool, write } = await lesson(partText("1"), partText("2"), partText("3"));
+    await write(1);
+    await writePart(db, { planId: "p", topicId: "t", position: 2, wording: "technical", run: tool.run, python: null });
+    // The first session keeps the rules it was opened under, so the part at the other level goes to a new one, whole.
+    const other = tool.calls[2]!;
+    expect(other.session).toBeNull();
+    expect(other.prompt).toContain("Part 2 of 4.");
+    expect(other.system).not.toBe(tool.calls[1]!.system);
+    expect(db.prepare("SELECT session_id, ended_reason FROM tool_sessions WHERE owner = 'lesson:t' ORDER BY opened_at, rowid").all()).toEqual([
+      { session_id: "tool-session-1", ended_reason: "instructions" },
+      { session_id: "tool-session-2", ended_reason: null },
+    ]);
+    db.close();
+  });
+
+  it("builds the request and what the session knows from one state of the lesson, whatever changes while the figure runner is awaited", async () => {
+    const { db, tool, write } = await lesson(partText("1"), partText("2"));
+    await write(1);
+    const two = write(2);
+    // A heading of part 1 changes while part 2 starts, before anything of the lesson was read.
+    db.prepare(
+      "UPDATE items SET body_json = json_set(body_json, '$.markdown', replace(json_extract(body_json, '$.markdown'), 'Passo 1 primo', 'Titolo nuovo'))",
+    ).run();
+    await two;
+    const call = tool.calls[2]!;
+    // The session was behind that state, and the request it got says so with the heading as it is now.
+    expect(call.followUp).toContain("Earlier in this conversation you wrote parts of this lesson.");
+    expect(call.followUp).toContain("Titolo nuovo");
+    expect(call.followUp).not.toContain("Passo 1 primo");
+    // And the session is kept at that state plus part 2: the next part asks for its place and material only.
+    expect(session(db)[0]!.in_step).toBe(1);
+    db.close();
+  });
+
+  it("sends the whole request with the problems when an engine without a session answered the first ask, and starts a session that holds the part", async () => {
+    // Part 1 opens the session. Part 2's first ask is answered by an API provider and rejected; the retry goes to the tool.
+    const { db, tool, write } = await lesson(partText("1"), { api: "Troppo poco." }, partText("2"));
+    await write(1);
+    await write(2);
+    const retry = tool.calls[3]!;
+    // The stored session never saw part 2's request or the rejected reply, so it is not resumed with only the problems.
+    expect(retry.session).toBeNull();
+    expect(retry.prompt).toContain("Part 2 of 4.");
+    expect(retry.prompt).toContain("Problems with your previous reply:");
+    // The new session got the whole request and wrote the part; the first, left behind, is no longer the open one.
+    expect(db.prepare("SELECT session_id, ended_reason, in_step FROM tool_sessions WHERE owner = 'lesson:t' ORDER BY opened_at, rowid").all()).toEqual([
+      { session_id: "tool-session-1", ended_reason: "gone", in_step: 0 },
+      { session_id: "tool-session-2", ended_reason: null, in_step: 1 },
+    ]);
+    db.close();
+  });
+
+  it("leaves the session out of step when an engine without a session wrote the part", async () => {
+    const { db, tool, write } = await lesson(partText("1"), { api: partText("2") }, partText("3"));
+    await write(1);
+    await write(2);
+    // The stored session did not write part 2, so it is not marked as holding it.
+    expect(session(db)).toEqual([{ session_id: "tool-session-1", in_step: 0, ended_at: null }]);
+    await write(3);
+    // And part 3 is asked with what the lesson holds, part 2 included.
+    expect(tool.calls[3]!.followUp).toContain("Earlier in this conversation you wrote parts of this lesson.");
+    expect(tool.calls[3]!.followUp).toContain("Part 2");
+    db.close();
+  });
+
+  it("puts no session on a topic of one part, which makes no call to plan", async () => {
+    const db = workspace([3_000, 3_500]);
+    const tool = toolRun(partText("1"));
+    await planParts(db, { planId: "p", topicId: "t", run: tool.run });
+    expect(tool.calls).toHaveLength(0);
+    expect(session(db)).toEqual([]);
+    await writePart(db, { planId: "p", topicId: "t", position: 1, run: tool.run, python: null });
+    expect(session(db)).toHaveLength(1);
+    db.close();
+  });
+});

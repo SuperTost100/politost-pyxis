@@ -10,6 +10,7 @@ import { isFigureFixCall, recordedPlanRun } from "../engine/recorded-plan";
 import { exportChat, type ChatExportLanguage } from "./export";
 import { searchChats } from "./search";
 import { chatUsage } from "../engine/usage";
+import { removeBlobLeftovers } from "../share/usage";
 import { sessionsOpened } from "./sessions";
 import type { FigureEvent } from "../math/figures";
 import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, chatSubjectBy, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat, setChatSubject } from "./turn";
@@ -84,6 +85,8 @@ export function chatHandlers(
   setHeldFiles(held);
   // Files attached before the last quit and never sent have nothing left to send them.
   held?.sweep();
+  // And the files a removal could not delete (the system held them) stay under a temporary name until now.
+  if (workspace) removeBlobLeftovers(workspace);
   const needHeld = () => {
     if (!held) throw new Error("attachments-unavailable");
     return held;

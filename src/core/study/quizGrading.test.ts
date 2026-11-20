@@ -930,7 +930,7 @@ describe("the steps of an open answer", () => {
     });
     const { jobId } = submitQuiz(db, runner, attemptId, { a: "ten" }, undefined, { a: "" });
     const done = await until(db, attemptId, (view) => view.state === "succeeded");
-    expect(Object.keys(prompts[0]!).sort()).toEqual(["answer", "question", "reference", "rubric"]);
+    expect(Object.keys(prompts[0]!).sort()).toEqual(["answer", "note", "question", "reference", "rubric"]);
     const params = db.prepare("SELECT params_json FROM jobs WHERE id = ?").get(jobId) as { params_json: string };
     expect(JSON.parse(params.params_json)).not.toHaveProperty("steps");
     expect(done.result).not.toHaveProperty("steps");
@@ -1069,6 +1069,153 @@ describe("the steps of an open answer", () => {
     const done = await until(db, attemptId, (view) => view.state === "succeeded");
     expect(prompts[0]).toMatchObject({ answer: "saved", steps: "saved steps" });
     expect(done.result!.steps).toEqual({ cfg: "saved steps" });
+    db.close();
+  });
+});
+
+describe("the open answers of one hand-in", () => {
+  type Seen = {
+    prompt: string;
+    followUp?: string;
+    key?: string;
+    session?: { provider: string; id: string; cwd: string } | null;
+    kept: boolean;
+  };
+  /** A tool that keeps what it is told: it continues the session it is given and names a new one otherwise. */
+  function tool(options: { lose?: boolean } = {}) {
+    const seen: Seen[] = [];
+    let opened = 0;
+    const run = async (input: Parameters<NonNullable<GenerateInput["run"]>>[0]) => {
+      seen.push({
+        prompt: input.prompt,
+        followUp: input.conversation?.followUp,
+        key: input.conversation?.key,
+        session: input.conversation?.session,
+        kept: Boolean(input.conversation),
+      });
+      const held = input.conversation?.session;
+      const continued = Boolean(held) && !options.lose;
+      const id = continued ? held!.id : `grader-${(opened += 1)}`;
+      input.conversation?.onSession?.(id, "claude", "/scratch");
+      return {
+        ...reply(answerOf(input) === "ten" ? 1 : 0.5),
+        ...(input.conversation ? { sessionId: id, cwd: "/scratch", continued } : {}),
+      };
+    };
+    return { seen, run };
+  }
+  const submit = async (grader: ReturnType<typeof tool>, questions = [open("a"), open("b"), open("c")]) => {
+    const { db, attemptId } = fixture(questions, "diagnostic");
+    const runner = createRunner(db, () => {});
+    registerQuizGradingJobs(db, runner, grader.run);
+    submitQuiz(db, runner, attemptId, { a: "ten", b: "about ten", c: "nine" });
+    await until(db, attemptId, (view) => view.state === "succeeded");
+    return { db, attemptId };
+  };
+  const sessions = (db: Db, attemptId: string) =>
+    db.prepare("SELECT session_id, provider, turns, in_step FROM tool_sessions WHERE owner = ? ORDER BY opened_at").all(`quiz:${attemptId}`);
+
+  it("are graded in one session, opened with the first and continued for the rest", async () => {
+    const grader = tool();
+    const { db, attemptId } = await submit(grader);
+    expect(grader.seen.map((call) => call.key)).toEqual([`quiz:${attemptId}`, `quiz:${attemptId}`, `quiz:${attemptId}`]);
+    expect(grader.seen.map((call) => call.session)).toEqual([
+      null,
+      { provider: "claude", id: "grader-1", cwd: "/scratch" },
+      { provider: "claude", id: "grader-1", cwd: "/scratch" },
+    ]);
+    expect(sessions(db, attemptId)).toEqual([{ session_id: "grader-1", provider: "claude", turns: 3, in_step: 1 }]);
+    db.close();
+  });
+
+  it("send a message of their own each, with the question, the reference and the answer, so none needs the others", async () => {
+    const grader = tool();
+    const { db } = await submit(grader);
+    expect(grader.seen.map((call) => JSON.parse(call.followUp!).answer)).toEqual(["ten", "about ten", "nine"]);
+    for (const call of grader.seen) {
+      // The follow-up of a session that holds the hand-in is the whole message, and so is the message of a new one.
+      expect(call.followUp).toBe(call.prompt);
+      expect(JSON.parse(call.prompt)).toMatchObject({ reference: "ten", rubric: expect.any(Array) });
+      // Each says that what the session holds of the other answers does not count.
+      expect(JSON.parse(call.prompt).note).toContain("Any earlier answers and grades in this conversation do not count");
+    }
+    db.close();
+  });
+
+  it("go on in a new session when the tool lost the first, with nothing to hand over", async () => {
+    const grader = tool({ lose: true });
+    const { db, attemptId } = await submit(grader);
+    expect(grader.seen.map((call) => call.prompt)).toEqual(grader.seen.map((call) => call.followUp));
+    expect(db.prepare("SELECT COUNT(*) FROM tool_sessions WHERE owner = ?").pluck().get(`quiz:${attemptId}`)).toBeGreaterThan(1);
+    expect(sessions(db, attemptId).at(-1)).toMatchObject({ in_step: 1 });
+    db.close();
+  });
+
+  it("do not share a session with another hand-in", async () => {
+    const grader = tool();
+    const one = await submit(grader);
+    const two = await submit(grader);
+    expect(grader.seen.filter((call) => call.session === null)).toHaveLength(2);
+    one.db.close();
+    two.db.close();
+  });
+
+  it("keeps the session only once the grade is saved: a stop between the two leaves it behind what is stored", async () => {
+    const { db, attemptId } = fixture([open("a"), open("b")], "diagnostic");
+    const grader = tool();
+    const controller = new AbortController();
+    // The first grade completes and is saved; the second is stopped as the grader returns it.
+    await gradeQuizQuestion(db, attemptId, "a", "ten", grader.run as never, {});
+    expect(sessions(db, attemptId)).toEqual([{ session_id: "grader-1", provider: "claude", turns: 1, in_step: 1 }]);
+    await expect(
+      gradeQuizQuestion(
+        db,
+        attemptId,
+        "b",
+        "ten",
+        (async (input: Parameters<typeof grader.run>[0]) => {
+          const result = await grader.run(input);
+          controller.abort();
+          return result;
+        }) as never,
+        { signal: controller.signal },
+      ),
+    ).rejects.toBeDefined();
+    // Nothing was stored for "b", and the session says it is not in step.
+    expect(checkedAnswer(db, attemptId, "b")).toBeUndefined();
+    expect(sessions(db, attemptId)).toEqual([{ session_id: "grader-1", provider: "claude", turns: 2, in_step: 0 }]);
+    db.close();
+  });
+
+  it("repairs an invalid grade with the whole message, not the stored session's follow-up, when an engine without a session gave it", async () => {
+    const { db, attemptId } = fixture([open("a"), open("b")], "diagnostic");
+    const grader = tool();
+    // Answer "a" in the tool's session.
+    await gradeQuizQuestion(db, attemptId, "a", "ten", grader.run as never, {});
+    // Answer "b": an API provider answers the first call with a grade that fails validation, so no session received this
+    // request or that reply, and the repair goes to the tool.
+    const calls: Array<{ prompt: string; followUp?: string; session?: unknown }> = [];
+    const run = (async (input: Parameters<typeof grader.run>[0]) => {
+      calls.push({ prompt: input.prompt, followUp: input.conversation?.followUp, session: input.conversation?.session });
+      if (calls.length === 1)
+        return { text: "not a grade", model: "m", provider: "anthropic-api", inputTokens: 1, structuredError: "no score" };
+      // The repair's prompt is the message with the problems after it, so the tool's stand-in is not used here.
+      input.conversation?.onSession?.("grader-2", "claude", "/scratch");
+      return { ...reply(1), sessionId: "grader-2", cwd: "/scratch", continued: false };
+    }) as never;
+    const checked = await gradeQuizQuestion(db, attemptId, "b", "ten", run, {});
+    expect(checked.score).toBe(1);
+    expect(calls).toHaveLength(2);
+    // The stored session ("grader-1") is not resumed with only the validation error.
+    expect(calls[1]!.session).toBeNull();
+    expect(JSON.parse(calls[1]!.prompt.split("\n\nThe previous answer failed validation.")[0]!)).toMatchObject({ answer: "ten" });
+    expect(calls[1]!.prompt).toContain("The previous answer failed validation.");
+    expect(calls[1]!.prompt).toContain("no score");
+    // The tool opened a new session for it, which holds the grade it wrote; the first is left behind.
+    expect(db.prepare("SELECT session_id, ended_reason, in_step FROM tool_sessions WHERE owner = ? ORDER BY opened_at, rowid").all(`quiz:${attemptId}`)).toEqual([
+      { session_id: "grader-1", ended_reason: "gone", in_step: 0 },
+      { session_id: "grader-2", ended_reason: null, in_step: 1 },
+    ]);
     db.close();
   });
 });

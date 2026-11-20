@@ -10,6 +10,8 @@ const limited = new Map<string, { until: number; since: number; guessed: boolean
 const missing = new Map<string, number>();
 /** Refused sign-ins, each with the moment on `engineClock` it was marked. */
 const signedOut = new Map<string, number>();
+/** Engines whose installed program is older than the one cli-funnel can run (see `agy-version.ts`), set by each scan. */
+const outdated = new Set<string>();
 let clock = 0;
 
 /**
@@ -193,8 +195,18 @@ export function isSignedOut(provider: string): boolean {
   return signedOut.has(provider);
 }
 
+/** A scan read the installed program of `provider` as too old to run, or as fine again. */
+export function setOutdated(provider: string, old: boolean): void {
+  if (old) outdated.add(provider);
+  else outdated.delete(provider);
+}
+
+export function isOutdated(provider: string): boolean {
+  return outdated.has(provider);
+}
+
 export function isBenched(provider: string, now = Date.now()): boolean {
-  if (signedOut.has(provider) || missing.has(provider)) return true;
+  if (signedOut.has(provider) || missing.has(provider) || outdated.has(provider)) return true;
   return limitedUntil(provider, now) !== undefined;
 }
 
@@ -276,6 +288,7 @@ export function clearBench(): void {
   limitListeners.clear();
   signedOut.clear();
   missing.clear();
+  outdated.clear();
   refusedModels.clear();
   onModelRefused = undefined;
   store = undefined;

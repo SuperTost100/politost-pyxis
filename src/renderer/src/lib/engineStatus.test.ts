@@ -17,6 +17,25 @@ const cli = (patch: Partial<EngineState>): EngineState => ({
   ...patch,
 });
 
+describe("an engine whose program is too old to run", () => {
+  it("reads as needing an update, with nothing to sign in to, before any sign-in state", () => {
+    expect(engineStatus(cli({ outdated: true }))).toEqual({ tone: "warn", label: "engines.state.outdated", fix: null });
+    // Signed out too: the update comes first, since signing in would not make it usable.
+    expect(engineStatus(cli({ outdated: true, loggedIn: false })).label).toBe("engines.state.outdated");
+    // Not installed stays "not installed".
+    expect(engineStatus(cli({ outdated: true, installed: false })).label).toBe("engines.notInstalled");
+  });
+
+  it("is not where \"I choose\" starts", () => {
+    const rows = [
+      { id: "claude", ...cli({}) },
+      { id: "antigravity", ...cli({ outdated: true }) },
+    ];
+    expect(chosenStart(rows)).toEqual(["claude"]);
+    expect(chosenStart([{ id: "antigravity", ...cli({ outdated: true }) }])).toEqual([]);
+  });
+});
+
 describe("the engines the student can pick", () => {
   const row = (id: string, kind: "cli" | "api", patch: Partial<EngineState> = {}) => ({
     id,

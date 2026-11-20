@@ -20,9 +20,9 @@ describe("engineSeesImages", () => {
   it("also needs a provider that takes images, whatever the model id says", () => {
     expect(engineSeesImages({ provider: "claude", model: "claude-sonnet-5" })).toBe(true);
     expect(engineSeesImages({ provider: "codex", model: "gpt-5.6-sol" })).toBe(true);
-    // Antigravity lists claude-* and gpt-* ids but refuses attachments.
-    expect(engineSeesImages({ provider: "antigravity", model: "claude-sonnet-5" })).toBe(false);
-    expect(engineSeesImages({ provider: "antigravity", model: "claude-sonnet-4-6" })).toBe(false);
+    // Antigravity takes images over ACP (cli-funnel 1.0), as the other tools do.
+    expect(engineSeesImages({ provider: "antigravity", model: "claude-sonnet-5" })).toBe(true);
+    expect(engineSeesImages({ provider: "antigravity", model: "claude-sonnet-4-6" })).toBe(true);
     expect(engineSeesImages({ provider: "claude", model: "text-only-small" })).toBe(false);
   });
 });

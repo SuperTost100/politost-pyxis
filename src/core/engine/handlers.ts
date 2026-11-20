@@ -40,6 +40,7 @@ import {
   isSignedOut,
   limitedUntil,
   markSignedOut,
+  setOutdated,
   refineLimit,
   refusedModelsOf,
   signedOutSince,
@@ -58,6 +59,7 @@ import {
   rememberModels,
   resolveEffort,
 } from "./efforts";
+import { tooOld } from "./agy-version";
 import { isInstallable, runInstaller } from "./install";
 import {
   keepAllowed,
@@ -175,6 +177,8 @@ type OverviewRow = {
   version: string;
   path: string;
   withinTestedRange: boolean;
+  /** The installed program is older than cli-funnel can run: the tool is not usable until it is updated. */
+  outdated: boolean;
   acknowledged: boolean;
   capabilities: { effort: boolean; fast: boolean; signOut: boolean };
 };
@@ -215,6 +219,8 @@ async function scanProviders(): Promise<OverviewRow[]> {
     const refused = row.loggedIn && isSignedOut(row.id);
     // A call that found the program gone is newer news than a detection read before it.
     if (row.installed) clearMissingBefore(row.id, started);
+    // A program too old to run is left out of every plan and every job's next step, like a tool that is not there.
+    setOutdated(row.id, row.installed && row.outdated);
     return {
       ...row,
       installed: row.installed && !isMissing(row.id),
@@ -251,6 +257,7 @@ async function readProviders(): Promise<Omit<OverviewRow, "refused">[]> {
         version: row.installation.version ?? "",
         path: row.installation.path ?? "",
         withinTestedRange: row.installation.withinTestedRange ?? true,
+        outdated: tooOld(row.id, row.installation.version),
         acknowledged: isProviderAcknowledged(row.id),
         capabilities: {
           effort: row.capabilities.effort,
@@ -262,9 +269,9 @@ async function readProviders(): Promise<Omit<OverviewRow, "refused">[]> {
   );
 }
 
-/** Installed, signed in (or keyed) and not switched off. */
+/** Installed, new enough, signed in (or keyed) and not switched off. */
 function isReady(row: OverviewRow): boolean {
-  return row.installed && row.loggedIn && !row.disabled;
+  return row.installed && row.loggedIn && !row.disabled && !row.outdated;
 }
 
 type StoredRow = { feature: string; selection_json: string };

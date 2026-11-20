@@ -313,9 +313,10 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     await page.getByRole("button", { name: /^A La forza$/ }).click();
     // One question: its step forward is Hand in, which hands in at once with nothing blank.
     await page.locator(".px-qz-nav").getByRole("button", { name: "Hand in", exact: true }).click();
-    // The bar's back control is the only way back from the results: the foot has no button for it.
+    // The foot has no button back to the notebook: the bar's back control is the way there. Once the answers are graded the
+    // results also offer "Back to the exam", so the click names the bar's control exactly, whenever the grading ends.
     await expect(page.getByRole("button", { name: "Back to the notebook", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: /^Back to / }).click();
+    await page.getByRole("button", { name: "Back to Mistakes notebook", exact: true }).click();
     // The notebook lives only under Exams, so that is where the redo returns, still narrowed to the same exam.
     await expect(page).toHaveURL(/#\/exams\/mistakes\?exam=p-phys$/);
     await expect(page.getByRole("status")).toHaveText("3 questions to redo from quizzes, quick checks and simulations");

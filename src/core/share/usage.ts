@@ -75,11 +75,13 @@ export function freeUpSpace(db: Database.Database, workspace: string): { bytes: 
 const BLOB_NAME = /^([a-f0-9]{64})(\.json)?$/;
 const TEMPORARY_NAME = /^\.([a-f0-9]{64})(\.json)?\.[0-9a-f-]{36}\.tmp$/;
 
-/** Removes every blob file and leftover temporary file that nothing names, and returns the bytes freed. */
-function sweepBlobs(db: Database.Database, workspace: string): number {
+/**
+ * Removes the files that match `wanted` in the blob folders and returns the bytes freed. A file in the wrong folder is
+ * not one `putBlob` wrote and is left alone. A locked file (Windows) stays until the next run.
+ */
+function removeBlobFiles(workspace: string, wanted: (sha: string, blob: boolean) => boolean): number {
   const root = join(workspace, "blobs");
   if (!existsSync(root)) return 0;
-  const inUse = blobUse(db);
   let freed = 0;
   for (const folder of readdirSync(root)) {
     if (!/^[a-f0-9]{2}$/.test(folder)) continue;
@@ -88,8 +90,7 @@ function sweepBlobs(db: Database.Database, workspace: string): number {
     for (const name of readdirSync(dir)) {
       const blob = BLOB_NAME.exec(name);
       const sha = (blob ?? TEMPORARY_NAME.exec(name))?.[1];
-      // A file in the wrong folder is not one putBlob wrote. A blob in use keeps its metadata too.
-      if (!sha || !sha.startsWith(folder) || (blob && inUse(sha))) continue;
+      if (!sha || !sha.startsWith(folder) || !wanted(sha, Boolean(blob))) continue;
       const path = join(dir, name);
       const info = lstatSync(path);
       if (!info.isFile()) continue;
@@ -102,4 +103,19 @@ function sweepBlobs(db: Database.Database, workspace: string): number {
     }
   }
   return freed;
+}
+
+/** Removes every blob file and leftover temporary file that nothing names, and returns the bytes freed. */
+function sweepBlobs(db: Database.Database, workspace: string): number {
+  const inUse = blobUse(db);
+  // A blob in use keeps its metadata too; a temporary name is never in use.
+  return removeBlobFiles(workspace, (sha, blob) => !(blob && inUse(sha)));
+}
+
+/**
+ * Removes the temporary names a write or a removal left (`putBlob` before its rename, `removeBlob` for a file the system
+ * would not delete), and nothing else. Core runs it when it starts, when no write of its own is under way.
+ */
+export function removeBlobLeftovers(workspace: string): number {
+  return removeBlobFiles(workspace, (_sha, blob) => !blob);
 }

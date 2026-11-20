@@ -11,6 +11,8 @@ describe("the list of connected tools", () => {
     expect(isConnected({ ...row, loggedIn: false })).toBe(false);
     expect(isConnected({ ...row, installed: false })).toBe(false);
     expect(isConnected({ ...row, disabled: true })).toBe(false);
+    // A tool whose program is too old to run is signed in and still not connected.
+    expect(isConnected({ ...row, outdated: true })).toBe(false);
     // A key is in Advanced, not in the list.
     expect(isConnected({ ...row, id: "openai-api", kind: "api" })).toBe(false);
   });

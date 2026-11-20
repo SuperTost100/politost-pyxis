@@ -1,11 +1,10 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import { collapseEffortVariants, offeredModels } from "./effort-variants";
 import { forgetModels, rememberModels } from "./efforts";
 import { getFunnel } from "./funnel";
+import { generate } from "./generate";
 import { engineHandlers } from "./handlers";
 import { adoptModelFile, modelFile, resetModelFile, type ModelFile } from "./model-roles";
 import { clearBench } from "./bench";
@@ -18,7 +17,11 @@ vi.mock("./funnel", async (original) => {
 });
 
 const levels = (...ids: string[]) => ids.map((id) => ({ id, label: id }));
-/** What `agy models` makes of `gemini-4-neon-{low,medium,high}` and the separate `gemini-4-neon-xhigh`, through cli-funnel 0.9. */
+/**
+ * A mixed listing: `gemini-4-neon` with its levels and, next to it, `gemini-4-neon-xhigh` as a model of its own with none.
+ * cli-funnel 0.9 made this of `agy models`; cli-funnel 1.0 groups the levels, but leaves a listing that holds both the bare
+ * model and suffixed ids as separate models, which Pyxis folds.
+ */
 const listing = () => [
   { id: "gemini-4-neon", name: "Gemini 4 Neon", efforts: levels("low", "medium", "high") },
   { id: "gemini-4-neon-xhigh", name: "Gemini 4 Neon (XHigh)", efforts: [] },
@@ -40,7 +43,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-describe("effort variants listed as models", () => {
+describe("effort variants listed as models in a mixed listing", () => {
   it("shows each model once and gives the model the level its variant stood for", () => {
     const shown = offeredModels("antigravity", listing());
     expect(shown.map((model) => model.id)).toEqual(["gemini-4-neon", "gemini-4-argon", "gemini-4-hydrogen", "gemini-3.8-flash"]);
@@ -67,7 +70,7 @@ describe("effort variants listed as models", () => {
   });
 });
 
-describe("a pinned effort reaches the tool", () => {
+describe("a pinned effort reaches the tool in a mixed listing", () => {
   function setup() {
     const capabilities = { effort: true, fast: false, access: ["none"] };
     vi.mocked(getFunnel).mockImplementation(
@@ -104,50 +107,9 @@ describe("a pinned effort reaches the tool", () => {
     expect(() => handlers.setEffort({ feature: "chat", effort: "max" })).toThrow();
     db.close();
   });
-
-  it.skipIf(process.platform === "win32")("sends CLI Funnel the variant's id for xhigh, which it refuses as an effort of the model", async () => {
-    const real = await vi.importActual<typeof import("./funnel")>("./funnel");
-    const dir = mkdtempSync(join(tmpdir(), "pyxis-agy-"));
-    dirs.push(dir);
-    const log = join(dir, "args");
-    const bin = join(dir, "agy");
-    // It answers the questions Pyxis asks to find the program, and records the arguments of the turn.
-    writeFileSync(
-      bin,
-      `#!/bin/sh\ncase "$1" in --version) echo "1.3.0"; exit 0;; models) printf 'gemini-4-neon-low\\tGemini 4 Neon (Low)\\ngemini-4-neon-high\\tGemini 4 Neon (High)\\ngemini-4-neon-xhigh\\tGemini 4 Neon (XHigh)\\n'; exit 0;; esac\necho "---" >> "${log}"\nprintf '%s\\n' "$@" >> "${log}"\nexit 1\n`,
-    );
-    chmodSync(bin, 0o755);
-    process.env.CLI_FUNNEL_AGY_BIN = bin;
-    const funnel = real.getFunnel();
-    // The program is asked for its models first, as Pyxis does, and only then runs the turn.
-    expect((await funnel.models("antigravity")).map((model) => model.id)).toContain("gemini-4-neon");
-    const drain = async (stream: ReturnType<typeof funnel.stream>): Promise<string> => {
-      try {
-        for await (const event of stream) void event;
-        await stream.result;
-        return "";
-      } catch (error) {
-        return String(error);
-      }
-    };
-    // The tool lists three levels for the model, so CLI Funnel stops `--effort xhigh` on it before the program runs.
-    expect(
-      await drain(
-        funnel.stream({ selection: { provider: "antigravity", model: "gemini-4-neon", effort: "xhigh", cwd: dir, access: "none" }, prompt: "hi" }),
-      ),
-    ).toMatch(/does not support effort/);
-    await drain(
-      funnel.stream({ selection: { provider: "antigravity", model: "gemini-4-neon-xhigh", cwd: dir, access: "none" }, prompt: "hi" }),
-    );
-    // One block per run of the program; the one that carries the prompt is the turn.
-    const args = readFileSync(log, "utf8").split("---\n").find((block) => block.includes("--model"))!.split("\n");
-    expect(args[args.indexOf("--model") + 1]).toBe("gemini-4-neon-xhigh");
-    expect(args).not.toContain("--effort");
-    real.closeFunnel();
-  });
 });
 
-describe("a recovery path runs the variant too", () => {
+describe("a recovery path runs the variant too in a mixed listing", () => {
   /** A model file whose strong role asks Neon at xhigh, and Antigravity and Claude ready with what the tools list. */
   function xhighStrong() {
     const file = JSON.parse(JSON.stringify(modelFile())) as ModelFile;
@@ -189,5 +151,58 @@ describe("a recovery path runs the variant too", () => {
     xhighStrong();
     expect(selectionOn("antigravity", "chat")).toEqual({ provider: "antigravity", model: "gemini-3.8-flash", effort: "low" });
     expect(selectionOn("claude", "plan")).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "high" });
+  });
+});
+
+describe("a saved model id from the previous build, with the level folded into it", () => {
+  const grouped = [
+    { id: "gemini-4-neon", name: "Gemini 4 Neon", efforts: levels("low", "medium", "high", "xhigh") },
+    { id: "gemini-4-argon", name: "Gemini 4 Argon", efforts: levels("low", "medium", "high") },
+  ];
+  const job = { provider: "antigravity", model: "gemini-4-neon-xhigh", chosenFor: "plan" };
+
+  it("resumes as the model at the same effort, in the 1.0 listing, where the id is no longer a model", () => {
+    rememberModels("antigravity", grouped, grouped);
+    expect(currentSelection(job)).toEqual({ provider: "antigravity", model: "gemini-4-neon", effort: "xhigh", chosenFor: "plan" });
+  });
+
+  it("does so before any listing is read, since the job may resume first", () => {
+    expect(currentSelection(job)).toEqual({ provider: "antigravity", model: "gemini-4-neon", effort: "xhigh", chosenFor: "plan" });
+  });
+
+  it("leaves an id alone when the listing offers no such model with that level", () => {
+    rememberModels("antigravity", grouped, grouped);
+    expect(currentSelection({ provider: "antigravity", model: "gemini-4-argon-xhigh" })).toMatchObject({ model: "gemini-4-argon-xhigh" });
+    expect(currentSelection({ provider: "claude", model: "claude-sonnet-5-xhigh" })).toMatchObject({ model: "claude-sonnet-5-xhigh" });
+  });
+
+  it("is what a pinned task saved with that id reads as, with its effort", () => {
+    rememberModels("antigravity", grouped, grouped);
+    const db = openDatabase(":memory:");
+    db.prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)").run(
+      JSON.stringify({ provider: "antigravity", model: "gemini-4-neon-xhigh" }),
+    );
+    expect(selectionFor(db, "chat")).toEqual({ provider: "antigravity", model: "gemini-4-neon", effort: "xhigh" });
+    db.close();
+  });
+
+  it("reaches the tool as the model with the effort, which is what cli-funnel 1.0 accepts", async () => {
+    rememberModels("antigravity", grouped, grouped);
+    const sent: Array<{ model: string; effort?: string }> = [];
+    await generate({
+      selection: { provider: "antigravity", model: "gemini-4-neon-xhigh" },
+      prompt: "x",
+      run: async (input) => {
+        sent.push({ model: input.selection.model, effort: input.selection.effort });
+        return { text: "ok", model: input.selection.model, provider: "antigravity", inputTokens: 1 };
+      },
+    });
+    expect(sent).toEqual([{ model: "gemini-4-neon", effort: "xhigh" }]);
+  });
+
+  it("resumes as the variant's id with no effort flag in a mixed listing, where the tool lists it", () => {
+    const mixed = listing();
+    rememberModels("antigravity", offeredModels("antigravity", mixed), mixed);
+    expect(currentSelection(job)).toEqual({ provider: "antigravity", model: "gemini-4-neon-xhigh", chosenFor: "plan" });
   });
 });

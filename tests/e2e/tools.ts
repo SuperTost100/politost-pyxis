@@ -14,7 +14,11 @@ export type ToolId = "claude" | "codex" | "antigravity";
  * `signedIn` are the tools that say they are signed in; the others are not installed. The folder is also the home of
  * the app under test, so the tools installed on this computer stay hidden. Returns the folder to delete afterwards.
  */
-export function standInTools(signedIn: readonly ToolId[]): { bin: string; env: Record<string, string> } {
+export function standInTools(
+  signedIn: readonly ToolId[],
+  /** The version `agy` reports. Pyxis runs Antigravity from 1.5.0. */
+  agyVersion = "1.5.13",
+): { bin: string; env: Record<string, string> } {
   const bin = mkdtempSync(join(tmpdir(), "pyxis-tools-bin-"));
   const fake = (name: string, body: string) => {
     const path = join(bin, name);
@@ -37,7 +41,7 @@ export function standInTools(signedIn: readonly ToolId[]): { bin: string; env: R
       "CLI_FUNNEL_AGY_BIN",
       "agy",
       `case "$1" in
-  --version) echo "1.3.0";;
+  --version) echo "${agyVersion}";;
   models) printf 'gemini-3.8-flash\\tGemini 3.8 Flash\\ngemini-3.1-pro\\tGemini 3.1 Pro\\n';;
   *) exit 1;;
 esac`,
