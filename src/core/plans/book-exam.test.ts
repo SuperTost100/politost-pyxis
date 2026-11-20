@@ -15,7 +15,10 @@ import { enqueuePlan, planBuildState, registerPlanJobs } from "./jobs";
 import { readPlan } from "./create";
 
 const dirs: string[] = [];
+// What a test must undo even when an assertion failed: the folders go last, after what still reads from them.
+const cleanups: Array<() => void> = [];
 afterEach(() => {
+  for (const cleanup of cleanups.splice(0)) cleanup();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 const temp = (prefix: string) => {
@@ -86,6 +89,11 @@ describe("an exam created with the offered PoliTost book", () => {
     const reading = new Promise<void>((resolve) => (startRead = resolve));
     let readEntered!: () => void;
     const entered = new Promise<void>((resolve) => (readEntered = resolve));
+    // A failed assertion must not leave the book held, or the database open under the build that polls it.
+    cleanups.push(() => {
+      startRead();
+      db.close();
+    });
     // The source handlers register the app's own reader, so the held one goes in after them.
     const handlers = sourceHandlers(db, workspace, runner, undefined, undefined, site());
     registerSourceJobs(db, workspace, runner, (async (input: { path: string }) => {
@@ -138,6 +146,5 @@ describe("an exam created with the offered PoliTost book", () => {
     const plan = readPlan(db, built.planId)!;
     expect(plan.topics.map((topic) => topic.title)).toEqual(["Moti"]);
     expect(plan.topics[0]!.subtopics).toEqual(["Velocità", "Accelerazione"]);
-    db.close();
   });
 });
