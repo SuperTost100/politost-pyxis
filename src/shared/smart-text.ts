@@ -2,6 +2,7 @@ import { z } from "zod";
 import { seededRandom, shuffleChoices } from "./choices";
 import { figureKind, type FigureKind } from "./figure-kinds";
 import { mapOutsideCode } from "./math-delimiters";
+import { indentWidth, inListItem } from "./markdown-tree";
 
 /**
  * Smart text: lesson Markdown with interactive blocks written inline by the model as fenced code blocks
@@ -384,14 +385,15 @@ function outdent(line: string, columns: number): string {
 /**
  * Rewrites every closed ```pyxis-figure block outside other code: `replace` gets the parsed figure (null when the block
  * is not valid) and returns the text to put in its place, or null to keep the block. A block in a list item counts as
- * one at the top level. An indented figure block, or the text put in its place, is written three columns in: there it
- * stays in the list item that holds it, where two columns may end the item and four make it indented code.
+ * one at the top level, and it, or the text put in its place, is written three columns in: there it stays in the item,
+ * where two columns may end the item and four make it indented code. Outside a list, four columns are indented code.
  */
 export function mapFigureBlocks(
   markdown: string,
   replace: (figure: FigureData | null) => string | null,
 ): string {
-  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const text = markdown.replace(/\r\n?/g, "\n");
+  const lines = text.split("\n");
   const out: string[] = [];
   for (let i = 0; i < lines.length; i++) {
     const open = INDENTED_OPEN.exec(lines[i]!);
@@ -403,17 +405,23 @@ export function mapFigureBlocks(
     let close = i + 1;
     while (close < lines.length) {
       const line = lines[close]!.trim();
-      if (/^[`~]+$/.test(line) && line[0] === fence[0] && line.length >= fence.length) break;
+      // Only the opener's own character closes it: `~~~` and a backtick is a line of the block.
+      if (line.length >= fence.length && line === fence[0]!.repeat(line.length)) break;
       close++;
     }
     let block = lines.slice(i, Math.min(close, lines.length - 1) + 1);
-    const figure = close < lines.length && open[3]!.toLowerCase() === "pyxis-figure";
-    const width = [...open[1]!].reduce((column, char) => (char === "\t" ? column + 4 - (column % 4) : column + 1), 0);
+    const width = indentWidth(open[1]!);
+    // Indented by four columns outside a list, a block is indented code: an example, not a figure. An indented block after a
+    // list item's text belongs to that item, even when two columns would end the item.
+    let above = i - 1;
+    while (above >= 0 && !lines[above]!.trim()) above--;
+    const listed = width > 0 && above >= 0 && inListItem(text, lines.slice(0, above).join("\n").length + (above > 0 ? 1 : 0));
+    const figure = close < lines.length && open[3]!.toLowerCase() === "pyxis-figure" && (width < 4 || listed);
     const next = figure ? replace(parseFigure(block.slice(1, -1).map((line) => outdent(line, width)).join("\n"))) : null;
-    // An indented block is three columns in, where it reads as a figure block in the list item that holds it.
-    if (figure && width > 3) block = block.map((line) => outdent(line, width - 3));
-    if (figure && width > 0 && width < 3) block = block.map((line) => (line.trim() ? " ".repeat(3 - width) + line : line));
-    const lead = width > 0 ? "   " : "";
+    // A block in a list item is three columns in, where it reads as a figure block in that item.
+    if (figure && listed && width > 3) block = block.map((line) => outdent(line, width - 3));
+    if (figure && listed && width < 3) block = block.map((line) => (line.trim() ? " ".repeat(3 - width) + line : line));
+    const lead = listed ? "   " : "";
     out.push(...(next == null ? block : next ? next.split("\n").map((line) => (line ? lead + line : line)) : []));
     i = close;
     // A removed block between two paragraphs leaves one blank line, not two.

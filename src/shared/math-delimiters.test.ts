@@ -288,6 +288,17 @@ describe("a text that is a formula with no delimiter", () => {
   });
 });
 
+describe("prices escaped one after another", () => {
+  it("are all escaped in a long answer, past any fixed number of rounds", () => {
+    const text = Array.from({ length: 41 }, () => "Costa 12 $ oppure 15 $.").join("\n\n");
+    expect(normalizeMathDelimiters(text)).toBe(Array.from({ length: 41 }, () => "Costa 12 \\$ oppure 15 $.").join("\n\n"));
+  });
+
+  it("leave a formula that starts with a number and closes like a formula", () => {
+    expect(normalizeMathDelimiters("Costa 12 $ e il risultato è $2 ab!$.")).toBe("Costa 12 \\$ e il risultato è $2 ab!$.");
+  });
+});
+
 describe("a price in prose beside \\( … \\) formulas", () => {
   // Cursor (Grok), a chat answer in Italian: the price's `$` paired with the `$` of the converted formula.
   const recorded =

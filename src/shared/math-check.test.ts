@@ -40,6 +40,12 @@ describe("math check fences", () => {
       expect(stripCheckFences(list(indent))).toBe([step, "", "", "", after].join("\n"));
     });
 
+    it("is an example, and stays, when it is indented as code outside a list", () => {
+      const example = ["Un esempio:", "", "    ```check", `    ${claim}`, "    ```", "", "Fine."].join("\n");
+      expect(stripCheckFences(example)).toBe(example);
+      expect(fencedChecks(`Un esempio: $x$.\n\n${example}`)).toEqual([]);
+    });
+
     it("is hidden while it is still open at the end of a reply, and the steps before it stay", () => {
       expect(stripCheckFences(`${step}\n\n   \`\`\`check\n   {"kind":"equal","ex`)).toBe(`${step}\n\n`);
     });

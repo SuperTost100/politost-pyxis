@@ -173,7 +173,7 @@ const MATH_SYNTAX = /[=+*/^_\\{}<>-]/;
  * starts with a number and then runs on in words (`$25 and the area is $`, `$5 and $`), or it opens after a number with a
  * space or a punctuation mark of its own and holds words and nothing mathematical (`25 $ e l'area è $`, `15 $, e $`, not
  * `Step 2 $ x+1 $`), or it runs over a line break and closes at the start of the next line, where a `$$` block or another
- * formula begins.
+ * formula begins. Except in that last case, a space comes before its closing dollar sign.
  */
 function pairsAPrice(text: string, node: MdNode): boolean {
   const from = start(node);
@@ -183,11 +183,14 @@ function pairsAPrice(text: string, node: MdNode): boolean {
   const words = /\p{L}{2,}/u.test(value) && !MATH_SYNTAX.test(value);
   const next = /\n[ \t]*\$$/.test(text.slice(from, end(node)));
   const afterNumber = /^[,.;:!?)]*\s/.test(text.slice(from + 1)) && /\d\s?$/.test(text.slice(Math.max(0, from - 8), from));
+  // A price's dollar sign pairs with the dollar sign that opens what comes next, so a space comes before the closing one.
+  // One right after the last character closes a formula, such as `$2 ab!$`.
+  const opensNext = /\s/.test(text[end(node) - 2] ?? "");
   return (
     next ||
-    (startsWithNumber && hasProse(value)) ||
-    (startsWithNumber && /\s/.test(value.trim()) && words) ||
-    (afterNumber && words)
+    (opensNext && startsWithNumber && hasProse(value)) ||
+    (opensNext && startsWithNumber && /\s/.test(value.trim()) && words) ||
+    (opensNext && afterNumber && words)
   );
 }
 
@@ -328,7 +331,9 @@ function prepared(input: string, unfinished = false): Rewritten {
   }
   text = rewrite(text, convertEdits(text.text));
   text = rewrite(text, dollarEdits(text.text, unfinished));
-  for (let round = 0; round < 40; round += 1) {
+  // Each round escapes one dollar sign and adds none, so there are never more rounds than dollar signs.
+  const dollars = text.text.split("$").length - 1;
+  for (let round = 0; round < dollars; round += 1) {
     const edit = priceEdit(text.text);
     if (!edit) break;
     text = rewrite(text, [edit]);

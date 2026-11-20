@@ -411,6 +411,19 @@ describe("figure blocks", () => {
     expect(mapFigureBlocks("```pyxis-figure\n{broken", () => "")).toBe("```pyxis-figure\n{broken");
   });
 
+  it("leaves a figure example in a tilde fence whose line of tildes and a backtick does not close it", () => {
+    const figure = JSON.stringify({ kind: "plot", caption: "Esempio", code: "plt.plot([0, 1])" });
+    const text = ["~~~markdown", "~~~`", "```pyxis-figure", figure, "```", "~~~"].join("\n");
+    expect(mapFigureBlocks(text, () => "")).toBe(text);
+  });
+
+  it("leaves a figure block indented as code outside a list as the code example it is", () => {
+    const figure = JSON.stringify({ kind: "plot", caption: "Esempio", code: "plt.plot([0, 1])" });
+    const text = ["Un esempio:", "", "    ```pyxis-figure", `    ${figure}`, "    ```", "", "Fine."].join("\n");
+    expect(mapFigureBlocks(text, () => "")).toBe(text);
+    expect(mapFigureBlocks(text, () => null)).toBe(text);
+  });
+
   it.each(["  ", "   ", "    ", "      ", "\t"])("finds a figure block inside a list item with %j before its fences", (indent) => {
     // Gemini put a chat answer's figure inside the numbered step it illustrates.
     const figure = JSON.stringify({ kind: "plot", caption: "Il piano inclinato", code: "plt.plot([0, 1], [0, 1])" });
