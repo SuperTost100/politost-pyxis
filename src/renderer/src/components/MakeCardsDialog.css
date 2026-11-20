@@ -45,6 +45,10 @@
 .px-mc-field .label {
   color: var(--ink-muted);
 }
+.px-mc-need {
+  margin: 0;
+  color: var(--ink-muted);
+}
 .px-mc-hint {
   margin: 0;
   color: var(--ink-muted);

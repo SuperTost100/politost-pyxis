@@ -224,10 +224,12 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions answered then handed i
       // The last question's step forward is Consegna; with nothing blank or marked it hands in at once.
       await page.locator(".px-qz-nav .px-btn-primary").click();
     }
-    await expect(score(page)).toContainText("9 punti su 10.");
+    await expect(score(page)).toContainText("9 giuste, 1 sbagliata");
     await expect(grade(page)).toHaveText("Hai preso 27/30");
+    // One grade on the exam's scale is the headline; the detail has no second ratio beside it.
+    await expect(score(page)).not.toContainText("punti su");
     await page.reload();
-    await expect(score(page)).toContainText("9 punti su 10.");
+    await expect(score(page)).toContainText("9 giuste, 1 sbagliata");
     // Every question in order: the nine right ones folded to a line, the one to review open.
     await expect(page.locator(".px-res-q")).toHaveCount(10);
     await expect(page.locator(".px-res-q.is-correct")).toHaveCount(9);
@@ -239,11 +241,11 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions answered then handed i
     await axe(page);
     // "Wrong question?" takes it out of the score at once; the toast can undo it.
     await second.getByRole("button", { name: "Domanda sbagliata?" }).click();
-    await expect(score(page)).toContainText("9 punti su 9.");
+    await expect(score(page)).toContainText("1 domanda esclusa");
     await expect(grade(page)).toHaveText("Hai preso 30/30");
     await expect(second).toContainText("Esclusa dal punteggio");
     await page.locator(".px-quiz-toast").getByRole("button", { name: "Annulla" }).click();
-    await expect(score(page)).toContainText("9 punti su 10.");
+    await expect(score(page)).toContainText("9 giuste, 1 sbagliata");
     await expect(second.getByRole("button", { name: "Domanda sbagliata?" })).toBeVisible();
     await second.getByRole("button", { name: "Chiedi", exact: true }).click();
     await expect(page.getByText(/La tua risposta: Falso/)).toContainText("Risposta corretta: Vero");
@@ -391,7 +393,7 @@ test("Non lo so (key 0) and Segna per dopo (key S) are saved, counted at Consegn
     await shoot("handin", "it");
     await clickSettled(page, confirm.getByRole("button", { name: "Consegna", exact: true }));
     // Eight right answers; the "Non lo so" and the blank one are wrong answers with no pick.
-    await expect(score(page)).toContainText("8 punti su 10.");
+    await expect(score(page)).toContainText("8 giuste, 2 sbagliate");
     // The two to review are open; the right ones fold to a line.
     await expect(page.locator(".px-res-q:not(.is-correct)")).toHaveCount(2);
     const rows = page.locator(".px-res-q");
@@ -510,7 +512,7 @@ test("diagnostic: answered then handed in, where to start, source chips and a re
     }
     await expect(page.getByText("Test diagnostico completato", { exact: true })).toBeVisible();
     // Nine questions count; the reported one is left out.
-    await expect(score(page)).toContainText("8 punti su 9.");
+    await expect(score(page)).toContainText("1 domanda esclusa");
     const topics = page.locator(".px-res-topics li");
     await expect(topics).toHaveCount(2);
     await expect(topics.nth(0)).toContainText("Moti");
@@ -615,7 +617,9 @@ test("open answer: written with formulas, graded by the AI tool after Consegna w
     // The title or the line under it, whichever says it.
     await expect(page.locator(".px-res")).toContainText("Correggo le tue risposte.");
     await expect(page.locator(".px-qz-sheet")).toHaveCount(0);
-    await expect(score(page)).toContainText(/0,6 punt[io] su 10\./, { timeout: 15000 });
+    // Graded: the grade is the headline, 0,6 of 10 points on the exam's scale of 30, and the line counts the answers.
+    await expect(grade(page)).toHaveText("Hai preso 1,8/30", { timeout: 15000 });
+    await expect(score(page)).toContainText("1 in parte, 9 sbagliate");
     await axe(page);
   } finally {
     await done();
@@ -695,7 +699,9 @@ test("open answer: its formula is read back in words, and the optional steps are
     // Handed in, the steps sit under the answer they led to; a question left blank has none.
     await sheet(page).getByRole("button", { name: "Consegna", exact: true }).click();
     await page.getByRole("group", { name: /^Consegni con 9 domande vuote/ }).getByRole("button", { name: "Consegna" }).click();
-    await expect(score(page)).toContainText(/0,6 punt[io] su 10\./, { timeout: 15000 });
+    // Graded: the grade is the headline, 0,6 of 10 points on the exam's scale of 30, and the line counts the answers.
+    await expect(grade(page)).toHaveText("Hai preso 1,8/30", { timeout: 15000 });
+    await expect(score(page)).toContainText("1 in parte, 9 sbagliate");
     const first = page.locator(".px-res-q").first();
     await expect(first.locator(".px-res-answer.is-yours")).toContainText("La velocità vale");
     await expect(first.locator(".px-res-ans")).toContainText("I tuoi passaggi");
@@ -931,7 +937,7 @@ test("quiz screens in both languages and themes", async () => {
       await page.locator(".px-qz-confirm .px-btn-primary").click();
       await expect(page.locator(".px-res")).toBeVisible();
       await shoot("open-grading");
-      await expect(score(page)).toContainText(/0,6|0\.6/, { timeout: 15000 });
+      await expect(grade(page)).toHaveText(/1[,.]8\/30/, { timeout: 15000 });
       await shoot("open-graded");
     }
   } finally {

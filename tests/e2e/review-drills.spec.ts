@@ -37,7 +37,7 @@ function smartbook() {
 
 /** LES-03: the gap drill is five questions (mcq, tf and completion in rotation) after one short explanation. */
 const DRILL_KINDS = ["mcq", "tf", "completion", "mcq", "tf"];
-const EXPLANATION = "Rileggi la definizione: la forza è massa per accelerazione.";
+const EXPLANATION = "Rileggi la definizione: la forza è massa per accelerazione, $F = m a$.\n\nControlla il segno prima di calcolare.";
 function drillReply() {
   return {
     questions: DRILL_KINDS.map((kind, i) => ({
@@ -208,7 +208,8 @@ test("LES-13 a Review of only gap drills waits, offers retry, adopts the questio
     // LES-03: the adopted drill brings its short explanation, shown above the first question.
     expect(adopted.explanations.map((note) => note.text)).toEqual([EXPLANATION]);
     await expect(page.getByRole("heading", { name: "Prima una breve spiegazione" })).toBeVisible();
-    await expect(page.getByText(EXPLANATION)).toBeVisible();
+    await expect(page.locator(".px-quiz-explain")).toContainText("la forza è massa per accelerazione");
+    await expect(page.locator(".px-quiz-explain .katex")).toHaveCount(1);
 
     // The cancelled drill no longer blocks the finish; the adopted topic is credited with exactly its questions.
     const read = (sql: string, ...args: string[]) => {
@@ -346,7 +347,12 @@ test("LES-03 a single gap drill started from the exam page opens its quiz with t
     // The drill is built by its job; the page then opens the quiz of that one drill, not a Review.
     await expect(page).toHaveURL(/\/quiz\/[^?]+\?attempt=/, { timeout: 60000 });
     await expect(page.getByRole("heading", { name: "Prima una breve spiegazione" })).toBeVisible();
-    await expect(page.getByText(EXPLANATION)).toBeVisible();
+    // The explanation is drawn as the lessons are: a paragraph each, and the formula as maths, not as dollar signs.
+    const explain = page.locator(".px-quiz-explain");
+    await expect(explain.locator("p")).toHaveCount(2);
+    await expect(explain.locator("p").first()).toContainText("la forza è massa per accelerazione");
+    await expect(explain.locator(".katex")).toHaveCount(1);
+    await expect(explain).not.toContainText("$");
     await expect(page.locator(".px-qz-sheet")).toBeVisible();
     await saveShot(page, "progress-drill-explanation-it.png", { animations: "disabled" });
     await expectNoAxeViolations(page);
@@ -394,6 +400,57 @@ test("a start that fails late does not clear the drill started after it, nor sho
     await expect.poll(() => existsSync(loseStart)).toBe(false);
     await expect(page).toHaveURL(/\/quiz\/[^?]+\?attempt=/, { timeout: 30000 });
     await expect(page.getByRole("heading", { name: "Prima una breve spiegazione" })).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("the results prepare the drill in place: the page stays, the button is at work with a way to stop, and the quiz opens from there", async () => {
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-results-drill-"));
+  // The model holds the drill's questions until the test releases them, so the drill is being prepared when the test looks.
+  const release = join(userData, "release-drill");
+  const app = await launch(userData, { explanation: { explanation: EXPLANATION }, quizQuestions: { ...drillReply(), hold: release } });
+  const drillStates = () => {
+    const db = new DatabaseSync(dbPath(userData), { readOnly: true, timeout: 10000 });
+    try {
+      return (db.prepare("SELECT state FROM jobs WHERE kind = 'gap-drill' ORDER BY created_at").all() as Array<{ state: string }>).map((row) => row.state);
+    } finally {
+      db.close();
+    }
+  };
+  try {
+    const page = await app.firstWindow();
+    page.setDefaultTimeout(30000);
+    const { planId, topics } = await setupPlan(userData, page, app);
+    // The quiz of the topic with an open gap, handed in with every answer wrong.
+    const results = `/plans/${planId}/quiz/${topics[1]!}?attempt=gap-attempt-0`;
+    await goto(page, results);
+    await expect(page.locator(".px-res-title")).toBeVisible();
+    const step = page.getByRole("button", { name: /^Rivedi (l'errore|i \d+ errori)$/ });
+    await step.click();
+    // The work shows where the student pressed: the results stay, the button is at work and can be stopped.
+    const working = page.getByRole("button", { name: "Preparo gli errori da rivedere" });
+    await expect(working).toBeVisible();
+    await expect(working).toBeDisabled();
+    await expect(page).toHaveURL(new RegExp(`#${results.replace(/[?]/g, "\\?")}$`));
+    await expect(page.locator(".px-res-title")).toBeVisible();
+    await expect(page.getByText("Preparo il ripasso")).toHaveCount(0);
+    await saveShot(page, "review-drills/results-preparing-it.png", { animations: "disabled" });
+    // Stopping puts the button back, and stops the job.
+    await page.getByRole("button", { name: "Ferma la preparazione" }).click();
+    await expect(step).toBeVisible();
+    await expect.poll(drillStates).toEqual(["cancelled"]);
+    // Pressed again, it prepares the drill once more, and when it is ready the quiz opens from the results.
+    await step.click();
+    await expect(working).toBeVisible();
+    writeFileSync(release, "");
+    await expect(page).toHaveURL(/\/quiz\/[^?]+\?attempt=(?!gap-attempt-0)/, { timeout: 60000 });
+    await expect(page.getByRole("heading", { name: "Prima una breve spiegazione" })).toBeVisible();
+    // One press of the bar's control leaves the whole session for the exam.
+    await page.getByRole("button", { name: /^Torna a / }).click();
+    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -530,7 +587,7 @@ test("a gap drill whose read fails says so and offers to read it again, instead 
     await fill.first().click();
     await expect(fill.first()).toBeDisabled();
     // The job has written its explanation and waits for the questions, so it does not look at the gaps again until released.
-    await expect.poll(() => drillJob()?.params.includes(EXPLANATION)).toBe(true);
+    await expect.poll(() => drillJob()?.params.includes(JSON.stringify(EXPLANATION).slice(1, -1))).toBe(true);
     gaps(true);
     // The page says it cannot tell whether the review is ready, and the controls are free again.
     const failed = page.getByRole("alert").filter({ hasText: "non riesco a controllare" });

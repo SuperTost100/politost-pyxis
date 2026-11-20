@@ -30,6 +30,7 @@ import { PartsList } from "./PartsList";
 import { usePartRewrites, useRewriteArrival } from "./PartRewrite";
 import { unfinishedQuery } from "../plans/Unfinished";
 import { startedQuizSize } from "./lessonQuiz";
+import { lessonNext } from "./lessonNext";
 import { ReaderEnd, ReaderLayout, ReaderLoading, SourcesFooter, useOpenNext } from "./Reader";
 import "./PartPage.css";
 
@@ -280,7 +281,7 @@ export function PartPage({
   });
   // A topic's lesson read before any part could be planned (no AI tool) is finished as today's book text is.
   const read = plan.data?.steps.some((step) => step.activity === "lesson" && step.topicId === topicId);
-  const openNext = useOpenNext(planId);
+  const openNext = useOpenNext(planId, topicId);
   const markRead = useMutation({
     mutationFn: async (then: "done" | "continue") => {
       if (!read) await invoke("plans.complete", { planId, activity: "lesson", topicId });
@@ -295,7 +296,12 @@ export function PartPage({
 
   // Where Continua goes after the last part: the plan's next step, named; back to the exam while the lesson itself is
   // still the suggestion.
-  const next = guide.data?.next ?? null;
+  const next = lessonNext({
+    next: guide.data?.next ?? null,
+    topicId,
+    mastery: guide.data?.topics.find((item) => item.topicId === topicId)?.mastery ?? null,
+    done: plan.data?.steps ?? [],
+  });
   const pathNext = next && !(next.activity === "lesson" && next.topicId === topicId) ? next : null;
   const pathNextTitle = pathNext
     ? pathNext.topicId && pathNext.topicId !== topicId
@@ -628,6 +634,7 @@ export function PartPage({
             ) : (
               <ReaderEnd
                 planId={planId}
+                lessonOf={topicId}
                 onExam={toPath}
                 state={!plan.data || !topic ? "other" : read ? "done" : "current"}
                 doneLabel={t("lesson.doneTitle")}

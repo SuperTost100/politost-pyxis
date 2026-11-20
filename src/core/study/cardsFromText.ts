@@ -138,8 +138,22 @@ export function cardPlaces(
         .pluck()
         .get(cited) as string | undefined
     ) ?? null;
+  // An exam with no subject of its own is filed where most of its files are.
+  const planSubject = () =>
+    plan
+      ? ((
+          db
+            .prepare(
+              `SELECT s.subject_id FROM plan_sources ps JOIN sources s ON s.id = ps.source_id
+               WHERE ps.plan_id = ? AND s.subject_id IS NOT NULL
+               GROUP BY s.subject_id ORDER BY COUNT(*) DESC, s.subject_id LIMIT 1`,
+            )
+            .pluck()
+            .get(plan.id) as string | undefined
+        ) ?? null)
+      : null;
   const subjectId =
-    fixedSubject ?? plan?.subjectId ?? (input.passageIds?.length ? sourceSubject() : null);
+    fixedSubject ?? plan?.subjectId ?? (input.passageIds?.length ? sourceSubject() : null) ?? planSubject();
   return {
     subjects,
     plans,

@@ -142,6 +142,11 @@ export function MakeCardsDialog() {
   // Somewhere to file the cards: an exam's topic, or the subject alone.
   const placed = planId ? Boolean(topicId) : Boolean(subjectId);
   const nowhere = places !== null && places.subjects.length === 0 && places.plans.length === 0;
+  // What the student still has to choose before the cards can be made, said next to the field that asks for it.
+  const asking = places !== null && step !== "working" && !saving;
+  // An exam and its topic are somewhere to file them without a subject, so only a card with no exam needs one.
+  const needSubject = asking && !nowhere && !subjectFixed && !subjectId && !planId;
+  const needTopic = asking && Boolean(plan) && !topicId;
 
   async function make() {
     if (!source || !placed) return;
@@ -299,6 +304,7 @@ export function MakeCardsDialog() {
                     value: item.id,
                     label: item.name,
                   }))}
+                  aria-describedby={needSubject ? "mc-subject-need" : undefined}
                   onChange={(value: string) => {
                     setSubjectId(value);
                     // An exam of another subject cannot hold them any more.
@@ -308,6 +314,11 @@ export function MakeCardsDialog() {
                     }
                   }}
                 />
+                {needSubject ? (
+                  <p id="mc-subject-need" className="small px-mc-need">
+                    {t("makeCards.subjectNeeded")}
+                  </p>
+                ) : null}
               </div>
             )}
             {exams.length ? (
@@ -349,8 +360,14 @@ export function MakeCardsDialog() {
                     value: item.id,
                     label: item.title,
                   }))}
+                  aria-describedby={needTopic ? "mc-topic-need" : undefined}
                   onChange={setTopicId}
                 />
+                {needTopic ? (
+                  <p id="mc-topic-need" className="small px-mc-need">
+                    {t("makeCards.topicNeeded")}
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>

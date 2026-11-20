@@ -158,6 +158,19 @@
 .px-res-wait .px-skeleton-bar.is-primary {
   height: var(--control-lg);
 }
+/* The step's button while its drill is written: still the primary button, drawn at full strength with the mark at work. */
+.px-res-actions .px-btn.px-res-busy[disabled] {
+  opacity: 1;
+  cursor: progress;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.px-res-working-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
 .px-res-actions:empty {
   display: none;
 }

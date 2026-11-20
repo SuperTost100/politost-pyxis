@@ -130,7 +130,7 @@ test("results list every question in order, right ones folded in green, the othe
     // The attempt is over, so the bar has no progress line under it.
     await expect(page.locator(".px-studybar-progress")).toHaveCount(0);
     await expect(page.locator(".px-res-title")).toHaveText(/^Hai preso \d+(,\d)?\/30$/);
-    await expect(page.locator(".px-res-headline")).toContainText("3 giuste, 1 a metà, 3 sbagliate. 3,5 punti su 7. 1 domanda esclusa.");
+    await expect(page.locator(".px-res-headline")).toContainText("3 giuste, 1 a metà, 3 sbagliate. 1 domanda esclusa.");
     await expect(page.locator(".px-res-rises")).toContainText(/^Cinematica sale da \d+\/30 a \d+\/30$/);
     const changes = page.locator(".px-res-changes");
     await expect(changes).toContainText("confondi lo spostamento con la distanza percorsa");
@@ -187,6 +187,7 @@ test("results list every question in order, right ones folded in green, the othe
     // The reported one says it is left out of the score.
     await expect(rows(page).nth(7)).toContainText("Esclusa dal punteggio");
     await shoot(page, "results");
+    await saveShot(page, "quiz-results/results-it-light.png", { animations: "disabled" });
 
     // Rivedi gli errori drills the gap this quiz opened, from the exam's path.
     await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
@@ -195,10 +196,11 @@ test("results list every question in order, right ones folded in green, the othe
     await expect(page.getByRole("button", { name: "Torna all'esame", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Rifai solo le 4 da rivedere" })).toBeVisible();
     await page.getByRole("button", { name: "Rivedi i 4 errori", exact: true }).click();
-    // The exam page first takes the request out of the address (`?drill=`) and starts the drill. Leaving before it has
-    // would let its cleanup of the address land on the page opened next, and drop that page's `?attempt=`.
-    await expect(page).toHaveURL(/#\/plans\/p-fis$/);
-    await open(page);
+    // The drill is prepared where the student is: the results stay, with no detour through the exam page.
+    // This workspace has no model to write it, so the drill stops with its notice, and the results are still the page.
+    await page.waitForTimeout(1000);
+    await expect(page).toHaveURL(/#\/plans\/p-fis\/quiz\/t-kin\?attempt=a-quiz$/);
+    await expect(page.locator(".px-res-title")).toBeVisible();
     // Its wrong answers can also be asked again on their own.
     await page.getByRole("button", { name: "Rifai solo le 4 da rivedere" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/review\?from=a-quiz$/);
@@ -230,9 +232,11 @@ test("the next steps wait for the read that decides them, and stay once they are
     await page.waitForTimeout(1500);
     expect(await handle!.evaluate((element) => element.isConnected), "Rivedi gli errori stays in the page").toBe(true);
     await expect(page.getByRole("button", { name: "Rifai solo le 4 da rivedere" })).toBeVisible();
-    // The first click lands on the gap's drill, from the exam's path.
+    // The first click prepares the gap's drill in place, on the results.
     await targeted.click();
-    await expect(page).toHaveURL(/#\/plans\/p-fis(\?|$)/);
+    await page.waitForTimeout(1000);
+    await expect(page).toHaveURL(/#\/plans\/p-fis\/quiz\/t-kin\?attempt=a-quiz$/);
+    await expect(page.locator(".px-res-title")).toBeVisible();
   } finally {
     await done();
   }
@@ -290,16 +294,29 @@ test("the exam page's cleanup of `?drill=` never lands on the page opened right 
       };
       const push = history.pushState.bind(history);
       history.pushState = (...args: Parameters<History["pushState"]>) => {
-        armed ||= String(args[2]).includes("drill=");
+        if (String(args[2]).includes("drill=")) {
+          armed = true;
+          (window as unknown as { drillPushed?: boolean }).drillPushed = true;
+        }
         push(...args);
       };
     });
-    await page.getByRole("button", { name: /^Rivedi (l'errore|i \d+ errori)$/ }).click();
+    // A step of the exam's path asks for a drill in the address, as a link inside the app does: the router moves there.
+    await page.evaluate(() => {
+      const node = document.querySelector("main") ?? document.body;
+      const key = Object.keys(node).find((name) => name.startsWith("__reactFiber$"))!;
+      type Fiber = { return: Fiber | null; memoizedProps?: { router?: { navigate: (to: string) => Promise<void> } } };
+      let fiber = (node as unknown as Record<string, Fiber>)[key] ?? null;
+      while (fiber && !fiber.memoizedProps?.router?.navigate) fiber = fiber.return;
+      void fiber!.memoizedProps!.router!.navigate("/plans/p-fis?drill=t-kin");
+    });
     await expect(page.locator(".px-res-title")).toBeVisible();
     // Give a late cleanup time to land. It would drop `?attempt=` and show the intro of a new quiz in place of the results.
     await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1000)));
     await expect(page).toHaveURL(/#\/plans\/p-fis\/quiz\/t-kin\?attempt=a-quiz$/);
     await expect(page.locator(".px-res-title")).toBeVisible();
+    // The race was set up: the exam page's request did go through the address.
+    expect(await page.evaluate(() => (window as unknown as { drillPushed?: boolean }).drillPushed)).toBe(true);
   } finally {
     await done();
   }
@@ -323,8 +340,10 @@ test("a redo with an open gap offers the Rivedi gli errori its summary announces
     await expect(page.getByRole("button", { name: "Torna all'esame", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continua", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Rivedi gli errori", exact: true }).click();
-    // The exam page takes the request (`?drill=`) out of the address as it starts the drill.
-    await expect(page).toHaveURL(/#\/plans\/p-fis$/);
+    // The drill is prepared on this page: it stays, with the button at work.
+    await page.waitForTimeout(1000);
+    await expect(page).toHaveURL(/#\/plans\/p-fis\/redo\?attempt=a-quiz$/);
+    await expect(page.locator(".px-res-title")).toBeVisible();
   } finally {
     await done();
   }
@@ -383,6 +402,99 @@ test("the end of a lesson offers the quiz of its topic, with its size once the q
     again.close();
     await page.reload();
     await expect(page.getByRole("button", { name: /^Fai il quiz/ })).toHaveText(/^Fai il quiz\s*8 domande$/);
+  } finally {
+    await done();
+  }
+});
+
+test("the end of a lesson opened without the plan's diagnostic does not offer it as the next step", async () => {
+  test.setTimeout(120_000);
+  const { page, userData, done } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 832 });
+    // A plan nothing was studied in, which would still start with its diagnostic; the student opens a lesson instead.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    db.exec(
+      "DELETE FROM gap_answers; DELETE FROM gaps; DELETE FROM attempt_answers; DELETE FROM attempts; DELETE FROM learning_events; DELETE FROM items;",
+    );
+    seedOutline(db as unknown as Database.Database, {
+      planId: "p-fis",
+      topicId: "t-kin",
+      parts: [{ title: "Cinematica del punto", minutes: 8, markdown: partMarkdown("Cinematica del punto") }],
+    });
+    db.close();
+    const guide = (await page.evaluate(() => window.pyxis.invoke("plans.recommend", { planId: "p-fis" }))) as {
+      next: { activity: string } | null;
+    };
+    expect(guide.next?.activity).toBe("diagnostic");
+    await page.evaluate(() => {
+      location.hash = "/plans/p-fis/lesson/t-kin?part=1";
+    });
+    const foot = page.locator(".px-part-foot");
+    await expect(foot).toBeVisible();
+    // The diagnostic comes before every lesson: the topic's own exercises follow this one.
+    await expect(foot.getByRole("button", { name: /^Continua: / })).toHaveText("Continua: Esercizio assistito");
+    await expect(foot).not.toContainText("diagnostico");
+    await foot.scrollIntoViewIfNeeded();
+    await saveShot(page, "quiz-results/lesson-end-without-diagnostic-it.png", { animations: "disabled" });
+    await foot.getByRole("button", { name: /^Continua: / }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-fis\/practice\/t-kin$/);
+  } finally {
+    await done();
+  }
+});
+
+test("a flashcard made from a wrong answer is filed under its topic and its exam's subject, and says what is missing", async () => {
+  test.setTimeout(120_000);
+  const { page, userData, done } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 832 });
+    // The exam belongs to no subject and neither do its files.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    db.exec("UPDATE plans SET subject_id = NULL; UPDATE sources SET subject_id = NULL;");
+    db.close();
+    await open(page);
+    const dialog = page.getByRole("dialog", { name: "Crea flashcard" });
+    await page.getByRole("button", { name: "Crea una flashcard" }).first().click();
+    await expect(dialog).toBeVisible();
+    // The exam and the question's topic are filled in, which is somewhere to file the card: nothing is asked.
+    await expect(dialog.getByText("Cinematica", { exact: true })).toBeVisible();
+    const needSubject = dialog.getByText("Scegli la materia: senza, le flashcard non hanno dove andare.");
+    const needTopic = dialog.getByText("Scegli l'argomento dell'esame per salvarle qui, oppure togli l'esame.");
+    const make = dialog.getByRole("button", { name: "Crea flashcard" });
+    await expect(needSubject).toHaveCount(0);
+    await expect(needTopic).toHaveCount(0);
+    await expect(make).toBeEnabled();
+    await saveShot(page, "quiz-results/flashcard-dialog-it.png", { animations: "disabled" });
+    // Without an exam the card needs a subject, and the dialog says so beside the field.
+    await dialog.locator("#mc-plan").click();
+    await page.locator(".ant-select-item-option", { hasText: /^Nessun esame$/ }).click();
+    await expect(needSubject).toBeVisible();
+    await expect(dialog.locator("#mc-subject")).toHaveAttribute("aria-describedby", "mc-subject-need");
+    await saveShot(page, "quiz-results/flashcard-dialog-subject-needed-it.png", { animations: "disabled" });
+    await expect(make).toBeDisabled();
+    await dialog.getByRole("button", { name: "Annulla" }).click();
+    await expect(dialog).toBeHidden();
+    // Once the exam's files belong to a subject, the card's subject is filled in without an exam too.
+    const again = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    again.exec("UPDATE sources SET subject_id = 'sub-fis'; UPDATE plans SET subject_id = 'sub-fis';");
+    again.close();
+    await page.reload();
+    await expect(page.locator(".px-res-title")).toBeVisible();
+    await page.getByRole("button", { name: "Crea una flashcard" }).first().click();
+    await dialog.locator("#mc-plan").click();
+    await page.locator(".ant-select-item-option", { hasText: /^Nessun esame$/ }).click();
+    await expect(dialog.locator("#mc-subject").locator("xpath=ancestor::div[contains(@class,'ant-select')][1]")).toContainText("Fisica");
+    await expect(needSubject).toHaveCount(0);
+    await expect(make).toBeEnabled();
+    // The exam again has no topic yet: the dialog says the topic is what is missing, next to that field.
+    await dialog.locator("#mc-plan").click();
+    await page.locator(".ant-select-item-option", { hasText: /^Fisica I$/ }).click();
+    await expect(needTopic).toBeVisible();
+    await needTopic.click();
+    await saveShot(page, "quiz-results/flashcard-dialog-topic-needed-it.png", { animations: "disabled" });
+    await expect(dialog.locator("#mc-topic")).toHaveAttribute("aria-describedby", "mc-topic-need");
+    await expect(make).toBeDisabled();
   } finally {
     await done();
   }

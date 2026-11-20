@@ -422,7 +422,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await topicSteps(page, topic.title);
     await done.getByRole("button", { name: /^Quiz, 6\/10/ }).click();
     await expect(page).toHaveURL(new RegExp(`quiz/${topic.id}\\?attempt=${quiz.attemptId}$`));
-    await expect(page.locator(".px-res-headline")).toContainText("6 punti su 10.");
+    await expect(page.locator(".px-res-headline")).toContainText("6 giuste, 4 sbagliate");
     await expect(page.getByText(/^Le tue risposte del /)).toBeVisible();
     // The bar's back control is the one way back: the foot has no second button for it.
     await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();
@@ -468,7 +468,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
       // Avanti, and on the last question Consegna, which hands in at once with nothing blank.
       await page.locator(".px-qz-nav .px-btn-primary").click();
     }
-    await expect(page.locator(".px-res-headline")).toContainText("10 punti su 10.");
+    await expect(page.locator(".px-res-headline")).toContainText("10 giuste");
     // A quiz just handed in is not a review: it offers no Redo, and the bar's control is its one way back to the path.
     await expect(page.getByRole("button", { name: "Continua" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();

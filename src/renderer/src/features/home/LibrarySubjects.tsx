@@ -19,7 +19,11 @@ const messageKeyOf = (err: unknown): string =>
 
 /** Files the student has to place: Pyxis could not tell, had no AI tool, or was stopped while choosing. */
 export const isUnsorted = (source: Pick<LibrarySource, "sort">) =>
-  source.sort === "stopped" || source.sort === "unsure" || source.sort === "no-ai";
+  source.sort === "stopped" ||
+  source.sort === "failed" ||
+  source.sort === "interrupted" ||
+  source.sort === "unsure" ||
+  source.sort === "no-ai";
 
 /** The value of the "Nuova materia…" option in a subject picker. */
 const NEW = "\u0000new";
@@ -58,6 +62,8 @@ export function UnsortedGroup({
       ) : null}
       {reasons.has("none") ? <p className="small ink-muted">{t(mixed ? "sources.sort.noneSome" : "sources.sort.none")}</p> : null}
       {reasons.has("stopped") ? <p className="small ink-muted">{t("sources.sort.stopped")}</p> : null}
+      {reasons.has("failed") ? <p className="small ink-muted">{t("sources.sort.failedLine")}</p> : null}
+      {reasons.has("interrupted") ? <p className="small ink-muted">{t("sources.sort.interrupted")}</p> : null}
       {reasons.size === 1 && reasons.has("working") ? (
         <p className="small ink-muted">{t("sources.shelf.working")}</p>
       ) : null}
