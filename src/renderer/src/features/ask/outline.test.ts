@@ -57,6 +57,36 @@ describe("plainReading", () => {
     expect(plainReading("$$F = m\\cdot a$$")).toBe("F = m· a");
     expect(plainReading("Nessuna formula")).toBe("Nessuna formula");
   });
+
+  it("reads a figure's caption: fractions, units, vectors and powers without their markup", () => {
+    expect(plainReading("La velocità $v(t)=2+1{,}5\\,t$ e $x(t) = \\tfrac12 a t^2$ per $a = 2\\,\\mathrm{m/s^2}$.")).toBe(
+      "La velocità v(t)=2+1,5 t e x(t) = 1/2 a t² per a = 2 m/s².",
+    );
+    expect(plainReading("La somma di $\\vec F_1$ e $\\vec F_2$.")).toBe("La somma di F_1 e F_2.");
+    expect(plainReading("$\\frac{mg}{2}$")).toBe("mg/2");
+  });
+});
+
+describe("plainReading keeps what a formula means", () => {
+  it("reads a whole exponent, not its first digit", () => {
+    expect(plainReading("$x^{20}$")).toBe("x^20");
+    expect(plainReading("$x^{n+1}$")).toBe("x^(n+1)");
+    expect(plainReading("$x^2$ e $y^{3}$ e $z^n$")).toBe("x² e y³ e z^n");
+    expect(plainReading("$e^{-t/\\tau}$")).toBe("e^(-t/τ)");
+  });
+
+  it("keeps the grouping of a fraction whose parts are not single terms", () => {
+    expect(plainReading("$\\frac{a+b}{c+d}$")).toBe("(a+b)/(c+d)");
+    expect(plainReading("$\\frac{mg}{2}$")).toBe("mg/2");
+    expect(plainReading("$\\frac{a+b}{2}$")).toBe("(a+b)/2");
+    expect(plainReading("$\\tfrac12$")).toBe("1/2");
+  });
+
+  it("reads a fraction inside a fraction", () => {
+    expect(plainReading("$\\frac{\\frac{a}{b}}{c}$")).toBe("(a/b)/c");
+    expect(plainReading("$\\frac{1}{1+\\frac{1}{x}}$")).toBe("1/(1+1/x)");
+    expect(plainReading("$\\frac{x^{2}}{y^{20}}$")).toBe("x²/y^20");
+  });
 });
 
 describe("pinnedMark", () => {

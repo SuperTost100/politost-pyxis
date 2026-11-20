@@ -191,6 +191,7 @@ describe("what a chip says", () => {
     expect(keys("cancelled")).toBe("ask.attach.error.cancelled");
     expect(keys("too-large")).toBe("ask.attach.error.tooLargeDocument");
     expect(keys("too-large", "photo")).toBe("ask.attach.error.tooLargePhoto");
+    expect(keys("picture-too-large", "photo")).toBe("ask.attach.error.picture-too-large");
   });
 
   it("makes a chip for a file core refused, with the reason its error code gives", () => {

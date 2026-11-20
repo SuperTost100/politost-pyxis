@@ -391,7 +391,8 @@
         "unsupported": "A message can carry photos, PDF, Word, PowerPoint, text and Markdown files.",
         "denied": "Pyxis isn't allowed to open this file.",
         "cancelled": "The reading was stopped. Remove the file and attach it again.",
-        "data": "The scan could not be read, because its reading data is missing."
+        "data": "The scan could not be read, because its reading data is missing.",
+        "picture-too-large": "This photo has too many pixels for Pyxis to read on this computer. Take it again at a lower resolution."
       },
       "waiting_one": "Reading {{count}} file…",
       "waiting_other": "Reading {{count}} files…",
@@ -2819,7 +2820,8 @@
         "later": "Wait until {{day}}"
       },
       "waiting": "Starts again by itself when {{tool}}'s requests are back, {{when}}",
-      "stopWaiting": "Stop waiting"
+      "stopWaiting": "Stop waiting",
+      "waitingRetired": "Starts again by itself {{when}}, on another tool: Pyxis no longer uses {{tool}}."
     },
     "waiting_one": "{{count}} waiting",
     "waiting_other": "{{count}} waiting",
@@ -3279,7 +3281,8 @@
       "disclosure-required": "Confirm what this AI tool receives first, in Settings, AI tools.",
       "stream-truncated": "The AI tool stopped before the answer was finished.",
       "signedOutNamed": "{{name}} refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again.",
-      "modelNotIncludedNamed": "Your {{name}} subscription doesn't include the model this needed. Choose another model or AI tool in Settings."
+      "modelNotIncludedNamed": "Your {{name}} subscription doesn't include the model this needed. Choose another model or AI tool in Settings.",
+      "retiredTool": "This was set to run on {{name}}, which Pyxis no longer uses. Try again and another tool will do it."
     },
     "feature": {
       "default": "Default AI tool",
@@ -3449,13 +3452,25 @@
       "fast": "Fast",
       "mid": "Balanced",
       "strong": "Strong",
-      "note": "Each tool uses only its maker's models, and Pyxis picks among three: <b>fast</b> for chat, flashcards and maps, <b>balanced</b> for lessons and grading, <b>strong</b> for the study plan.",
-      "exception": "Here “{{task}}” uses the {{role}} model."
+      "lead": "Each tool uses only its maker's models, and Pyxis picks among three:",
+      "for": "for {{tasks}}",
+      "splitFirst": "For {{task}}: the {{role}} model of {{tools}}",
+      "splitNext": "the {{role}} one of {{tools}}",
+      "task": {
+        "chat": "chat",
+        "cards": "flashcards",
+        "map": "maps",
+        "lesson": "lessons",
+        "grading": "grading",
+        "plan": "the study plan"
+      }
     },
     "autoToday": "Automatic · today {{model}}",
     "pinnedCount_one": "{{count}} pinned by you",
     "pinnedCount_other": "{{count}} pinned by you",
-    "allAuto": "Everything automatic"
+    "allAuto": "Everything automatic",
+    "pinnedWork": "Pinned",
+    "effortsPicked": "Reasoning set by you"
   },
   "graph": {
     "title": "Graph",

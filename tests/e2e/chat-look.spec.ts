@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
-import { FIGURE_CAPTION, seedFigureChat, seedFollowupsChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat } from "./chat-look-seed";
+import { PHOTO_NAME, seedFigureChat, seedFollowupsChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat } from "./chat-look-seed";
 import { clickSettled } from "./settled";
 import { saveShot } from "./shots";
 
@@ -87,10 +87,22 @@ for (const theme of ["light", "dark"] as const) {
       await expect(viewer.getByText("75%")).toBeVisible();
       await page.keyboard.press("0");
       await expect(viewer.getByText("100%")).toBeVisible();
-      await expect(viewer.getByText(FIGURE_CAPTION)).toBeVisible();
+      // The caption's formulas are drawn, as in the chat, and the name the figure's button has reads them in words.
+      const caption = viewer.locator("figcaption");
+      await expect(caption.locator(".katex").first()).toBeVisible();
+      const drawn = await caption.evaluate((el) => {
+        const copy = el.cloneNode(true) as HTMLElement;
+        copy.querySelectorAll(".katex-mathml").forEach((node) => node.remove());
+        return copy.textContent ?? "";
+      });
+      expect(drawn).not.toMatch(/\$|\\/);
+      expect(drawn).toContain("cresce di 1,5 m/s ogni secondo");
+      await expect(figure.getByRole("button", { name: /^Ingrandisci la figura: La velocità v\(t\)=2\+1,5 t cresce/ })).toBeVisible();
       await saveShot(page, `chat-look/figure-${theme}-viewer.png`, { animations: "disabled" });
       // A right-click or Shift+F10 in the viewer does not open the menu of the figure behind it.
-      await viewer.getByText(FIGURE_CAPTION).click({ button: "right" });
+      // On the picture, not on text: on macOS a right-click on text selects the word under the pointer and the app then shows
+      // its native Copia menu, which a test cannot close and which keeps the app from quitting (see text-menu.spec.ts).
+      await viewer.locator(".px-viewer-card img").click({ button: "right" });
       await viewer.getByRole("button", { name: "Scarica PNG" }).focus();
       await page.keyboard.press("Shift+F10");
       await expect(menu()).toHaveCount(0);
@@ -185,6 +197,10 @@ test("the outline has a mark per question from the third on, a card on hover and
       return copy.textContent ?? "";
     });
     expect(seen).not.toMatch(/\\[a-z]|\$/);
+    // The question stays on one line with an ellipsis, whatever its length and its formulas.
+    const question = card.locator("b");
+    expect((await question.boundingBox())!.height).toBeLessThan(24);
+    expect(await question.evaluate((el) => getComputedStyle(el).textOverflow)).toBe("ellipsis");
     // And a mark is named in words for a screen reader.
     await expect(marks.nth(3)).toHaveAccessibleName("Domanda 4 di 9: Come trovo l'angolo a cui il blocco inizia a scivolare?");
     await saveShot(page, "chat-look/outline-card.png", { animations: "disabled" });
@@ -264,10 +280,10 @@ test("a sent message shows a photo as a thumbnail that opens the viewer and a do
   try {
     await open(page, "look-files");
     const files = page.locator(".ask-sent-files");
-    const thumb = files.getByRole("button", { name: "Ingrandisci esercizio-4.png" });
+    const thumb = files.getByRole("button", { name: `Ingrandisci ${PHOTO_NAME}` });
     await expect(thumb).toBeVisible();
     await expect(thumb.locator("img")).toHaveJSProperty("complete", true);
-    expect(await thumb.locator("img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(320);
+    expect(await thumb.locator("img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(312);
     // The document is a chip with its size, and the photo sent before pictures were kept falls back to a chip too.
     await expect(files.getByRole("button", { name: /esercizi-scansione\.pdf/ })).toContainText("1 MB");
     await expect(files.locator(".ask-sent-doc.is-plain")).toHaveCount(1);
@@ -278,10 +294,24 @@ test("a sent message shows a photo as a thumbnail that opens the viewer and a do
     expect(filesBox!.y + filesBox!.height).toBeLessThanOrEqual(bubble!.y);
     await saveShot(page, "chat-look/sent-files.png", { animations: "disabled" });
 
+    // The window of a laptop: 800 px high.
+    await page.setViewportSize({ width: 1280, height: 800 });
     await thumb.click();
     const viewer = page.getByRole("dialog", { name: "Foto ingrandita" });
     await expect(viewer).toBeVisible();
-    await expect(viewer.getByText("esercizio-4.png, dal tuo messaggio")).toBeVisible();
+    await expect(viewer.getByText(`${PHOTO_NAME}, dal tuo messaggio`, { exact: true })).toBeVisible();
+    // A photo's caption and its picture's alt text are its file name as written: no link, no formula, no stripped marks.
+    await expect(viewer.locator("figcaption .katex")).toHaveCount(0);
+    await expect(viewer.locator("figcaption a")).toHaveCount(0);
+    await expect(viewer.locator(".px-viewer-card img")).toHaveAttribute("alt", `${PHOTO_NAME}, dal tuo messaggio`);
+    // A portrait photo in a window 800 px high: the whole card and its caption are on screen, none cut at the foot.
+    await expect.poll(() => page.evaluate(() => window.innerHeight)).toBeGreaterThan(0);
+    const height = await page.evaluate(() => window.innerHeight);
+    const captionBox = await viewer.getByText(`${PHOTO_NAME}, dal tuo messaggio`, { exact: true }).boundingBox();
+    const cardBox = await viewer.locator(".px-viewer-card").boundingBox();
+    expect(cardBox!.y).toBeGreaterThanOrEqual(0);
+    expect(captionBox!.y + captionBox!.height).toBeLessThanOrEqual(height);
+    expect(cardBox!.height / cardBox!.width).toBeCloseTo(400 / 312, 1);
     await saveShot(page, "chat-look/photo-viewer.png", { animations: "disabled" });
     await page.keyboard.press("Escape");
     await expect(viewer).toHaveCount(0);
@@ -333,7 +363,14 @@ test("a jump's mark does not follow the student to another chat, and the next ch
     const marks = page.getByRole("navigation", { name: "Indice della conversazione" }).getByRole("button");
     await expect(marks).toHaveCount(3);
     // Both chats fit the window, so both are at scroll 0 and nothing but the chat tells them apart.
-    expect(await page.evaluate(() => document.scrollingElement!.scrollHeight <= window.innerHeight + 1)).toBe(true);
+    // Messages out of view hold an estimated height until the page has laid them out, so the page is given a moment to settle;
+    // on macOS the first look comes before it has. What it must not do, once settled, is scroll.
+    await expect
+      .poll(() => page.evaluate(() => document.scrollingElement!.scrollHeight - window.innerHeight), {
+        message: "the page overflows the window by this many pixels",
+        timeout: 10000,
+      })
+      .toBeLessThanOrEqual(1);
     await marks.first().click();
     await expect(marks.first()).toHaveAttribute("aria-current", "true");
     // Chat B opens with no reload, as from the sidebar. It ends where it opened, so its last question is the one in view.
