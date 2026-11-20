@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useNavigationType } from "react-router";
 import { parseSmartText, partQuestions } from "@shared/smart-text";
 import { returnTo, type BackTarget } from "../../app/usePlace";
+import { ActivityNote } from "../../components/ActivityNote";
 import { Button } from "../../components/Button";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MenuButton, useItemMenu } from "../../components/ItemMenu";
@@ -456,6 +457,7 @@ export function PartPage({
     : undefined;
   const block = working ? (
     <WorkingBlock
+      activity={data.activity}
       copy={
         rewritingOld
           ? rewritingCopy
@@ -479,7 +481,7 @@ export function PartPage({
       still
     />
   ) : rewriting || rewriteArrived ? (
-    <WorkingBlock copy={rewrites.copy} still={!rewriting} />
+    <WorkingBlock copy={rewrites.copy} activity={data.rewrite?.activity} still={!rewriting} />
   ) : null;
 
   const error = data.error ?? "";
@@ -668,10 +670,13 @@ export function PartPage({
  */
 function WorkingBlock({
   copy,
+  activity,
   onEarlier,
   still = false,
 }: {
   copy: ReturnType<typeof workingCopy>;
+  /** What the part's model call is doing, with how long it has been at it. */
+  activity?: PartData["activity"];
   /** Old lessons in parts: opens the version the rewrite replaces, in place of the note on where the part will be. */
   onEarlier?: () => void;
   still?: boolean;
@@ -691,6 +696,7 @@ function WorkingBlock({
         </p>
       </div>
       <div className="px-part-working-actions">
+        {still ? null : <ActivityNote activity={activity} />}
         {onEarlier ? (
           <Button variant="ghost" size="sm" onClick={onEarlier} disabled={still}>
             {t("lesson.readEarlier")}

@@ -2584,6 +2584,11 @@
     },
     "wipeBackupsLeftConfirm": "Got it"
   },
+  "activity": {
+    "starting": "Starting the AI tool · {{time}}",
+    "thinking": "Thinking it through · {{time}}",
+    "writing": "Writing · {{time}}"
+  },
   "jobs": {
     "topicsMore_one": "{{first}} and one more topic",
     "topicsMore_other": "{{first}} and {{count}} more topics",

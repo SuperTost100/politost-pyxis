@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
+import { forgetModels, rememberModels } from "../engine/efforts";
 import { jsonSchema, type GenerateInput } from "../engine/generate";
 import { isFigureFixCall } from "../engine/recorded-plan";
 import type { FigureRunner } from "../math/figures";
@@ -417,9 +418,9 @@ function workspace(sizes: number[], sections: Array<string | null> = [], languag
 
 /** Recorded replies, answered in turn, and the calls that asked for them. */
 function recorded(...replies: Array<unknown | Error | string>) {
-  const calls: Array<{ system?: string; prompt: string }> = [];
+  const calls: Array<{ system?: string; prompt: string; selection: { provider: string; model: string; effort?: string } }> = [];
   const run: GenerateInput["run"] = async (input) => {
-    calls.push({ system: input.system, prompt: input.prompt });
+    calls.push({ system: input.system, prompt: input.prompt, selection: input.selection });
     const next = replies[Math.min(calls.length - 1, replies.length - 1)];
     if (next instanceof Error) throw next;
     if (typeof next === "string") return { text: next, provider: "claude", model: "test-model", inputTokens: 1 };
@@ -445,6 +446,16 @@ describe("planParts", () => {
     ]);
     const row = db.prepare("SELECT engine_provider, prompt_template, grounding FROM lesson_outlines").get();
     expect(row).toEqual({ engine_provider: null, prompt_template: null, grounding: "sources" });
+  });
+
+  it("asks for the outline at the lowest effort the model lists", async () => {
+    rememberModels("claude", [{ id: "test-model", efforts: [{ id: "low" }, { id: "medium" }, { id: "high" }] }]);
+    const db = workspace(Array(6).fill(4_000), ["2.1 Intorni", null, "2.2 Aperti", null, "2.3 Compatti", null]);
+    const engine = recorded(reply(["Intorni", ["P1", "P2"]], ["Aperti", ["P3"]], ["Chiusi", ["P4"]], ["Compatti", ["P5", "P6"]]));
+    await planParts(db, { planId: "p", topicId: "t", selection: { provider: "claude", model: "test-model", effort: "high" }, run: engine.run });
+    expect(engine.calls).toHaveLength(1);
+    expect(engine.calls[0]!.selection).toMatchObject({ provider: "claude", model: "test-model", effort: "low" });
+    forgetModels();
   });
 
   it("saves a topic with no passages as one part from general knowledge", async () => {
@@ -754,13 +765,26 @@ describe("partShape", () => {
     ["too few words", [section("A", 100), section("B", 100), checkBlock("a"), takeawayBlock("Fatto.")], /words\. Write between 250/],
     ["too many words", [section("A", 750), section("B", 750), checkBlock("a"), takeawayBlock("Fatto.")], /words\. Write between 250/],
     ["no takeaway", [section("A"), section("B"), checkBlock("a")], /pyxis-takeaway block is missing/],
-    ["a long takeaway", [section("A"), section("B"), checkBlock("a"), takeawayBlock("x ".repeat(200))], /399 characters/],
   ])("rejects a part with %s, naming that rule alone", (_, blocks, problem) => {
     const shape = partShape(blocks.join("\n\n"), first);
     expect(shape.ok).toBe(false);
     if (shape.ok) return;
     expect(shape.problems).toHaveLength(1);
     expect(shape.problems[0]).toMatch(problem);
+  });
+
+  it("cuts a takeaway that is too long at its last whole sentence instead of writing the part again", () => {
+    // Measured on Gemini 3.8 Flash: the takeaway came back at 355 characters on the first reply of the first part in
+    // every run, and each rewrite of the whole part cost 14 to 25 seconds.
+    const first1 = `${"La cinematica descrive il moto legando posizione, velocità e accelerazione".padEnd(170, " nel tempo")}.`;
+    const second = `${"Il segno della velocità determina il verso del moto".padEnd(180, " e dell'accelerazione")}.`;
+    expect(first1.length + 1 + second.length).toBeGreaterThan(300);
+    const shape = partShape([section("A"), section("B"), checkBlock("a"), takeawayBlock(`${first1} ${second}`)].join("\n\n"), first);
+    expect(shape).toMatchObject({ ok: true, summary: first1, question: true });
+    // With no sentence end in the first 300 characters, it is cut at a word.
+    const run = partShape([section("A"), section("B"), checkBlock("a"), takeawayBlock("x ".repeat(200))].join("\n\n"), first);
+    expect(run.ok && run.summary!.length).toBeLessThanOrEqual(300);
+    expect(run.ok && run.summary!.endsWith("…")).toBe(true);
   });
 
   it("rejects a heading another part already has, with case, accents and punctuation ignored", () => {

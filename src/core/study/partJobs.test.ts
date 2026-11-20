@@ -5,9 +5,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { GenerateInput } from "../engine/generate";
 import { IpcError } from "../../shared/ipc";
+import { forgetActivity, trackCall } from "../jobs/activity";
 import { createRunner } from "../jobs/runner";
 import { liveOutline } from "./parts";
-import { PART_JOB, ensureAhead, ensurePart, openPart, registerPartJobs, topicParts } from "./partJobs";
+import { PART_JOB, ensureAhead, ensurePart, openPart, partJob, registerPartJobs, topicParts } from "./partJobs";
 
 type Db = ReturnType<typeof openDatabase>;
 
@@ -131,6 +132,7 @@ const counts = (db: Db) => ({
 let open: Db[] = [];
 let folders: string[] = [];
 afterEach(() => {
+  forgetActivity();
   for (const db of open) if (db.open) db.close();
   for (const folder of folders) rmSync(folder, { recursive: true, force: true });
   open = [];
@@ -176,6 +178,20 @@ describe("the lesson-part job", () => {
       state: "succeeded",
     });
     expect(view!.steps.map((step) => step.label)).toEqual(["jobs.lessonOutline", "jobs.lessonPart"]);
+  });
+
+  it("reports what the part's model call is doing while the job is live, and nothing else", () => {
+    const { db, runner } = setUp(6, undefined, ":memory:", true);
+    openPart(db, runner, { planId: "p", topicId: "t", write: true });
+    const read = () => openPart(db, runner, { planId: "p", topicId: "t", position: 1 });
+    expect(read()).toMatchObject({ state: "planning", activity: null });
+    const call = trackCall(partJob(db, "t", 1)!.id, 1_234);
+    call.event("reasoning.delta");
+    expect(read()).toMatchObject({ state: "planning", activity: { phase: "thinking", since: 1_234 } });
+    call.event("text.delta");
+    expect(read()).toMatchObject({ activity: { phase: "writing", since: 1_234 } });
+    call.end();
+    expect(read()).toMatchObject({ activity: null });
   });
 
   it("keeps the saved outline when the write fails, and a retry writes the part without planning again", async () => {

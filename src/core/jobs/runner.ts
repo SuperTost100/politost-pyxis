@@ -16,6 +16,11 @@ export type StepContext = {
   setParams: (params: unknown) => void;
   /** How far this step is, from 0 to 1. The job's progress moves within the step's share; one long step can show it. */
   progress: (fraction: number) => void;
+  /**
+   * The student no longer waits on this job: an `interactive` job stops counting as one, so it does not hold a place from
+   * the other interactive jobs (a hand-in being graded) while it goes on in the background. Nothing for a job that is not.
+   */
+  background: () => void;
 };
 
 export type StepSpec = {
@@ -403,6 +408,12 @@ export function createRunner(
               signal: entry.controller.signal,
               params: readParams(jobId),
               setParams: (params) => setParams(jobId, params),
+              background: () => {
+                if (!entry.interactive) return;
+                entry.interactive = false;
+                // The place it held may let an interactive job that waits start.
+                queueMicrotask(kick);
+              },
               progress: (fraction) => {
                 const share = Math.min(1, Math.max(0, Number.isFinite(fraction) ? fraction : 0));
                 db.prepare(`UPDATE jobs SET progress = ?, updated_at = ? WHERE id = ?`).run(

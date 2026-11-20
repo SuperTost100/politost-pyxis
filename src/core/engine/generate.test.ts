@@ -545,6 +545,38 @@ describe("switching engines on a usage limit or sign-out", () => {
     db.close();
   });
 
+  it("asks each engine at its own lowest effort when the call says so: a quiz that falls back from Claude to Gemini", async () => {
+    const levels = [{ id: "low" }, { id: "medium" }, { id: "high" }];
+    rememberModels("claude", [{ id: "claude-sonnet-5", efforts: levels }]);
+    rememberModels("antigravity", [{ id: "gemini-4-hydrogen", efforts: levels }]);
+    rememberReady([
+      { id: "claude", kind: "cli", effort: true, models: [{ id: "claude-sonnet-5", efforts: levels }] },
+      { id: "antigravity", kind: "cli", effort: true, models: [{ id: "gemini-4-hydrogen", efforts: levels }] },
+    ]);
+    const db = openDatabase(":memory:");
+    db.prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('lesson', ?, 1)").run(
+      JSON.stringify({ provider: "claude", model: "claude-sonnet-5", auto: true }),
+    );
+    const asked: Array<[string, string | undefined]> = [];
+    await generate({
+      selection: selectionFor(db, "lesson"),
+      prompt: "hi",
+      lowEffort: "quiz",
+      run: async (input) => {
+        asked.push([input.selection.provider, input.selection.effort]);
+        if (input.selection.provider === "claude") throw limited;
+        return result({ text: "ok", provider: "antigravity", model: "gemini-4-hydrogen" });
+      },
+    });
+    // Claude keeps the lesson's level for a quiz; Gemini, which the call fell back to, runs it at its lowest.
+    expect(asked).toEqual([
+      ["claude", "medium"],
+      ["antigravity", "low"],
+    ]);
+    forgetModels();
+    db.close();
+  });
+
   it("builds the prompt again for the engine that answers instead, so a smaller window gets a smaller one", async () => {
     const db = automaticChat();
     const prompts: string[] = [];
