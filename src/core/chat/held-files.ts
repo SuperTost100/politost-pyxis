@@ -458,6 +458,11 @@ export function createHeldFiles(deps: HeldDeps) {
       for (const id of ids) mark.run(messageId, id);
     },
 
+    /** The question the files were tied to was taken back: they are the composer's again, tied to no question. */
+    untie(messageId: string): void {
+      db.prepare(`UPDATE held_files SET message_id = NULL WHERE message_id = ?`).run(messageId);
+    },
+
     /**
      * The question was answered: the files tied to it let go. A file its stored rows name is simply no longer held, and one
      * they do not (a copy the chat already had, a file that could not be read) goes the way a file taken off does. A Try

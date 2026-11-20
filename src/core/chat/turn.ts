@@ -44,6 +44,8 @@ import {
   dataBlock,
 } from "./prompts";
 import { liveSubject, pickSubject, sourceSubjects, subjectSourceIds, type SubjectBy } from "./subject";
+import { blobNamed, removeBlob } from "../blobs";
+import { pendingChats, type PendingChat } from "./pending";
 import {
   contextHash,
   currentSession,
@@ -460,9 +462,12 @@ type Scope = { planId: string | null; ids: string[]; subjectBy?: SubjectBy };
  * subject. A chat saved with a subject before `subjectBy` existed had it picked by the student.
  */
 function readScope(db: Database.Database, chatId: string): Scope {
-  const row = db
+  const stored = db
     .prepare(`SELECT scope_json, subject FROM chats WHERE id = ?`)
     .get(chatId) as { scope_json: string; subject: string | null } | undefined;
+  // A chat that is only seeded reads from its seed.
+  const seed = stored ? undefined : pendingChats.get(chatId);
+  const row = stored ?? (seed && { scope_json: seed.scope, subject: seed.subject });
   if (!row) return { planId: null, ids: [] };
   const parsed = JSON.parse(row.scope_json) as unknown;
   const strings = (value: unknown) =>
@@ -553,9 +558,10 @@ export function setChatSubject(db: Database.Database, chatId: string, subject: s
     // renamed or deleted since.
     const name = subject?.trim() ? liveSubject(db, subject) : null;
     if (subject?.trim() && !name) throw new IpcError("invalid", "errors.invalidSubject");
-    const info = db
-      .prepare(`UPDATE chats SET subject = ?, scope_json = ? WHERE id = ?`)
-      .run(name, scopeJson({ planId: null, ids: hiddenSources(db, scope.ids), subjectBy: "student" }), chatId);
+    const scoped = scopeJson({ planId: null, ids: hiddenSources(db, scope.ids), subjectBy: "student" });
+    const seed = pendingChats.get(chatId);
+    if (seed) return void pendingChats.set(chatId, { ...seed, subject: name, scope: scoped });
+    const info = db.prepare(`UPDATE chats SET subject = ?, scope_json = ? WHERE id = ?`).run(name, scoped, chatId);
     if (info.changes === 0) throw new Error("chat-missing");
   })();
 }
@@ -620,12 +626,22 @@ function ensureChat(
   chatId: string | undefined,
   title: string,
   now: number,
-): { id: string; created: boolean } {
+): { id: string; created: boolean; seed?: PendingChat } {
   if (chatId) {
     const existing = db
       .prepare(`SELECT id FROM chats WHERE id = ?`)
       .get(chatId) as { id: string } | undefined;
     if (existing) return { id: existing.id, created: false };
+    // The first message of a chat that was only seeded stores it, under the id the window opened it with.
+    const seed = pendingChats.get(chatId);
+    if (seed) {
+      db.prepare(
+        `INSERT INTO chats (id, title, scope_json, subject, context_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).run(chatId, seed.title, seed.scope, seed.subject, seed.context ? JSON.stringify(seed.context) : null, now, now);
+      pendingChats.delete(chatId);
+      return { id: chatId, created: true, seed };
+    }
   }
   const id = uuidv7(now);
   db.prepare(
@@ -712,27 +728,23 @@ export function seedChat(
     title,
     body: input.body,
   };
-  db.prepare(
-    `INSERT INTO chats (id, title, scope_json, subject, context_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    chatId,
+  pendingChats.set(chatId, {
     title,
     // A chat opened from an exam or a lesson already knows its subject, which Pyxis then keeps.
-    scopeJson({
+    scope: scopeJson({
       planId: input.planId ?? null,
       ids: input.sourceIds ?? [],
       subjectBy: subject ? "student" : undefined,
     }),
-    subject || null,
-    JSON.stringify(context),
-    now,
-    now,
-  );
+    subject: subject || null,
+    context,
+  });
   return { chatId };
 }
 
 export function clearChatContext(db: Database.Database, chatId: string): void {
+  const seed = pendingChats.get(chatId);
+  if (seed) return void pendingChats.set(chatId, { ...seed, context: null });
   const info = db
     .prepare(`UPDATE chats SET context_json = NULL WHERE id = ?`)
     .run(chatId);
@@ -746,7 +758,8 @@ export function chatContext(
   const row = db
     .prepare(`SELECT context_json FROM chats WHERE id = ?`)
     .get(chatId) as { context_json: string | null } | undefined;
-  if (!row?.context_json) return null;
+  if (!row) return pendingChats.get(chatId)?.context ?? null;
+  if (!row.context_json) return null;
   return JSON.parse(row.context_json) as ChatContext;
 }
 
@@ -839,8 +852,8 @@ export async function askTurn(
   const stopChecks = () => cancelChecks(chat.id);
   input.signal?.addEventListener("abort", stopChecks, { once: true });
   generating.add(chat.id);
+  const report: { leftOut?: TakenFiles["leftOut"]; question?: string; inserted?: boolean } = {};
   try {
-    const report: { leftOut?: TakenFiles["leftOut"]; question?: string } = {};
     const result = await answer(db, input, replacing, chat.id, now, report);
     // The question is answered, so the files tied to it let go: the chat holds the ones its rows name, and a copy it already
     // had or a file that could not be read goes. Until now a send that failed kept every chip as it was.
@@ -858,13 +871,62 @@ export async function askTurn(
       db.prepare(`SELECT 1 FROM chats WHERE id = ?`).get(chat.id) &&
       !db.prepare(`SELECT 1 FROM messages WHERE chat_id = ? AND role = 'assistant'`).get(chat.id)
     )
+    {
       // The files still held in the composer stay, with the copies they made, for the retry: their rows name them.
       deleteChat(db, input.workspace ?? "", chat.id);
+      // A chat that was only seeded goes back to being a seed, so the retry opens it the same way.
+      if (chat.seed) pendingChats.set(chat.id, chat.seed);
+    }
+    // A question this turn stored that the student stopped before any answer text came is taken back: the window puts its
+    // text and files back in the composer, so the chat must not keep it too, or sending again would store it twice.
+    if (
+      !chat.created &&
+      report.inserted &&
+      report.question &&
+      (isAbort(err) || (err instanceof Error && err.name === "AbortError"))
+    )
+      takeBackQuestion(db, input.workspace ?? "", chat.id, report.question, input.held);
     throw err;
   } finally {
     input.signal?.removeEventListener("abort", stopChecks);
     generating.delete(chat.id);
   }
+}
+
+/**
+ * Takes a stored question back out of a chat: its row and its file rows go, the documents it brought leave the chat's
+ * scope unless an earlier question names them, a photo copy nothing else names is removed, and the files it was sent with
+ * go back to the composer's, tied to no question. The turn stopped before any answer text, so nothing refers to it.
+ */
+function takeBackQuestion(
+  db: Database.Database,
+  workspace: string,
+  chatId: string,
+  messageId: string,
+  held: AskInput["held"],
+): void {
+  const shas = db.transaction(() => {
+    const rows = db
+      .prepare(`SELECT blob_sha AS sha, source_id AS source FROM attachments WHERE message_id = ?`)
+      .all(messageId) as Array<{ sha: string; source: string | null }>;
+    db.prepare(`DELETE FROM attachments WHERE message_id = ?`).run(messageId);
+    const gone = db.prepare(`DELETE FROM messages WHERE id = ? AND chat_id = ? AND role = 'user'`).run(messageId, chatId);
+    if (gone.changes === 0) return [];
+    const named = db.prepare(
+      `SELECT 1 FROM attachments a JOIN messages m ON m.id = a.message_id WHERE m.chat_id = ? AND a.source_id = ?`,
+    );
+    const leaving = new Set(rows.flatMap((row) => (row.source && !named.get(chatId, row.source) ? [row.source] : [])));
+    if (leaving.size > 0) {
+      const scope = readScope(db, chatId);
+      db.prepare(`UPDATE chats SET scope_json = ? WHERE id = ?`).run(
+        scopeJson({ ...scope, ids: scope.ids.filter((id) => !leaving.has(id)) }),
+        chatId,
+      );
+    }
+    return rows.map((row) => row.sha);
+  })();
+  held?.untie(messageId);
+  for (const sha of new Set(shas)) if (workspace && !blobNamed(db, sha)) removeBlob(workspace, sha);
 }
 
 async function answer(
@@ -873,7 +935,7 @@ async function answer(
   replacing: { assistantId: string; userId: string } | undefined,
   chatId: string,
   now: number,
-  report: { leftOut?: TakenFiles["leftOut"]; question?: string },
+  report: { leftOut?: TakenFiles["leftOut"]; question?: string; inserted?: boolean },
 ): Promise<AskResult> {
   const prior = readScope(db, chatId);
   const planId = input.planId === undefined ? prior.planId : input.planId;
@@ -992,8 +1054,10 @@ async function answer(
     let userMessageId =
       replacing?.userId ||
       (pending?.role === "user" && pending.body === userBody ? pending.id : "");
+    let inserted = false;
     if (!userMessageId) {
       userMessageId = uuidv7(now + 1);
+      inserted = true;
       db.prepare(
         `INSERT INTO messages (id, chat_id, role, body, created_at) VALUES (?, ?, 'user', ?, ?)`,
       ).run(userMessageId, chatId, userBody, now);
@@ -1041,13 +1105,14 @@ async function answer(
       ).run(uuidv7(now + 5), userMessageId, source.sha, source.mime, now, doc.name, doc.size, doc.use);
     }
     db.prepare(`UPDATE chats SET updated_at = ? WHERE id = ?`).run(now, chatId);
-    return { sourceIds, subject, subjectBy, userMessageId, attachedIds };
+    return { sourceIds, subject, subjectBy, userMessageId, attachedIds, inserted };
   };
-  const { sourceIds, subject, subjectBy, userMessageId, attachedIds } = commitStaged(db, input.workspace ?? "", blobs, () =>
+  const { sourceIds, subject, subjectBy, userMessageId, attachedIds, inserted } = commitStaged(db, input.workspace ?? "", blobs, () =>
     persist(reused),
   );
   // The files are tied to the question they went with, whatever the send does next.
   report.question = userMessageId;
+  report.inserted = inserted;
   input.held?.tie([...(taken?.order ?? []), ...(taken?.leftOut.map((file) => file.id) ?? [])], userMessageId);
   input.onQuestion?.(userMessageId, chatId);
 
@@ -1705,10 +1770,18 @@ export function renameChat(
   const trimmed = title.trim();
   if (!trimmed) throw new Error("chat-title");
   // A rename is not activity: the chat keeps its place in the list, which is ordered by the last message.
+  const seed = pendingChats.get(chatId);
+  if (seed) return void pendingChats.set(chatId, { ...seed, title: trimmed });
   const info = db
     .prepare(`UPDATE chats SET title = ? WHERE id = ?`)
     .run(trimmed, chatId);
   if (info.changes === 0) throw new Error("chat-missing");
+}
+
+/** A chat's title, for a chat that is stored or only seeded. */
+export function chatTitle(db: Database.Database, chatId: string): string | null | undefined {
+  const row = db.prepare(`SELECT title FROM chats WHERE id = ?`).get(chatId) as { title: string | null } | undefined;
+  return row ? row.title : pendingChats.get(chatId)?.title;
 }
 
 /**
@@ -1717,6 +1790,8 @@ export function renameChat(
  * files nothing else names. The rows go in one transaction; the files are removed after it commits.
  */
 export function deleteChat(db: Database.Database, workspace: string, chatId: string) {
+  // A chat that was only seeded has nothing stored to delete.
+  if (pendingChats.delete(chatId)) return;
   cancelChecks(chatId);
   const hashes = db.transaction(() => {
     const mine = readScope(db, chatId).ids;
@@ -1778,7 +1853,7 @@ export function chatSubject(
   const row = db
     .prepare(`SELECT subject FROM chats WHERE id = ?`)
     .get(chatId) as { subject: string | null } | undefined;
-  return liveSubject(db, row?.subject);
+  return liveSubject(db, row ? row.subject : pendingChats.get(chatId)?.subject);
 }
 
 /** The note of a finished reply from general knowledge, which a stopped reply's list of passages is not. */

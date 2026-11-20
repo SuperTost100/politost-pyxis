@@ -2979,8 +2979,7 @@
       "run": "Run",
       "verified": "Verified",
       "failed": "Not verified",
-      "checking": "Checking calculation…",
-      "uncheckable": "Not checkable"
+      "checking": "Checking calculation…"
     },
     "lesson": {
       "recommended": "Recommended"

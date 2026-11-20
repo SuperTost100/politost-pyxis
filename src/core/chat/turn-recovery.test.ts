@@ -6,7 +6,7 @@ import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
 import { extractPlain } from "../sources/documents";
 import { heldFilesFor } from "./test-attach";
-import { askTurn, deleteChat, readChat, regenerateTurn } from "./turn";
+import { askTurn, chatScope, deleteChat, readChat, regenerateTurn } from "./turn";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -92,6 +92,83 @@ describe("a failed or stopped first turn leaves no chat behind", () => {
     expect(count("sources")).toBe(1);
     expect(count("sources WHERE library = 0")).toBe(1);
     expect(readChat(db, first.chatId).map((row) => row.role)).toEqual(["user", "assistant", "user", "assistant"]);
+    db.close();
+  });
+});
+
+describe("a question stopped before any answer text is taken back", () => {
+  const stopped = (controller: AbortController) => async (): Promise<EngineResult> => {
+    controller.abort();
+    throw new DOMException("aborted", "AbortError");
+  };
+
+  it("leaves an existing chat as it was, and sends again as one question", async () => {
+    const { db, count } = setup();
+    const first = await askTurn(db, { text: "ciao", allowGeneral: true, run: async () => reply });
+    await tick();
+    const controller = new AbortController();
+    await expect(
+      askTurn(db, { chatId: first.chatId, text: "spiega", allowGeneral: true, signal: controller.signal, run: stopped(controller) }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    // The window puts the text back in the composer, so the chat must not keep the question too.
+    expect(readChat(db, first.chatId).map((row) => row.role)).toEqual(["user", "assistant"]);
+    await tick();
+    await askTurn(db, { chatId: first.chatId, text: "spiega", allowGeneral: true, run: async () => reply });
+    expect(readChat(db, first.chatId).map((row) => row.role)).toEqual(["user", "assistant", "user", "assistant"]);
+    expect(count("messages")).toBe(4);
+    db.close();
+  });
+
+  it("leaves the files of the question held in the composer, tied to nothing, and out of the chat's scope", async () => {
+    const { workspace, db, file, count, attached } = setup();
+    const first = await askTurn(db, { text: "ciao", allowGeneral: true, run: async () => reply });
+    await tick();
+    const sent = await attached(file("appunti.txt", "Il calore si trasmette per conduzione."));
+    const controller = new AbortController();
+    await expect(
+      askTurn(db, { chatId: first.chatId, text: "spiega", allowGeneral: true, ...sent, workspace, signal: controller.signal, run: stopped(controller) }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(count("messages")).toBe(2);
+    expect(count("attachments")).toBe(0);
+    expect(chatScope(db, first.chatId)).toEqual([]);
+    // The file is still the composer's: its source is kept and it is tied to no question.
+    expect(count("held_files")).toBe(1);
+    expect(count("held_files WHERE message_id IS NULL")).toBe(1);
+    expect(count("sources WHERE library = 0")).toBe(1);
+    await tick();
+    await askTurn(db, { chatId: first.chatId, text: "spiega", allowGeneral: true, ...sent, workspace, run: async () => reply });
+    expect(count("attachments")).toBe(1);
+    expect(count("sources WHERE library = 0")).toBe(1);
+    db.close();
+  });
+
+  it("keeps a question an earlier failed turn stored, which this turn only answered again, and a question whose reply was cut", async () => {
+    const { db } = setup();
+    const first = await askTurn(db, { text: "ciao", allowGeneral: true, run: async () => reply });
+    await tick();
+    await expect(askTurn(db, { chatId: first.chatId, text: "spiega", allowGeneral: true, run: down })).rejects.toThrow("engine-down");
+    await tick();
+    const controller = new AbortController();
+    await expect(
+      askTurn(db, { chatId: first.chatId, text: "spiega", allowGeneral: true, signal: controller.signal, run: stopped(controller) }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    // A failure keeps its question for Try again, and the stop that follows did not store it.
+    expect(readChat(db, first.chatId).map((row) => row.role)).toEqual(["user", "assistant", "user"]);
+    await tick();
+    const cut = new AbortController();
+    const kept = await askTurn(db, {
+      chatId: first.chatId,
+      text: "altro",
+      allowGeneral: true,
+      signal: cut.signal,
+      run: async (input) => {
+        input.onDelta?.("Una risposta a metà");
+        cut.abort();
+        throw new DOMException("aborted", "AbortError");
+      },
+    });
+    expect(kept.message?.stopped).toBe(true);
+    expect(readChat(db, first.chatId).map((row) => row.role).slice(-2)).toEqual(["user", "assistant"]);
     db.close();
   });
 });

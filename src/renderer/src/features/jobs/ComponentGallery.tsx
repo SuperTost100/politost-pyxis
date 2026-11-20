@@ -450,11 +450,6 @@ export function ComponentGallery() {
           verifiedLabel={t("gallery.checkVerified")}
           failedLabel={t("gallery.checkFailed")}
         />
-        <CheckBadge
-          state="none"
-          verifiedLabel={t("gallery.checkVerified")}
-          failedLabel={t("gallery.checkFailed")}
-        />
       </Section>
 
       <Section

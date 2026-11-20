@@ -190,7 +190,6 @@ function AsyncCheck({ claim }: { claim: MathCheck }) {
       reason={result.data?.reason}
       verifiedLabel={t("components.markdown.verified")}
       failedLabel={t("components.markdown.failed")}
-      uncheckableLabel={t("components.markdown.uncheckable")}
     />
   ) : (
     <span className="meta" role="status">

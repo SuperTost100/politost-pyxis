@@ -13,6 +13,8 @@ import {
   regenerateTurn,
   chatContext,
   chatScope,
+  chatSubject,
+  clearChatContext,
   chatTitleFrom,
   deleteChat,
   heldSources,
@@ -24,6 +26,7 @@ import {
   seedChat,
   splitFollowups,
 } from "./turn";
+import { exportChat } from "./export";
 import { setRetrievalModel } from "../sources/retrieve";
 import { heldFilesFor } from "./test-attach";
 import { tempDir } from "../test-temp";
@@ -649,15 +652,59 @@ describe("askTurn", () => {
     expect(system).toContain("Subject: Fisica");
   });
 
+  it("stores a seeded chat only with its first message, and puts it back when that send fails", async () => {
+    const db = openDatabase(":memory:");
+    db.prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)").run(
+      JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }),
+    );
+    db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('s-fis', 'Fisica', 1)").run();
+    const seeded = seedChat(db, { kind: "answer", title: "Entropia", body: "Il disordine cresce.", subject: "Fisica" });
+    // Opening Chiedi from a result, a lesson or a map saves nothing: no row, no entry in the list.
+    expect(db.prepare("SELECT COUNT(*) FROM chats").pluck().get()).toBe(0);
+    expect(listChats(db)).toEqual([]);
+    // What the page reads for the new chat comes from the seed.
+    expect(chatContext(db, seeded.chatId)).toEqual({ kind: "answer", title: "Entropia", body: "Il disordine cresce." });
+    expect(chatSubject(db, seeded.chatId)).toBe("Fisica");
+    expect(readChat(db, seeded.chatId)).toEqual([]);
+    clearChatContext(db, seeded.chatId);
+    expect(chatContext(db, seeded.chatId)).toBeNull();
+    // A first send that fails removes the chat it made and leaves the seed for the retry.
+    await expect(
+      askTurn(db, { chatId: seeded.chatId, text: "perché?", allowGeneral: true, run: async () => Promise.reject(new Error("engine down")) }),
+    ).rejects.toThrow("engine down");
+    expect(db.prepare("SELECT COUNT(*) FROM chats").pluck().get()).toBe(0);
+    expect(chatSubject(db, seeded.chatId)).toBe("Fisica");
+    // The first send that works stores the chat under the seeded id, with what the seed held.
+    const result = await askTurn(db, { chatId: seeded.chatId, text: "perché?", allowGeneral: true, run: async () => reply });
+    expect(result.chatId).toBe(seeded.chatId);
+    expect(listChats(db).map((chat) => [chat.id, chat.subject])).toEqual([[seeded.chatId, "Fisica"]]);
+    expect(readChat(db, seeded.chatId)).toHaveLength(2);
+    db.close();
+  });
+
+  it("deletes and renames a chat that was only seeded", () => {
+    const db = openDatabase(":memory:");
+    const seeded = seedChat(db, { kind: "answer", title: "Entropia", body: "Il disordine cresce." });
+    renameChat(db, seeded.chatId, "Il mio titolo");
+    expect(exportChat(db, seeded.chatId, "it").markdown).toContain("# Il mio titolo");
+    deleteChat(db, "", seeded.chatId);
+    expect(() => chatContext(db, seeded.chatId)).not.toThrow();
+    expect(chatContext(db, seeded.chatId)).toBeNull();
+    db.close();
+  });
+
   it("names a chat from a selection with its formulas as readable text, in the list, the header and the pinned line", () => {
     const db = openDatabase(":memory:");
     const text = "dove $\\bar{x}$ è il valore numerico, $\\sigma_x$ è l'incertezza e $[X]$ è l'unità di misura. Per";
     const seeded = seedChat(db, { kind: "passage", title: text.slice(0, 80), body: text });
-    expect(listChats(db)[0]?.title).toBe("dove x̄ è il valore numerico, σₓ è l'incertezza e [X] è l'unità");
-    expect(chatContext(db, seeded.chatId)).toEqual({ kind: "passage", title: listChats(db)[0]?.title, body: text });
+    expect(chatContext(db, seeded.chatId)).toEqual({
+      kind: "passage",
+      title: "dove x̄ è il valore numerico, σₓ è l'incertezza e [X] è l'unità",
+      body: text,
+    });
     // A chat saved before this keeps its TeX in the database and still reads as text.
-    db.prepare("UPDATE chats SET title = ? WHERE id = ?").run("vale $\\sigma_x$", seeded.chatId);
-    expect(listChats(db)[0]?.title).toBe("vale σₓ");
+    db.prepare("INSERT INTO chats (id, title, created_at, updated_at) VALUES ('old', ?, 1, 1)").run("vale $\\sigma_x$");
+    expect(listChats(db).map((chat) => chat.title)).toEqual(["vale σₓ"]);
   });
 
   it("pins a wrong answer in the next prompt", async () => {
