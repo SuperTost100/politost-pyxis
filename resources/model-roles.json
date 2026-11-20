@@ -1,10 +1,11 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-19T16:00:00Z",
+  "updatedAt": "2026-11-20T16:00:00Z",
   "tools": {
     "claude": {
       "own": "^claude-",
       "never": "fable",
+      "featureRoles": { "chat": "mid" },
       "roles": {
         "fast": {
           "effort": "low",
@@ -22,6 +23,7 @@
     },
     "codex": {
       "own": "^gpt-\\d",
+      "featureRoles": { "chat": "mid" },
       "roles": {
         "fast": {
           "effort": "low",
@@ -44,29 +46,12 @@
         }
       }
     },
-    "agent": {
-      "own": "^(?:cursor-)?grok-\\d",
-      "roles": {
-        "fast": {
-          "effort": "low",
-          "models": ["grok-4.7", "cursor-grok-4.6", "cursor-grok-4.5"]
-        },
-        "mid": {
-          "effort": "medium",
-          "models": ["grok-4.7", "cursor-grok-4.6", "cursor-grok-4.5"]
-        },
-        "strong": {
-          "effort": "high",
-          "models": ["grok-4.7", "cursor-grok-4.6", "cursor-grok-4.5"]
-        }
-      }
-    },
     "antigravity": {
       "own": "^gemini-\\d",
       "roles": {
         "fast": {
           "effort": "low",
-          "models": ["gemini-4-hydrogen", "gemini-3.8-flash"]
+          "models": ["gemini-3.8-flash", "gemini-4-hydrogen"]
         },
         "mid": {
           "effort": "medium",
@@ -145,12 +130,6 @@
       "vision": true,
       "structured": true,
       "contextTokens": 1000000
-    },
-    {
-      "pattern": "^(?:cursor-)?grok-\\d",
-      "vision": true,
-      "structured": true,
-      "contextTokens": 256000
     },
     {
       "pattern": "^gemma3:(?:4b|12b|27b)",

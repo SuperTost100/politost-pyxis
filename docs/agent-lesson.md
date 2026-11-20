@@ -1,5 +1,7 @@
 # Agent lessons: a prototype and a comparison
 
+Cursor is no longer offered in Pyxis. The Cursor Agent runs below are kept as the experiment was done.
+
 Recommendation: keep the fixed lesson pipeline as the default and do not switch lessons to an agent. On three chapters of the free Fisica 1 book the agent loop finished sooner (321 to 451 s against 486 to 713 s) and every one of its 145 citations pointed at a passage it had read, but it showed the first section later (266 to 388 s against 186 to 275 s) and it read almost the whole chapter anyway, which is what the pipeline already sends. Keep the loop for flows where nobody knows in advance what to read, and if you want cited lessons, add the citation check to the pipeline instead. [Recommendation](#recommendation) has the details and the work each path needs.
 
 The prototype is in `src/core/study/agentLesson.ts`. A developer build started with `PYXIS_AGENT_LESSON=1` writes lessons with it; an installed app ignores the switch, and nothing changes without it.

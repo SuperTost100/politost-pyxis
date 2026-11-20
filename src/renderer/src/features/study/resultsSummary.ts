@@ -51,7 +51,7 @@ export function statusWordKey(item: { mark: ResultMark; value?: number; answer: 
 type Gap = { topicId: string; severity: "severe" | "minor" | null; misconception: string | null; open: boolean };
 
 /**
- * The gap a Ripasso mirato should drill after this attempt, among the open ones its wrong answers count for: a severe
+ * The gap a Rivedi gli errori should drill after this attempt, among the open ones its wrong answers count for: a severe
  * one first, then one the model explained. Without one there is no new step on the path.
  */
 export function drillGap<G extends Gap>(gaps: G[]): G | undefined {

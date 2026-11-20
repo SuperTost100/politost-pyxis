@@ -1,5 +1,4 @@
 import type Database from "better-sqlite3";
-import { MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES } from "../chat/attach";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { maxSourceBytes } from "../../shared/source-types";
@@ -64,19 +63,26 @@ export function setJobHandlers(next: HandlerMap): void {
   handlers = next;
 }
 
-/** Milliseconds a request waits before it is answered, by request name. Set only by the end-to-end seam. */
-const readDelays = new Map<string, number>();
+/** How a request is held before it is answered, by request name: for some milliseconds, or until a file exists. Set only by the end-to-end seam. */
+const readDelays = new Map<string, number | { until: string }>();
 
 /**
  * End-to-end seam (PYXIS_E2E_READ_DELAY, `study.attemptOutcome=1500,study.quizGrading=600`): holds those requests back
  * so a spec can look at a screen while the data it waits for is still on its way. Each wait is capped at 15 seconds.
+ * `tools.runtime=until:/tmp/go` holds the request until that file exists, so a spec decides when it is answered; a minute at most.
  */
 export function holdReads(spec: string): void {
   readDelays.clear();
   for (const entry of spec.split(",")) {
-    const [name, ms] = entry.split("=");
-    const delay = Math.min(Number(ms) || 0, 15_000);
-    if (name && delay > 0) readDelays.set(name.trim(), delay);
+    const at = entry.indexOf("=");
+    if (at <= 0) continue;
+    const name = entry.slice(0, at).trim();
+    const value = entry.slice(at + 1).trim();
+    if (value.startsWith("until:")) readDelays.set(name, { until: value.slice("until:".length) });
+    else {
+      const delay = Math.min(Number(value) || 0, 15_000);
+      if (delay > 0) readDelays.set(name, delay);
+    }
   }
 }
 
@@ -139,7 +145,10 @@ async function onRendererMessage(from: CorePort, data: unknown): Promise<void> {
   inflight.set(message.id, controller);
   try {
     const hold = readDelays.get(message.name);
-    if (hold) await new Promise((resolve) => setTimeout(resolve, hold));
+    if (typeof hold === "number") await new Promise((resolve) => setTimeout(resolve, hold));
+    else if (hold)
+      for (let waited = 0; !existsSync(hold.until) && waited < 60_000; waited += 20)
+        await new Promise((resolve) => setTimeout(resolve, 20));
     const finished = (message.input as { finished?: unknown } | null)?.finished === true;
     const lose = (finished ? readFailures.get(`${message.name}?finished`) : undefined) ?? readFailures.get(message.name);
     if (lose && existsSync(lose)) {
@@ -215,6 +224,7 @@ async function dispatch(
   }
   let parsed: { path?: string; files?: string[] } | undefined;
   if (
+    name === "chats.attach" ||
     name === "sources.import" ||
     name === "sources.replace" ||
     name === "sources.preview" ||
@@ -222,27 +232,12 @@ async function dispatch(
     name === "study.ankiImport"
   )
     parsed = requests[name].input.parse(input);
-  if (name === "chats.ask" || name === "chats.regenerate")
-    parsed = requests[name].input.parse(input);
   const paths = parsed?.path ? [parsed.path] : (parsed?.files ?? []);
   if (!paths.length) return dispatchValidated(name, input, signal, emit);
   let temporary: string | undefined;
-  const attachment = name === "chats.ask" || name === "chats.regenerate";
   try {
-    if (attachment && paths.length > MAX_FILES)
-      throw new Error("attach-too-many");
     if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: file boundary read start", name);
-    let remaining = MAX_TOTAL_BYTES;
-    const bytes = paths.map((path) => {
-      const bytes = fileGrants.read(
-        path,
-        attachment
-          ? Math.min(MAX_FILE_BYTES, remaining)
-          : maxSourceBytes(extname(path)),
-      );
-      remaining -= bytes.length;
-      return bytes;
-    });
+    const bytes = paths.map((path) => fileGrants.read(path, maxSourceBytes(extname(path))));
     if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: file boundary snapshot start", name);
     temporary = mkdtempSync(join(fileScratch, "picked-"));
     const snapshots = paths.map((path, index) => {
@@ -259,13 +254,8 @@ async function dispatch(
   } catch (error) {
     if (error instanceof Error && error.message === "file-access-denied")
       throw new IpcError("file-access-denied", "errors.fileAccessDenied");
-    if (error instanceof Error && error.message === "attach-too-big" && !attachment)
+    if (error instanceof Error && error.message === "attach-too-big")
       throw new IpcError("source-too-big", "sources.tooBig");
-    if (
-      error instanceof Error &&
-      ["attach-too-big", "attach-too-many"].includes(error.message)
-    )
-      throw new IpcError("attach-too-big", "errors.attachTooBig");
     throw error;
   } finally {
     if (temporary) rmSync(temporary, { recursive: true, force: true });
@@ -317,6 +307,7 @@ const routes = {
   "engines.setEffort": ["engines", "setEffort"],
   "engines.features": ["engines", "features", "bare"],
   "engines.names": ["engines", "names", "bare"],
+  "engines.roles": ["engines", "roles"],
   "engines.usage": ["engines", "usage"],
   "engines.autoConfigure": ["engines", "autoConfigure"],
   "engines.capability": ["engines", "capability"],
@@ -451,6 +442,10 @@ const routes = {
   "chats.leave": ["chats", "leave"],
   "chats.clearContext": ["chats", "clearContext"],
   "chats.setSubject": ["chats", "setSubject"],
+  "chats.attach": ["chats", "attach"],
+  "chats.detach": ["chats", "detach"],
+  "chats.attachments": ["chats", "attachments"],
+  "chats.attachScan": ["chats", "attachScan"],
   "chats.rate": ["chats", "rate"],
   "chats.rename": ["chats", "rename"],
   "chats.delete": ["chats", "remove"],
@@ -878,8 +873,16 @@ export function bindChat(
   fixtureReply?: string,
   replyDelayMs = 0,
   figureFixes?: string,
+  runner?: Runner,
 ): void {
-  chats = chatHandlers(db, workspace, fixtureReply, replyDelayMs, figureFixes);
+  chats = chatHandlers(
+    db,
+    workspace,
+    fixtureReply,
+    replyDelayMs,
+    figureFixes,
+    runner ? { runner, emit: (view) => broadcast("chats.attachment", view) } : undefined,
+  );
   setChecksListener((event) => broadcast("chats.checks", event));
 }
 

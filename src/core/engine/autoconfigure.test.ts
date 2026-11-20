@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import { engineHandlers } from "./handlers";
-import { selectionFor } from "./selection";
+import { rememberReady, selectionFor } from "./selection";
 import { getFunnel } from "./funnel";
 import { benchModel, clearBench } from "./bench";
 vi.mock("./funnel", async (original) => {
@@ -35,7 +35,7 @@ function fakeFunnel(state: State, listing: "ok" | "offline" = "ok") {
       row("claude", "Claude Code", state.claude),
       row("codex", "Codex", state.codex),
       // Signed in but without text-only access, so it never gets a feature.
-      row("agent", "Cursor Agent", true, ["full"]),
+      row("antigravity", "Antigravity", true, ["full"]),
     ],
     models: async (id: "claude" | "codex") => {
       if (listing === "offline") throw new Error("offline");
@@ -65,15 +65,16 @@ describe("automatic engine choice", () => {
     const result = await withFunnel({ claude: true, codex: true }, () =>
       handlers.autoConfigure({}),
     );
-    // Cursor Agent is disabled, so it is never counted as ready.
+    // Antigravity is disabled, so it is never counted as ready.
     expect(result.ready).toEqual(["claude", "codex"]);
     expect(Object.keys(result.features).sort()).toEqual(
       ["cards", "chat", "default", "grading", "lesson", "map", "plan", "vision"].sort(),
     );
+    // The model file runs the chat on the mid role of Claude and ChatGPT.
     expect(result.features.chat).toEqual({
       provider: "codex",
-      model: "gpt-6-luna",
-      effort: "low",
+      model: "gpt-5.6-terra",
+      effort: "medium",
       auto: true,
     });
     expect(result.features.plan).toMatchObject({
@@ -83,8 +84,8 @@ describe("automatic engine choice", () => {
     });
     expect(selectionFor(db, "chat")).toEqual({
       provider: "codex",
-      model: "gpt-6-luna",
-      effort: "low",
+      model: "gpt-5.6-terra",
+      effort: "medium",
       // Pyxis chose it, so a refusal may move it, even after a job saved it.
       chosenFor: "chat",
     });
@@ -294,6 +295,57 @@ describe("automatic engine choice", () => {
       await handlers.autoConfigure({});
       await vi.waitFor(() => expect(notified).toBe(2));
     });
+    db.close();
+  });
+});
+
+describe("the roles a tool's row names", () => {
+  type Features = Awaited<ReturnType<ReturnType<typeof engineHandlers>["autoConfigure"]>>["features"];
+  /** Every task the plan gave to this tool runs on the model the row names for the task's role on that tool. */
+  function agree(handlers: ReturnType<typeof engineHandlers>, features: Features) {
+    for (const provider of ["claude", "codex"]) {
+      const { roles, tasks, known } = handlers.roles({ provider });
+      expect(known, provider).toBe(true);
+      for (const [feature, row] of Object.entries(features))
+        if (row.provider === provider) expect(row.model, `${provider} ${feature}`).toBe(roles[(tasks as Record<string, "fast" | "mid" | "strong">)[feature]!]);
+    }
+  }
+
+  it("come from the catalog the plan was made with, so the row says what the planner runs", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    const { features } = await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
+    agree(handlers, features);
+    db.close();
+  });
+
+  it("leave out a refused model, as the planner does", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
+    // Opus is refused: the strong role steps to the next model the plan holds.
+    benchModel("claude", "claude-opus-5-5");
+    try {
+      const { features } = await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
+      const { roles } = handlers.roles({ provider: "claude" });
+      expect(roles.strong).toBe("claude-sonnet-5");
+      agree(handlers, features);
+    } finally {
+      clearBench();
+    }
+    db.close();
+  });
+
+  it("name the file's preferred models for a tool the planner does not hold, and flag that they are a guess", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    // Nothing is planned yet: the row has no catalog to name models from, whatever a listing read earlier held.
+    rememberReady([]);
+    const before = handlers.roles({ provider: "claude" });
+    expect(before.known).toBe(false);
+    expect(before.roles).toEqual({ fast: "claude-haiku-5-5", mid: "claude-sonnet-5-5", strong: "claude-opus-5-5" });
+    const { features } = await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
+    agree(handlers, features);
     db.close();
   });
 });

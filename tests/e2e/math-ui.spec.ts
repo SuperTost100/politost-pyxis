@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import {
   cpSync,
   existsSync,
@@ -16,6 +16,56 @@ import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { attachPythonRecording } from "./python-recording";
+
+/**
+ * How long the app lets a request take, a run and a check alike: `RUN_CEILING_MS` in `src/main/python-runtime.ts`, which covers
+ * the load of the worker (`LOAD_TIMEOUT_MS` in `src/sandbox/host.js` is 60 s) and the work itself. A wait that gives up sooner
+ * fails where the app would still succeed: on the hosted Intel Mac a run was recorded working, with Python still loading 29 s
+ * after it started (`python-start` mark, run 44200146183). Keep it equal to that constant.
+ */
+const APP_REQUEST_CEILING_MS = 90_000;
+
+/**
+ * Waits for the first output of a run for as long as the app allows it, and ends at once, with what the page says, when the
+ * run failed in the app's own way (a notice such as the load timeout, or an output that is not the expected one).
+ */
+async function expectFirstOutput(page: Page, expected: string) {
+  const output = page.locator(".px-python pre").first();
+  const notice = page.locator(".px-python p[role=status]");
+  await expect
+    .poll(
+      async () => {
+        // A throw ends the wait at once, which a value that is not the expected one would not.
+        if ((await notice.count()) > 0) throw new Error(`the page says: ${await notice.first().innerText()}`);
+        if ((await output.count()) === 0) return "waiting";
+        const text = await output.innerText();
+        if (text !== "" && text !== expected) throw new Error(`unexpected output: ${text}`);
+        return text;
+      },
+      { timeout: APP_REQUEST_CEILING_MS, intervals: [250, 500, 1000] },
+    )
+    .toBe(expected);
+}
+
+/**
+ * Waits for the failed badge of a check, for as long as the app lets a check take, and ends at once when the page shows a
+ * badge of another kind (the check was verified, or could not be made) instead of the one the test is about.
+ */
+async function expectFailedBadge(page: Page) {
+  const failed = page.locator(".px-check-badge.is-failed");
+  const other = page.locator(".px-check-badge:not(.is-failed)");
+  await expect
+    .poll(
+      async () => {
+        if ((await failed.count()) > 0) return "failed";
+        if ((await other.count()) > 0) throw new Error(`the page shows another badge: ${await other.first().innerText()}`);
+        return "waiting";
+      },
+      { timeout: APP_REQUEST_CEILING_MS, intervals: [250, 500, 1000] },
+    )
+    .toBe("failed");
+  await expect(failed.first()).toBeVisible();
+}
 
 async function launch(reply?: string, extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-ui-"));
@@ -40,8 +90,10 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
     !existsSync(".tmp/pyodide/pyodide.js"),
     "Requires the pinned Pyodide runtime fixture in .tmp/pyodide.",
   );
-  // Four Python runs, one per language and theme, passed 90 s on the hosted Intel Mac.
-  test.setTimeout(180000);
+  // Four runs, each with its own cold load of Python, and the check behind the badge, which loads its own worker. Each is
+  // allowed twice the 30 s measured on the hosted Intel Mac (the 60 s the app gives a load): 5 x 60 s, with 60 s for the launch,
+  // the page changes and the screenshots. A slow run that works finishes or reports the page's reason before this ends.
+  test.setTimeout(360000);
   const step = "La derivata è $x$.";
   const reply = `${step}\n\n\`\`\`check\n${JSON.stringify({ kind: "derivative", expr: "x**2*sin(x)", claimed: "x", step })}\n\`\`\``;
   const { app, page, userData } = await launch(reply);
@@ -76,9 +128,7 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
       if (language === "it")
         await page.getByRole("button", { name: /Esegui|Run/ }).click();
       else await code.press("ControlOrMeta+Enter");
-      await expect(page.locator(".px-python pre").first()).toHaveText("42\n", {
-        timeout: 30000,
-      });
+      await expectFirstOutput(page, "42\n");
       await expect(page.locator(".px-python pre").last()).toContainText(
         "example error",
       );
@@ -94,9 +144,7 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
     await page.evaluate((chatId) => {
       window.location.hash = `/ask/${chatId}`;
     }, result.chatId);
-    await expect(page.locator(".px-check-badge.is-failed")).toBeVisible({
-      timeout: 30000,
-    });
+    await expectFailedBadge(page);
     await page.locator(".px-check-badge.is-failed").focus();
     await expect(page.locator(".px-check-badge.is-failed")).toBeFocused();
     await expectNoAxeViolations(page);
@@ -115,30 +163,35 @@ test("Ctrl+Enter pressed before the Python page knows Python is there runs the c
     !existsSync(".tmp/pyodide/pyodide.js"),
     "Requires the pinned Pyodide runtime fixture in .tmp/pyodide.",
   );
-  test.setTimeout(120000);
-  // The page reads which packs are there, and the key is pressed while that read is held back.
-  const { app, page, userData } = await launch(undefined, { PYXIS_E2E_READ_DELAY: "tools.runtime=3000" });
+  // The launch (30 s), one cold load and run at twice the 30 s measured on the hosted Intel Mac (60 s), and room (60 s).
+  test.setTimeout(150000);
+  // The page reads which packs are there, and the answer to that read is held until the test has sent the key.
+  const hold = mkdtempSync(join(tmpdir(), "pyxis-python-hold-"));
+  const release = join(hold, "release");
+  const { app, page, userData } = await launch(undefined, { PYXIS_E2E_READ_DELAY: `tools.runtime=until:${release}` });
   try {
     await page.evaluate(() => {
       window.location.hash = "/tools/python";
     });
     const code = page.getByRole("textbox", { name: /Codice Python|Python code/ });
     await code.fill("print('42')");
-    // The key is sent in the same task that checks Run is still disabled, which it is until the read has returned, so the
-    // test cannot pass because the read came back first on a slow runner.
+    // Run is disabled until the read has returned, and the read does not return before the file below exists, so the key
+    // is sent to a page that does not know yet whether Python is there, however slow the runner is.
     await page.evaluate(() => {
       const run = [...document.querySelectorAll("button")].find((button) => /^(Esegui|Run)$/.test(button.getAttribute("aria-label") ?? button.textContent?.trim() ?? ""));
       if (!run) throw new Error("no Run button");
       if (!run.disabled) throw new Error("the read of the Python pack had already returned");
       document.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }));
     });
-    await expect(page.locator(".px-python pre").first()).toHaveText("42\n", { timeout: 60000 });
+    writeFileSync(release, "");
+    await expectFirstOutput(page, "42\n");
   } catch (error) {
     await attachPythonRecording(app);
     throw error;
   } finally {
     await app.close();
     removeTestFolder(userData);
+    removeTestFolder(hold);
   }
 });
 
@@ -281,12 +334,14 @@ test("MATH-02 ASK-05 live Solver verification and attached drawing vision", asyn
     await expect(attachment).toBeVisible();
     const drawingPath = join(tmpdir(), (await attachment.innerText()).trim());
     const vision = (await page.evaluate(
-      (path) =>
-        window.pyxis.invoke("chats.ask", {
+      async (path) => {
+        const file = await window.pyxis.invoke("chats.attach", { path });
+        return window.pyxis.invoke("chats.ask", {
           text: "Name the geometric shape in this drawing. One sentence.",
-          files: [path],
+          attachments: [file.id],
           allowGeneral: true,
-        }),
+        });
+      },
       drawingPath,
     )) as { message: { body: string; modelId: string } };
     expect(vision.message.body).toMatch(/triang/i);

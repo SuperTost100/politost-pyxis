@@ -20,7 +20,6 @@ export function findAntigravity(
     ...(env.PATH ?? env.Path ?? "").split(delimiter).filter(Boolean),
     join(home, ".local", "bin"),
     join(home, ".bun", "bin"),
-    join(home, ".cursor", "bin"),
     join(home, ".npm-global", "bin"),
     ...(platform === "win32" ? [] : ["/opt/homebrew/bin", "/usr/local/bin"]),
     ...installDirs(platform, env, home),

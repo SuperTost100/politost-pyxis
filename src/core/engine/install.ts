@@ -39,7 +39,7 @@ function spawnArgs(
 }
 
 /**
- * Folders the installers write to. Codex, Cursor and Antigravity add theirs to the user PATH on Windows, but a process
+ * Folders the installers write to. Codex and Antigravity add theirs to the user PATH on Windows, but a process
  * that is already running never sees that change, so core adds them itself. On macOS and Linux they all use
  * `~/.local/bin`, which CLI Funnel already searches.
  */
@@ -54,7 +54,6 @@ export function installDirs(
   return [
     join(home, ".local", "bin"),
     join(local, "Programs", "OpenAI", "Codex", "bin"),
-    join(local, "cursor-agent"),
     join(local, "agy", "bin"),
   ];
 }

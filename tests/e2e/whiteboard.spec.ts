@@ -532,6 +532,45 @@ test("the board fills its window at every size, and a drawing is neither cut nor
   }
 });
 
+test("the graph is never laid out taller than its window while it opens", async () => {
+  test.setTimeout(120000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-graph-first-frame-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    // Every frame of a page that is loading records where the stage ends. A frame before the plot has been measured shows
+    // in `ends`, which the settled layout would hide.
+    await page.addInitScript(() => {
+      const ends: number[] = [];
+      Object.assign(window, { stageEnds: ends });
+      const sample = () => {
+        const stage = document.querySelector(".focus-main.is-stage");
+        if (stage) ends.push(stage.getBoundingClientRect().bottom);
+        requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    });
+    for (const size of SIZES) {
+      await page.setViewportSize(size);
+      await page.evaluate(() => {
+        location.hash = "/tools/graph";
+      });
+      await page.reload();
+      await expect(page.locator(".px-graph")).toBeVisible();
+      // A few frames with the graph on screen, counted and not timed.
+      await expect.poll(() => page.evaluate(() => (window as unknown as { stageEnds: number[] }).stageEnds.length)).toBeGreaterThan(5);
+      const ends = await page.evaluate(() => (window as unknown as { stageEnds: number[] }).stageEnds);
+      expect(Math.max(...ends), `graph ${size.width}x${size.height}: the stage ends inside the window in every frame`).toBeLessThanOrEqual(size.height);
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("the graph and Python fill their window at every size", async () => {
   test.setTimeout(120000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-tools-size-"));

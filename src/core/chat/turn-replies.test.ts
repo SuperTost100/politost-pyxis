@@ -6,9 +6,6 @@ import { importSmartbook } from "../sources/smartbook";
 import { forgetModels, rememberModels } from "../engine/efforts";
 import type { GenerateInput } from "../engine/generate";
 import type { EngineResult } from "../engine/funnel";
-import { clearBench } from "../engine/bench";
-import { rememberReady, selectionFor } from "../engine/selection";
-import { solverChecks } from "./checks";
 import {
   askTurn,
   readChat,
@@ -101,7 +98,7 @@ describe("strongest model", () => {
       run,
     });
     expect(seen).toEqual([
-      { model: "claude-sonnet-5", effort: "low" },
+      { model: "claude-sonnet-5", effort: "medium" },
       { model: "claude-opus-5", effort: "high" },
     ]);
     expect(strong.message?.modelId).toBe("claude-opus-5");
@@ -444,7 +441,7 @@ describe("math check after the reply", () => {
     expect(check.started()).toBe(0);
   });
 
-  it("runs no separate check for a reply that only names maths, and none on Cursor Agent", async () => {
+  it("runs no separate check for a reply that only names maths", async () => {
     const db = chatDb();
     const check = heldCheck();
     const names = await askTurn(db, {
@@ -458,14 +455,7 @@ describe("math check after the reply", () => {
     expect(solved.message?.checking).toBe(true);
     check.release();
     await settleChecks();
-    const cursor = openDatabase(":memory:");
-    cursor
-      .prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)")
-      .run(JSON.stringify({ provider: "agent", model: "cursor-grok-4.5" }));
-    const onCursor = await askTurn(cursor, { text: "Deriva x^2 sin x", allowGeneral: true, run: check.run });
-    expect(onCursor.message?.checking).toBe(false);
     expect(check.started()).toBe(1);
-    cursor.close();
   });
 
   it("checks a worked solution that ends with a practice question: the kind of reply is not read from its last character", async () => {
@@ -497,34 +487,6 @@ describe("math check after the reply", () => {
     expect(result.message).toMatchObject({ body: step, checking: false });
     expect(readChat(db, result.chatId).at(-1)).toMatchObject({ body: step });
     db.close();
-  });
-
-  it("applies the no-Cursor rule to the tool that runs each attempt, so a fallback to Cursor skips the check", async () => {
-    rememberReady([
-      { id: "claude", kind: "cli", effort: true, models: [{ id: "claude-haiku-5-5", efforts: [] }] },
-      { id: "agent", kind: "cli", effort: true, models: [{ id: "cursor-grok-4.5", efforts: [] }] },
-    ]);
-    const db = openDatabase(":memory:");
-    db.prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)").run(
-      JSON.stringify({ provider: "claude", model: "claude-haiku-5-5", auto: true }),
-    );
-    const providers: string[] = [];
-    try {
-      const checks = await solverChecks(step, {
-        selection: selectionFor(db, "chat"),
-        run: async (input) => {
-          providers.push(input.selection.provider);
-          throw Object.assign(new Error("usage limit"), { code: "cli-failed", limit: { kind: "rate", detail: "usage limit" } });
-        },
-      });
-      expect(checks).toEqual([]);
-      // Claude was asked and was out of requests; the attempt that would have gone to Cursor made no call.
-      expect(providers).toEqual(["claude"]);
-    } finally {
-      rememberReady([]);
-      clearBench();
-      db.close();
-    }
   });
 
   it("Stop in the chat stops a running check, and the reply stays without badges", async () => {

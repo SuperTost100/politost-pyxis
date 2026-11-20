@@ -290,9 +290,9 @@ describe("a tool that is out of requests", () => {
 
   it("waits 30 minutes when the tool names no reset time, or as long as it asked", () => {
     vi.useFakeTimers({ now: at });
-    benchEngine("agent", "limit");
-    expect(limitedUntil("agent")).toBe(at + DEFAULT_LIMIT_MS);
-    expect(limitIsGuess("agent")).toBe(true);
+    benchEngine("antigravity", "limit");
+    expect(limitedUntil("antigravity")).toBe(at + DEFAULT_LIMIT_MS);
+    expect(limitIsGuess("antigravity")).toBe(true);
     benchEngine("openai-api", "limit", { retryAfterMs: 90_000 });
     expect(limitedUntil("openai-api")).toBe(at + 90_000);
     expect(limitIsGuess("openai-api")).toBe(false);
@@ -423,9 +423,9 @@ describe("a tool that is out of requests", () => {
     const db = openDatabase(":memory:");
     const handlers = engineHandlers(db, () => undefined);
     useFunnel();
-    benchEngine("agent", "limit");
-    await handlers.limitChanged("agent");
-    expect(limitedUntil("agent")).toBe(at + DEFAULT_LIMIT_MS);
+    benchEngine("antigravity", "limit");
+    await handlers.limitChanged("antigravity");
+    expect(limitedUntil("antigravity")).toBe(at + DEFAULT_LIMIT_MS);
     db.close();
   });
 });

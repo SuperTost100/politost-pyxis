@@ -43,13 +43,12 @@ type Engine = RequestOutput<"engines.overview">[number];
 
 /**
  * The AI tools setup offers, named after the account the student has rather than the program Pyxis runs (`TOOL_NAMES`,
- * the same names as in Settings): Codex is ChatGPT, Antigravity is Gemini, Cursor Agent is Cursor.
+ * the same names as in Settings): Codex is ChatGPT and Antigravity is Gemini.
  */
 const tools = [
   { engine: "claude", name: TOOL_NAMES.claude!, copy: "claude" },
   { engine: "codex", name: TOOL_NAMES.codex!, copy: "chatgpt" },
   { engine: "antigravity", name: TOOL_NAMES.antigravity!, copy: "gemini" },
-  { engine: "agent", name: TOOL_NAMES.agent!, copy: "cursor" },
 ] as const satisfies ReadonlyArray<{
   engine: InstallableProvider;
   name: string;
@@ -409,7 +408,7 @@ function ToolCard({
             <p>{t(`onboarding.ai.tools.${tool.copy}`)}</p>
             {tool.copy === "gemini" ? (
               <p className="px-tool-free">
-                {t("onboarding.ai.tools.geminiFree")}
+                {t("onboarding.ai.tools.geminiOffers")}
               </p>
             ) : null}
           </>

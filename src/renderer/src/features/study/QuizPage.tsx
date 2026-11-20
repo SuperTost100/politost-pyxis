@@ -35,7 +35,7 @@ import { StudyLayout } from "./StudyBar";
 import { GapEnd } from "./GapEnd";
 import { GapSentence } from "./GapSentence";
 import { useMenuLock } from "../../app/menu-state";
-import { usePlace } from "../../app/usePlace";
+import { returnTo, usePlace } from "../../app/usePlace";
 import { HandInConfirm, QuizColumn, type HandInFrom } from "./QuizColumn";
 import { OpenAnswer } from "./OpenAnswer";
 import { Button as PxButton } from "../../components/Button";
@@ -479,7 +479,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const topicName = topicId ? plan.data?.topics.find((row) => row.id === topicId)?.title : undefined;
   const back = usePlace({
     name: topicName ? { text: topicName } : null,
-    parent: plan.data && !reviewRoute ? { name: { text: plan.data.title } } : undefined,
+    parent: plan.data ? { name: { text: plan.data.title } } : undefined,
     beforeLeave: () => drafts.flush(),
   });
   // An answer corrected one by one before 0.5 stays as it was checked: core keeps the checked pick at Consegna.
@@ -1242,7 +1242,8 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           : redo
             ? t("mistakes.redoTitle")
             : review
-              ? t("cards.reviewTitle")
+              ? // A review that began from a quiz's mistakes is called by what it does.
+                t(reviewQueue.data?.fromAttemptId ? "results.targeted" : "cards.reviewTitle")
               : diagnostic
                 ? t("quiz.diagnosticTitle")
                 : past
@@ -1574,7 +1575,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
               </Button>
             ) : undefined
           }
-          // Ripasso mirato: a drill on the gap this quiz opened, or this quiz's wrong answers asked again.
+          // "Rivedi gli errori": a drill on the gap this quiz opened, or this quiz's wrong answers asked again.
           review={
             finalResult && hasMistakes
               ? {
@@ -1583,6 +1584,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                 }
               : undefined
           }
+          toExam={() => returnTo(back, `/plans/${planId ?? ""}`, navigate)}
           secondary={
             !finalResult ? (
               gradingStopped ? (

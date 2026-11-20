@@ -6,7 +6,6 @@ import {
   type AnchoredCheck,
 } from "../../shared/math-check";
 import { generate, type GenerateInput } from "../engine/generate";
-import { runTurn } from "../engine/funnel";
 import { systemPrompt } from "../engine/prompts";
 
 /** Store metadata separately from the visible answer, using the existing message body envelope. */
@@ -26,16 +25,6 @@ export function splitChecks(text: string): {
 
 /** What a reply states that can be checked: an equation or an integral. Maths that only names things (a variable, a power) states nothing to check. `\\int` ends at the first character that is not a letter, so `\\int_0^1` counts and `\\intercal` does not. */
 const MATH = /=|∫|\\int(?![A-Za-z])/;
-
-/**
- * Tools a separate check never runs on. Cursor Agent takes 11 to 40 s before its first text, longer than the 20 s a check
- * may take, so its checks were cancelled every time and spent tokens no row recorded.
- * shortcut: no separate check on Cursor Agent; lift it when its first text comes within the check's time.
- */
-export const NO_SEPARATE_CHECK = new Set(["agent"]);
-
-/** Raised, with no call made, when a check's attempt would run on a tool in `NO_SEPARATE_CHECK`. */
-class CheckSkipped extends Error {}
 
 /** True when `solverChecks` would ask a model: an answer with math and no check blocks of its own, not too long. */
 export function needsSolverChecks(body: string): boolean {
@@ -63,14 +52,8 @@ export async function solverChecks(
       });
     });
   try {
-    // The rule holds for the tool that runs each attempt, so a fallback to such a tool skips the check too.
-    const run: typeof runTurn = async (call) => {
-      if (NO_SEPARATE_CHECK.has(call.selection.provider)) throw new CheckSkipped("no separate check on this tool");
-      return (input.run ?? runTurn)(call);
-    };
     const result = await generate({
       ...input,
-      run,
       signal: input.signal
         ? AbortSignal.any([input.signal, AbortSignal.timeout(20000)])
         : AbortSignal.timeout(20000),

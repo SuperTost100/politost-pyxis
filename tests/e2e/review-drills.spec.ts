@@ -339,8 +339,8 @@ test("LES-03 a single gap drill started from the exam page opens its quiz with t
     page.setDefaultTimeout(30000);
     const { planId } = await setupPlan(userData, page, app);
     await goto(page, `/plans/${planId}`);
-    // Ripasso mirato, on the row of a topic with an open gap or among the open topic's steps.
-    const fill = page.getByRole("button", { name: /^Ripasso mirato/ });
+    // Rivedi gli errori, on the row of a topic with an open gap or among the open topic's steps.
+    const fill = page.getByRole("button", { name: /^Rivedi gli errori/ });
     await expect(fill.first()).toBeVisible();
     await fill.first().click();
     // The drill is built by its job; the page then opens the quiz of that one drill, not a Review.
@@ -380,7 +380,7 @@ test("a start that fails late does not clear the drill started after it, nor sho
     page.setDefaultTimeout(30000);
     const { planId } = await setupPlan(userData, page, app);
     await goto(page, `/plans/${planId}`);
-    const fill = page.getByRole("button", { name: /^Ripasso mirato/ });
+    const fill = page.getByRole("button", { name: /^Rivedi gli errori/ });
     await expect(fill).toHaveCount(2);
     writeFileSync(loseStart, "");
     writeFileSync(loseRead, "");
@@ -422,7 +422,7 @@ test("a gap drill opened from the path is requested once: Back from its quiz doe
     expect(drills()).toBe(1);
     await page.evaluate(() => window.history.back());
     await expect(page).toHaveURL(/#\/plans\/[^/?]+$/);
-    await expect(page.getByRole("button", { name: /^Ripasso mirato/ }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Rivedi gli errori/ }).first()).toBeVisible();
     // Give a wrongly repeated request time to show itself. A request that is not repeated has no signal to wait for.
     await page.waitForTimeout(1500);
     await expect(page).toHaveURL(/#\/plans\/[^/?]+$/);
@@ -452,7 +452,7 @@ test("a gap drill that gets ready while another page is opening does not open th
     page.setDefaultTimeout(30000);
     const { planId } = await setupPlan(userData, page, app);
     await goto(page, `/plans/${planId}`);
-    await page.getByRole("button", { name: /^Ripasso mirato/ }).first().click();
+    await page.getByRole("button", { name: /^Rivedi gli errori/ }).first().click();
     const preparing = page.getByText("Preparo il ripasso");
     await expect(preparing).toBeVisible();
     // Mappe's code has not loaded yet, and the test holds it back: going there stays under way, with the exam page still
@@ -526,7 +526,7 @@ test("a gap drill whose read fails says so and offers to read it again, instead 
     const page = await app.firstWindow();
     page.setDefaultTimeout(30000);
     await goto(page, `/plans/${planId}`);
-    const fill = page.getByRole("button", { name: /^Ripasso mirato/ });
+    const fill = page.getByRole("button", { name: /^Rivedi gli errori/ });
     await fill.first().click();
     await expect(fill.first()).toBeDisabled();
     // The job has written its explanation and waits for the questions, so it does not look at the gaps again until released.

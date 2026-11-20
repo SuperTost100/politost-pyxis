@@ -187,7 +187,7 @@ describe("a recovery path runs the variant too", () => {
 
   it("keeps the base model and the effort flag for a level the tool does not list as a model", () => {
     xhighStrong();
-    expect(selectionOn("antigravity", "chat")).toEqual({ provider: "antigravity", model: "gemini-4-hydrogen", effort: "low" });
+    expect(selectionOn("antigravity", "chat")).toEqual({ provider: "antigravity", model: "gemini-3.8-flash", effort: "low" });
     expect(selectionOn("claude", "plan")).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "high" });
   });
 });
