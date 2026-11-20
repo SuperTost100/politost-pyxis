@@ -1106,8 +1106,9 @@ async function writePartIn(db: Database.Database, input: WritePartInput, session
       signal: input.signal,
       system,
       fresh: retry ? partRetry(whole, problems) : whole,
-      // The session holds the request and the reply the problems are about.
+      // The session holds the request and the reply the problems are about, if the session that got them is the one resumed.
       followUp: retry ? partProblems(problems) : next,
+      continuesLast: retry,
     });
     input.signal?.throwIfAborted();
     const checked = partShape(result.text, {

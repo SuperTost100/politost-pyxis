@@ -1139,7 +1139,7 @@ describe("figures in a part", () => {
 });
 
 /** A tool that keeps what it is told, like Claude Code: it continues the session it is given and names a new one otherwise. */
-function toolRun(...replies: Array<unknown | string>) {
+function toolRun(...replies: Array<unknown | string | { api: string }>) {
   type Call = {
     prompt: string;
     followUp?: string;
@@ -1169,6 +1169,9 @@ function toolRun(...replies: Array<unknown | string>) {
     }
     const next = replies[Math.min(at, replies.length - 1)];
     if (next instanceof Error) throw next;
+    // `{ api: text }` is an engine that keeps no session answering instead (an API provider after a fallback).
+    if (typeof next === "object" && next !== null && "api" in next)
+      return { text: (next as { api: string }).api, provider: "anthropic-api", model: "test-model", inputTokens: 1 };
     const held = input.conversation?.session;
     // A call outside a conversation is not kept by the tool, so it names no session of ours.
     const id = !input.conversation ? "" : held ? held.id : `tool-session-${(opened += 1)}`;
@@ -1185,7 +1188,7 @@ function toolRun(...replies: Array<unknown | string>) {
 describe("a lesson in one tool session", () => {
   const outlineOf = reply(["Uno", ["P1", "P2"]], ["Due", ["P3", "P4"]], ["Tre", ["P5"]], ["Quattro", ["P6"]]);
   /** The outline planned in a call of its own, then each part written in the topic's session. */
-  async function lesson(...partReplies: Array<string | Error>) {
+  async function lesson(...partReplies: Array<string | Error | { api: string }>) {
     const db = workspace(Array(6).fill(4_000));
     db.exec("UPDATE passages SET text = 'MARK-' || id || ' ' || text");
     const tool = toolRun(outlineOf, ...partReplies);
@@ -1373,6 +1376,37 @@ describe("a lesson in one tool session", () => {
     expect(call.followUp).not.toContain("Passo 1 primo");
     // And the session is kept at that state plus part 2: the next part asks for its place and material only.
     expect(session(db)[0]!.in_step).toBe(1);
+    db.close();
+  });
+
+  it("sends the whole request with the problems when an engine without a session answered the first ask, and starts a session that holds the part", async () => {
+    // Part 1 opens the session. Part 2's first ask is answered by an API provider and rejected; the retry goes to the tool.
+    const { db, tool, write } = await lesson(partText("1"), { api: "Troppo poco." }, partText("2"));
+    await write(1);
+    await write(2);
+    const retry = tool.calls[3]!;
+    // The stored session never saw part 2's request or the rejected reply, so it is not resumed with only the problems.
+    expect(retry.session).toBeNull();
+    expect(retry.prompt).toContain("Part 2 of 4.");
+    expect(retry.prompt).toContain("Problems with your previous reply:");
+    // The new session got the whole request and wrote the part; the first, left behind, is no longer the open one.
+    expect(db.prepare("SELECT session_id, ended_reason, in_step FROM tool_sessions WHERE owner = 'lesson:t' ORDER BY opened_at, rowid").all()).toEqual([
+      { session_id: "tool-session-1", ended_reason: "gone", in_step: 0 },
+      { session_id: "tool-session-2", ended_reason: null, in_step: 1 },
+    ]);
+    db.close();
+  });
+
+  it("leaves the session out of step when an engine without a session wrote the part", async () => {
+    const { db, tool, write } = await lesson(partText("1"), { api: partText("2") }, partText("3"));
+    await write(1);
+    await write(2);
+    // The stored session did not write part 2, so it is not marked as holding it.
+    expect(session(db)).toEqual([{ session_id: "tool-session-1", in_step: 0, ended_at: null }]);
+    await write(3);
+    // And part 3 is asked with what the lesson holds, part 2 included.
+    expect(tool.calls[3]!.followUp).toContain("Earlier in this conversation you wrote parts of this lesson.");
+    expect(tool.calls[3]!.followUp).toContain("Part 2");
     db.close();
   });
 

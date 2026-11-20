@@ -408,6 +408,9 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
   void chosenFor;
   // The prompt for a call that starts the conversation, or runs outside one, on the engine that answers.
   const whole = () => input.promptFor?.(selection.provider) ?? input.prompt;
+  // The pictures of this selection, resolved once: the request and every repair of it carry the same ones, even when the
+  // caller decides them by the engine (`attachmentsFor`).
+  const attachments = input.attachmentsFor ? input.attachmentsFor(selection) : input.attachments;
   let result = await run({
     selection,
     // Read only when the engine sends a prompt: a chat turn that resumes a session sends its follow-up instead.
@@ -417,7 +420,7 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
     system: input.system,
     responseSchema,
     signal: input.signal,
-    attachments: input.attachmentsFor ? input.attachmentsFor(selection) : input.attachments,
+    attachments,
     onDelta: input.onDelta,
     conversation:
       input.conversation && input.followUpFor
@@ -440,11 +443,13 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
         ?.message ??
       result.text;
     // A call outside a conversation is not saved by the tool, so it cannot be continued: the repair sends the whole
-    // prompt again. A call that is part of a conversation continues the session it ran in, which holds the prompt.
+    // prompt again. A call that is part of a conversation continues the session that answered it, which holds the prompt
+    // and the invalid reply. One answered by an engine that keeps no session (an API provider, a local model) left no such
+    // session, and the one the conversation stored never saw this request: the repair starts over with the whole prompt.
     const session = input.conversation
       ? result.sessionId && result.cwd
         ? { provider: result.provider, id: result.sessionId, cwd: result.cwd }
-        : input.conversation.session
+        : null
       : undefined;
     result = await run({
       selection,
@@ -453,7 +458,7 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
       responseSchema,
       signal: input.signal,
       // A repair of a reply about a picture still needs the picture.
-      attachments: input.attachments,
+      attachments,
       conversation: input.conversation
         ? {
             ...input.conversation,

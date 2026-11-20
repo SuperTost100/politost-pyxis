@@ -324,6 +324,54 @@ describe("generate", () => {
     expect(seen[1]!.prompt).toContain("whole outline request");
   });
 
+  it("repairs a structured answer inside a conversation with the whole prompt when an engine that keeps no session answered it", async () => {
+    const seen: Array<{ prompt: string; followUp?: string; session?: unknown }> = [];
+    const output = await generate({
+      selection,
+      prompt: "whole outline request",
+      followUpFor: () => "outline request",
+      schema: z.object({ colour: z.string() }),
+      // The conversation holds a session that never saw this request: an API provider answered the first call.
+      conversation: { key: "lesson:t1", followUp: "", session: { provider: "claude", id: "stored", cwd: "/scratch" }, cliOnly: true },
+      run: async (input) => {
+        seen.push({ prompt: input.prompt, followUp: input.conversation?.followUp, session: input.conversation?.session });
+        return seen.length === 1
+          ? result({ text: "blue", structuredError: "not json", provider: "anthropic-api" })
+          : result({ structured: { colour: "blue" }, text: '{"colour":"blue"}' });
+      },
+    });
+    expect(output.data).toEqual({ colour: "blue" });
+    // The stored session is not resumed with only the error: it never received the request or the invalid reply.
+    expect(seen[1]!.session).toBeNull();
+    expect(seen[1]!.prompt).toContain("whole outline request");
+    expect(seen[1]!.prompt).toContain("not json");
+  });
+
+  it("gives a repair the pictures the first call carried, when the caller decides them by the engine", async () => {
+    const picture = { type: "image" as const, mediaType: "image/png" as const, data: "aGk=" };
+    const decided: string[] = [];
+    const attachments: unknown[] = [];
+    const output = await generate({
+      selection,
+      prompt: "read the board",
+      schema: z.object({ text: z.string() }),
+      attachmentsFor: (engine) => {
+        decided.push(engine.provider);
+        return [picture];
+      },
+      run: async (input) => {
+        attachments.push(input.attachments);
+        return attachments.length === 1
+          ? result({ text: "not json", structuredError: "bad" })
+          : result({ structured: { text: "x^2" }, text: '{"text":"x^2"}' });
+      },
+    });
+    expect(output.data).toEqual({ text: "x^2" });
+    // Decided once for the engine, and the repair carries the same set.
+    expect(decided).toEqual(["claude"]);
+    expect(attachments).toEqual([[picture], [picture]]);
+  });
+
   it("stops after two repair calls", async () => {
     let calls = 0;
     await expect(

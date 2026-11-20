@@ -18,6 +18,12 @@ export type SessionCall = Omit<GenerateInput, "prompt" | "promptFor" | "followUp
   fresh: string;
   /** The message for a session that holds what came before: only what is new. */
   followUp: string;
+  /**
+   * `followUp` is about the previous call of this scope (its problems, its reply), so it only makes sense in the session
+   * that received that call's request and reply. When that call was answered by an engine that keeps no session (an API
+   * provider, a local model), or the session was lost, the call goes to a new session with `fresh` instead.
+   */
+  continuesLast?: boolean;
 };
 
 export type SessionHandle = {
@@ -71,6 +77,8 @@ export async function withSession<T>(db: Database.Database, owner: string, body:
     const state = before?.syncedTo ?? undefined;
     markOutOfStep(db, owner);
     let answeredBy: string | undefined;
+    /** Whether the last call of this scope was answered in a tool session, which then holds its request and its reply. */
+    let lastHeld: boolean | undefined;
     const handle: SessionHandle = {
       inStep: (now, system) =>
         stepped &&
@@ -80,11 +88,15 @@ export async function withSession<T>(db: Database.Database, owner: string, body:
         if (answeredBy) keepSession(db, owner, answeredBy, marker);
       },
       async generate(call) {
-        const { fresh, followUp, ...rest } = call;
+        const { fresh, followUp, continuesLast, ...rest } = call;
         const instructions = contextHash(call.system ?? "");
         const held = currentSession(db, owner);
         // A session opened under other instructions cannot take these: it is left, and a new one starts with `fresh`.
-        const open = held && held.instructions && held.instructions !== instructions ? undefined : held;
+        const other = held && held.instructions && held.instructions !== instructions;
+        // A follow-up about the previous call needs the session that holds that call; if an engine without a session
+        // answered it, the stored one never saw it.
+        const stale = continuesLast === true && lastHeld === false;
+        const open = other || stale ? undefined : held;
         const store = (
           sessionId: string,
           provider: string,
@@ -108,7 +120,7 @@ export async function withSession<T>(db: Database.Database, owner: string, body:
               finished: at.finished,
               syncedTo: null,
             },
-            held && !open ? "instructions" : "gone",
+            other ? "instructions" : "gone",
           );
         let answering: { model: string; effort?: string } = call.selection;
         const result = await generate({
@@ -133,6 +145,7 @@ export async function withSession<T>(db: Database.Database, owner: string, body:
           },
           cache: true,
         });
+        lastHeld = Boolean(result.sessionId && result.cwd);
         if (result.sessionId && result.cwd) {
           answeredBy = result.provider;
           store(result.sessionId, result.provider, result.cwd, {

@@ -268,4 +268,47 @@ describe("a session for work that is not a chat", () => {
     expect(db.prepare("SELECT COUNT(*) FROM tool_sessions WHERE owner = ?").pluck().get(owner)).toBe(0);
     db.close();
   });
+
+  it("sends a follow-up about the previous call to the session that holds it, and to a new one when no session answered", async () => {
+    const db = database();
+    const t = tool();
+    // An engine that keeps no session: no session id comes back.
+    const api = (async () => ({ text: "bad", model: "m", provider: "anthropic-api", inputTokens: 1 })) as never;
+    await withSession(db, "lesson:t1", async (session) => {
+      await session.generate(call(t.run, "whole", "next"));
+      session.keep("v1");
+    });
+    // The first call is answered in the stored session: the follow-up resumes it.
+    await withSession(db, "lesson:t1", async (session) => {
+      await session.generate(call(t.run, "whole", "request"));
+      await session.generate({ ...call(t.run, "whole + problems", "problems only"), continuesLast: true });
+      session.keep("v2");
+    });
+    expect(t.seen.at(-1)).toMatchObject({ session: { id: "s-1" }, followUp: "problems only" });
+    // The first call is answered by an engine without a session: the stored one never saw the request or the reply.
+    await withSession(db, "lesson:t1", async (session) => {
+      await session.generate({ ...call(api, "whole", "request") });
+      await session.generate({ ...call(t.run, "whole + problems", "problems only"), continuesLast: true });
+      // And the session that answered holds the part it produced, not one it did not see.
+    });
+    expect(t.seen.at(-1)).toMatchObject({ session: null, prompt: "whole + problems" });
+    db.close();
+  });
+
+  it("does not mark the session as holding a result an engine without a session produced", async () => {
+    const db = database();
+    const t = tool();
+    const api = (async () => ({ text: "ok", model: "m", provider: "anthropic-api", inputTokens: 1 })) as never;
+    await withSession(db, "lesson:t1", async (session) => {
+      await session.generate(call(t.run, "whole", "next"));
+      session.keep("v1");
+    });
+    await withSession(db, "lesson:t1", async (session) => {
+      await session.generate(call(api, "whole", "next"));
+      session.keep("v2");
+    });
+    // The stored session did not write v2: it is out of step at v1.
+    expect(currentSession(db, "lesson:t1")).toMatchObject({ inStep: false, syncedTo: "v1" });
+    db.close();
+  });
 });
