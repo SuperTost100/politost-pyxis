@@ -97,34 +97,40 @@ function hasProse(latex: string): boolean {
   return /\p{L}{2,}[ \t]+\p{L}{2,}/u.test(latex.replace(TEXT_COMMANDS, "").replace(/\\[A-Za-z]+/g, ""));
 }
 
-/** The prose of a parsed text, as the parser reads it: the source ranges of its text nodes, which code and formulas are not. */
-function proseRanges(node: MdNode): Array<[number, number]> {
-  const ranges: Array<[number, number]> = [];
-  walk(node, (child) => {
-    if (child.type === "text") ranges.push([start(child), end(child)]);
-  });
-  return ranges;
+/** A text node of the parse: its source range, the paragraph, heading or table cell it is in, and what holds that. */
+type Prose = { from: number; to: number; leaf: MdNode | null; container: MdNode | null };
+
+/** The prose of a parsed text, as the parser reads it: its text nodes, which code and formulas are not. */
+function proseOf(node: MdNode): Prose[] {
+  const found: Prose[] = [];
+  const visit = (child: MdNode, leaf: MdNode | null, container: MdNode | null) => {
+    if (child.type === "text") found.push({ from: start(child), to: end(child), leaf, container });
+    const isLeaf = ["paragraph", "heading", "tableCell"].includes(child.type);
+    for (const grandchild of child.children ?? []) visit(grandchild, isLeaf ? child : leaf, isLeaf ? container : child);
+  };
+  visit(node, null, null);
+  return found;
 }
 
 /** What the prose of a text holds that a formula can start or end with: `\(`, `\)`, `\[`, `\]` and dollar signs left as text. */
-type Mark = { kind: "(" | ")" | "[" | "]" | "$"; at: number; width: number };
+type Mark = { kind: "(" | ")" | "[" | "]" | "$"; at: number; width: number; prose: Prose };
 
 /**
- * The marks in the given ranges of `text`. A backslash escapes the next character, so `\$` is no dollar sign here, and
- * the dollar signs are the ones the parser left as text, since it made a formula of every pair.
+ * The marks in the prose of `text`. A backslash escapes the next character, so `\$` is no dollar sign here, and the
+ * dollar signs are the ones the parser left as text, since it made a formula of every pair.
  */
-function marksIn(text: string, ranges: Array<[number, number]>): Mark[] {
+function marksIn(text: string, prose: Prose[]): Mark[] {
   const marks: Mark[] = [];
-  for (const [from, to] of ranges) {
-    for (let i = from; i < to; ) {
+  for (const range of prose) {
+    for (let i = range.from; i < range.to; ) {
       if (text[i] === "\\") {
         const next = text[i + 1];
-        if (next === "(" || next === ")" || next === "[" || next === "]") marks.push({ kind: next, at: i, width: 2 });
+        if (next === "(" || next === ")" || next === "[" || next === "]") marks.push({ kind: next, at: i, width: 2, prose: range });
         i += 2;
       } else if (text[i] === "$") {
         let width = 1;
-        while (text[i + width] === "$" && i + width < to) width += 1;
-        marks.push({ kind: "$", at: i, width });
+        while (text[i + width] === "$" && i + width < range.to) width += 1;
+        marks.push({ kind: "$", at: i, width, prose: range });
         i += width;
       } else i += 1;
     }
@@ -133,10 +139,11 @@ function marksIn(text: string, ranges: Array<[number, number]>): Mark[] {
 }
 
 /**
- * The `\( … \)` and `\[ … \]` that close, and the `\(` and `\[` that never do. An inline one stays in its paragraph; a
- * display one may run over blank lines.
+ * The `\( … \)` and `\[ … \]` that close, and the `\(` and `\[` that never do. An inline pair is in one paragraph,
+ * heading or table cell of the parse, so an unmatched `\(` in a list item does not take the `\)` of the next; a display
+ * one may run over blocks, but not out of the quote, list item or other container it opens in.
  */
-function pairMarks(text: string, marks: Mark[]): { pairs: Array<[Mark, Mark]>; open: Mark[] } {
+function pairMarks(marks: Mark[]): { pairs: Array<[Mark, Mark]>; open: Mark[] } {
   const delimiters = marks.filter((mark) => mark.kind !== "$");
   const pairs: Array<[Mark, Mark]> = [];
   const open: Mark[] = [];
@@ -147,8 +154,9 @@ function pairMarks(text: string, marks: Mark[]): { pairs: Array<[Mark, Mark]>; o
     let j = i + 1;
     while (j < delimiters.length && delimiters[j]!.kind !== closer) j += 1;
     const found = delimiters[j];
-    const separated = found && mark.kind === "(" && /\n[ \t]*\n/.test(text.slice(mark.at, found.at));
-    if (!found || separated) open.push(mark);
+    const together =
+      found && (mark.kind === "(" ? found.prose.leaf === mark.prose.leaf : found.prose.container === mark.prose.container);
+    if (!found || !together) open.push(mark);
     else {
       pairs.push([mark, found]);
       i = j;
@@ -157,39 +165,51 @@ function pairMarks(text: string, marks: Mark[]): { pairs: Array<[Mark, Mark]>; o
   return { pairs, open };
 }
 
+/** A symbol or an operator that only mathematics has in it: what separates `x+1` and `2x` from `e l'area è`. */
+const MATH_SYNTAX = /[=+*/^_\\{}<>-]/;
+
 /**
- * A dollar sign that belongs to a price, not to a formula, though remark-math has paired it with the next one: the
- * formula it made starts with a number and then runs on in words (`$25 and the area is $`, `$5 and $`), or it opens after
- * a number and a space with a space of its own (`25 $ e l'area è $`), or it runs over a line break and closes at the start
- * of the next line, where a `$$` block or another formula begins. The opening dollar sign is escaped, so the closing one opens
- * the formula that follows.
+ * Whether the inline formula `node` that remark-math made is a price paired with the next dollar sign and some prose: it
+ * starts with a number and then runs on in words (`$25 and the area is $`, `$5 and $`), or it opens after a number and a
+ * space with a space of its own and holds words and nothing mathematical (`25 $ e l'area è $`, not `Step 2 $ x+1 $`), or it
+ * runs over a line break and closes at the start of the next line, where a `$$` block or another formula begins.
  */
+function pairsAPrice(text: string, node: MdNode): boolean {
+  const from = start(node);
+  if (node.type !== "inlineMath" || text[from + 1] === "$") return false;
+  const value = node.value ?? "";
+  const startsWithNumber = /^\s*\d/.test(value);
+  const words = /\p{L}{2,}/u.test(value) && !MATH_SYNTAX.test(value);
+  const next = /\n[ \t]*\$$/.test(text.slice(from, end(node)));
+  const afterNumber = /^\s/.test(text.slice(from + 1)) && /\d\s?$/.test(text.slice(Math.max(0, from - 8), from));
+  return (
+    next ||
+    (startsWithNumber && hasProse(value)) ||
+    (startsWithNumber && /\s/.test(value.trim()) && words) ||
+    (afterNumber && words)
+  );
+}
+
+/** Where the formulas that are really prices begin: for the tests of what the repairs may take away. */
+export function priceFormulas(text: string): number[] {
+  const found: number[] = [];
+  walk(parseMarkdown(text), (node) => {
+    if (pairsAPrice(text, node)) found.push(start(node));
+  });
+  return found;
+}
+
+/** The opening dollar sign of each price `pairsAPrice` finds, escaped, so the closing one opens the formula that follows. */
 function priceEdits(text: string, root: MdNode): Edit[] {
   const edits: Edit[] = [];
   walk(root, (node) => {
-    if (node.type !== "inlineMath") return;
-    const from = start(node);
-    if (text[from + 1] === "$") return;
-    const value = node.value ?? "";
-    // A number and then words, with nothing mathematical in them: `5 and `, `25 and the area is `.
-    const words = /^\s*\d/.test(value) && /\s/.test(value.trim()) && /\p{L}{2,}/u.test(value) && !/[=+*/^_\\{}<>-]/.test(value);
-    // Or one that runs over a line break and closes at the start of the next line, where a `$$` block or another formula
-    // begins: `Budget: $5.` and then `$$`.
-    const source = text.slice(from, end(node));
-    const next = /\n[ \t]*\$$/.test(source);
-    const price =
-      next ||
-      (/^\s*\d/.test(value) && hasProse(value)) ||
-      words ||
-      (/^\s/.test(text.slice(from + 1)) && /\d\s?$/.test(text.slice(Math.max(0, from - 8), from)));
-    if (price) edits.push({ from, to: from, text: "\\" });
+    if (pairsAPrice(text, node)) edits.push({ from: start(node), to: start(node), text: "\\" });
   });
   return edits;
 }
 
 /** Whether a range lies in one text node. */
-const inProse = (ranges: Array<[number, number]>, from: number, to: number) =>
-  ranges.some(([a, b]) => a <= from && to <= b);
+const inProse = (prose: Prose[], from: number, to: number) => prose.some((range) => range.from <= from && to <= range.to);
 
 /**
  * What a text needs before the parser reads it, decided from a parse of the text as it is and applied to the ranges the
@@ -198,11 +218,15 @@ const inProse = (ranges: Array<[number, number]>, from: number, to: number) =>
  */
 function convertEdits(text: string): Edit[] {
   const root = parseMarkdown(text);
-  const marks = marksIn(text, proseRanges(root));
-  const code = codeRanges(text);
-  // A pair with a code span inside is not a formula: the span would stop being code.
-  const pairs = pairMarks(text, marks).pairs.filter(
-    ([open, close]) => !code.some(([from, to]) => open.at < to && from < close.at + 2),
+  const marks = marksIn(text, proseOf(root));
+  // A pair with a code span or a formula inside is not one more formula: the span would stop being code and the formula
+  // would be taken in. Repairs add formulas, they never take one away.
+  const taken = codeRanges(text);
+  walk(root, (node) => {
+    if (node.type === "inlineMath" || node.type === "math") taken.push([start(node), end(node)]);
+  });
+  const pairs = pairMarks(marks).pairs.filter(
+    ([open, close]) => !taken.some(([from, to]) => open.at < to && from < close.at + 2),
   );
   const edits: Edit[] = [];
   for (const [open, close] of pairs) {
@@ -223,6 +247,22 @@ function convertEdits(text: string): Edit[] {
   return edits;
 }
 
+/** How many backslashes end `text`. */
+function trailingBackslashes(text: string): number {
+  let n = 0;
+  while (text[text.length - 1 - n] === "\\") n += 1;
+  return n;
+}
+
+/** Whether `latex` has a dollar sign no backslash escapes: KaTeX has no use for one in math mode. */
+function hasBareDollar(latex: string): boolean {
+  for (let i = 0; i < latex.length; i += 1) {
+    if (latex[i] === "\\") i += 1;
+    else if (latex[i] === "$") return true;
+  }
+  return false;
+}
+
 /**
  * A `\$` in a formula is a dollar sign, which KaTeX draws, but remark-math ends the formula at its `$`: `\(25\ \$\)`
  * became `$25\ \$$`, which drew an error. `\char36{}` is the same sign without a `$` in the text (the braces end the
@@ -233,10 +273,20 @@ function convertEdits(text: string): Edit[] {
 function dollarEdits(text: string, all = false): Edit[] {
   if (!text.includes("\\$")) return [];
   const code = codeRanges(text);
+  const formulas: MdNode[] = [];
+  walk(parseMarkdown(text), (node) => {
+    if (node.type === "inlineMath" || node.type === "math") formulas.push(node);
+  });
   const found: number[] = [];
   for (let i = 0; i < text.length - 1; i += 1) {
     if (text[i] !== "\\") continue;
-    if (text[i + 1] === "$" && !code.some(([from, to]) => from <= i && i < to)) found.push(i);
+    if (text[i + 1] === "$" && !code.some(([from, to]) => from <= i && i < to)) {
+      // One that already sits in a formula the parser read, and that KaTeX draws, is left as it is: a block, or a formula
+      // whose `\$` has no bare dollar sign by it. Only one the parser took for the end of a formula is in question.
+      const inside = formulas.find((node) => start(node) <= i && i < end(node));
+      const broken = inside && inside.type === "inlineMath" && (end(inside) === i + 2 || hasBareDollar(inside.value ?? ""));
+      if (!inside || broken) found.push(i);
+    }
     i += 1;
   }
   const neutral = "\\char36{}";
@@ -247,13 +297,13 @@ function dollarEdits(text: string, all = false): Edit[] {
     at = i + 2;
   }
   swapped += text.slice(at);
-  const formulas: Array<[number, number]> = [];
+  const meant: Array<[number, number]> = [];
   walk(parseMarkdown(swapped), (node) => {
-    if (node.type === "inlineMath" || node.type === "math") formulas.push([start(node), end(node)]);
+    if (node.type === "inlineMath" || node.type === "math") meant.push([start(node), end(node)]);
   });
   return found.flatMap((i, k) => {
     const where = i + k * (neutral.length - 2);
-    return all || formulas.some(([from, to]) => from <= where && where + neutral.length <= to)
+    return all || meant.some(([from, to]) => from <= where && where + neutral.length <= to)
       ? [{ from: i, to: i + 2, text: neutral }]
       : [];
   });
@@ -283,7 +333,7 @@ function prepared(input: string, unfinished = false): Rewritten {
  */
 function rewriteRest(text: string): string {
   const root = parseMarkdown(text);
-  const prose = proseRanges(root);
+  const prose = proseOf(root);
   const edits: Edit[] = [];
   for (const match of text.matchAll(/^([ \t]*)(\\(?:ce|pu)\{[^$\n]*\})[ \t]*$/gm)) {
     const from = match.index + match[1]!.length;
@@ -331,56 +381,69 @@ function boldInFormulas(text: string): string {
 }
 
 /**
+ * A model that writes a LaTeX command with one backslash in a JSON string loses it: `\\times` arrives as a tab and
+ * `imes`. The prose of the text, as the parser reads it, has them back (`repairLatexEscapes`). Before the delimiters are
+ * converted: the repair reads \( ... \) and \[ ... \] as math, and trimming a formula's edges would drop a line break
+ * that is really the start of `\nu`. Anything that classifies a text, as `holdOpenMath` does, does it on this text.
+ */
+export function repairLatexInProse(source: string): string {
+  return mapOutsideCode(source, (chunk, from) => repairLatexEscapes(chunk, from === 0 || source[from - 1] === "\n"));
+}
+
+/**
  * Turns \\( … \\) and \\[ … \\] into $ / $$ forms for remark-math, and Markdown bold inside a formula into \\mathbf,
  * and repairs what a model's formulas need to be read as formulas (see `prepared` and `rewriteRest`). Code, as the
  * parser reads it, is left as written.
  */
 export function normalizeMathDelimiters(input: string): string {
-  const source = resolveBookRefs(input);
-  // Before the delimiters are converted: the repair reads \( ... \) and \[ ... \] as math, and trimming a formula's edges
-  // would drop a line break that is really the start of `\nu`.
-  const repaired = mapOutsideCode(source, (chunk, from) =>
-    repairLatexEscapes(chunk, from === 0 || source[from - 1] === "\n"),
-  );
-  return boldInFormulas(rewriteRest(prepared(repaired).text));
+  return boldInFormulas(rewriteRest(prepared(repairLatexInProse(resolveBookRefs(input))).text));
 }
 
-/** Whether a line closes a `$$` block opened with `width` dollar signs: only dollar signs, at least as many. */
-const closesFence = (line: string, width: number) => (/^[ \t]*(\$+)[ \t]*$/.exec(line)?.[1]?.length ?? 0) >= width;
+/** Whether a line closes a `$$` block opened with `width` dollar signs: only dollar signs, at least as many, after any quote marks. */
+const closesFence = (line: string, width: number) => (/^[ \t>]*(\$+)[ \t]*$/.exec(line)?.[1]?.length ?? 0) >= width;
 
-/** The first `$$` block of `text` that remark-math reads differently from what its writer meant, as an edit. */
+/** What a line inside the container of `prefix` starts with: a quote mark stays, a list marker becomes the spaces it stands for. */
+const continuation = (prefix: string) => prefix.replace(/[-*+](?=[ \t])|\d+[.)](?=[ \t])/g, (marker) => " ".repeat(marker.length));
+
+/**
+ * The first `$$` block of `text` that remark-math reads differently from what its writer meant, as an edit. The block's
+ * lines are the parser's (`node.value`, without the quote marks and indentation of the container it is in), and a new line
+ * starts with what the container's lines start with.
+ */
 function nextBlockEdit(text: string): Edit | null {
   let found: Edit | null = null;
-  const indentOf = (at: number) => {
-    const before = text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
-    return /^[ \t]*$/.test(before) ? before : "";
-  };
   walk(parseMarkdown(text), (node) => {
     if (found) return false;
     if (node.type !== "math") return;
     const from = start(node);
     const to = end(node);
-    const width = /^\$+/.exec(text.slice(from, to))![0].length;
-    const indent = indentOf(from);
+    const lines = text.slice(from, to).split("\n");
+    const width = /^\$+/.exec(lines[0]!)![0].length;
+    const lineStart = text.lastIndexOf("\n", from - 1) + 1;
+    const lead = text.slice(lineStart, from);
+    const opening = /^(?:[ \t>]|[-*+]|\d+[.)])*$/.test(lead) ? continuation(lead) : "";
     // A line of the block that ends in `$$` after its content never closes the block: it runs on to the next `$$`, or to the
     // end of the text, with every dollar sign after it paired wrongly. Only the first paragraph is looked at.
-    let line = text.indexOf("\n", from);
-    while (!found && line !== -1 && line < to) {
-      const next = text.indexOf("\n", line + 1);
-      const row = text.slice(line + 1, next === -1 || next > to ? to : next).trimEnd();
+    const content = (node.value ?? "").split("\n");
+    let offset = from + lines[0]!.length + 1;
+    for (let k = 0; !found && k < content.length && k + 1 < lines.length; k += 1) {
+      const source = lines[k + 1]!;
+      const row = content[k]!.trimEnd();
       if (!row.trim()) break;
-      const fence = /\$+$/.exec(row)?.[0].length ?? 0;
+      // The first dollar sign of the run is no fence when a backslash escapes it: `\$$` ends a formula in one.
+      const run = /\$+$/.exec(row)?.[0].length ?? 0;
+      const escaped = run > 0 && trailingBackslashes(row.slice(0, row.length - run)) % 2 === 1;
+      const fence = escaped ? run - 1 : run;
       if (fence >= width && row.slice(0, row.length - fence).trim()) {
-        const at = line + 1 + row.length - fence;
-        found = { from: at, to: at, text: `\n${indent}` };
+        const at = offset + source.trimEnd().length - fence;
+        found = { from: at, to: at, text: `\n${/^[ \t>]*/.exec(source)![0]}` };
       }
-      line = next;
+      offset += source.length + 1;
     }
     // Content on the line of the opening `$$` is read as its info string, and the formula's first line is lost. That is
     // a formula only when something closes the block; `$$ is a double dollar sign`, which nothing does, is prose.
-    const lines = text.slice(from, to).split("\n");
     if (!found && node.meta?.trim() && lines.length > 1 && closesFence(lines[lines.length - 1]!, width))
-      found = { from: from + width, to: from + width, text: `\n${indent}` };
+      found = { from: from + width, to: from + width, text: `\n${opening}` };
     return false;
   });
   return found;
@@ -444,7 +507,7 @@ export function holdOpenMath(input: string): string {
   if (leaf.type === "code" || !leaf.position || end(leaf) < text.trimEnd().length) return input;
   const hold = (at: number, display: boolean, size: number) => {
     const lead = input.slice(0, fixed.back(at));
-    const own = /(?:^|\n)[ \t]*$/.test(lead);
+    const own = /(?:^|\n)[ \t>]*$/.test(lead);
     return `${lead}${display && !own ? "\n\n" : ""}[…](pyxis-math:${display ? "display" : "inline"}:${Math.min(size, 120)})`;
   };
   if (leaf.type === "math") {
@@ -455,16 +518,22 @@ export function holdOpenMath(input: string): string {
     return closed ? input : hold(start(leaf), true, source.length - width);
   }
   if (!["paragraph", "heading", "tableCell"].includes(leaf.type)) return input;
-  const prose = proseRanges(leaf);
+  const prose = proseOf(leaf);
   const marks = marksIn(text, prose);
   // A `\(`, a `\[` or a `$$` that nothing closes is a formula being written.
-  const double = [...pairMarks(text, marks).open, ...marks.filter((mark) => mark.kind === "$" && mark.width >= 2)]
+  const double = [...pairMarks(marks).open, ...marks.filter((mark) => mark.kind === "$" && mark.width >= 2)]
     .sort((a, b) => a.at - b.at)
     .at(-1);
   if (double) return hold(double.at, double.kind === "[" || double.kind === "$", text.length - double.at - double.width);
   const single = marks.filter((mark) => mark.kind === "$").at(-1);
   if (single) {
-    const after = text.slice(single.at + 1, end(leaf));
+    // What follows the dollar sign, without the code spans the parser read there: a `+` in `x+y` makes no price a formula.
+    let after = text.slice(single.at + 1, end(leaf));
+    walk(leaf, (node) => {
+      if (node.type !== "inlineCode" || start(node) <= single.at) return;
+      const from = start(node) - single.at - 1;
+      after = after.slice(0, from) + " ".repeat(end(node) - start(node)) + after.slice(from + end(node) - start(node));
+    });
     const formula = /[\\^_={}<>+]/.test(after) || (!/^\s/.test(after) && /^[^\d\s]/.test(after));
     if (formula) return hold(single.at, false, after.length);
   }

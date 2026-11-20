@@ -138,7 +138,10 @@ describe("the text of a reply with a check marker", () => {
   });
 
   it("puts two markers of one paragraph together, and never draws a formula it has cut", () => {
-    const html = render(markdownSource("$a = 1$ e $b = 2$ e $c = ", undefined, true, ["$a = 1$", "$b = 2$"]), false);
+    const source = markdownSource("$a = 1$ e $b = 2$ e $c = ", undefined, true, ["$a = 1$", "$b = 2$"]);
+    // Both markers, in the one paragraph, after the placeholder of the formula being written.
+    expect(source).toContain("[…](pyxis-math:inline:4)\n\n[check](mathcheck:0) [check](mathcheck:1)");
+    const html = render(source, false);
     expect(html).not.toContain("katex-error");
     expect(visibleText(html)).not.toContain("$");
   });

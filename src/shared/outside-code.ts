@@ -3,11 +3,10 @@ import { end, parseMarkdown, start, walk } from "./markdown-tree";
 /**
  * Where the code of a Markdown text is, as the parser reads it: fenced and indented blocks, with the line end after
  * them, and code spans. A fence inside a longer one, a backtick inside a formula or a fence after a line with a dollar
- * sign are what the parser says they are, not what a scan for backticks would guess.
+ * sign, and an indented block after a quote or list marker, are what the parser says they are, not what a scan for
+ * backticks or for indented lines would guess. Every text is parsed: no line-based shortcut can tell where code is.
  */
 export function codeRanges(input: string): Array<[number, number]> {
-  // Most texts have no code, and the parser is not asked about them.
-  if (!/[`~]|(?:^|\n)(?: {4}|\t)/.test(input)) return [];
   const ranges: Array<[number, number]> = [];
   walk(parseMarkdown(input), (node) => {
     if (node.type === "inlineCode") ranges.push([start(node), end(node)]);

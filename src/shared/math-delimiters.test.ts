@@ -165,7 +165,8 @@ describe("a dollar sign written inside a formula", () => {
   });
 
   it("in a display formula", () => {
-    expect(normalizeMathDelimiters("$$\nprezzo = 25\\ \\$\n$$")).toBe("$$\nprezzo = 25\\ \\char36{}\n$$");
+    // The block closes at its own `$$` line, and KaTeX draws `\$` there, so it is left as it is.
+    expect(normalizeMathDelimiters("$$\nprezzo = 25\\ \\$\n$$")).toBe("$$\nprezzo = 25\\ \\$\n$$");
   });
 
   it("but not in prose, in code or beside a formula", () => {

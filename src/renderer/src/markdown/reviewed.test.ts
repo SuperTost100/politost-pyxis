@@ -1,12 +1,21 @@
+import katex from "katex";
+import "katex/contrib/mhchem";
 import { describe, expect, it } from "vitest";
-import { holdOpenMath, normalizeMathDelimiters } from "../../../shared/math-delimiters";
-import { parseMarkdown, start, walk } from "../../../shared/markdown-tree";
+import { repairLatexEscapes } from "../../../shared/latex-repair";
+import {
+  displayMathLines,
+  holdOpenMath,
+  normalizeMathDelimiters,
+  priceFormulas,
+  resolveBookRefs,
+} from "../../../shared/math-delimiters";
+import { end, parseMarkdown, start, walk } from "../../../shared/markdown-tree";
 import corpus from "./formula-corpus.json";
 import { drawn, render, undrawn, visibleText } from "./formulaTestKit";
 import { markdownSource } from "./source";
 
 /**
- * The thirteen cases the reviews of #534 found, by reviewer and number, each as the example the review gave. CodeRabbit
+ * The cases the reviews of #534 found (thirteen in the first two rounds, eight in the third), by reviewer and number, each as the example the review gave. CodeRabbit
  * found six and GPT Sol seven more, all of one kind: the text repairs read Markdown by hand (dollar pairing, backticks,
  * fences, indentation) and each review found a construct that scan reads differently from the parser. The repairs now
  * ask the parser, and the two properties at the end hold for every text here and every cut of them.
@@ -131,6 +140,73 @@ describe("GPT Sol 6: a reply that is only an equation", () => {
   });
 });
 
+describe("CodeRabbit round 3, 1: a display formula in a block quote", () => {
+  const quoted = "> $$\n> x + y\n> $$";
+
+  it("is left as written, complete and while it streams", () => {
+    expect(normalizeMathDelimiters(quoted)).toBe(quoted);
+    expect(displayMathLines(quoted)).toBe(quoted);
+    expect(holdOpenMath(quoted)).toBe(quoted);
+    expect(drawn(render(quoted, false, true))).toBe(1);
+    // Still open: a placeholder.
+    expect(holdOpenMath("> $$\n> x +")).toBe("> […](pyxis-math:display:6)");
+  });
+
+  it("is repaired in a quote as at the root, when it shares a line with its fence", () => {
+    expect(displayMathLines("> $$a,\n> b\n> $$")).toBe("> $$\n> a,\n> b\n> $$");
+    expect(displayMathLines("> $$\n> a,\n> b$$")).toBe("> $$\n> a,\n> b\n> $$");
+    expect(displayMathLines("$$\na,\nb$$")).toBe("$$\na,\nb\n$$");
+  });
+});
+
+describe("CodeRabbit round 3, 2: a space-padded formula after a number", () => {
+  it("is a formula; a price before words is not", () => {
+    expect(drawn(render("Step 2 $ x+1 $", false))).toBe(1);
+    expect(normalizeMathDelimiters("Step 2 $ x+1 $")).toBe("Step 2 $ x+1 $");
+    expect(normalizeMathDelimiters("costa 25 $ e l'area è $x$.")).toBe("costa 25 \\$ e l'area è $x$.");
+  });
+});
+
+describe("CodeRabbit round 3, 3: an unmatched \\( in a list item", () => {
+  it("does not take the \\) of the next item", () => {
+    expect(normalizeMathDelimiters("- Note \\(\n- Use \\(x\\)")).toBe("- Note \\(\n- Use $x$");
+  });
+});
+
+describe("CodeRabbit round 3, 4: a price and a code span with an operator in it", () => {
+  it("holds neither, and still holds a formula that is being written", () => {
+    expect(holdOpenMath("It costs $9; use `x+y`")).toBe("It costs $9; use `x+y`");
+    expect(holdOpenMath("It costs $9 +")).toBe("It costs […](pyxis-math:inline:3)");
+  });
+});
+
+describe("CodeRabbit round 3, 5: indented code in a block quote", () => {
+  it("is code, and its book reference stays as written", () => {
+    for (const same of [">     {{formula:1}}", "- item\n\n      {{formula:2}}", "1.     {{formula:3}}\n"]) {
+      expect(resolveBookRefs(same)).toBe(same);
+      expect(markdownSource(same)).toBe(same);
+    }
+    expect(resolveBookRefs("vedi {{formula:1}} qui")).toBe("vedi eq. 1 qui");
+  });
+});
+
+describe("CodeRabbit round 3, 6: a \\times whose backslash arrived as a tab, while it streams", () => {
+  it("is held as the formula it is, and a plain price is not", () => {
+    expect(markdownSource("Vale $5\times 2", undefined, true)).toContain("pyxis-math:inline:");
+    expect(markdownSource("Vale $5\times 2", undefined, true)).not.toContain("imes");
+    expect(markdownSource("Costa $5", undefined, true)).toBe("Costa $5");
+  });
+});
+
+describe("CodeRabbit round 3, 7: two check markers in one paragraph", () => {
+  it("are both there, in the one paragraph", () => {
+    const source = markdownSource("$a = 1$ e $b = 2$ e $c = ", undefined, true, ["$a = 1$", "$b = 2$"]);
+    expect(source).toContain("[check](mathcheck:0) [check](mathcheck:1)");
+    expect(source.match(/mathcheck:/g)).toHaveLength(2);
+    expect(source).toContain("pyxis-math:inline:");
+  });
+});
+
 // GPT Sol 7, the one report for a lesson full of broken formulas, is in formulaFailure.test.ts.
 
 /** Code spans and blocks of a text, as the parser reads them. */
@@ -223,6 +299,99 @@ describe("property (b): a price is never maths or a placeholder, in a complete t
       if (end <= at) expect(held, JSON.stringify(text.slice(0, end))).toBe(false);
       // Nothing of a text without formulas is held at any length; a text with them may hold only the formula being written.
       if (at === 0) expect(held, JSON.stringify(text.slice(0, end))).toBe(false);
+    }
+  });
+});
+
+describe("property (c): a repair only adds formulas, never takes one away", () => {
+  /**
+   * The formulas of `original` that KaTeX draws and the repairs have no reason to change, by content. Not these: a price
+   * the parser paired with the next dollar sign (the one repair that un-maths a formula, by design), a formula with
+   * Markdown bold or a corrupted escape in it (rewritten on purpose), and a `$$` block whose first line the parser took
+   * for an info string.
+   */
+  const draws = new Map<string, boolean>();
+  function formulasOf(original: string): Array<{ value: string; at: number }> {
+    const prices = priceFormulas(original);
+    const found: Array<{ value: string; at: number }> = [];
+    walk(parseMarkdown(original), (node) => {
+      if (node.type !== "inlineMath" && node.type !== "math") return;
+      const value = (node.value ?? "").trim();
+      if (!value || node.meta || value.includes("**") || repairLatexEscapes(value) !== value) return;
+      if (prices.includes(start(node))) return;
+      // Words and nothing mathematical: the parser's pairing of the prose between two formulas, which a repair of the
+      // pairing undoes.
+      if (/\p{L}{2,}/u.test(value) && /\s/.test(value) && !/[=+*/^_\\{}<>-]/.test(value)) return;
+      // A block that is not closed yet is still being written.
+      const lines = original.slice(start(node), end(node)).split("\n");
+      if (node.type === "math" && !(lines.length > 1 && /^[ \t>]*\$+[ \t]*$/.test(lines[lines.length - 1]!))) return;
+      const key = `${node.type}:${value}`;
+      if (!draws.has(key)) {
+        try {
+          katex.renderToString(value, { displayMode: node.type === "math", throwOnError: true, strict: "ignore" });
+          draws.set(key, true);
+        } catch {
+          draws.set(key, false);
+        }
+      }
+      if (draws.get(key)) found.push({ value, at: start(node) });
+    });
+    return found;
+  }
+
+  /** The formulas of `original` missing from `processed`, but those at or after `from` of the original. */
+  function lost(original: string, processed: string, from = Infinity): string[] {
+    const after = new Map<string, number>();
+    walk(parseMarkdown(processed), (node) => {
+      if (node.type !== "inlineMath" && node.type !== "math") return;
+      const value = (node.value ?? "").trim();
+      after.set(value, (after.get(value) ?? 0) + 1);
+    });
+    const missing: string[] = [];
+    for (const { value, at } of formulasOf(original)) {
+      if (at >= from) continue;
+      const left = after.get(value) ?? 0;
+      if (left === 0) missing.push(value);
+      else after.set(value, left - 1);
+    }
+    return missing;
+  }
+
+  const examples = [
+    "> $$\n> x + y\n> $$",
+    "Step 2 $ x+1 $ e $ y $",
+    "- Note \\(\n- Use \\(x\\)",
+    "It costs $9; use `x+y` e $z^2$",
+    "Vale $5\\times 2$ e `$a$`",
+    "- elenco\n\n  > $$\n  > a\n  > $$\n\n- $x$ e \\(y\\)",
+    "Budget $5.\n$$\nx + y\n$$\nPoi $\\ce{H2O}$",
+    "1. Passo $a$\n   $$b$$\n2. Passo \\[c\\]",
+    "| a | $b$ |\n|---|---|\n| \\(c\\) | $d$ |",
+    "Valore $\\text{`x`}$ e $25\\ \\$ + 1$",
+    "$$\n25\\ \\$\n$$\n\ncosta \\(25\\ \\$\\)",
+  ];
+
+  it("holds for the examples, complete", () => {
+    for (const text of examples) expect(lost(text, markdownSource(text)), text).toEqual([]);
+  });
+
+  it("holds for the 71 recorded texts, complete", () => {
+    for (const entry of corpus.texts) {
+      const processed = entry.inline ? normalizeMathDelimiters(entry.text) : markdownSource(entry.text);
+      expect(lost(entry.text, processed), entry.id).toEqual([]);
+    }
+  });
+
+  it("holds for every cut of the examples and the long recorded texts, for the formulas complete in the cut", { timeout: 60_000 }, () => {
+    const longer = corpus.texts.filter((entry) => !entry.inline && entry.text.length > 900).map((entry) => entry.text);
+    for (const text of [...examples, ...longer]) {
+      for (let end = 3; end <= text.length; end += text.length > 900 ? 61 : 1) {
+        const cut = text.slice(0, end);
+        const repaired = repairLatexEscapes(cut);
+        const held = holdOpenMath(repaired).indexOf("[…](pyxis-math");
+        // What the placeholder replaces is the formula being written, not a complete one.
+        expect(lost(cut, markdownSource(cut, undefined, true), held === -1 ? Infinity : held), JSON.stringify(cut)).toEqual([]);
+      }
     }
   });
 });
