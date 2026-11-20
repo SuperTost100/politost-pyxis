@@ -3,6 +3,7 @@ import { randomInt } from "node:crypto";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
+import { atLowEffort } from "../engine/efforts";
 import { generate, type GenerateInput } from "../engine/generate";
 import {
   languageName,
@@ -363,7 +364,8 @@ export async function generateQuiz(
         });
       });
     const result = await generate({
-      selection,
+      // Questions grounded in the passages given and checked against the schema above: thinking only costs time.
+      selection: atLowEffort(selection),
       run,
       signal,
       schema,

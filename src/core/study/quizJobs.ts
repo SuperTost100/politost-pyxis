@@ -3,6 +3,7 @@ import { uuidv7 } from "../../shared/ids";
 import type Database from "better-sqlite3";
 import type { GenerateInput } from "../engine/generate";
 import type { Runner } from "../jobs/runner";
+import { activityOf } from "../jobs/activity";
 import { aboutPlan } from "./jobAbout";
 import {
   generateQuiz,
@@ -37,6 +38,10 @@ export function registerQuizJobs(
       };
     },
     jobClass: "model-cli",
+    // The student pressed Start and waits on the page for the first questions, so the build does not queue behind the
+    // background work that fills the class's slots, a plan being built or the part written ahead of the one being read.
+    // Measured: a quiz asked while those two ran waited 45 seconds before its first call.
+    interactive: true,
     steps: [
       {
         name: "questions",
@@ -169,6 +174,7 @@ export function readQuiz(
     result,
     questions: body.questions.map(withoutAnswer),
     jobId: job?.id,
+    activity: job && (job.state === "running" || job.state === "queued") ? (activityOf(job.id) ?? undefined) : undefined,
     // The quiz screen shows the whole-review progress line for a mixed review's questions.
     review: row.kind === "review" ? true : undefined,
     state:

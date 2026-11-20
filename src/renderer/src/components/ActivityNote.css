@@ -1,0 +1,6 @@
+.px-activity-note {
+  color: var(--ink-muted);
+  font-size: calc(13.5px * var(--text-scale, 1));
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}

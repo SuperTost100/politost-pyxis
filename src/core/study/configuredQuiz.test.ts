@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
+import { forgetModels, rememberModels } from "../engine/efforts";
+import { currentUsageScope } from "../engine/usage";
+import { trackCall } from "../jobs/activity";
 import { createRunner } from "../jobs/runner";
 import {
   enqueueQuiz,
@@ -181,6 +184,41 @@ describe("configured quizzes", () => {
       expect(question.options![question.answer.correct!]).toBe("right");
     db.close();
   });
+  it("starts the build next to background work that fills the model slots, instead of queueing behind it", async () => {
+    const db = fixture();
+    const runner = createRunner(db, () => {});
+    // Two background jobs, a plan being built and the like, hold the two slots of the AI tools.
+    const held = [{ name: "call", label: "call", run: () => new Promise<void>(() => undefined) }];
+    runner.register("background", { jobClass: "model-cli", steps: held });
+    runner.start("background");
+    runner.start("background");
+    registerQuizJobs(db, runner, tfRun!);
+    const started = enqueueQuiz(db, runner, { planId: "plan", topicId: "topic", count: 10, types: ["tf"] });
+    await until(db, started.attemptId, "succeeded");
+    expect(readQuiz(db, started.attemptId).questions).toHaveLength(10);
+    db.close();
+  });
+
+  it("reports what the question writer is doing while a build runs, and nothing after", async () => {
+    const db = fixture();
+    const runner = createRunner(db, () => {});
+    let started: { attemptId: string } | undefined;
+    let seen: unknown;
+    registerQuizJobs(db, runner, async (input) => {
+      await Promise.resolve();
+      const call = trackCall(currentUsageScope()?.jobId);
+      call.event("reasoning.delta");
+      seen = readQuiz(db, started!.attemptId).activity;
+      call.end();
+      return tfRun!(input);
+    });
+    started = enqueueQuiz(db, runner, { planId: "plan", topicId: "topic", count: 10, types: ["tf"] });
+    await until(db, started.attemptId, "succeeded");
+    expect(seen).toMatchObject({ phase: "thinking" });
+    expect(readQuiz(db, started.attemptId).activity).toBeUndefined();
+    db.close();
+  });
+
   it("keeps the attempt of a failed build and fills it on retry", async () => {
     const db = fixture();
     const runner = createRunner(db, () => {});
@@ -458,6 +496,24 @@ it("marks a quiz written without the plan's sources as general knowledge", async
     }),
   );
   expect(readQuiz(db, general.attemptId).general).toBe(true);
+  db.close();
+});
+
+it("writes every batch at the lowest effort the model lists", async () => {
+  rememberModels("claude", [{ id: "model-A", efforts: [{ id: "low" }, { id: "medium" }] }]);
+  const db = fixture();
+  const snapshot = prepareQuiz(db, { planId: "plan", topicId: "topic", count: 10, types: ["tf" as const] });
+  snapshot.selection = { provider: "claude", model: "model-A", effort: "medium" };
+  const efforts: Array<string | undefined> = [];
+  await generateQuiz(snapshot, async (turn) => {
+    efforts.push(turn.selection.effort);
+    return tfRun(turn);
+  });
+  expect(efforts.length).toBeGreaterThan(0);
+  expect(new Set(efforts)).toEqual(new Set(["low"]));
+  // The snapshot keeps the engine as it was chosen, so a retry and the saved quiz record the student's selection.
+  expect(snapshot.selection.effort).toBe("medium");
+  forgetModels();
   db.close();
 });
 

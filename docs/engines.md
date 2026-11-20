@@ -205,6 +205,21 @@ The student's pick lives in the same JSON as the engine:
 
 In Settings, AI tools, under Advanced, each task has an effort picker next to its model. "Automatic" is the default and shows the level it resolves to.
 
+### Calls that only reshape what they are given
+
+The lesson's outline and the batches of a quiz run at the lowest effort their model lists (`atLowEffort()` in `efforts.ts`, called by `planParts()` and `generateQuiz()`), whatever the task's level or the student's pick. Both give code something to check: the outline goes through `checkOutline()` and has a plain fallback, and each batch goes through its schema and the passage ids it was given. The part's text keeps the lesson's level, which is where reasoning shows. The reason is time, measured on Gemini 3.8 Flash through `agy`, on a busy machine (load average 13 to 20) and a 600-character outline asked three ways:
+
+| The same outline call                  | Time to the reply | Output tokens |
+| -------------------------------------- | ----------------- | ------------- |
+| ACP, medium effort (what the app sent) | 45.0 s            | 5,067         |
+| print transport, medium effort         | 47.9 s            | 5,447         |
+| `agy -p` by hand, medium effort        | 25.3 s            | 2,436         |
+| ACP, low effort                        | 7.9 s             | 180           |
+
+`agy` reports 2,372 of the 2,436 tokens of the by-hand call as thinking, so the transport is not where the time goes: the model reasons for half a minute before it writes a split of numbered passages. In the app, an outline took 30.4 s at medium and 6.1 s at low, and the three batches of a ten-question quiz took 25.4, 35.7 and 37.9 s at medium and 9.2, 11.2 and 11.6 s at low. The questions written at low were grounded in their passages and had a right answer on the key. The call that writes a part keeps the lesson's level.
+
+Starting the tool is a small cost next to that. Every call that is not a chat turn or a part of a lesson session starts its own `agy acp`, which answers `initialize` in 0.1 to 1.4 s (the first call of a run is the slow one) and `session/new` about 1 s later; the first token follows 1 to 2 s after that. That is 2.4 s on the first call and 1.0 to 1.4 s on the next ones, for the 3 to 7 calls of a lesson and a quiz, so keeping one process alive across one-shot calls would save a few seconds of several minutes and is not done. No wait for the per-run folder's lock or for the hook self-test showed in these runs: the first call of a job started within 0.1 s of the job.
+
 ## Switching engines on a usage limit
 
 When the engine Pyxis chose for a task hits a usage limit, is signed out (a refused key counts for API providers), is no longer installed or says the student's subscription doesn't include the model, `generate()` asks again on another engine. The replacement is what `planAuto()` would choose for the same task without the failed engine, among the engines the last automatic choice could use: with the student's order that is the next tool of their list. Core then broadcasts `engine.fallback` and the window shows one line saying which engine answered.

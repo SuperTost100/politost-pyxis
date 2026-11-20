@@ -128,6 +128,19 @@ export function resolveEffort(
   return listed ? nearestEffort(wanted, listed) : wanted;
 }
 
+/**
+ * The selection at the lowest effort its model lists, for a call that reshapes what it is given and whose reply code
+ * checks (the lesson's outline, a batch of quiz questions). Measured on Gemini 3.8 Flash at medium, the thinking took
+ * 37 of the 45 seconds of an outline, and 4,900 of its 5,100 output tokens; at low the same call took 8 seconds. A
+ * selection with no effort, and a model that lists none, are left as they are.
+ */
+export function atLowEffort<T extends { provider: string; model: string; effort?: string }>(selection: T): T {
+  if (!selection.effort) return selection;
+  const effort = resolveEffort(selection.provider, selection.model, "low");
+  const { effort: _stored, ...rest } = selection;
+  return (effort ? { ...rest, effort } : rest) as T;
+}
+
 export function forgetModels(): void {
   seen.clear();
   names.clear();

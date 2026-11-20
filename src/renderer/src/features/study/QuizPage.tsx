@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { QUIZ_MAX_QUESTIONS, quizMinutes } from "@shared/quiz";
 import { spokenText } from "@shared/spoken-math";
+import { ActivityNote } from "../../components/ActivityNote";
 import { ToggleChips } from "../../components/Controls";
 import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
@@ -1232,8 +1233,8 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   return (
     <StudyLayout
       wide={sheet}
-      // On the answer sheet the question card's "Domanda 3 di 8" is the page's heading.
-      heading={!sheet}
+      // On the answer sheet the question card's "Domanda 3 di 8" is the page's heading, once there is a question.
+      heading={!sheet || !question}
       back={back}
       title={
         // The intro's own headline names the topic or the test; the bar says what kind of page this is.
@@ -1312,13 +1313,16 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       {!sheet && !fixed && attemptId && (generating || generationFailed) ? (
         <div className="px-quiz-generation">
           {generating && questions.length ? (
-            <p className="meta px-quiz-available" role="status">
-              <Logo working decorative size={16} />
-              {t("quiz.available", {
-                available: questions.length,
-                total: requestedCount,
-                count: requestedCount,
-              })}
+            <p className="meta px-quiz-available">
+              <span role="status" className="px-quiz-available-count">
+                <Logo working decorative size={16} />
+                {t("quiz.available", {
+                  available: questions.length,
+                  total: requestedCount,
+                  count: requestedCount,
+                })}
+              </span>
+              <ActivityNote activity={session.data?.activity} />
             </p>
           ) : null}
           {generating && timed ? <p className="small ink-muted">{t("quiz.timerWaiting")}</p> : null}
@@ -1456,7 +1460,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                 {buildFailed}
               </>
             ) : (
-              <Working slot line={t("quiz.preparing")} />
+              <Working slot line={t("quiz.preparing")} action={<ActivityNote activity={session.data?.activity} />} />
             )}
           </div>,
         )

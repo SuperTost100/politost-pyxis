@@ -567,6 +567,63 @@ function openReplies() {
   };
 }
 
+test("a topic quiz says what the tool is doing while its first questions are written, in both languages and themes", async () => {
+  test.setTimeout(120000);
+  // The first batch waits for this file, so the page stays in its waiting state however long the checks below take.
+  const release = join(mkdtempSync(join(tmpdir(), "pyxis-quiz-hold-")), "release");
+  const { page, planId, topics, done } = await launch({
+    markdown: { markdown: "## Il moto\nLa velocità descrive il moto [P1]." },
+    questions: diagnosticReply,
+    quizQuestions: {
+      hold: release,
+      questions: Array.from({ length: 10 }, (_, i) => ({
+        kind: "tf",
+        stem: `La velocità descrive lo spostamento nel tempo. Affermazione {{question:${i}}}.`,
+        correct: true,
+        passageIds: ["{{passage:0}}"],
+        explanation: "La velocità è lo spostamento per unità di tempo.",
+      })),
+    },
+  });
+  try {
+    const quiz = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+      planId,
+      topicId: topics[0]!.id,
+      types: ["tf"],
+    });
+    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
+    const note = page.locator(".px-activity-note");
+    await expect(page.getByRole("status").filter({ hasText: "Preparo le domande…" })).toBeVisible();
+    await expect(note).toHaveText(/^Ci sto ragionando · \d+:\d\d$/);
+    // The seconds move on their own, with nothing else on the page changing.
+    const before = await note.textContent();
+    await expect(note).not.toHaveText(before!);
+    // The note sits outside the status line, so a screen reader does not read the seconds out.
+    await expect(page.getByRole("status").filter({ hasText: "Ci sto ragionando" })).toHaveCount(0);
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await expectNoAxeViolations(page);
+    }
+    await page.evaluate(() => window.pyxis.setAppearance("light"));
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+    await page.reload();
+    await expect(page.getByRole("status").filter({ hasText: "Preparing the questions…" })).toBeVisible();
+    await expect(page.locator(".px-activity-note")).toHaveText(/^Thinking it through · \d+:\d\d$/);
+    await saveShot(page, "quiz-first-batch-en-light.png", { animations: "disabled" });
+    await page.evaluate(() => window.pyxis.setAppearance("dark"));
+    await saveShot(page, "quiz-first-batch-en-dark.png", { animations: "disabled" });
+    await expectNoAxeViolations(page);
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "it"));
+    // Once the first batch is written, the waiting state ends and the note goes with it.
+    writeFileSync(release, "");
+    await expect(page.locator(".px-activity-note")).toHaveCount(0, { timeout: 30000 });
+  } finally {
+    writeFileSync(release, "");
+    await done();
+  }
+});
+
 test("open answer: written with formulas, graded by the AI tool after Consegna with the work shown in place", async () => {
   test.setTimeout(120000);
   const { page, planId, topics, done } = await launch(openReplies(), 1500);

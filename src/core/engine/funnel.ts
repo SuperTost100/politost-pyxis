@@ -18,6 +18,7 @@ export { FunnelError };
 import { clearSignOut } from "./bench";
 import { shellPathReady } from "./shell-path";
 import { setRedact, startCall } from "../debug/log";
+import { trackCall } from "../jobs/activity";
 import { currentUsageScope, reportUsage } from "./usage";
 import { retiredProviders } from "../../shared/limits";
 import { TOOL_NAMES } from "../../shared/tool-names";
@@ -414,6 +415,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         ...(input.system ? { system: input.system } : {}),
       });
       text = "";
+      const following = trackCall(scope?.jobId);
       try {
         const stream = engine.stream({
           selection,
@@ -430,6 +432,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         });
         for await (const event of stream) {
           log?.event(event);
+          following.event(event.type);
           if (event.type === "session") {
             // A tool that resumes reports the id it was given. Another id means it started a new session, and this turn
             // would answer without the conversation: stop it and send the whole prompt instead.
@@ -460,6 +463,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         }
         finished = true;
         continued = continuing;
+        following.end();
         log?.end({
           text: result.text || text,
           ...(result.finishReason ? { finishReason: result.finishReason } : {}),
@@ -491,6 +495,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
             : {}),
         };
       } catch (err) {
+        following.end();
         log?.end({ text, error: input.signal?.aborted ? "cancelled" : err instanceof Error ? err.message : String(err) });
         // The tool no longer holds the stored session (the student cleared its history, or it was moved): the chat
         // starts a new one with the whole earlier conversation, which `prompt` carries.

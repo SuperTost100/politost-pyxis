@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
-import { forgetModels, modelName, rememberModels, setModelNamesListener } from "./efforts";
+import { atLowEffort, forgetModels, modelName, rememberModels, setModelNamesListener } from "./efforts";
 import { generate } from "./generate";
 import { engineHandlers } from "./handlers";
 import { planAuto, type AutoProvider } from "./auto";
@@ -517,5 +517,29 @@ describe("model names core learns", () => {
     // A list that had no names and still has none changes nothing a screen shows.
     rememberModels("antigravity", []);
     expect(heard).toEqual(["antigravity", "antigravity"]);
+  });
+});
+
+describe("atLowEffort", () => {
+  it("runs a call at the lowest effort its model lists, whatever the task or the student asked for", () => {
+    rememberModels("antigravity", [{ id: "gemini-3.8-flash", efforts: levels("medium", "high", "low") }]);
+    expect(atLowEffort({ provider: "antigravity", model: "gemini-3.8-flash", effort: "high" })).toEqual({
+      provider: "antigravity",
+      model: "gemini-3.8-flash",
+      effort: "low",
+    });
+  });
+
+  it("uses the nearest level when the model has no low one, and none when it lists none", () => {
+    rememberModels("codex", [{ id: "has-medium", efforts: levels("medium", "high") }]);
+    rememberModels("claude", [{ id: "lists-none", efforts: [] }]);
+    expect(atLowEffort({ provider: "codex", model: "has-medium", effort: "high" }).effort).toBe("medium");
+    expect(atLowEffort({ provider: "claude", model: "lists-none", effort: "medium" })).toEqual({ provider: "claude", model: "lists-none" });
+  });
+
+  it("leaves a selection with no effort alone, and asks for low before the model's list is read", () => {
+    const plain = { provider: "ollama", model: "local" };
+    expect(atLowEffort(plain)).toBe(plain);
+    expect(atLowEffort({ provider: "antigravity", model: "unread", effort: "medium" }).effort).toBe("low");
   });
 });

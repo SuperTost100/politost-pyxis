@@ -1,7 +1,9 @@
 import { appendFileSync, existsSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import type { GenerateInput } from "./generate";
+import { trackCall } from "../jobs/activity";
 import { loadTemplate } from "./prompts";
+import { currentUsageScope } from "./usage";
 
 /** Whether a call is the fix of a figure that could not be drawn, which a recording answers on its own. */
 export function isFigureFixCall(system: string | undefined): boolean {
@@ -38,7 +40,7 @@ export function recordedPlanRun(
   // file. Without `until` it stays out for the whole run. `resetInMs` gives the reset as a wait counted from the failing
   // call instead of a fixed time, so a slow start cannot let it pass before the test uses it.
   const limited = (replies.limited ?? {}) as Record<string, { resetAt?: string; resetInMs?: number; until?: string }>;
-  return async (input) => {
+  const answer: NonNullable<GenerateInput["run"]> = async (input) => {
     await delay(Math.min(Math.max(delayMs, 0), 10000), undefined, {
       signal: input.signal,
     });
@@ -200,5 +202,15 @@ export function recordedPlanRun(
       provider: "fixture",
       inputTokens: 0,
     };
+  };
+  // A recorded call is a call in progress for its job, as the engine's is, so a page shows what it is doing while it waits.
+  return async (input) => {
+    const call = trackCall(currentUsageScope()?.jobId);
+    call.event("reasoning.delta");
+    try {
+      return await answer(input);
+    } finally {
+      call.end();
+    }
   };
 }

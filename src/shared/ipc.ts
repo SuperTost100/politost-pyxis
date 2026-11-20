@@ -424,6 +424,9 @@ const EducationLevelSchema = z.enum([
 /** Grades, goals and mastery shown out of 30 or out of 100. */
 const GradeScaleSchema = z.union([z.literal(30), z.literal(100)]);
 
+/** What a job's model call is doing now (`src/core/jobs/activity.ts`), for the page that waits on it. */
+const JobActivity = z.object({ phase: z.enum(["starting", "thinking", "writing"]), since: z.number() });
+
 const engineFeature = z.enum([
   "default",
   "chat",
@@ -1037,6 +1040,8 @@ export const requests = {
         /** The part's two-line "what you learned". */
         summary: z.string().nullable(),
         next: PartView.nullable(),
+        /** The model call of the part's job while it runs; null otherwise. */
+        activity: JobActivity.nullable(),
         /** The lesson written before parts that this lesson in parts rewrites, or is about to: "Leggi la versione di prima". */
         replaces: z.object({ itemId: z.string() }).nullable(),
         /**
@@ -1248,6 +1253,8 @@ export const requests = {
         quizQuestionSchema.extend({ topicId: z.string().optional() }),
       ),
       jobId: z.string().optional(),
+      /** The model call of the job that writes the questions, while it runs. */
+      activity: JobActivity.optional(),
       review: z.boolean().optional(),
       state: z.string(),
       error: z.string().optional(),
