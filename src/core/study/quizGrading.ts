@@ -148,6 +148,13 @@ function needsModel(question: StoredQuestion, pick: string | undefined) {
   return question.answer.kind === "open" && Boolean(pick?.trim());
 }
 type Engine = { signal?: AbortSignal; selection?: StoredSelection };
+type OpenGrade = {
+  score: number;
+  explanation: string;
+  provider: string;
+  model: string;
+  prompt: ReturnType<typeof promptProvenance>;
+};
 /** The tool session of one quiz hand-in: every open answer of the attempt is graded in it. */
 export const quizOwner = (attemptId: string) => `quiz:${attemptId}`;
 /** Whether a text is a grader's JSON reply: an object with a score in any key order or a code fence, or one cut off. */
@@ -172,7 +179,13 @@ async function gradeOpen(
   run?: GenerateInput["run"],
   engine: Engine = {},
   steps?: string,
-) {
+  /**
+   * Saves the grade, inside the attempt's session scope. The session is kept (told it holds this grade) only after it
+   * returns, so a stop between the grade and its save leaves the session behind what is stored. A caller with nothing to
+   * save leaves it out.
+   */
+  commit?: (grade: OpenGrade) => void,
+): Promise<OpenGrade | undefined> {
   if (question.answer.kind !== "open" || !pick.trim()) return undefined;
   const work = steps?.trim() ? steps : undefined;
   // SymPy's verdict on the final answer and the first wrong step, when it could read them; the model still grades.
@@ -184,6 +197,9 @@ async function gradeOpen(
   );
   engine.signal?.throwIfAborted();
   const message = JSON.stringify({
+    // The session holds the answers graded before this one, which must not move its grade (measured on Claude Code,
+    // Codex and Antigravity: a good answer after a weak one, and a weak after a good one, scored the same as alone).
+    note: "Grade only this answer, on its own. Any earlier answers and grades in this conversation do not count.",
     question: question.stem,
     reference: question.answer.reference,
     rubric: question.answer.rubric ?? [
@@ -197,7 +213,8 @@ async function gradeOpen(
   });
   // The open answers of one hand-in are graded in one session, so the instructions and the tool's own overhead are paid
   // once and read from its cache for the rest. Each message stands alone: it holds the question, the reference and the
-  // rubric of its own answer, so a lost session or a failed grade needs nothing handed over.
+  // rubric of its own answer, so a lost session or a failed grade needs nothing handed over. An answer that was checked
+  // during the quiz is locked, so the hand-in never grades the same answer a second time in the session.
   const result = await withSession(db, quizOwner(attemptId), async (session) => {
     const graded = await session.generate({
       selection: engine.selection ?? selectionFor(db, "grading"),
@@ -219,17 +236,19 @@ async function gradeOpen(
       fresh: message,
       followUp: message,
     });
+    const data = graded.data as { score: number; explanation: string };
+    const grade: OpenGrade = {
+      ...data,
+      score: fullCredit(data.score),
+      provider: graded.provider,
+      model: graded.model,
+      prompt: promptProvenance("quiz.open-grade"),
+    };
+    commit?.(grade);
     session.keep(question.id);
-    return graded;
+    return grade;
   });
-  const data = result.data as { score: number; explanation: string };
-  return {
-    ...data,
-    score: fullCredit(data.score),
-    provider: result.provider,
-    model: result.model,
-    prompt: promptProvenance("quiz.open-grade"),
-  };
+  return result;
 }
 
 /** One check row per question: the saved grade and its provenance outlive any job. */
@@ -315,33 +334,40 @@ export async function gradeQuizQuestion(
   let provenance: Partial<CheckedAnswer> = {};
   // An empty pick is the student's "I don't know": 0 for every kind, whatever the question would accept as blank.
   if (!pick.trim()) score = 0;
-  engine.signal?.throwIfAborted();
-  const modelGrade = await gradeOpen(db, attemptId, question, pick, run, engine, steps);
-  engine.signal?.throwIfAborted();
-  if (modelGrade) {
-    ({ score, explanation } = modelGrade);
-    provenance = {
-      provider: modelGrade.provider,
-      model: modelGrade.model,
-      prompt: modelGrade.prompt,
+  let saved: CheckedAnswer | undefined;
+  // The grade is saved inside the session scope (`gradeOpen` keeps the session once it returns), and an answer that needs
+  // no model is saved here.
+  const save = (modelGrade?: OpenGrade) => {
+    engine.signal?.throwIfAborted();
+    if (modelGrade) {
+      ({ score, explanation } = modelGrade);
+      provenance = {
+        provider: modelGrade.provider,
+        model: modelGrade.model,
+        prompt: modelGrade.prompt,
+      };
+    }
+    const checked = {
+      id: questionId,
+      score,
+      expected: expectedText(question),
+      explanation,
+      pick,
+      ...provenance,
     };
-  }
-  const checked = {
-    id: questionId,
-    score,
-    expected: expectedText(question),
-    explanation,
-    pick,
-    ...provenance,
+    saved = db.transaction(() => {
+      quizAttempt(db, attemptId);
+      const concurrent = checkedAnswer(db, attemptId, questionId);
+      if (concurrent?.pick === pick) return concurrent;
+      if (concurrent) throw new Error("answer-locked");
+      replaceCheck(db, attemptId, checked);
+      return checked;
+    })();
   };
-  return db.transaction(() => {
-    quizAttempt(db, attemptId);
-    const concurrent = checkedAnswer(db, attemptId, questionId);
-    if (concurrent?.pick === pick) return concurrent;
-    if (concurrent) throw new Error("answer-locked");
-    replaceCheck(db, attemptId, checked);
-    return checked;
-  })();
+  engine.signal?.throwIfAborted();
+  const modelGrade = await gradeOpen(db, attemptId, question, pick, run, engine, steps, save);
+  if (!modelGrade) save();
+  return saved!;
 }
 
 export async function gradeConfiguredAttempt(
@@ -592,25 +618,28 @@ export function registerQuizGradingJobs(
               run,
               { signal: ctx.signal, selection: params.selection },
               params.steps?.[id],
+              // Checkpoint: the grade and the cursor commit together, so no completed grade is lost or repeated. The
+              // attempt's session is kept only once this has committed.
+              (grade) => {
+                ctx.signal.throwIfAborted();
+                db.transaction(() => {
+                  quizAttempt(db, params.attemptId);
+                  replaceCheck(db, params.attemptId, {
+                    id,
+                    score: grade.score,
+                    expected: expectedText(question),
+                    explanation: grade.explanation,
+                    pick,
+                    provider: grade.provider,
+                    model: grade.model,
+                    prompt: grade.prompt,
+                  });
+                  params.next += 1;
+                  ctx.setParams(params);
+                })();
+              },
             );
-            ctx.signal.throwIfAborted();
             if (!graded) throw new Error("grade-missing");
-            // Checkpoint: the grade and the cursor commit together, so no completed grade is lost or repeated.
-            db.transaction(() => {
-              quizAttempt(db, params.attemptId);
-              replaceCheck(db, params.attemptId, {
-                id,
-                score: graded.score,
-                expected: expectedText(question),
-                explanation: graded.explanation,
-                pick,
-                provider: graded.provider,
-                model: graded.model,
-                prompt: graded.prompt,
-              });
-              params.next += 1;
-              ctx.setParams(params);
-            })();
           }
           ctx.signal.throwIfAborted();
           if (!params.credits) {

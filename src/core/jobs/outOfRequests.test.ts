@@ -5,6 +5,7 @@ import { openDatabase } from "../db/connection";
 import type { AutoProvider } from "../engine/auto";
 import { benchEngine, clearBench, clearLimitBefore, engineClock } from "../engine/bench";
 import { generate, setFallbackListener } from "../engine/generate";
+import { refuseImages } from "../engine/test-images";
 import { rememberReady } from "../engine/selection";
 import { currentUsageScope } from "../engine/usage";
 import { tempDir } from "../test-temp";
@@ -44,7 +45,7 @@ const ready = (...ids: string[]): AutoProvider[] =>
     id,
     kind: "cli",
     effort: false,
-    models: [{ id: id === "claude" ? "claude-sonnet-5" : "gpt-5.6-terra", efforts: [] }],
+    models: [{ id: id === "claude" ? "claude-sonnet-5" : id === "antigravity" ? "gemini-4-hydrogen" : "gpt-5.6-terra", efforts: [] }],
   }));
 
 /** A job whose one step asks a tool for an answer with `selection`, as the app's jobs do, and records who answered. */
@@ -139,8 +140,9 @@ describe("a job whose tool ran out of requests", () => {
   });
 
   it("does not send a photo's job to a tool that cannot see it, and lets it go on with one that can", async () => {
+    refuseImages("antigravity");
     const database = db();
-    rememberReady(ready("claude", "agent", "codex"));
+    rememberReady(ready("claude", "antigravity", "codex"));
     const { runner } = asking(database, pinned, outOfRequests);
     // A photo import that stopped because its tool ran out of requests.
     let calls = 0;
@@ -161,8 +163,8 @@ describe("a job whose tool ran out of requests", () => {
     const handlers = jobHandlers(runner, false, database);
     const id = runner.start("source-import-vision", {});
     await until(database, id, "failed");
-    // Cursor takes no pictures, so the job is not sent there, and stays as it was.
-    expect(() => handlers.retryWith({ jobId: id, provider: "agent" })).toThrow(IpcError);
+    // Gemini takes no pictures here, so the job is not sent there, and stays as it was.
+    expect(() => handlers.retryWith({ jobId: id, provider: "antigravity" })).toThrow(IpcError);
     expect(stateOf(database, id)).toBe("failed");
     expect(calls).toBe(1);
     // Claude takes them.

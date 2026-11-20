@@ -16,8 +16,8 @@ export function capabilityWarning(modelId: string, need: Need): string | null {
 }
 
 /**
- * False when CLI Funnel says the provider refuses image attachments (Cursor Agent and Antigravity), whatever the model
- * id suggests: their `claude-*` and `gpt-*` ids match the catalog, but the CLI cannot take the picture. An unknown
+ * False when CLI Funnel says the provider refuses image attachments (Antigravity), whatever the model
+ * id suggests: its `claude-*` and `gpt-*` ids match the catalog, but the CLI cannot take the picture. An unknown
  * provider is not ruled out here.
  */
 export function providerSeesImages(provider: string): boolean {

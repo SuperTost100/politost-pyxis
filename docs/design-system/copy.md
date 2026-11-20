@@ -28,7 +28,7 @@ No emoji in the interface.
 
 ## The AI tools
 
-A student knows the account, not the program: the tools are Claude, ChatGPT, Cursor and Gemini in every screen and in both languages (`TOOL_NAMES` in `src/shared/tool-names.ts`), and the thing they are is a _strumento AI_ (an _AI tool_), the word of the Settings page. The program behind a tool (Claude Code, Codex, Cursor Agent, Antigravity, `TOOL_PROGRAMS`) is written once, as the detail under the tool's name in the Settings list, where the student installs it or signs in to it. Provider ids, settings keys and stored values keep their code names. A control that leads to that Settings page is named for it, "Strumenti AI" ("AI tools"), wherever it sits.
+A student knows the account, not the program: the tools are Claude, ChatGPT and Gemini in every screen and in both languages (`TOOL_NAMES` in `src/shared/tool-names.ts`), and the thing they are is a _strumento AI_ (an _AI tool_), the word of the Settings page. The program behind a tool (Claude Code, Codex, Antigravity, `TOOL_PROGRAMS`) is written once, as the detail under the tool's name in the Settings list, where the student installs it or signs in to it. Provider ids, settings keys and stored values keep their code names. A control that leads to that Settings page is named for it, "Strumenti AI" ("AI tools"), wherever it sits.
 
 ## Italian and English, in step
 

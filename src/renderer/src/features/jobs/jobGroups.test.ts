@@ -120,7 +120,7 @@ describe("jobs list groups", () => {
     const groups = groupJobs(
       [
         job("a", { error: "not-logged-in [codex]: 401" }),
-        job("b", { error: "not-logged-in [agent]: 401" }),
+        job("b", { error: "not-logged-in [antigravity]: 401" }),
         job("c", { error: "not-logged-in [codex]: 401" }),
       ],
       [],
@@ -132,7 +132,7 @@ describe("jobs list groups", () => {
       ]),
     ).toEqual([
       ["codex", ["a", "c"]],
-      ["agent", ["b"]],
+      ["antigravity", ["b"]],
     ]);
   });
 
@@ -326,7 +326,7 @@ describe("jobs that stopped because a tool ran out of requests", () => {
 
   it("does not take a sign-in failure, or a limit another tool hit, for this one", () => {
     const groups = groupJobs(
-      [job("a", { error: "not-logged-in [codex]: 401" }), limited("b", "agent")],
+      [job("a", { error: "not-logged-in [codex]: 401" }), limited("b", "antigravity")],
       [],
       out,
     );

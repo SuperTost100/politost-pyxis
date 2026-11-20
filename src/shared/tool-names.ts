@@ -5,7 +5,6 @@
 export const TOOL_NAMES: Readonly<Record<string, string>> = {
   claude: "Claude",
   codex: "ChatGPT",
-  agent: "Cursor",
   antigravity: "Gemini",
 };
 
@@ -16,16 +15,23 @@ export const TOOL_NAMES: Readonly<Record<string, string>> = {
 export const TOOL_PROGRAMS: Readonly<Record<string, string>> = {
   claude: "Claude Code",
   codex: "Codex",
-  agent: "Cursor Agent",
   antigravity: "Antigravity",
 };
+
+/**
+ * Tools Pyxis no longer offers, for old records only: a saved message or quiz result, or a job's fallback, still names
+ * the tool that answered. The name and the program are never offered, listed or chosen from.
+ */
+export const RETIRED_TOOL_NAMES: Readonly<Record<string, string>> = { agent: "Cursor" };
+const RETIRED_TOOL_PROGRAMS: Readonly<Record<string, string>> = { agent: "Cursor Agent" };
 
 /**
  * A tool's name as stored before it was renamed, such as "Claude Code (Claude Haiku 5)" in an old job's fallback, as it
  * reads now ("Claude (Claude Haiku 5)"). Any other text stays as it is.
  */
 export function currentToolLabel(label: string): string {
-  for (const [id, program] of Object.entries(TOOL_PROGRAMS))
-    if (label === program || label.startsWith(`${program} (`)) return TOOL_NAMES[id]! + label.slice(program.length);
+  const names = { ...TOOL_NAMES, ...RETIRED_TOOL_NAMES };
+  for (const [id, program] of Object.entries({ ...TOOL_PROGRAMS, ...RETIRED_TOOL_PROGRAMS }))
+    if (label === program || label.startsWith(`${program} (`)) return names[id]! + label.slice(program.length);
   return label;
 }

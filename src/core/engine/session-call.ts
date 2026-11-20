@@ -126,7 +126,6 @@ export async function withSession<T>(db: Database.Database, owner: string, body:
             cliOnly: true,
             session: open ? { provider: open.provider, id: open.sessionId, cwd: open.cwd } : null,
             onSession: (sessionId, provider, cwd) => {
-              if (provider === "agent") return;
               const now = currentSession(db, owner);
               if (now?.provider === provider && now.sessionId === sessionId) return;
               store(sessionId, provider, cwd, { model: answering.model, effort: answering.effort ?? null, chars: 0, finished: false });

@@ -65,7 +65,7 @@ describe("token usage", () => {
     const db = workspace();
     await generate({
       prompt: "Hi",
-      selection: { provider: "agent", model: "auto" },
+      selection: { provider: "antigravity", model: "auto" },
       run: async () => answer("Hi", { inputTokens: 0, outputTokens: 0 }),
     });
     expect(usageSince(db, 0)).toEqual([]);

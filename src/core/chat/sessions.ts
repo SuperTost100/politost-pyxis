@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
+import { retiredProviders } from "../../shared/limits";
 
 /**
  * The tool session an owner continues. An owner is a chat (its id), a topic's lesson (`lesson:<topic id>`) or a quiz
- * hand-in (`quiz:<attempt id>`). One Pyxis chat, lesson or hand-in is one chat in the student's Claude, ChatGPT, Cursor
- * or Gemini history, whatever number of turns it takes.
+ * hand-in (`quiz:<attempt id>`). One Pyxis chat, lesson or hand-in is one chat in the student's Claude, ChatGPT or
+ * Gemini history, whatever number of turns it takes.
  */
 export type StoredSession = {
   /** The row's own id. */
@@ -28,8 +29,6 @@ export type StoredSession = {
    * after it, and null means from the start. For a lesson a fingerprint of the lesson as the session last saw it.
    */
   syncedTo: string | null;
-  /** Cursor's own folder was seen to hold this chat, so its absence now means the student cleared it. */
-  seen: boolean;
 };
 
 type Row = {
@@ -42,33 +41,24 @@ type Row = {
   chars: number;
   in_step: number;
   synced_to: string | null;
-  seen: number;
 };
 
 /**
- * Tools that keep no compaction of their own that Pyxis has seen. Claude Code, Codex and Antigravity compact a long
- * session by themselves (agy's program has a trajectory compaction with its own trigger, checked in the binary, though
- * no session was run to its limit); for Cursor Agent the session starts over, with the conversation handed across
- * again, once this many characters (about 100,000 tokens, under the smallest window it offers) have gone into it.
- * shortcut: a fixed size, since the tool does not report how full its context is; replace it when cli-funnel reports that.
+ * The owner's open session, if any. A session on a tool Pyxis no longer offers counts as lost: it ends here, and the
+ * next call opens a new session on the next tool with the whole conversation handed over. The row stays.
  */
-export const UNCOMPACTED_SESSION_CHARS = 400_000;
-const UNCOMPACTED = new Set(["agent"]);
-
-/** The owner's open session, if any. */
 export function currentSession(db: Database.Database, owner: string): StoredSession | undefined {
+  const retired = retiredProviders.map(() => "?").join(", ");
+  db.prepare(
+    `UPDATE tool_sessions SET ended_at = ?, ended_reason = 'gone' WHERE owner = ? AND ended_at IS NULL AND provider IN (${retired})`,
+  ).run(Date.now(), owner, ...retiredProviders);
   const row = db
     .prepare(
-      `SELECT id, provider, session_id, cwd, told, instructions, chars, in_step, synced_to, seen FROM tool_sessions
+      `SELECT id, provider, session_id, cwd, told, instructions, chars, in_step, synced_to FROM tool_sessions
        WHERE owner = ? AND ended_at IS NULL ORDER BY opened_at DESC, rowid DESC LIMIT 1`,
     )
     .get(owner) as Row | undefined;
-  return row && { id: row.id, provider: row.provider, sessionId: row.session_id, cwd: row.cwd, told: row.told, instructions: row.instructions, chars: row.chars, inStep: row.in_step === 1, syncedTo: row.synced_to, seen: row.seen === 1 };
-}
-
-/** True when a session of this tool has grown past what the tool is known to handle on its own. */
-export function sessionTooLong(session: StoredSession): boolean {
-  return UNCOMPACTED.has(session.provider) && session.chars >= UNCOMPACTED_SESSION_CHARS;
+  return row && { id: row.id, provider: row.provider, sessionId: row.session_id, cwd: row.cwd, told: row.told, instructions: row.instructions, chars: row.chars, inStep: row.in_step === 1, syncedTo: row.synced_to };
 }
 
 /**
@@ -95,9 +85,21 @@ export type SessionTurn = {
   finished: boolean;
   /** For a session this turn opens: the last message its first prompt held (the one before the question). */
   syncedTo: string | null;
-  /** Cursor's own folder was seen to hold the chat. */
-  seen?: boolean;
 };
+
+/**
+ * Whether the chat, the topic or the attempt a session belongs to is still there. The rows of an owner that is deleted go
+ * with it (a trigger on each table, see migration 37), so a call that was running when its owner was deleted must not leave
+ * a row behind that nothing would ever delete.
+ */
+function ownerExists(db: Database.Database, owner: string): boolean {
+  const [table, id] = owner.startsWith("lesson:")
+    ? ["topics", owner.slice("lesson:".length)]
+    : owner.startsWith("quiz:")
+      ? ["attempts", owner.slice("quiz:".length)]
+      : ["chats", owner];
+  return db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id) !== undefined;
+}
 
 /**
  * Records a turn. The session the turn continued is updated; one the turn did not continue (another tool answered, or the
@@ -108,13 +110,14 @@ export function recordSession(
   owner: string,
   prior: StoredSession | undefined,
   turn: SessionTurn,
-  reason: "tool" | "gone" | "long" | "instructions" = "gone",
+  reason: "tool" | "gone" | "instructions" = "gone",
 ): void {
+  if (!ownerExists(db, owner)) return;
   if (prior && prior.provider === turn.provider && prior.sessionId === turn.sessionId) {
     db.prepare(
-      `UPDATE tool_sessions SET model = ?, effort = ?, told = ?, instructions = ?, chars = chars + ?, seen = MAX(seen, ?),
+      `UPDATE tool_sessions SET model = ?, effort = ?, told = ?, instructions = ?, chars = chars + ?,
          turns = turns + 1, last_used_at = ? WHERE id = ?`,
-    ).run(turn.model, turn.effort, turn.told, turn.instructions, turn.chars, turn.seen ? 1 : 0, turn.now, prior.id);
+    ).run(turn.model, turn.effort, turn.told, turn.instructions, turn.chars, turn.now, prior.id);
     return;
   }
   if (prior)
@@ -125,8 +128,8 @@ export function recordSession(
     );
   db.prepare(
     `INSERT INTO tool_sessions
-      (id, owner, provider, session_id, model, effort, cwd, told, instructions, chars, in_step, synced_to, seen, turns, opened_at, last_used_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+      (id, owner, provider, session_id, model, effort, cwd, told, instructions, chars, in_step, synced_to, turns, opened_at, last_used_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
   ).run(
     uuidv7(turn.now),
     owner,
@@ -139,7 +142,6 @@ export function recordSession(
     turn.instructions,
     turn.chars,
     turn.syncedTo,
-    turn.seen ? 1 : 0,
     // A session opened when the tool names it has no finished turn yet.
     turn.finished ? 1 : 0,
     turn.now,
@@ -196,13 +198,4 @@ export function sessionsOpened(db: Database.Database, owner: string): number {
 /** A short fingerprint of the context block, so a session is told it again only when it changed. */
 export function contextHash(text: string): string {
   return createHash("sha256").update(text).digest("hex").slice(0, 16);
-}
-
-/**
- * Counts what a tool kept of a turn that ended without an answer into the open session of that tool, for the size bound
- * only: what a session is told next does not depend on it.
- */
-export function addSessionChars(db: Database.Database, owner: string, provider: string, chars: number): void {
-  if (chars <= 0) return;
-  db.prepare(`UPDATE tool_sessions SET chars = chars + ? WHERE owner = ? AND provider = ? AND ended_at IS NULL`).run(chars, owner, provider);
 }

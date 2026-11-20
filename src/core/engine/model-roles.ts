@@ -160,7 +160,7 @@ export function isOwnModel(provider: string, id: string): boolean {
   return !rule || rule.own.test(id);
 }
 
-/** True when the id is a model of another tool's maker and not this tool's, such as a Claude model on Cursor. */
+/** True when the id is a model of another tool's maker and not this tool's, such as a Claude model on Antigravity. */
 export function isForeignModel(provider: string, id: string): boolean {
   const rule = compiled.get(provider);
   if (!rule || rule.own.test(id)) return false;

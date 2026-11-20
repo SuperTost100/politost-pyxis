@@ -7,7 +7,7 @@ import {
   isSignedOut,
   markSignedOut,
 } from "./bench";
-import { signOutStore } from "./choice";
+import { readAllowed, readOrder, signOutStore } from "./choice";
 import { generate } from "./generate";
 import type { AutoProvider } from "./auto";
 import { getFunnel, runTurn } from "./funnel";
@@ -405,6 +405,152 @@ describe("the engine test", () => {
     });
     await handlers.test({ provider: "claude" });
     expect(vi.mocked(runTurn).mock.calls[1]![0].selection.model).not.toBe("claude-haiku-5-5");
+    db.close();
+  });
+});
+
+describe("a database that still holds Cursor, a tool Pyxis no longer offers", () => {
+  /** CLI Funnel keeps its Cursor adapter, so a machine that has Cursor signed in still reports it, with text-only access. */
+  function useFunnelWithCursor(state: State) {
+    const provider = { capabilities: { access: ["none"], effort: true, fast: false } };
+    vi.mocked(getFunnel).mockImplementation(
+      () =>
+        ({
+          providers: { claude: provider, codex: provider, agent: provider },
+          overview: async () => [
+            ...(["claude", "codex"] as const).map((id) => ({
+              id,
+              displayName: id === "claude" ? "Claude Code" : "Codex",
+              installation: { installed: true, version: "1.0.0" },
+              auth: { loggedIn: state[id] },
+              capabilities: provider.capabilities,
+            })),
+            {
+              id: "agent",
+              displayName: "Cursor Agent",
+              installation: { installed: true, version: "1.0.0" },
+              auth: { loggedIn: true },
+              capabilities: provider.capabilities,
+            },
+          ],
+          models: async (id: string) =>
+            id === "agent"
+              ? ["grok-4.7", "cursor-grok-4.6"].map((model) => ({ id: model, name: model, efforts }))
+              : models[id as "claude" | "codex"].map((model) => ({ id: model, name: model, efforts })),
+        }) as unknown as ReturnType<typeof getFunnel>,
+    );
+  }
+  const put = (db: ReturnType<typeof openDatabase>, key: string, value: unknown) =>
+    db.prepare("INSERT OR REPLACE INTO settings (key, value_json, updated_at) VALUES (?, ?, 1)").run(key, JSON.stringify(value));
+
+  it("takes Cursor out of the order and the choice of tools, and keeps the others where they were", () => {
+    const db = openDatabase(":memory:");
+    put(db, "engines.order", ["agent", "claude", "codex"]);
+    put(db, "engines.allowed", ["claude", "agent"]);
+    expect(readOrder(db)).toEqual(["claude", "codex"]);
+    expect(readAllowed(db)).toEqual(["claude"]);
+    // The stored rows are not rewritten: nothing is deleted from the student's data.
+    expect(db.prepare("SELECT value_json FROM settings WHERE key = 'engines.order'").pluck().get()).toBe(
+      JSON.stringify(["agent", "claude", "codex"]),
+    );
+    db.close();
+  });
+
+  it("reads an order that held only Cursor as no order, and a choice that held only Cursor as nothing allowed", () => {
+    const db = openDatabase(":memory:");
+    put(db, "engines.order", ["agent"]);
+    put(db, "engines.allowed", ["agent"]);
+    expect(readOrder(db)).toBeNull();
+    // The student had left every other tool out, so none becomes usable by itself: that would be a choice they never made.
+    expect(readAllowed(db)).toEqual([]);
+    db.close();
+  });
+
+  it("forgets Cursor's saved sign-out and usage limit", () => {
+    const db = openDatabase(":memory:");
+    put(db, "engine-signed-out:agent", true);
+    put(db, "engine-signed-out:codex", true);
+    put(db, "engine-limited:agent", Date.now() + 60_000);
+    put(db, "engine-limited:claude", Date.now() + 60_000);
+    configureSignOuts(signOutStore(db));
+    expect(isSignedOut("agent")).toBe(false);
+    expect(isSignedOut("codex")).toBe(true);
+    expect(isBenched("agent")).toBe(false);
+    expect(isBenched("claude")).toBe(true);
+    db.close();
+  });
+
+  it("does not list Cursor, though CLI Funnel reports it signed in, and plans nothing on it", async () => {
+    useFunnelWithCursor({ claude: true, codex: true });
+    const db = openDatabase(":memory:");
+    put(db, "engines.order", ["agent", "claude", "codex"]);
+    const handlers = engineHandlers(db, () => undefined);
+    expect((await handlers.overview()).map((row) => row.id)).toEqual(["claude", "codex"]);
+    const { ready, features } = await handlers.autoConfigure({});
+    expect(ready).toEqual(["claude", "codex"]);
+    expect(providersIn(features)).not.toContain("agent");
+    expect(handlers.choice()).toEqual({ allowed: null, order: ["claude", "codex"] });
+    db.close();
+  });
+
+  it("keeps a tool the student had left out unused when Cursor was the only one they ticked", async () => {
+    useFunnelWithCursor({ claude: true, codex: true });
+    const db = openDatabase(":memory:");
+    put(db, "engines.allowed", ["agent"]);
+    const handlers = engineHandlers(db, () => undefined);
+    const { ready, features } = await handlers.autoConfigure({});
+    // Claude and ChatGPT are signed in but the student never allowed them: nothing is planned, nothing is sent.
+    expect(ready).toEqual([]);
+    expect(features).toEqual({});
+    expect(handlers.choice().allowed).toEqual([]);
+    expect(() => selectionFor(db, "chat")).toThrow(expect.objectContaining({ code: "engine-missing" }));
+    db.close();
+  });
+
+  it("keeps the other tool they ticked beside Cursor, and only that one", async () => {
+    useFunnelWithCursor({ claude: true, codex: true });
+    const db = openDatabase(":memory:");
+    put(db, "engines.allowed", ["agent", "claude"]);
+    const handlers = engineHandlers(db, () => undefined);
+    const { ready, features } = await handlers.autoConfigure({});
+    expect(ready).toEqual(["claude"]);
+    expect(providersIn(features)).toEqual(["claude"]);
+    expect(handlers.choice().allowed).toEqual(["claude"]);
+    db.close();
+  });
+
+  it("sends a task pinned to a Cursor model back to automatic, keeping the effort the student picked", async () => {
+    useFunnelWithCursor({ claude: true, codex: true });
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    await handlers.autoConfigure({});
+    db.prepare("INSERT OR REPLACE INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)").run(
+      JSON.stringify({ provider: "agent", model: "grok-4.7", effort: "high" }),
+    );
+    const { features } = await handlers.autoConfigure({});
+    expect(features.chat).toMatchObject({ auto: true, effortChoice: "high" });
+    expect(features.chat!.provider).not.toBe("agent");
+    // A model of Cursor cannot be pinned any more.
+    expect(() => handlers.setFeature({ feature: "plan", provider: "agent" as never, model: "grok-4.7" })).toThrow(
+      expect.objectContaining({ code: "invalid-selection" }),
+    );
+    db.close();
+  });
+
+  it("leaves a student whose only tool was Cursor with none connected, and with no task on any engine", async () => {
+    useFunnelWithCursor({ claude: false, codex: false });
+    const db = openDatabase(":memory:");
+    db.prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)").run(
+      JSON.stringify({ provider: "agent", model: "grok-4.7", auto: true }),
+    );
+    put(db, "engines.allowed", ["agent"]);
+    const handlers = engineHandlers(db, () => undefined);
+    const { ready, features } = await handlers.autoConfigure({});
+    expect(ready).toEqual([]);
+    expect(features).toEqual({});
+    expect(handlers.choice().allowed).toEqual([]);
+    // The normal "no tool connected" state: a task finds no engine, and the stored Cursor rows are gone from the plan.
+    expect(() => selectionFor(db, "chat")).toThrow(expect.objectContaining({ code: "engine-missing" }));
     db.close();
   });
 });

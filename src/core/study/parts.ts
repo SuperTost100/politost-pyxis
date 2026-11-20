@@ -1050,13 +1050,18 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
   const part = outline?.parts.find((entry) => entry.position === input.position);
   if (!outline || !part) throw new Error("part-missing");
   if (part.itemId && !input.rewrite) return outline;
-  // The part is written in the topic's lesson session, after any other call on it: two parts asked at once are written
-  // one after the other, because two processes on one session would each continue it from the same point.
+  // The part is written in the topic's lesson session. Two processes on one session would each continue it from the same
+  // point, so a part asked while another is written in the session does not wait and does not share it: it runs on its own
+  // as a call the tool does not keep (where it can), with the whole request, and the session is left behind the lesson.
   return withSession(db, lessonOwner(input.topicId), (session) => writePartIn(db, input, session));
 }
 
 async function writePartIn(db: Database.Database, input: WritePartInput, session: SessionHandle): Promise<Outline> {
-  // What another call did while this one waited for the session: the outline may have been replaced, or the part written.
+  // The figure runner is awaited first: everything the request and the session's marker are made of is read after it, in
+  // one synchronous stretch, so the two describe the same state of the lesson.
+  const drawer = await figureRunner(input.python);
+  // What another call did since the checks above, while this one was getting its session: the outline may have been
+  // replaced, or the part written.
   const outline = liveOutline(db, input.topicId);
   const part = outline?.parts.find((entry) => entry.position === input.position);
   if (!outline || !part) throw new Error("part-missing");
@@ -1072,7 +1077,6 @@ async function writePartIn(db: Database.Database, input: WritePartInput, session
   const topic = db.prepare("SELECT title FROM topics WHERE id = ?").pluck().get(input.topicId) as string;
   const headings = otherHeadings(db, outline, part);
   // A session keeps the system prompt it was opened under: one asked under another, such as a part at another level, starts a new one.
-  const drawer = await figureRunner(input.python);
   const system = [lessonSystem(context, grounded, drawer?.kinds ?? [], "lesson.part"), interestsLine(db)]
     .filter(Boolean)
     .join("\n");

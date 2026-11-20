@@ -930,7 +930,7 @@ describe("the steps of an open answer", () => {
     });
     const { jobId } = submitQuiz(db, runner, attemptId, { a: "ten" }, undefined, { a: "" });
     const done = await until(db, attemptId, (view) => view.state === "succeeded");
-    expect(Object.keys(prompts[0]!).sort()).toEqual(["answer", "question", "reference", "rubric"]);
+    expect(Object.keys(prompts[0]!).sort()).toEqual(["answer", "note", "question", "reference", "rubric"]);
     const params = db.prepare("SELECT params_json FROM jobs WHERE id = ?").get(jobId) as { params_json: string };
     expect(JSON.parse(params.params_json)).not.toHaveProperty("steps");
     expect(done.result).not.toHaveProperty("steps");
@@ -1136,6 +1136,8 @@ describe("the open answers of one hand-in", () => {
       // The follow-up of a session that holds the hand-in is the whole message, and so is the message of a new one.
       expect(call.followUp).toBe(call.prompt);
       expect(JSON.parse(call.prompt)).toMatchObject({ reference: "ten", rubric: expect.any(Array) });
+      // Each says that what the session holds of the other answers does not count.
+      expect(JSON.parse(call.prompt).note).toContain("Any earlier answers and grades in this conversation do not count");
     }
     db.close();
   });
@@ -1156,5 +1158,32 @@ describe("the open answers of one hand-in", () => {
     expect(grader.seen.filter((call) => call.session === null)).toHaveLength(2);
     one.db.close();
     two.db.close();
+  });
+
+  it("keeps the session only once the grade is saved: a stop between the two leaves it behind what is stored", async () => {
+    const { db, attemptId } = fixture([open("a"), open("b")], "diagnostic");
+    const grader = tool();
+    const controller = new AbortController();
+    // The first grade completes and is saved; the second is stopped as the grader returns it.
+    await gradeQuizQuestion(db, attemptId, "a", "ten", grader.run as never, {});
+    expect(sessions(db, attemptId)).toEqual([{ session_id: "grader-1", provider: "claude", turns: 1, in_step: 1 }]);
+    await expect(
+      gradeQuizQuestion(
+        db,
+        attemptId,
+        "b",
+        "ten",
+        (async (input: Parameters<typeof grader.run>[0]) => {
+          const result = await grader.run(input);
+          controller.abort();
+          return result;
+        }) as never,
+        { signal: controller.signal },
+      ),
+    ).rejects.toBeDefined();
+    // Nothing was stored for "b", and the session says it is not in step.
+    expect(checkedAnswer(db, attemptId, "b")).toBeUndefined();
+    expect(sessions(db, attemptId)).toEqual([{ session_id: "grader-1", provider: "claude", turns: 2, in_step: 0 }]);
+    db.close();
   });
 });

@@ -28,12 +28,12 @@ describe("a tool's roles in its row", () => {
     expect(roleModelName("GPT-6.1-Sol")).toBe("GPT-6.1 Sol");
     expect(roleModelName("GPT-5.6-Terra")).toBe("GPT-5.6 Terra");
     expect(roleModelName("GPT-OSS 120B (Medium)")).toBe("GPT-OSS 120B (Medium)");
-    expect(roleModelName("Grok 4.7")).toBe("Grok 4.7");
+    expect(roleModelName("Gemini 4 Argon")).toBe("Gemini 4 Argon");
     expect(roleModelName("Claude")).toBe("Claude");
-    expect(roleItems({ fast: "g", mid: "g", strong: "g" }, () => "Grok 4.7").map((item) => item.model)).toEqual([
-      "Grok 4.7",
-      "Grok 4.7",
-      "Grok 4.7",
+    expect(roleItems({ fast: "g", mid: "g", strong: "g" }, () => "Gemini 4 Argon").map((item) => item.model)).toEqual([
+      "Gemini 4 Argon",
+      "Gemini 4 Argon",
+      "Gemini 4 Argon",
     ]);
   });
 

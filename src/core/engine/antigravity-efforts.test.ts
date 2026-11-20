@@ -158,7 +158,7 @@ describe("a recovery path keeps xhigh as an effort of the model", () => {
 
   it("keeps the effort flag for the other levels", () => {
     xhighStrong();
-    expect(selectionOn("antigravity", "chat")).toEqual({ provider: "antigravity", model: "gemini-4-hydrogen", effort: "low" });
+    expect(selectionOn("antigravity", "chat")).toEqual({ provider: "antigravity", model: "gemini-3.8-flash", effort: "low" });
     expect(selectionOn("claude", "plan")).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "high" });
   });
 });

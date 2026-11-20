@@ -14,6 +14,18 @@ type Seen = {
 
 const selection = { provider: "claude" as const, model: "m" };
 
+/** A database with the topics and the attempt the owners below belong to, and a chat. */
+function database() {
+  const db = openDatabase(":memory:");
+  db.exec(`
+    INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('p', 'Fisica', 'ready', 1, 1);
+    INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('t1', 'p', 'Moto', 0, 1), ('t2', 'p', 'Forze', 1, 1);
+    INSERT INTO attempts (id, plan_id, started_at) VALUES ('a1', 'p', 1);
+    INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c1', 'uno', 1, 1);
+  `);
+  return db;
+}
+
 /** A tool that keeps what it is told: it continues the session it is given and opens a new one when it gets none. */
 function tool(options: { provider?: string; lose?: boolean; after?: number } = {}) {
   const seen: Seen[] = [];
@@ -52,7 +64,7 @@ const call = (run: unknown, fresh: string, followUp: string) => ({ selection, ru
 
 describe("a session for work that is not a chat", () => {
   it("opens a session on the first call, sends the whole message, and keeps it as stored", async () => {
-    const db = openDatabase(":memory:");
+    const db = database();
     const t = tool();
     await withSession(db, "lesson:t1", async (session) => {
       expect(session.inStep("v0")).toBe(false);
@@ -66,7 +78,7 @@ describe("a session for work that is not a chat", () => {
   });
 
   it("continues the stored session, and says it is in step only at the state it was kept at", async () => {
-    const db = openDatabase(":memory:");
+    const db = database();
     const t = tool();
     await withSession(db, "lesson:t1", async (session) => {
       await session.generate(call(t.run, "whole", "next"));
@@ -88,7 +100,7 @@ describe("a session for work that is not a chat", () => {
   });
 
   it("leaves the session out of step when the call fails, is stopped, or its result is not kept", async () => {
-    const db = openDatabase(":memory:");
+    const db = database();
     const t = tool();
     await withSession(db, "quiz:a1", async (session) => {
       await session.generate(call(t.run, "whole", "next"));
@@ -111,7 +123,7 @@ describe("a session for work that is not a chat", () => {
   });
 
   it("stores the session the moment the tool names it, so a call that is stopped leaves one to continue", async () => {
-    const db = openDatabase(":memory:");
+    const db = database();
     const controller = new AbortController();
     const run = (async (input: { conversation?: { onSession?: (id: string, provider: string, cwd: string) => void } }) => {
       input.conversation?.onSession?.("named", "claude", "/scratch");
@@ -126,7 +138,7 @@ describe("a session for work that is not a chat", () => {
   });
 
   it("opens a new session when the tool lost the stored one, and ends the old with the reason", async () => {
-    const db = openDatabase(":memory:");
+    const db = database();
     await withSession(db, "lesson:t1", async (session) => {
       await session.generate(call(tool().run, "whole", "next"));
       session.keep("v1");
@@ -143,7 +155,7 @@ describe("a session for work that is not a chat", () => {
   });
 
   it("ends the session when another tool answers, and opens that tool's", async () => {
-    const db = openDatabase(":memory:");
+    const db = database();
     await withSession(db, "lesson:t1", async (session) => {
       await session.generate(call(tool().run, "whole", "next"));
       session.keep("v1");
@@ -160,7 +172,7 @@ describe("a session for work that is not a chat", () => {
   });
 
   it("starts a new session when the call has other rules than the session was opened under, and ends the old one", async () => {
-    const db = openDatabase(":memory:");
+    const db = database();
     const t = tool();
     await withSession(db, "lesson:t1", async (session) => {
       await session.generate(call(t.run, "whole", "next"));
@@ -181,7 +193,7 @@ describe("a session for work that is not a chat", () => {
   });
 
   it("keeps each owner's session apart", async () => {
-    const db = openDatabase(":memory:");
+    const db = database();
     const t = tool();
     await withSession(db, "lesson:t1", async (session) => {
       await session.generate(call(t.run, "a", "a"));
@@ -196,7 +208,7 @@ describe("a session for work that is not a chat", () => {
   });
 
   it("runs a call that finds the session in use on its own, as a call the tool does not keep, and leaves the session behind", async () => {
-    const db = openDatabase(":memory:");
+    const db = database();
     const t = tool();
     const alone = tool();
     await withSession(db, "lesson:t1", async (session) => {
@@ -225,11 +237,35 @@ describe("a session for work that is not a chat", () => {
   });
 
   it("frees the session when the body throws", async () => {
-    const db = openDatabase(":memory:");
+    const db = database();
     await expect(withSession(db, "lesson:t1", async () => Promise.reject(new Error("boom")))).rejects.toThrow("boom");
     const t = tool();
     await withSession(db, "lesson:t1", (session) => session.generate(call(t.run, "whole", "next")));
     expect(t.seen[0]!.conversation).toBe(true);
+    db.close();
+  });
+
+  it.each([
+    ["a lesson", "lesson:t1", "DELETE FROM topics WHERE id = 't1'"],
+    ["a quiz hand-in", "quiz:a1", "DELETE FROM attempts WHERE id = 'a1'"],
+    ["a chat", "c1", "DELETE FROM chats WHERE id = 'c1'"],
+  ])("leaves no row behind for %s that was deleted while its call ran", async (_name, owner, remove) => {
+    const db = database();
+    const t = tool();
+    await withSession(db, owner, async (session) => {
+      const call$ = session.generate({
+        ...call(t.run, "whole", "next"),
+        run: (async (input: { conversation?: { onSession?: (id: string, provider: string, cwd: string) => void } }) => {
+          // The tool names its session, then the owner is deleted before the call ends.
+          input.conversation?.onSession?.("named", "claude", "/scratch");
+          db.exec(remove);
+          return { text: "ok", model: "m", provider: "claude", inputTokens: 1, sessionId: "named", cwd: "/scratch", continued: false };
+        }) as never,
+      });
+      await call$;
+      session.keep("v1");
+    });
+    expect(db.prepare("SELECT COUNT(*) FROM tool_sessions WHERE owner = ?").pluck().get(owner)).toBe(0);
     db.close();
   });
 });

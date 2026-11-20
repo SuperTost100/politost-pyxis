@@ -1158,6 +1158,8 @@ function toolRun(...replies: Array<unknown | string>) {
       kept: Boolean(input.conversation),
       system: input.system,
     });
+    // The reply is chosen by this call's place in the order, before it waits, so a call that waits keeps its own.
+    const at = calls.length - 1;
     // Only the first call after the gate is set waits.
     const hold = gate.hold;
     gate.hold = undefined;
@@ -1165,7 +1167,7 @@ function toolRun(...replies: Array<unknown | string>) {
       gate.started?.();
       await hold;
     }
-    const next = replies[Math.min(calls.length - 1, replies.length - 1)];
+    const next = replies[Math.min(at, replies.length - 1)];
     if (next instanceof Error) throw next;
     const held = input.conversation?.session;
     // A call outside a conversation is not kept by the tool, so it names no session of ours.
@@ -1320,6 +1322,17 @@ describe("a lesson in one tool session", () => {
     expect(beside.prompt).toContain("Parts already written:");
     release();
     await two;
+    // Each part holds its own text: the call that waited kept its own reply, and the one beside it its own.
+    const text = (position: number) =>
+      db
+        .prepare(
+          "SELECT json_extract(i.body_json, '$.markdown') FROM lesson_parts p JOIN items i ON i.id = p.item_id JOIN lesson_outlines o ON o.id = p.outline_id WHERE o.retired_at IS NULL AND p.position = ?",
+        )
+        .pluck()
+        .get(position) as string;
+    expect(text(2)).toContain("Passo 2 primo");
+    expect(text(2)).not.toContain("Passo 4 primo");
+    expect(text(4)).toContain("Passo 4 primo");
     // Part 4 is written, though the session never saw it: it is behind, and part 3 is asked with what the lesson holds.
     await write(3);
     expect(tool.calls.at(-1)!.followUp).toContain("Earlier in this conversation you wrote parts of this lesson.");
@@ -1341,6 +1354,25 @@ describe("a lesson in one tool session", () => {
       { session_id: "tool-session-1", ended_reason: "instructions" },
       { session_id: "tool-session-2", ended_reason: null },
     ]);
+    db.close();
+  });
+
+  it("builds the request and what the session knows from one state of the lesson, whatever changes while the figure runner is awaited", async () => {
+    const { db, tool, write } = await lesson(partText("1"), partText("2"));
+    await write(1);
+    const two = write(2);
+    // A heading of part 1 changes while part 2 starts, before anything of the lesson was read.
+    db.prepare(
+      "UPDATE items SET body_json = json_set(body_json, '$.markdown', replace(json_extract(body_json, '$.markdown'), 'Passo 1 primo', 'Titolo nuovo'))",
+    ).run();
+    await two;
+    const call = tool.calls[2]!;
+    // The session was behind that state, and the request it got says so with the heading as it is now.
+    expect(call.followUp).toContain("Earlier in this conversation you wrote parts of this lesson.");
+    expect(call.followUp).toContain("Titolo nuovo");
+    expect(call.followUp).not.toContain("Passo 1 primo");
+    // And the session is kept at that state plus part 2: the next part asks for its place and material only.
+    expect(session(db)[0]!.in_step).toBe(1);
     db.close();
   });
 

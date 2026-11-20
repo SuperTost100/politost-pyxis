@@ -156,7 +156,7 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
     // Crossing 960px re-lays the page out without remounting the open section, so a dialog opened from it stays open.
     await page.evaluate(() =>
       window.pyxis.invoke("engines.acknowledge", {
-        providers: ["claude", "codex", "agent", "antigravity"],
+        providers: ["claude", "codex", "antigravity"],
       }),
     );
     await sidebar.getByRole("button", { name: "Strumenti AI" }).click();

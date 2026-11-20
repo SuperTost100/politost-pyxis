@@ -1,8 +1,9 @@
 import { IpcError } from "../../shared/ipc";
+import { isRetiredProvider } from "../../shared/limits";
 import type Database from "better-sqlite3";
 import { nearestEffort, studentEffort } from "../../shared/effort";
 import { planAuto, type AutoFeature, type AutoProvider } from "./auto";
-import { isBenched, isModelBenched, pointedModels } from "./bench";
+import { isBenched, isModelBenched } from "./bench";
 import { effortsOf, wasReported } from "./efforts";
 import { automaticEffortOn, isForeignModel, isOwnModel } from "./model-roles";
 import type { ProviderId } from "./funnel";
@@ -100,8 +101,55 @@ let ready: AutoProvider[] = [];
 /** The order the student put their tools in, or null while they never set one (see `planAuto`). */
 let order: readonly string[] | null = null;
 
+/** Whether the automatic choice has made a plan since Pyxis started: before that the list above is empty by default. */
+let planned = false;
+const waitingForPlan = new Set<() => void>();
+
 export function rememberReady(providers: AutoProvider[]): void {
   ready = providers;
+  planned = true;
+  for (const resume of [...waitingForPlan]) resume();
+}
+
+/**
+ * How long a job that names a tool Pyxis no longer offers waits for the first plan. The plan reads every tool's model
+ * list, which takes seconds, and a plan that cannot read any list never comes, so the wait is bounded.
+ * shortcut: a fixed bound; replace it with the plan's own failure signal if autoConfigure ever reports one.
+ */
+export const FIRST_PLAN_WAIT_MS = 60_000;
+
+/**
+ * Resolves once the first plan exists, or after `FIRST_PLAN_WAIT_MS`. A job saved by an earlier build that names a
+ * retired tool is moved to the automatic choice, which needs the plan: the runner starts before it, so such a job waits
+ * here instead of failing with `engine-missing` on the first launch after an update. A cancelled job stops waiting at
+ * once: the promise rejects with the signal's reason, and the timer and the waiter are removed.
+ */
+export function afterFirstPlan(signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
+  if (planned) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const done = () => {
+      clearTimeout(timer);
+      waitingForPlan.delete(resume);
+      signal?.removeEventListener("abort", cancelled);
+    };
+    const resume = () => {
+      done();
+      resolve();
+    };
+    const cancelled = () => {
+      done();
+      reject(signal!.reason);
+    };
+    const timer = setTimeout(resume, FIRST_PLAN_WAIT_MS);
+    waitingForPlan.add(resume);
+    signal?.addEventListener("abort", cancelled, { once: true });
+  });
+}
+
+/** Tests: no plan has been made yet. */
+export function forgetFirstPlan(): void {
+  planned = false;
 }
 
 /** Jobs the student told to go on with a given tool: the job's id and the tool, until Pyxis closes. */
@@ -134,13 +182,15 @@ export function selectionOn(
 }
 
 /**
- * A model that this tool must not run: one the tool reported that is not its maker's (Composer on Cursor), or one that
- * belongs to another tool's maker (a Claude model on Cursor). An id nobody knows is not ruled out here.
+ * A model that this tool must not run: any model of a tool Pyxis no longer offers, one the tool reported that is not
+ * its maker's (a Composer model), or one that belongs to another tool's maker (a Claude model on Antigravity). An id
+ * nobody knows is not ruled out here.
  */
 export function offLimits(provider: string, model: string): boolean {
   return (
-    !isOwnModel(provider, model) &&
-    (wasReported(provider, model) || isForeignModel(provider, model))
+    isRetiredProvider(provider) ||
+    (!isOwnModel(provider, model) &&
+      (wasReported(provider, model) || isForeignModel(provider, model)))
   );
 }
 
@@ -220,19 +270,10 @@ export function fallbackSelection(
     : undefined;
 }
 
-/**
- * The providers with only the models their subscription has not refused today. When a refusal pointed to a kind of
- * model ("switch to a Grok model"), only the provider's models of that kind stay, if it lists any.
- */
+/** The providers with only the models their subscription has not refused today. */
 export function withoutRefusedModels(providers: AutoProvider[]): AutoProvider[] {
-  return providers.map((provider) => {
-    const open = provider.models.filter(
-      (model) => !isModelBenched(provider.id, model.id),
-    );
-    const word = pointedModels(provider.id);
-    const pointed = word
-      ? open.filter((model) => model.id.toLowerCase().includes(word))
-      : [];
-    return { ...provider, models: pointed.length ? pointed : open };
-  });
+  return providers.map((provider) => ({
+    ...provider,
+    models: provider.models.filter((model) => !isModelBenched(provider.id, model.id)),
+  }));
 }
