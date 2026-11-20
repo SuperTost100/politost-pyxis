@@ -51,9 +51,9 @@ export function plotPng(dark: boolean): Buffer {
   });
 }
 
-/** A photo of a page of notes with a sloped plane drawn on it. */
+/** A photo of a page of notes with a sloped plane drawn on it, as tall as a phone's portrait shot of a page. */
 export function photoPng(): Buffer {
-  return png(320, 240, (x, y) => {
+  return png(312, 400, (x, y) => {
     if (y > 150 && y < 154 && x > 60 && x < 220) return [40, 56, 110];
     if (Math.abs(y - (210 - (x - 60) * 0.6)) < 2 && x > 60 && x < 220) return [40, 56, 110];
     return y % 28 === 0 ? [196, 205, 222] : [233, 228, 216];

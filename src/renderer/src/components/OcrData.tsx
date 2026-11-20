@@ -183,6 +183,15 @@ export function OcrDataCard({
   const { t, i18n } = useTranslation();
   const headingId = useId();
   const { state, active, last, busy, startFailed, start } = useOcrData();
+  // The card opens where the action that was refused left it, which can be below the foot of the window: the first time
+  // it is drawn it scrolls into view, from where the student pressed, unless it is already there.
+  const shown = useRef(false);
+  const reveal = (node: HTMLElement | null) => {
+    if (!node || shown.current) return;
+    shown.current = true;
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    node.scrollIntoView({ block: "nearest", behavior: calm ? "auto" : "smooth" });
+  };
   if (!state.data) return null;
 
   const size = formatBytes(state.data.totalBytes, i18n.language);
@@ -194,7 +203,7 @@ export function OcrDataCard({
       ? t(active.stepLabel)
       : t("sources.jobs.ocrData");
     return (
-      <div className="px-ocr" role="group" aria-labelledby={headingId}>
+      <div ref={reveal} className="px-ocr" role="group" aria-labelledby={headingId}>
         <p className="body-strong" id={headingId}>
           {label}
         </p>
@@ -222,7 +231,7 @@ export function OcrDataCard({
 
   if (state.data.state === "ready") {
     return (
-      <div className="px-ocr" role="group" aria-labelledby={headingId}>
+      <div ref={reveal} className="px-ocr" role="group" aria-labelledby={headingId}>
         <p className="body-strong" id={headingId} role="status">
           {t("sources.ocrData.readyTitle")}
         </p>
@@ -243,7 +252,7 @@ export function OcrDataCard({
       ? (ocrErrorKey(last.error ?? "") ?? "jobs.failedGeneral")
       : null;
   return (
-    <div className="px-ocr" role="group" aria-labelledby={headingId}>
+    <div ref={reveal} className="px-ocr" role="group" aria-labelledby={headingId}>
       <p className="body-strong" id={headingId}>
         {refusal ??
           t(

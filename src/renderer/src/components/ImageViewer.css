@@ -74,9 +74,13 @@
   overscroll-behavior: contain;
   padding: 64px var(--space-8) var(--space-6);
 }
-/* `margin: auto` centres the figure while it fits and lets the stage scroll when a zoom step makes it larger. */
+/* `margin: auto` centres the figure while it fits and lets the stage scroll when a zoom step makes it larger. The width
+   that fits is the one whose picture, with the card's padding and the caption under it, is as tall as the window allows,
+   so a tall photo is not cut at the foot. `--ratio` is the picture's width over its height. */
 .px-viewer-figure {
-  --fit: min(880px, calc(100vw - 64px), calc((100vh - 140px) * 1.6));
+  --pad: 44px;
+  --room: calc(100vh - 64px - 24px - 88px);
+  --fit: min(880px, calc(100vw - 64px), calc((var(--room) - var(--pad)) * var(--ratio, 1.6) + var(--pad)));
   width: calc(var(--fit) * var(--zoom, 1));
   margin: auto;
 }
@@ -91,7 +95,8 @@
   background: #171b22;
 }
 .px-viewer-figure:has(.is-photo) {
-  --fit: min(560px, calc(100vw - 64px), calc((100vh - 140px) * 1.32));
+  --pad: 0px;
+  --fit: min(560px, calc(100vw - 64px), calc(var(--room) * var(--ratio, 1.6)));
 }
 .px-viewer-card.is-photo {
   padding: 0;

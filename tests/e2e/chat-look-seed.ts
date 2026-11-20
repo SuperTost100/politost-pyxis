@@ -8,7 +8,7 @@ import { dataUrl, photoPng, plotPng } from "./pictures";
 
 const PLOT = "plt.plot([0, 6], [2, 11])";
 const OLD_PLOT = "plt.plot([0, 6], [11, 2])";
-export const FIGURE_CAPTION = "La velocità cresce di 1,5 m/s ogni secondo. L'area colorata è lo spostamento tra 1 s e 4 s.";
+export const FIGURE_CAPTION = "La velocità $v(t)=2+1{,}5\\,t$ cresce di 1,5 m/s ogni secondo. L'area colorata è lo spostamento tra 1 s e 4 s.";
 export const OLD_FIGURE_CAPTION = "La velocità scende di 1,5 m/s ogni secondo.";
 
 const block = (code: string, caption: string) => "```pyxis-figure\n" + JSON.stringify({ caption, code }) + "\n```";

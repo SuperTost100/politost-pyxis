@@ -2,6 +2,7 @@ import type { MenuProps } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { copyImage, saveImage } from "../lib/imageActions";
+import { plainReading } from "../features/ask/outline";
 import { imageFileName } from "../lib/imageName";
 import { Icon } from "./Icon";
 import { ImageViewer } from "./ImageViewer";
@@ -116,12 +117,12 @@ export function Figure({
             ref={opener}
             type="button"
             className="px-figure-open"
-            aria-label={t("components.figure.open", { caption })}
+            aria-label={t("components.figure.open", { caption: plainReading(caption) })}
             onClick={() => setOpen(true)}
           >
-            <img className="px-figure-light" src={image} alt={caption} />
+            <img className="px-figure-light" src={image} alt={plainReading(caption)} />
             {darkImage ? (
-              <img className="px-figure-dark" src={darkImage} alt={caption} />
+              <img className="px-figure-dark" src={darkImage} alt={plainReading(caption)} />
             ) : null}
           </button>
           <MenuButton

@@ -518,6 +518,48 @@ describe("a photo that cannot be read fails on its chip", () => {
   });
 });
 
+describe("a photo is never reading with nothing running", () => {
+  const png = { mediaType: "image/png" as const, bytes: new Uint8Array([1, 2, 3]) };
+  const fits: Record<string, (signal?: AbortSignal) => Promise<typeof png>> = {
+    // Fitted in the turn it was attached, as a small JPEG that goes as it is: the announcement comes before the answer.
+    "subito.jpg": async () => png,
+    "lenta.jpg": () => new Promise((resolve) => setTimeout(() => resolve(png), 30)),
+    "rifiutata.jpg": () => Promise.reject(new Error("vision-image-unsupported")),
+    "troppo-grande.jpg": () => Promise.reject(new Error("vision-image-too-large")),
+    // A worker that ends without a word is an error like any other, not a silence.
+    "senza-parole.jpg": () => Promise.reject(new Error("")),
+  };
+
+  it("ends every photo as ready or failed, and tells the window each time the file changes", async () => {
+    let pending = 0;
+    const setups = setup({
+      fit: async (file) => {
+        pending += 1;
+        try {
+          return await fits[readFileSync(file, "utf8")]!();
+        } finally {
+          pending -= 1;
+        }
+      },
+    });
+    const reading: boolean[] = [];
+    // Whenever a view says reading, a fitting is under way for it.
+    const check = (view: AttachmentView) => view.state === "reading" && reading.push(pending > 0);
+    const views = [];
+    for (const name of Object.keys(fits)) views.push(await setups.files.held.attach(setups.write(name, name)));
+    views.forEach(check);
+    setups.events.forEach(check);
+    await setups.files.held.settle(views.map((view) => view.id));
+    for (const view of views) {
+      const last = setups.events.filter((event) => event.id === view.id).at(-1);
+      expect(["ready", "failed"], view.name).toContain(last?.state);
+      expect(setups.files.held.list([view.id])[0]?.state, view.name).toBe(last?.state);
+    }
+    expect(reading.every(Boolean)).toBe(true);
+    expect(pending).toBe(0);
+  });
+});
+
 describe("a scan whose indexing failed is still read", () => {
   it("starts reading the scan when the import ended on its indexing step, and does not wait for ever", async () => {
     const t = setup({

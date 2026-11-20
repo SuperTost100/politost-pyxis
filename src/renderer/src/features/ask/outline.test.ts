@@ -57,6 +57,14 @@ describe("plainReading", () => {
     expect(plainReading("$$F = m\\cdot a$$")).toBe("F = m· a");
     expect(plainReading("Nessuna formula")).toBe("Nessuna formula");
   });
+
+  it("reads a figure's caption: fractions, units, vectors and powers without their markup", () => {
+    expect(plainReading("La velocità $v(t)=2+1{,}5\\,t$ e $x(t) = \\tfrac12 a t^2$ per $a = 2\\,\\mathrm{m/s^2}$.")).toBe(
+      "La velocità v(t)=2+1,5 t e x(t) = 1/2 a t² per a = 2 m/s².",
+    );
+    expect(plainReading("La somma di $\\vec F_1$ e $\\vec F_2$.")).toBe("La somma di F_1 e F_2.");
+    expect(plainReading("$\\frac{mg}{2}$")).toBe("mg/2");
+  });
 });
 
 describe("pinnedMark", () => {

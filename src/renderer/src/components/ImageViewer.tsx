@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { plainReading } from "../features/ask/outline";
 import { grow } from "../lib/grow";
 import { saveImage } from "../lib/imageActions";
 import { ZOOM_START, ZOOM_STEPS, zoomFrom } from "../lib/viewerZoom";
 import { Icon } from "./Icon";
+import { InlineMarkdown } from "./InlineMarkdown";
 import "./ImageViewer.css";
 
 /**
@@ -37,6 +39,8 @@ export function ImageViewer({
   const card = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [percent, setPercent] = useState<number>(ZOOM_START);
+  // The picture's proportions, once it has loaded, so the card is sized to fit the window in both directions.
+  const [ratio, setRatio] = useState(1.6);
   const [saved, setSaved] = useState(false);
   const [failed, setFailed] = useState(false);
   const closing = useRef(false);
@@ -162,11 +166,23 @@ export function ImageViewer({
         </button>
       </div>
       <div className="px-viewer-stage" tabIndex={0} role="region" aria-label={t("components.viewer.stage")}>
-        <figure className="px-viewer-figure" style={{ "--zoom": percent / 100 } as React.CSSProperties}>
+        <figure className="px-viewer-figure" style={{ "--zoom": percent / 100, "--ratio": ratio } as React.CSSProperties}>
           <div ref={card} className={`px-viewer-card is-${ground}`}>
-            <img src={src} alt={caption ?? ""} draggable={false} />
+            <img
+              src={src}
+              alt={caption ? plainReading(caption) : ""}
+              draggable={false}
+              onLoad={(event) => {
+                const { naturalWidth, naturalHeight } = event.currentTarget;
+                if (naturalWidth > 0 && naturalHeight > 0) setRatio(naturalWidth / naturalHeight);
+              }}
+            />
           </div>
-          {caption ? <figcaption>{caption}</figcaption> : null}
+          {caption ? (
+            <figcaption>
+              <InlineMarkdown>{caption}</InlineMarkdown>
+            </figcaption>
+          ) : null}
         </figure>
       </div>
       <span className="visually-hidden" role="status">

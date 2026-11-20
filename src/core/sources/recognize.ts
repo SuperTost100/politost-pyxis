@@ -6,7 +6,7 @@ import jpeg from "jpeg-js";
 import { PNG } from "pngjs";
 import { laplacianVariance } from "./quality";
 import { createOcrScratch, ocrScratchRoot, readVerifiedOcrData } from "./ocr-data";
-import { assertDecodable, MAX_DECODE_PIXELS, sniffImage, uprightForOcr } from "./vision-image";
+import { assertDecodable, JPEG_MEMORY_MB, MAX_DECODE_PIXELS, sniffImage, uprightForOcr } from "./vision-image";
 
 /**
  * Local OCR. It never touches the network: the language files come from `tess` (see `ocr-data.ts`), are checked against
@@ -109,7 +109,7 @@ export function grayFromImage(
     useTArray: true,
     formatAsRGBA: true,
     maxResolutionInMP: MAX_DECODE_PIXELS / 1e6,
-    maxMemoryUsageInMB: 768,
+    maxMemoryUsageInMB: JPEG_MEMORY_MB,
   });
   return {
     gray: rgbaToGray(decoded.data, decoded.width, decoded.height),

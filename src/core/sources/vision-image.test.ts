@@ -8,6 +8,7 @@ import { grayFromImage, imageVariance, recognizeImage } from "./recognize";
 import {
   assertDecodable,
   imageSize,
+  JPEG_MEMORY_MB,
   loadVisionImage,
   normalizeForVision,
   sniffImage,
@@ -127,6 +128,21 @@ describe("SRC-04 images fit provider limits before they are sent", () => {
     new DataView(bomb.buffer, bomb.byteOffset).setUint32(16, 20_000);
     new DataView(bomb.buffer, bomb.byteOffset).setUint32(20, 20_000);
     expect(() => normalizeForVision(bomb)).toThrow("vision-image-too-large");
+  });
+
+  it("names the true reason for a JPEG that needs more memory than a decode may take: it is too large, not damaged", () => {
+    const photo = jpegOf(600, 400, redBlue, 80);
+    // The same file decodes with room, and with too little the decoder's own refusal is told as size.
+    expect(normalizeForVision(withOrientation(photo, 6), { jpegMemoryMb: JPEG_MEMORY_MB })).toMatchObject({ mediaType: "image/jpeg" });
+    expect(() => normalizeForVision(withOrientation(photo, 6), { jpegMemoryMb: 1 })).toThrow("vision-image-too-large");
+    // A file the decoder cannot read at all is still damaged.
+    const broken = withOrientation(photo, 6).slice(0, 4000);
+    expect(() => normalizeForVision(broken)).toThrow("vision-image-unsupported");
+  });
+
+  it("allows a decode as large as a 48 MP photo needs: a 4:4:4 or progressive one wants more than 768 MB", () => {
+    // Measured with 6000x8000 files: a 4:2:0 one decodes in 768 MB, a 4:4:4 one and a progressive one need about 900 MB.
+    expect(JPEG_MEMORY_MB).toBeGreaterThanOrEqual(1500);
   });
 
   it("does not send a small JPEG as is when its EXIF orientation is not upright", () => {
