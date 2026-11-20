@@ -391,7 +391,8 @@
         "unsupported": "Un messaggio può portare foto e file PDF, Word, PowerPoint, di testo e Markdown.",
         "denied": "Pyxis non ha il permesso di aprire questo file.",
         "cancelled": "La lettura è stata fermata. Togli il file e allegalo di nuovo.",
-        "data": "Non sono riuscito a leggere la scansione, perché mancano i dati di lettura."
+        "data": "Non sono riuscito a leggere la scansione, perché mancano i dati di lettura.",
+        "picture-too-large": "Questa foto ha troppi pixel perché Pyxis la legga su questo computer. Scattala di nuovo con una risoluzione più bassa."
       },
       "waiting_one": "Leggo {{count}} file…",
       "waiting_other": "Leggo {{count}} file…",

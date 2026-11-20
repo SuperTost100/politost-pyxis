@@ -17,7 +17,9 @@ import {
   stagedTessdata,
   writeScanPdf,
 } from "./scanned-pdf-fixture";
+import { seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
+import { saveShot } from "./shots";
 import { fromChiediToExams } from "./doors";
 
 /*
@@ -124,6 +126,37 @@ function expectEveryPageOnce(run: Run) {
     expect(row.text.toUpperCase()).not.toContain(other);
   });
 }
+
+test("the consent card that Read the scan opens is brought into view when the window is too short to show it below the row", async () => {
+  test.setTimeout(120000);
+  const run = await openScan();
+  try {
+    // A window as short as the 800 px of a laptop with two subjects of files above the card, made shorter still so the
+    // card is certainly under the fold.
+    const db = new DatabaseSync(join(run.userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    try {
+      seedSubjects(db, [
+        { id: "s-fisica", name: "Fisica 1" },
+        { id: "s-analisi", name: "Analisi 1" },
+      ]);
+    } finally {
+      db.close();
+    }
+    await run.page.reload();
+    await run.page.setViewportSize({ width: 1280, height: 560 });
+    const card = run.page.locator(".px-ocr");
+    await expect(card).toHaveCount(0);
+    await scanButton(run.page).click();
+    await expect(card).toBeVisible();
+    // Its button is on screen, not below the foot of the window, without the student scrolling to look for it.
+    const download = run.page.getByRole("button", { name: /^Scarica [\d.,]+ MB$/ });
+    await expect(download).toBeInViewport({ ratio: 1 });
+    await expect(card).toBeInViewport({ ratio: 0.9 });
+    await saveShot(run.page, "scanned-pdf/consent-card-in-view.png", { animations: "disabled" });
+  } finally {
+    await close(run);
+  }
+});
 
 test("a scanned PDF without OCR data is refused with the consent card, stays startable, and stores nothing", async () => {
   test.setTimeout(120000);
