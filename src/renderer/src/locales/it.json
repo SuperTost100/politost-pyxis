@@ -230,8 +230,7 @@
         "claude": "Serve un account Claude con il piano Pro, che è a pagamento.",
         "chatgpt": "Serve un account ChatGPT. Con il piano gratuito hai poche richieste al giorno, con Plus molte di più.",
         "gemini": "Serve un account Google.",
-        "geminiFree": "Gratis per gli studenti universitari, con il piano AI Pro.",
-        "cursor": "Serve un account Cursor. Quello gratuito basta per iniziare."
+        "geminiOffers": "Google ha offerte per studenti che dipendono dal paese: controlla la pagina di Google."
       },
       "plans": "Vedi i piani",
       "plansOf": "Vedi i piani di {{name}}",
@@ -3209,9 +3208,7 @@
       "intro": "Quando usi uno strumento, il testo, i brani recuperati e gli allegati escono da questo computer. Pyxis non invia nulla finché non confermi.",
       "item": "{{name}} li invia a {{vendor}}.",
       "item_vowel": "{{name}} li invia ad {{vendor}}.",
-      "later": "Non ora",
-      "itemRelay": "{{name}} li invia a {{vendor}}, che li passa al produttore del modello che usi (Anthropic, OpenAI o Google).",
-      "itemRelay_vowel": "{{name}} li invia ad {{vendor}}, che li passa al produttore del modello che usi (Anthropic, OpenAI o Google)."
+      "later": "Non ora"
     },
     "loading": "Cerco gli strumenti installati.",
     "loadFailed": "Non riesco a leggere gli strumenti.",
@@ -3928,7 +3925,6 @@
     "plan": {
       "claude": "Serve un piano Claude Pro o Max.",
       "codex": "Serve ChatGPT Plus o un piano superiore.",
-      "agent": "Funziona con il tuo account Cursor.",
       "antigravity": "Funziona con qualsiasi account Google. Gli account gratuiti hanno un limite settimanale."
     },
     "stepDone": "fatto",

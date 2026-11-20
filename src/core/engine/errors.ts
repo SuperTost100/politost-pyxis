@@ -45,10 +45,9 @@ function textKind(
   message: string,
 ): "refused" | "quota" | "model" | "" {
   const text = `${rawCode} ${message}`;
-  // A subscription that leaves out the chosen model, which the engine's other models may still have. Cursor says "is
-  // not included in your weekly usage. Buy credits or switch to a Grok model". Read before the limits below, because
-  // the same message offers credits, and before the status, because a provider may send it with a 401: the sign-in
-  // works, so the engine must not be marked signed out.
+  // A subscription that leaves out the chosen model, which the engine's other models may still have. Read before the
+  // limits below, because such a message may offer credits, and before the status, because a provider may send it with a
+  // 401: the sign-in works, so the engine must not be marked signed out.
   if (
     /\b(?:not included in your (?:plan|subscription|weekly usage|usage)|upgrade your (?:plan|subscription) to use (?:this|the) model)\b/i.test(
       text,
@@ -132,15 +131,6 @@ export function fallbackReason(
   if (code === "model-not-included") return "model";
   if (code === "not-installed") return "not-installed";
   return undefined;
-}
-
-/**
- * The kind of model a refusal says to use instead, in lower case: Cursor's "Buy credits or switch to a Grok model to
- * continue" gives "grok". Undefined when the refusal names none.
- */
-export function suggestedModel(err: unknown): string | undefined {
-  const message = err instanceof Error ? err.message : String(err);
-  return /\bswitch to an? ([a-z][\w.]{2,}) model\b/i.exec(message)?.[1]?.toLowerCase();
 }
 
 /** Node error codes of a lost connection, which a CLI or API provider reports as a plain error with a `code`. */

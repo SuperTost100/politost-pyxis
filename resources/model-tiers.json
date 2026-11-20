@@ -56,7 +56,6 @@
     "fast": [
       "antigravity",
       "codex",
-      "agent",
       "claude",
       "openai-api",
       "anthropic-api",
@@ -64,7 +63,6 @@
     ],
     "mid": [
       "claude",
-      "agent",
       "antigravity",
       "codex",
       "anthropic-api",
@@ -74,7 +72,6 @@
     "strong": [
       "claude",
       "codex",
-      "agent",
       "antigravity",
       "anthropic-api",
       "openai-api",

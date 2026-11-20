@@ -1,6 +1,7 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
@@ -29,7 +30,7 @@ test("ENG-10 tool details, the key dialog and the secure key-storage notice in b
   test.skip(process.platform === "win32", "stand-in tools are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-ui-"));
-  const tools = standInTools(["claude", "codex", "agent", "antigravity"]);
+  const tools = standInTools(["claude", "codex", "antigravity"]);
   const app = await launchPyxis({ userData, env: tools.env });
   try {
     const page = await app.firstWindow();
@@ -40,7 +41,7 @@ test("ENG-10 tool details, the key dialog and the secure key-storage notice in b
     // The tools' notice is already confirmed, so no dialog covers the screen.
     await page.evaluate(() =>
       window.pyxis.invoke("engines.acknowledge", {
-        providers: ["claude", "codex", "agent", "antigravity"],
+        providers: ["claude", "codex", "antigravity"],
       }),
     );
     // Exercise both keyring states without entering, storing or sending any key.
@@ -69,7 +70,7 @@ test("ENG-10 tool details, the key dialog and the secure key-storage notice in b
             { language, theme },
           );
           await page.reload();
-          await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(4, { timeout: 30000 });
+          await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(3, { timeout: 30000 });
           // Every tool is connected, so nothing waits to be connected.
           await expect(
             page.getByRole("region", {
@@ -237,7 +238,7 @@ test("Automatic engines: the page says it in one sentence, and Advanced can pin 
     await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(2);
     // The tools not on this computer wait under "To connect".
     const toConnect = page.getByRole("region", { name: "To connect" });
-    for (const name of ["Cursor", "Gemini"])
+    for (const name of ["Gemini"])
       await expect(toConnect.getByRole("button", { name: `Install and sign in to ${name}` })).toBeVisible();
     // The model of each task waits under Advanced, and the week's tokens under debug mode.
     const advanced = page.locator(".engines-advanced");
@@ -256,10 +257,10 @@ test("Automatic engines: the page says it in one sentence, and Advanced can pin 
     // The kinds of work are under Advanced, which is open, with no section to open first.
     const chat = page.getByRole("combobox", { name: "Chat", exact: true });
     expect(await picked(chat)).toMatch(/^Automatic · today \S/);
-    // Every task starts at its own reasoning level: low for chat, high for exams.
+    // Every task starts at its own reasoning level: medium for chat (Claude and ChatGPT run it in the balanced role), high for exams.
     const effortOf = (task: string) => page.getByRole("combobox", { name: `${task}: Reasoning effort` });
     await expect(effortOf("Chat")).toBeEnabled();
-    expect(await picked(effortOf("Chat"))).toBe("Automatic · Low");
+    expect(await picked(effortOf("Chat"))).toBe("Automatic · Medium");
     expect(await picked(effortOf("Exams"))).toBe("Automatic · High");
     // The student's pick is kept, and shows after a reload of the stored choices.
     await effortOf("Exams").selectOption({ label: "Maximum" });
@@ -282,7 +283,7 @@ test("Automatic engines: the page says it in one sentence, and Advanced can pin 
       .textContent();
     expect(claudeModel).toBeTruthy();
     expect(await chat.locator("option").allTextContents()).not.toContainEqual(
-      expect.stringMatching(/^(claude|codex|agent)[-:]/),
+      expect.stringMatching(/^(claude|codex|antigravity)[-:]/),
     );
     await chat.selectOption({ label: claudeModel! });
     await expect.poll(() => picked(chat)).toBe(claudeModel);
@@ -311,12 +312,12 @@ test("Automatic engines: the page says it in one sentence, and Advanced can pin 
   }
 });
 
-test("Automatic engines: with all four CLIs ready, the summary names each engine in one sentence", async () => {
+test("Automatic engines: with all three CLIs ready, the summary names each engine in one sentence", async () => {
   // The stand-in CLIs are POSIX shell scripts. Windows still runs the selection policy in the unit tests.
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-four-"));
-  const tools = standInTools(["claude", "codex", "agent", "antigravity"]);
+  const tools = standInTools(["claude", "codex", "antigravity"]);
   const app = await launchPyxis({ userData, env: tools.env });
   try {
     const page = await app.firstWindow();
@@ -337,12 +338,12 @@ test("Automatic engines: with all four CLIs ready, the summary names each engine
     await expect(summary).toContainText("Pyxis picks the right tool for each job by itself, out of ", {
       timeout: 30000,
     });
-    // Four engines still make one sentence that names each of them, with no line per engine.
-    for (const name of ["Claude", "ChatGPT", "Cursor", "Gemini"])
+    // Three engines still make one sentence that names each of them, with no line per engine.
+    for (const name of ["Claude", "ChatGPT", "Gemini"])
       await expect(summary).toContainText(name);
     await expect(summary.locator("li")).toHaveCount(0);
     await expect(summary).not.toContainText("chat");
-    await saveShot(page, "engines-four-en.png");
+    await saveShot(page, "engines-three-en.png");
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -370,17 +371,16 @@ test("Settings: a test the provider refuses turns the engine to an expired sign-
       "claude",
       `case "$1" in --version) echo "2.1.0";; auth) echo '{"loggedIn":true,"authMethod":"claude.ai"}';; esac`,
     ),
-    // Cursor Agent's own check keeps saying "signed in" while its provider answers every call with 401.
-    CLI_FUNNEL_AGENT_BIN: fake(
-      "agent",
+    // Antigravity's own check keeps saying it has a key while its provider answers every call with 401.
+    CLI_FUNNEL_AGY_BIN: fake(
+      "agy",
       `case "$1" in
-  --version) echo "2026.09.28-64d2043";;
-  status) echo '{"isAuthenticated":true}';;
-  about) echo '{}';;
-  --list-models) printf 'grok-4.7-low - Grok 4.7  Low\\ngemini-3.8-flash - Gemini 3.8 Flash\\n';;
+  --version) echo "1.3.0";;
+  models) printf 'gemini-3.8-flash\\tGemini 3.8 Flash\\n';;
   *) echo "Error: request failed with status 401 Unauthorized" >&2; exit 1;;
 esac`,
     ),
+    GEMINI_API_KEY: "test-key",
   };
   const app = await launchPyxis({ userData, env });
   try {
@@ -390,57 +390,57 @@ esac`,
     await expect(page).toHaveURL(/#\/ask$/);
     await page.evaluate(async () => {
       await window.pyxis.invoke("engines.acknowledge", {
-        providers: ["claude", "agent"],
+        providers: ["claude", "antigravity"],
       });
       localStorage.setItem("pyxis.lang", "en");
       localStorage.removeItem("pyxis.engines.advanced");
       location.hash = "/settings/engines";
     });
     await page.reload();
-    await expect(tool(page, "agent")).toContainText("Connected", { timeout: 30000 });
-    await expect(page.locator(".engines-summary")).toContainText("Cursor", {
+    await expect(tool(page, "antigravity")).toContainText("Connected", { timeout: 30000 });
+    await expect(page.locator(".engines-summary")).toContainText("Gemini", {
       timeout: 30000,
     });
 
-    await choose(page, "Cursor", "Test");
+    await choose(page, "Gemini", "Test");
     // The message names the engine and offers its sign-in here, instead of sending the student to the page they are on.
     await expect(
       page.getByText(
-        "Cursor refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again.",
+        "Gemini refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again.",
       ),
     ).toBeVisible({ timeout: 30000 });
     await expect(page.getByText(/Settings, AI tools/)).toHaveCount(0);
     // The tool leaves the connected ones: it waits under "To connect", where its row says why and offers the sign-in.
-    await expect(tool(page, "agent")).toHaveCount(0);
-    const waiting = page.getByRole("region", { name: "To connect" }).locator("li", { hasText: "Cursor" });
+    await expect(tool(page, "antigravity")).toHaveCount(0);
+    const waiting = page.getByRole("region", { name: "To connect" }).locator("li", { hasText: "Gemini" });
     await expect(waiting).toContainText("Sign-in expired");
-    await expect(waiting.getByRole("button", { name: "Sign in to Cursor" })).toBeVisible();
+    await expect(waiting.getByRole("button", { name: "Sign in to Gemini" })).toBeVisible();
     await expect(page.locator(".engines-summary")).not.toContainText(
-      "Cursor",
+      "Gemini",
       { timeout: 30000 },
     );
     expect(
       Object.values(
         await page.evaluate(() => window.pyxis.invoke("engines.features", {})),
       ).map((selection) => selection.provider),
-    ).not.toContain("agent");
+    ).not.toContain("antigravity");
     await expectNoAxeViolations(page, {
       tags: ["wcag2a", "wcag2aa", "wcag21aa"],
     });
     await saveShot(page, "engines-refused-en.png", { fullPage: true });
-    await waiting.getByRole("button", { name: "Sign in to Cursor" }).click();
+    await waiting.getByRole("button", { name: "Sign in to Gemini" }).click();
     await expect(
-      page.getByRole("dialog", { name: "Set up Cursor" }),
+      page.getByRole("dialog", { name: "Set up Gemini" }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
 
-    // A task screen says the same: a chat pinned to Cursor Agent names it and opens its sign-in, instead of pointing
+    // A task screen says the same: a chat pinned to Gemini names it and opens its sign-in, instead of pointing
     // at Settings in words.
     await page.evaluate(() =>
       window.pyxis.invoke("engines.setFeature", {
         feature: "chat",
-        provider: "agent",
-        model: "grok-4.7",
+        provider: "antigravity",
+        model: "gemini-3.8-flash",
       }),
     );
     await page.evaluate(() => {
@@ -450,7 +450,7 @@ esac`,
     await box.fill("What is a vector?");
     await box.press("Enter");
     const named = page.getByText(
-      "Cursor refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again.",
+      "Gemini refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again.",
     );
     await expect(named.first()).toBeVisible({ timeout: 30000 });
     await expect(page.getByText(/Sign in again in Settings, AI tools/)).toHaveCount(0);
@@ -458,12 +458,12 @@ esac`,
       tags: ["wcag2a", "wcag2aa", "wcag21aa"],
     });
     await page
-      .getByRole("button", { name: "Sign in to Cursor" })
+      .getByRole("button", { name: "Sign in to Gemini" })
       .first()
       .click();
     await expect(page).toHaveURL(/#\/settings\/engines$/);
     await expect(
-      page.getByRole("dialog", { name: "Set up Cursor" }),
+      page.getByRole("dialog", { name: "Set up Gemini" }),
     ).toBeVisible();
   } finally {
     await app.close();
@@ -472,7 +472,7 @@ esac`,
   }
 });
 
-test("Settings: a model the subscription refuses keeps the engine, but the row says so and the plan moves to the model the refusal names", async () => {
+test("Settings: a model the subscription refuses keeps the engine, but the row says so and the plan moves to the next model of the role", async () => {
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-model-"));
@@ -487,20 +487,16 @@ test("Settings: a model the subscription refuses keeps the engine, but the row s
     HOME: bin,
     PATH: "/usr/bin:/bin",
     CLI_FUNNEL_NO_SHELL_PATH: "1",
-    // Cursor Agent signed in on a plan that lists models of several makers, but whose weekly usage covers one Grok
-    // model only. Pyxis runs only Cursor's Grok models, so the others never reach the row or a task.
-    CLI_FUNNEL_AGENT_BIN: fake(
-      "agent",
+    // Claude Code signed in on a plan that leaves Haiku 5.5 out: that model is refused and every other one answers.
+    CLI_FUNNEL_CLAUDE_BIN: fake(
+      "claude",
       `case "$1" in
-  --version) echo "2026.10.22-27dcf5f";;
-  status) echo '{"isAuthenticated":true}';;
-  about) echo '{}';;
-  --list-models) printf 'gemini-3.8-flash-low - Gemini 3.8 Flash Low\\ngemini-3.8-flash-high - Gemini 3.8 Flash High\\nclaude-opus-5-5-high - Claude Opus 5.5 1M High\\ngrok-4.7-low - Grok 4.7  Low\\ngrok-4.7-high - Grok 4.7  High\\ncursor-grok-4.6-low - Grok 4.6 Low\\ncursor-grok-4.6-high - Grok 4.6\\n';;
+  --version) echo "2.1.0";;
+  auth) echo '{"loggedIn":true,"authMethod":"claude.ai"}';;
   *)
-    # Grok 4.6 answers; Grok 4.7 is outside the plan.
     case "$*" in
-      *cursor-grok-4.6*) cat >/dev/null; printf '%s\\n' '{"type":"result","subtype":"success","is_error":false,"result":"ok"}';;
-      *) echo "ActionRequiredError: Grok 4.7 is not included in your weekly usage Buy credits or switch to a Grok model to continue." >&2; exit 1;;
+      *claude-haiku-5-5*) echo "Claude Haiku 5.5 is not included in your subscription." >&2; exit 1;;
+      *) read -r _; printf '%s\\n' '{"type":"system","subtype":"init","session_id":"stub-1"}' '{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}' '{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"stub-1","usage":{"input_tokens":3,"output_tokens":1}}';;
     esac;;
 esac`,
     ),
@@ -512,48 +508,41 @@ esac`,
     await page.getByRole("button", { name: "Salta" }).click();
     await expect(page).toHaveURL(/#\/ask$/);
     await page.evaluate(async () => {
-      await window.pyxis.invoke("engines.acknowledge", { providers: ["agent"] });
+      await window.pyxis.invoke("engines.acknowledge", { providers: ["claude"] });
       localStorage.setItem("pyxis.lang", "en");
       localStorage.removeItem("pyxis.engines.advanced");
       location.hash = "/settings/engines";
     });
     await page.reload();
-    const row = tool(page, "agent");
+    const row = tool(page, "claude");
     await expect(row).toContainText("Connected", { timeout: 30000 });
-    // The row names the models the plan gives the engine, never their ids, and only Cursor's own kind.
-    await expect(row).toContainText("Grok 4.7", { timeout: 30000 });
-    await expect(row).not.toContainText("grok-4.7");
-    await expect(row).not.toContainText("Claude");
-    await expect(row).not.toContainText("Gemini");
+    // The row names the model of each role, never an id.
+    await expect(row.locator("[data-role]")).toHaveText(["Fast Haiku 5.5", "Balanced Sonnet 5.5", "Strong Opus 5.5"], { timeout: 30000 });
+    await expect(row).not.toContainText("claude-haiku");
     // One tool has nothing to be put in order with: no grip, and no place.
-    await expect(row.getByRole("button", { name: "Reorder Cursor" })).toHaveCount(0);
+    await expect(row.getByRole("button", { name: "Reorder Claude" })).toHaveCount(0);
 
-    await choose(page, "Cursor", "Test");
+    await choose(page, "Claude", "Test");
     await expect(
-      page.getByText("Your Cursor subscription doesn't include the chosen model."),
+      page.getByText("Your Claude subscription doesn't include the chosen model."),
     ).toBeVisible({ timeout: 30000 });
     await expect(row).toContainText("Ready, with limits");
-    await expect(row).toContainText("Grok 4.7 isn't in your subscription");
-    // The plan moves every task Pyxis chose to the next Grok model of the model file.
-    await expect
-      .poll(
-        async () => [
-          ...new Set(
-            Object.values(
-              await page.evaluate(() => window.pyxis.invoke("engines.features", {})),
-            ).map((selection) => selection.model),
-          ),
-        ],
-        { timeout: 30000 },
-      )
-      .toEqual(["cursor-grok-4.6"]);
-    await expect(row).toContainText("Grok 4.6");
+    await expect(row).toContainText("Haiku 5.5 isn't in your subscription");
+    // The plan moves the tasks Pyxis chose on the fast role to the next model of that role, and no other.
+    const modelsOf = async () =>
+      Object.fromEntries(
+        Object.entries(await page.evaluate(() => window.pyxis.invoke("engines.features", {}))).map(([feature, selection]) => [feature, selection.model]),
+      );
+    await expect.poll(async () => (await modelsOf()).map).toBe("claude-haiku-4-5-20251001");
+    expect((await modelsOf()).lesson).toBe("claude-sonnet-5-5");
+    // The row's fast role shows the model the choice moved to.
+    await expect(row.locator('[data-role="fast"]')).toContainText("Haiku 4.5");
     await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
     await saveShot(page, "engines-model-refused-en.png", { fullPage: true });
-    // The next Prova skips the refused model, answers on Grok and names it as the engine lists it.
-    await choose(page, "Cursor", "Test");
-    await expect(page.locator(".engines-result")).toContainText("Grok 4.6", { timeout: 30000 });
-    await expect(page.locator(".engines-result")).not.toContainText("cursor-grok-4.6");
+    // The next Prova skips the refused model, answers on the next one and names it as the engine lists it.
+    await choose(page, "Claude", "Test");
+    await expect(page.locator(".engines-result")).toContainText("Haiku 4.5", { timeout: 30000 });
+    await expect(page.locator(".engines-result")).not.toContainText("claude-haiku");
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -622,6 +611,10 @@ test("Settings: a tool's row says its three roles with the model each one runs, 
               .color,
           }));
         expect(colours.role).not.toBe(colours.model);
+        for (const id of ["claude", "codex"])
+          await expect(tool(page, id)).toContainText(
+            language === "en" ? "Here “Chat” uses the balanced model." : "Qui «Chat» usa il modello equilibrato.",
+          );
         // One line under the list says which role does what, and says nothing about when the list was updated.
         const note = page.locator(".engines-roles-note");
         await expect(note).toHaveText(
@@ -642,13 +635,14 @@ test("Settings: a tool's row says its three roles with the model each one runs, 
             .filter({ hasText: "Gemini" }),
         ).toContainText(
           language === "en"
-            ? "Uses Gemini 4 Hydrogen and Gemini 4 Carbon."
-            : "Usa Gemini 4 Hydrogen e Gemini 4 Carbon.",
+            ? "Uses Gemini 3.8 Flash, Gemini 4 Hydrogen and Gemini 4 Carbon."
+            : "Usa Gemini 3.8 Flash, Gemini 4 Hydrogen e Gemini 4 Carbon.",
         );
         // Under Advanced each kind of work names its role, and a pinned one is tinted until everything goes back.
         const chat = page.getByRole("combobox", { name: "Chat", exact: true });
+        // The chat runs in the balanced role on Claude and ChatGPT, as the model file says, and the rows say it too.
         await expect(page.locator(".engines-feature-work small")).toHaveText([
-          words.fast,
+          words.mid,
           words.fast,
           words.fast,
           words.mid,
@@ -756,6 +750,55 @@ test("Settings: the model field of each kind of work shows the whole model name 
       }
   } finally {
     await app.close();
+    removeTestFolder(userData);
+    rmSync(tools.bin, { recursive: true, force: true });
+  }
+});
+
+test("Settings: a workspace whose only allowed tool was Cursor keeps Claude and ChatGPT unused until the student turns one on", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-retired-"));
+  const tools = standInTools(["claude", "codex"]);
+  let app: ElectronApplication | undefined;
+  try {
+    // A first run makes the workspace; then the saved choice of tools is what an earlier build left: Cursor, alone.
+    app = await launchPyxis({ userData, env: tools.env });
+    let page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("engines.acknowledge", { providers: ["claude", "codex"] }));
+    await app.close();
+    app = undefined;
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    db.prepare("INSERT OR REPLACE INTO settings(key,value_json,updated_at) VALUES('engines.allowed',?,?)").run(JSON.stringify(["agent"]), Date.now());
+    db.prepare("INSERT OR REPLACE INTO settings(key,value_json,updated_at) VALUES('engines.order',?,?)").run(JSON.stringify(["agent"]), Date.now());
+    db.close();
+
+    app = await launchPyxis({ userData, env: tools.env });
+    page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.evaluate(() => {
+      localStorage.setItem("pyxis.lang", "en");
+      localStorage.removeItem("pyxis.engines.advanced");
+      location.hash = "/settings/engines";
+    });
+    await page.reload();
+    // Both tools are connected and neither is in use: nothing is planned, and the page says no tool is ready.
+    await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(2, { timeout: 30000 });
+    await expect(page.locator(".engines-tool-state")).toHaveText(["Not in use", "Not in use"]);
+    await expect(page.locator(".engines-summary")).toHaveText("No AI tool is ready.");
+    expect(await page.evaluate(() => window.pyxis.invoke("engines.choice", {}))).toEqual({ allowed: [], order: null });
+    expect(await page.evaluate(() => window.pyxis.invoke("engines.features", {}))).toEqual({});
+    await saveShot(page, "engines-only-cursor-en.png", { fullPage: true });
+    // The student turns Claude on: it is the only tool in use, and ChatGPT stays off.
+    await choose(page, "Claude", "Use again");
+    await expect(tool(page, "claude").locator(".engines-tool-state")).toHaveText("Connected");
+    await expect(tool(page, "codex").locator(".engines-tool-state")).toHaveText("Not in use");
+    expect(await page.evaluate(() => window.pyxis.invoke("engines.choice", {}))).toEqual({ allowed: ["claude"], order: null });
+  } finally {
+    // The app holds the workspace open: it closes before the folder is removed, whichever step failed.
+    await app?.close();
     removeTestFolder(userData);
     rmSync(tools.bin, { recursive: true, force: true });
   }

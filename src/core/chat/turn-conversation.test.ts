@@ -22,7 +22,7 @@ type Seen = {
   conversation?: {
     key: string;
     followUp: string;
-    session?: { provider: string; id: string; cwd: string; seen?: boolean } | null;
+    session?: { provider: string; id: string; cwd: string } | null;
     onSession?: (sessionId: string, provider: string, cwd: string) => void;
   };
   cache?: boolean;
@@ -143,15 +143,32 @@ describe("a chat's stored tool session", () => {
     expect(first.seen.conversation?.session).toBeNull();
     expect(currentSession(db, first.chatId)).toMatchObject({ provider: "claude", sessionId: "s1", cwd: "/scratch" });
     const second = await ask(db, "seconda", { chatId: first.chatId });
-    expect(second.seen.conversation?.session).toEqual({ provider: "claude", id: "s1", cwd: "/scratch", seen: false });
+    expect(second.seen.conversation?.session).toEqual({ provider: "claude", id: "s1", cwd: "/scratch" });
     await ask(db, "terza", { chatId: first.chatId });
     expect(sessionsOpened(db, first.chatId)).toBe(1);
     db.close();
   });
 
+  it("treats a session on Cursor, a tool Pyxis no longer offers, as lost: the chat goes on in a new session on the next tool with the conversation handed across", async () => {
+    const { db } = setup();
+    const first = await ask(db, "prima");
+    // What a chat of an earlier build holds: its open session is Cursor's, and the answer it stored came from Cursor.
+    db.prepare("UPDATE chat_sessions SET provider = 'agent', session_id = 'a1', in_step = 1 WHERE chat_id = ?").run(first.chatId);
+    const next = await ask(db, "seconda", { chatId: first.chatId, sessionId: "s2" });
+    // Nothing is resumed, and the earlier exchange travels in the prompt.
+    expect(next.seen.conversation!.session).toBeNull();
+    expect(next.seen.prompt).toContain("prima");
+    expect(currentSession(db, first.chatId)).toMatchObject({ provider: "claude", sessionId: "s2" });
+    // The Cursor session is kept, ended as gone, and the chat has the one new session open.
+    expect(
+      db.prepare("SELECT provider, ended_reason FROM chat_sessions WHERE chat_id = ? AND ended_at IS NOT NULL").all(first.chatId),
+    ).toEqual([{ provider: "agent", ended_reason: "gone" }]);
+    expect(db.prepare("SELECT COUNT(*) FROM chat_sessions WHERE chat_id = ? AND ended_at IS NULL").pluck().get(first.chatId)).toBe(1);
+    db.close();
+  });
+
   it("delivers the current instructions to a session opened under another system prompt, on the tools that carry them in the prompt", async () => {
     for (const [provider, model, carries] of [
-      ["agent", "cursor-grok-4.5", true],
       ["antigravity", "gemini-3.8-flash", true],
       ["claude", "claude-sonnet-5", false],
     ] as const) {
@@ -231,7 +248,7 @@ describe("a chat's stored tool session", () => {
     let chatId = first.chatId;
     for (let n = 0; n < 12; n += 1) chatId = (await ask(db, `${n} ${long}`, { chatId, provider: "claude" })).chatId;
     const moved = await ask(db, "e adesso?", { chatId, provider: "codex", sessionId: "c1" });
-    expect(moved.seen.conversation!.session).toEqual({ provider: "claude", id: "s1", cwd: "/scratch", seen: false });
+    expect(moved.seen.conversation!.session).toEqual({ provider: "claude", id: "s1", cwd: "/scratch" });
     // The engine moved: the funnel answers with the whole prompt, which carries every earlier message.
     expect(moved.seen.prompt).toContain("Earlier turns:");
     expect(moved.seen.prompt).toContain("domanda uno");
@@ -313,28 +330,6 @@ describe("a chat's stored tool session", () => {
     const after = await ask(db, "e i tensori?", { chatId: first.chatId });
     expect(after.seen.conversation!.followUp).not.toContain("not anything you remember differently");
     expect(after.seen.conversation!.followUp).not.toContain("<context>");
-    db.close();
-  });
-
-  it("stores a session Cursor Agent began in a stopped turn only once a turn ends, since it loses a cut turn", async () => {
-    const { db } = setup();
-    const controller = new AbortController();
-    const stopped = await askTurn(db, {
-      text: "Spiegami i vettori",
-      allowGeneral: true,
-      signal: controller.signal,
-      run: async (input) => {
-        (input as Seen).conversation?.onSession?.("a1", "agent", "/scratch");
-        input.onDelta?.("I vettori");
-        controller.abort();
-        throw new DOMException("stopped", "AbortError");
-      },
-    });
-    expect(currentSession(db, stopped.chatId)).toBeUndefined();
-    const next = await ask(db, "riprova", { chatId: stopped.chatId, provider: "agent", sessionId: "a2" });
-    expect(next.seen.conversation!.session).toBeNull();
-    expect(next.seen.prompt).toContain("Spiegami i vettori");
-    expect(currentSession(db, stopped.chatId)?.sessionId).toBe("a2");
     db.close();
   });
 
@@ -549,34 +544,6 @@ describe("a chat's stored tool session", () => {
     db.close();
   });
 
-  it("replays both exchanges after two stops in a row on Cursor Agent, which keeps neither", async () => {
-    const { db } = setup();
-    db.prepare("UPDATE feature_engines SET selection_json = ?").run(JSON.stringify({ provider: "agent", model: "cursor-grok-4.5" }));
-    const first = await ask(db, "prima", { provider: "agent", sessionId: "a1" });
-    const stop = async (text: string, partial: string) => {
-      const controller = new AbortController();
-      await askTurn(db, {
-        chatId: first.chatId,
-        text,
-        allowGeneral: true,
-        signal: controller.signal,
-        run: async (input) => {
-          input.onDelta?.(partial);
-          controller.abort();
-          throw new DOMException("stopped", "AbortError");
-        },
-      });
-    };
-    await stop("Spiegami i vettori", "I vettori sono");
-    await stop("E le matrici?", "Le matrici sono");
-    const next = await ask(db, "e i tensori?", { chatId: first.chatId, provider: "agent", sessionId: "a1" });
-    const replay = next.seen.conversation!.followUp;
-    expect(replay).toContain(
-      "user: Spiegami i vettori\nassistant (stopped, the student saw only this): I vettori sono\nuser: E le matrici?\nassistant (stopped, the student saw only this): Le matrici sono",
-    );
-    db.close();
-  });
-
   it("replays the exchange a CLI never completed because an API provider answered in its place", async () => {
     const { db } = setup();
     // The CLI names its session, hits its limit, and an API provider answers the first turn.
@@ -641,7 +608,7 @@ describe("a chat's stored tool session", () => {
         throw new DOMException("stopped", "AbortError");
       },
     });
-    // Antigravity keeps the question and the start of the reply; Claude Code and Codex the question; Cursor nothing.
+    // Antigravity keeps the question and the start of the reply; Claude Code and Codex the question.
     expect(chars() - before).toBe(sent + "I vettori sono frecce che".length);
     pin("claude", "claude-sonnet-5");
     const claude = await ask(db, "prima", { provider: "claude", sessionId: "c1" });
@@ -690,11 +657,11 @@ describe("a chat's stored tool session", () => {
     db.close();
   });
 
-  it("starts Cursor Agent and Antigravity over, with the conversation handed across, once a session passes the size they are known to handle", async () => {
+  it("starts Antigravity over, with the conversation handed across, once a session passes the size they are known to handle", async () => {
     const { db } = setup();
-    const first = await ask(db, "prima", { provider: "agent", sessionId: "a1" });
+    const first = await ask(db, "prima", { provider: "antigravity", sessionId: "a1" });
     db.prepare("UPDATE chat_sessions SET chars = ? WHERE chat_id = ?").run(UNCOMPACTED_SESSION_CHARS, first.chatId);
-    const next = await ask(db, "dopo", { chatId: first.chatId, provider: "agent", sessionId: "a2" });
+    const next = await ask(db, "dopo", { chatId: first.chatId, provider: "antigravity", sessionId: "a2" });
     expect(next.seen.conversation!.session).toBeNull();
     expect(next.seen.prompt).toContain("prima");
     expect(
@@ -730,23 +697,23 @@ describe("a decision taken from the tool that answers, not the one that was plan
   const ready = () =>
     rememberReady([
       { id: "claude", kind: "cli", effort: true, models: [{ id: "claude-haiku-5-5", efforts: [] }] },
-      { id: "agent", kind: "cli", effort: true, models: [{ id: "cursor-grok-4.5", efforts: [] }] },
+      { id: "antigravity", kind: "cli", effort: true, models: [{ id: "gemini-3.8-flash", efforts: [] }] },
     ]);
   const automatic = (db: ReturnType<typeof setup>["db"], provider: string, model: string) =>
     db
       .prepare("UPDATE feature_engines SET selection_json = ?")
       .run(JSON.stringify({ provider, model, auto: true }));
 
-  it("delivers the new instructions to a Cursor session that a fallback resumes, and records the model that answered", async () => {
+  it("delivers the new instructions to an Antigravity session that a fallback resumes, and records the model that answered", async () => {
     const { db } = setup();
-    db.prepare("UPDATE feature_engines SET feature = 'chat', selection_json = ?").run(JSON.stringify({ provider: "agent", model: "cursor-grok-4.5" }));
+    db.prepare("UPDATE feature_engines SET feature = 'chat', selection_json = ?").run(JSON.stringify({ provider: "antigravity", model: "gemini-3.8-flash" }));
     const first = await askTurn(db, {
       text: "prima",
       allowGeneral: true,
-      run: async (input) => toolReply("a1", input as Seen, "agent"),
+      run: async (input) => toolReply("a1", input as Seen, "antigravity"),
     });
     db.prepare("UPDATE chat_sessions SET instructions = 'older' WHERE chat_id = ?").run(first.chatId);
-    // The chat's tool is Claude now and is out of requests, so the turn falls back to the Cursor session.
+    // The chat's tool is Claude now and is out of requests, so the turn falls back to the Antigravity session.
     automatic(db, "claude", "claude-haiku-5-5");
     ready();
     const providers: string[] = [];
@@ -761,26 +728,26 @@ describe("a decision taken from the tool that answers, not the one that was plan
           if (input.selection.provider === "claude")
             throw Object.assign(new Error("usage limit"), { code: "cli-failed", limit: { kind: "rate", detail: "usage limit" } });
           followUp = (input as Seen).conversation!.followUp;
-          return { ...toolReply("a1", input as Seen, "agent"), model: "cursor-grok-4.5" };
+          return { ...toolReply("a1", input as Seen, "antigravity"), model: "gemini-3.8-flash" };
         },
       });
     } finally {
       rememberReady([]);
       clearBench();
     }
-    expect(providers).toEqual(["claude", "agent"]);
+    expect(providers).toEqual(["claude", "antigravity"]);
     expect(followUp.startsWith("<instructions>\nYou are Pyxis, a study tutor")).toBe(true);
-    expect(currentSession(db, first.chatId)).toMatchObject({ provider: "agent", sessionId: "a1", inStep: true });
-    expect(db.prepare("SELECT model FROM chat_sessions WHERE chat_id = ? AND ended_at IS NULL").pluck().get(first.chatId)).toBe("cursor-grok-4.5");
+    expect(currentSession(db, first.chatId)).toMatchObject({ provider: "antigravity", sessionId: "a1", inStep: true });
+    expect(db.prepare("SELECT model FROM chat_sessions WHERE chat_id = ? AND ended_at IS NULL").pluck().get(first.chatId)).toBe("gemini-3.8-flash");
     db.close();
   });
 
-  it("runs the separate maths check on the tool that would answer it when Cursor, the chat's tool, is out of requests", async () => {
+  it("runs the separate maths check on the tool that would answer it when Gemini, the chat's tool, is out of requests", async () => {
     const { db } = setup();
-    automatic(db, "agent", "cursor-grok-4.5");
+    automatic(db, "antigravity", "gemini-3.8-flash");
     db.prepare("UPDATE feature_engines SET feature = 'chat'").run();
     ready();
-    benchEngine("agent", "limit", { retryAfterMs: 60_000 });
+    benchEngine("antigravity", "limit", { retryAfterMs: 60_000 });
     const claim = { kind: "derivative", expr: "x**2", claimed: "2*x", vars: ["x"], step: "La derivata è $f'(x) = 2x$." };
     const providers: string[] = [];
     try {
@@ -800,7 +767,7 @@ describe("a decision taken from the tool that answers, not the one that was plan
       rememberReady([]);
       clearBench();
     }
-    // Cursor was out of requests, so Claude answered the turn and runs the check.
+    // Gemini was out of requests, so Claude answered the turn and runs the check.
     expect(providers).toEqual(["claude", "claude (check)"]);
     db.close();
   });

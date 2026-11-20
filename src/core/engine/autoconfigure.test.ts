@@ -35,7 +35,7 @@ function fakeFunnel(state: State, listing: "ok" | "offline" = "ok") {
       row("claude", "Claude Code", state.claude),
       row("codex", "Codex", state.codex),
       // Signed in but without text-only access, so it never gets a feature.
-      row("agent", "Cursor Agent", true, ["full"]),
+      row("antigravity", "Antigravity", true, ["full"]),
     ],
     models: async (id: "claude" | "codex") => {
       if (listing === "offline") throw new Error("offline");
@@ -65,15 +65,16 @@ describe("automatic engine choice", () => {
     const result = await withFunnel({ claude: true, codex: true }, () =>
       handlers.autoConfigure({}),
     );
-    // Cursor Agent is disabled, so it is never counted as ready.
+    // Antigravity is disabled, so it is never counted as ready.
     expect(result.ready).toEqual(["claude", "codex"]);
     expect(Object.keys(result.features).sort()).toEqual(
       ["cards", "chat", "default", "grading", "lesson", "map", "plan", "vision"].sort(),
     );
+    // The model file runs the chat on the mid role of Claude and ChatGPT.
     expect(result.features.chat).toEqual({
       provider: "codex",
-      model: "gpt-6-luna",
-      effort: "low",
+      model: "gpt-5.6-terra",
+      effort: "medium",
       auto: true,
     });
     expect(result.features.plan).toMatchObject({
@@ -83,8 +84,8 @@ describe("automatic engine choice", () => {
     });
     expect(selectionFor(db, "chat")).toEqual({
       provider: "codex",
-      model: "gpt-6-luna",
-      effort: "low",
+      model: "gpt-5.6-terra",
+      effort: "medium",
       // Pyxis chose it, so a refusal may move it, even after a job saved it.
       chosenFor: "chat",
     });
@@ -318,12 +319,12 @@ describe("the roles a tool's row names", () => {
     db.close();
   });
 
-  it("leave out a refused model, and a model the refusal's own family left out, as the planner does", async () => {
+  it("leave out a refused model, as the planner does", async () => {
     const db = openDatabase(":memory:");
     const handlers = engineHandlers(db, () => undefined);
     await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
-    // Opus is refused and the refusal says to use a Sonnet model: only Claude's Sonnet models stay in the plan.
-    benchModel("claude", "claude-opus-5-5", Date.now(), "sonnet");
+    // Opus is refused: the strong role steps to the next model the plan holds.
+    benchModel("claude", "claude-opus-5-5");
     try {
       const { features } = await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
       const { roles } = handlers.roles({ provider: "claude" });

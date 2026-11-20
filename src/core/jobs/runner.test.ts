@@ -951,7 +951,7 @@ describe("job runner", () => {
         `INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at) VALUES ('j', 'long', '{}', 'failed', 0, ?, ?)`,
       )
       .run(now, now);
-    const fallback = { from: "Cursor Agent", to: "Claude Code", reason: "model" as const };
+    const fallback = { from: "Antigravity", to: "Claude Code", reason: "model" as const };
     runner.noteFallback("j", fallback);
     runner.noteFallback("missing", fallback);
     expect(seen.map((job) => job.fallback)).toEqual([fallback]);
