@@ -32,6 +32,9 @@ describe("the Library's shelf", () => {
     // A file the Library never asked about is not one Pyxis could not place.
     expect([...unsortedReasons([{ sort: null }])]).toEqual(["none"]);
     expect([...unsortedReasons([{ sort: "unsure" }])]).toEqual(["unsure"]);
+    // A sort that failed, or was cut off when the app closed, is not one the student stopped.
+    expect([...unsortedReasons([{ sort: "failed" }])]).toEqual(["failed"]);
+    expect([...unsortedReasons([{ sort: "interrupted" }])]).toEqual(["interrupted"]);
     expect(unsortedReasons([{ sort: null }, { sort: "unsure" }, { sort: "working" }, { sort: "no-ai" }, { sort: "stopped" }])).toEqual(
       new Set(["none", "unsure", "working", "no-ai", "stopped"]),
     );

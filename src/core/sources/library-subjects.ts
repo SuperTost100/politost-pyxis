@@ -18,8 +18,16 @@ import { MAX_LOOSE_SENT, sortLibraryFiles } from "./linked-subjects";
  */
 export type SubjectSort = "waiting" | "sorted" | "created" | "unsure" | "no-ai" | "manual";
 
-/** What a Library row shows about its subject. `working` while a sort job will place it, `stopped` once that job stopped. */
-export type SortView = "working" | "stopped" | "created" | "unsure" | "no-ai";
+/**
+ * What a Library row shows about its subject. `working` while a sort job will place it; once that job ended without
+ * placing it, how it ended: `stopped` by the student, `failed` with the tool's error, or `interrupted` when the app closed.
+ * A waiting file that no job covers (its request never started one) has no state to show: it is like any file that has
+ * no subject, and the student chooses.
+ */
+export type SortView = "working" | "stopped" | "failed" | "interrupted" | "created" | "unsure" | "no-ai";
+
+/** How a sort job that left files waiting ended. */
+export type SortEnd = "stopped" | "failed" | "interrupted";
 
 type SortParams = { sourceIds: string[] };
 
@@ -46,9 +54,32 @@ export function sortingNow(db: Database.Database): Set<string> {
   return new Set(rows.flatMap((json) => (JSON.parse(json) as SortParams).sourceIds));
 }
 
-/** The row state of a source, from its column and the sort jobs that are live (`sortingNow`). */
-export function sortView(state: string | null, sourceId: string, live: ReadonlySet<string>): SortView | null {
-  if (state === "waiting") return live.has(sourceId) ? "working" : "stopped";
+/** For each source, how the newest sort job that covered it ended, when it did not place it. */
+export function sortEnded(db: Database.Database): Map<string, SortEnd> {
+  const rows = db
+    .prepare(
+      `SELECT state, params_json FROM jobs WHERE kind = 'library-sort' AND state IN ('cancelled', 'failed', 'interrupted')
+       ORDER BY created_at, rowid`,
+    )
+    .all() as Array<{ state: "cancelled" | "failed" | "interrupted"; params_json: string }>;
+  const ended = new Map<string, SortEnd>();
+  for (const row of rows)
+    for (const id of (JSON.parse(row.params_json) as SortParams).sourceIds)
+      ended.set(id, row.state === "cancelled" ? "stopped" : row.state);
+  return ended;
+}
+
+/**
+ * The row state of a source, from its column, the sort jobs that are live (`sortingNow`) and how the ones that ended did
+ * (`sortEnded`). A waiting file that no job covers reads as null.
+ */
+export function sortView(
+  state: string | null,
+  sourceId: string,
+  live: ReadonlySet<string>,
+  ended: ReadonlyMap<string, SortEnd>,
+): SortView | null {
+  if (state === "waiting") return live.has(sourceId) ? "working" : (ended.get(sourceId) ?? null);
   return state === "created" || state === "unsure" || state === "no-ai" ? state : null;
 }
 

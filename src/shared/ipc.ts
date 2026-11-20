@@ -2982,10 +2982,10 @@ export const requests = {
         subjectId: z.string().nullable(),
         /**
          * Where Pyxis is with the subject of a file added from the Library: `working` while a sort will place it,
-         * `stopped` when that sort stopped, `created` when it made the subject (until the subject is renamed), `unsure`
+         * `stopped`, `failed` or `interrupted` when that sort ended that way, `created` when it made the subject (until the subject is renamed), `unsure`
          * and `no-ai` when the student has to choose. Null otherwise.
          */
-        sort: z.enum(["working", "stopped", "created", "unsure", "no-ai"]).nullable(),
+        sort: z.enum(["working", "stopped", "failed", "interrupted", "created", "unsure", "no-ai"]).nullable(),
         /** What the file is (a book, slides, an exam paper...): the student's choice, or the rule's (`file-kind.ts`). */
         fileKind: z.enum(FILE_KINDS),
         /** The student chose `fileKind` from the file's menu, so Pyxis keeps it whatever the file's name says. */

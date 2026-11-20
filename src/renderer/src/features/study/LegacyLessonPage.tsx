@@ -187,7 +187,7 @@ export function LegacyLessonPage({
       navigate(`/plans/${planId}/lesson/${topicId}?part=1`, { replace: true });
     },
   });
-  const openNext = useOpenNext(planId);
+  const openNext = useOpenNext(planId, topicId);
   // "Done" goes back to the plan; "Done, continue" opens the next step. A page already done only moves on.
   const markDone = useMutation({
     mutationFn: async (then: "done" | "continue") => {
@@ -520,6 +520,7 @@ export function LegacyLessonPage({
         <>
           {readOnly ? null : <ReaderEnd
             planId={planId}
+            lessonOf={topicId}
             onExam={() => returnTo(back, `/plans/${planId}`, navigate)}
             state={!plan.data || !topic ? "other" : read ? "done" : "current"}
             doneLabel={t("lesson.doneTitle")}
