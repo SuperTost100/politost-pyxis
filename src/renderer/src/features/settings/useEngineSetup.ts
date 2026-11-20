@@ -12,18 +12,24 @@ import {
 /**
  * The engines Pyxis found, the ones the student lets it use and the model each task uses, for the screens that set them
  * up: first setup and Settings. The list is read again when the window comes back into focus (a CLI installed
- * meanwhile) and when a provider refuses a sign-in, and the choices when core recomputes them (startup, a sign-in, a
- * confirmed notice). `refresh` reads all of them again. A tool that runs out of requests, or has them again, changes
- * its row the same way as a sign-in does (`engine.status`).
+ * meanwhile), when a provider refuses a sign-in, when core recomputes the choices (startup, a sign-in, a confirmed
+ * notice) and every `OVERVIEW_REFRESH_MS` while the screen is open and visible: a student who signs a tool in or out in a
+ * terminal, or whose read overlapped a change, sees the new state without a click or a reload, because core sends no
+ * broadcast for a change it was not asked to look at. `refresh` reads all of them again. A tool that runs out of
+ * requests, or has them again, changes its row the same way as a sign-in does (`engine.status`).
  */
+export const OVERVIEW_REFRESH_MS = 15_000;
+
 export function useEngineSetup() {
   const client = useQueryClient();
-  const overview = useQuery({ ...enginesQuery, refetchOnWindowFocus: true });
+  const overview = useQuery({ ...enginesQuery, refetchOnWindowFocus: true, refetchInterval: OVERVIEW_REFRESH_MS });
   const features = useQuery(engineFeaturesQuery);
   const choice = useQuery(engineChoiceQuery);
   useEffect(() => {
+    // The plan was made again, which a scan that found another set of tools does: the list and the choices follow.
     const offAuto = onBroadcast("engine.auto", () => {
-      void client.invalidateQueries({ queryKey: engineFeaturesQuery.queryKey });
+      for (const { queryKey } of [enginesQuery, engineFeaturesQuery, engineChoiceQuery])
+        void client.invalidateQueries({ queryKey });
     });
     const offStatus = onBroadcast("engine.status", () => {
       void client.invalidateQueries({ queryKey: enginesQuery.queryKey });

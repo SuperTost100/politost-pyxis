@@ -2,6 +2,7 @@ import katex from "katex";
 import type { MathfieldElement } from "mathlive";
 import { loadMathLive, mathLive } from "./loadMathLive";
 import { cleanLatex, parseMathText, serializeMathText, type MathSegment } from "./mathString";
+import { replayKeys } from "./replayKeys";
 import { TypedBraces } from "./typedBraces";
 
 /**
@@ -329,6 +330,8 @@ export class MathEditor {
       if (this.edit !== edit || !document.hasFocus()) return;
       const active = document.activeElement;
       if (active && (edit.chip.contains(active) || active.closest(KEYS))) return;
+      // The formula is still waiting for MathLive, and this element holds the keys meanwhile.
+      if (!edit.field && active === this.root) return;
       this.leave(null);
     }, 0);
   }
@@ -379,22 +382,20 @@ export class MathEditor {
       focusField(field);
       field.position = edge === "start" ? 0 : field.lastOffset;
       // The keys typed while MathLive loaded, with braces read as they are when typed live.
-      let run = "";
-      const flush = () => {
-        if (run) field.executeCommand(["typedText", run, { focus: true, feedback: false }]);
-        run = "";
-      };
-      for (const key of edit.pending) {
-        if (key === "{" || key === "}" || /^\d$/.test(key)) flush();
-        if (!edit.braces.key(field, key)) run += key;
-      }
-      flush();
+      replayKeys(field, edit.braces, edit.pending);
       return field;
     };
     const loaded = mathLive();
     if (loaded) edit.ready = Promise.resolve(attach(loaded));
     else {
       chip.replaceChildren();
+      // Until MathLive is there the keys go to this element, which keeps them for the formula. When another field had
+      // focus, as with the formula button of the steps while the answer was being written, they would land in that one.
+      if (!this.hasFocus()) {
+        this.root.focus({ preventScroll: true });
+        const [node, offset] = this.afterNode(chip);
+        this.select(node, offset);
+      }
       edit.ready = loadMathLive().then(attach);
     }
     return edit;

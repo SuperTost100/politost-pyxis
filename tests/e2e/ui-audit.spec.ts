@@ -1194,14 +1194,30 @@ async function openAdvancedEngines(page: Page) {
 async function signInAgain(page: Page) {
   const on = join(auditEngines, "on");
   rmSync(on, { force: true });
-  await expect.poll(() => page.evaluate(async () => (await window.pyxis.invoke("engines.overview", {})).filter((row) => row.loggedIn).length)).toBe(0);
+  await expect.poll(() => coreConnected(page)).toBe(0);
   writeFileSync(on, "");
-  await expect.poll(() => page.evaluate(async () => (await window.pyxis.invoke("engines.overview", {})).filter((row) => row.loggedIn).length)).toBe(2);
+  await expect.poll(() => coreConnected(page)).toBe(2);
 }
 
+/** How many tools core reports as connected: installed, signed in, not refused and offered, as the list's rows count them. */
+function coreConnected(page: Page): Promise<number> {
+  return page.evaluate(
+    async () =>
+      (await window.pyxis.invoke("engines.overview", {})).filter(
+        (row) => row.kind === "cli" && row.installed && row.loggedIn && !row.disabled,
+      ).length,
+  );
+}
+
+/**
+ * Waits for the two stand-in tools to be connected in core, and then for the page to say so. The page reads the tool list
+ * when it mounts, which can overlap the change the state's setup made (a scan already running when the file was written
+ * answers with the older state); it reads it again on its own within `OVERVIEW_REFRESH_MS`, so the wait is for that
+ * state, with room for the refresh and a scan, and not for a lucky first read.
+ */
 async function connectedTools(page: Page) {
   await signInAgain(page);
-  await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(2, { timeout: 30000 });
+  await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(2, { timeout: 60000 });
   await page.evaluate(() => window.pyxis.invoke("engines.autoConfigure", {}));
 }
 
@@ -2428,6 +2444,24 @@ function preparePacks(name: string) {
   // graphviz.js is held back after the wheel arrives, or refused, for the two states that show a download on its way.
   if (name === "settings-study-pack-downloading") auditPacks?.hold.add("graphviz.js");
   if (name === "settings-study-pack-failed") auditPacks?.fail.add("graphviz.js");
+}
+
+/**
+ * A quiz page that is still open saves its draft when it goes, as it does for a student, and that save lands over the draft
+ * the next state seeds if the page is only left by the reload that follows the seeding. The page is left first, and the
+ * save has been answered before anything is written under it: core answers requests in the order they arrive.
+ */
+async function leaveQuiz(page: Page) {
+  if (!(await page.evaluate(() => location.hash.includes("/quiz/")))) return;
+  const heading = page.locator("h1:visible").first();
+  const before = await heading.textContent();
+  await page.evaluate(() => {
+    location.hash = "/";
+  });
+  await expect(heading).not.toHaveText(before ?? "");
+  // The page's effects have run once the frames after the change have.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
 }
 
 function prepareState(name: string) {
@@ -5813,6 +5847,7 @@ async function walk(slice: typeof auditRoutes) {
             auditNow = key;
             try {
               await resetPacks(page, name);
+              await leaveQuiz(page);
               prepareState(name);
               await page.evaluate((route) => {
                 location.hash = route;
