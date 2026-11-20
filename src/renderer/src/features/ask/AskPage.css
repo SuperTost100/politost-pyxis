@@ -146,36 +146,97 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
 }
-
-.ask-attachments li {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--control-sm);
-  padding: 0 var(--space-1) 0 var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
+@media (max-width: 620px) {
+  .ask-attachments {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
-/* The files a sent question carried, as plain chips under its text. */
+/* The files a sent question carried, above its text: a thumbnail for a photo, a chip for a document. */
 .ask-sent-files {
   list-style: none;
-  margin: var(--space-2) 0 0;
+  margin: 0;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: flex-end;
   gap: var(--space-2);
 }
 
-.ask-attachment-preview {
-  max-width: 120px;
-  max-height: 48px;
-  border-radius: var(--radius-sm);
+.ask-sent-thumb {
+  display: block;
+  width: 132px;
+  height: 100px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  cursor: zoom-in;
+  transition: box-shadow var(--duration-micro) var(--ease-out);
+}
+.ask-sent-thumb:hover {
+  box-shadow: var(--shadow-raised);
+}
+.ask-sent-thumb:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.ask-sent-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ask-sent-doc {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 10px;
+  width: 236px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.ask-sent-doc.is-plain {
+  cursor: default;
+}
+button.ask-sent-doc:hover {
+  box-shadow: var(--shadow-raised);
+}
+button.ask-sent-doc:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.ask-sent-doc > .px-icon {
+  grid-row: 1 / 3;
+  color: var(--ink-muted);
+}
+.ask-sent-doc b {
+  overflow: hidden;
+  font: 600 calc(13.5px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ask-sent-doc small {
+  grid-column: 2;
+  color: var(--ink-subtle);
+  font: 400 calc(12.5px * var(--text-scale, 1)) / 1.35 var(--font-sans);
+  font-variant-numeric: tabular-nums;
 }
 
 /* A message out of view skips layout and paint until it scrolls near, so a growing reply does not lay out the rest. */
@@ -230,4 +291,9 @@
   .ask-loading {
     animation-duration: 1ms;
   }
+}
+
+/* A jump from the outline lands with the question below the page's header. */
+.ask-thread > .px-msg-user {
+  scroll-margin-top: var(--space-16);
 }

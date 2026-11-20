@@ -58,7 +58,7 @@ test("Ask: a reply cut short offers Continue, the reply menu answers with the st
       reply.getByText("Lo strumento si è fermato prima di finire la risposta."),
     ).toBeVisible();
 
-    await reply.getByRole("button", { name: "Continua" }).click();
+    await page.getByRole("button", { name: "Continua" }).click();
     // Before the engine sends anything, the saved part stays on screen instead of a thinking placeholder.
     await expect(
       page.locator(".px-msg:not(.px-msg-user) .px-msg-text"),
@@ -121,7 +121,7 @@ test("Ask: a reply the student stopped offers Continue, with no engine failure o
     await expect(reply.getByText("Interrotta")).toBeVisible();
     // No engine failed, so no failure line, only the way to go on.
     await expect(reply.getByText("Lo strumento si è fermato")).toHaveCount(0);
-    await clickSettled(page, reply.getByRole("button", { name: "Continua" }));
+    await clickSettled(page, page.getByRole("button", { name: "Continua" }));
     await expect(
       page.getByText("Il teorema di Rolle dice che se f(a) = f(b) esiste un punto con derivata nulla."),
     ).toBeVisible({ timeout: 30000 });
@@ -185,7 +185,7 @@ test("Ask: Continue keeps the cut reply's citation chips while it waits for the 
       };
       new MutationObserver(note).observe(document.body, { subtree: true, childList: true, characterData: true });
     });
-    await reply.getByRole("button", { name: "Continua" }).click();
+    await page.getByRole("button", { name: "Continua" }).click();
     await expect(page.getByRole("button", { name: "Interrompi", exact: true })).toBeVisible();
     await expect(reply.locator(".px-cite")).toHaveCount(1);
     await expect(page.getByText(CONTINUATION.trim(), { exact: false })).toBeVisible({ timeout: 30000 });

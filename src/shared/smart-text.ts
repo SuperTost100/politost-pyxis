@@ -76,7 +76,11 @@ const figureImageSchema = z
   .string()
   .max(FIGURE_IMAGE_MAX)
   .regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/);
-const FIGURE_KEY = /^figure-[0-9a-z]{1,16}$/;
+const FIGURE_KEY = /^figure-[0-9a-z]{1,16}(?:-dark)?$/;
+/** Where the picture drawn for the dark theme is stored: its figure's key with `-dark`. Figures stored before have none. */
+export function darkFigureKey(key: string): string {
+  return `${key}-dark`;
+}
 /** The stored images of one lesson or answer, as a plan file must carry them. */
 export const figureImagesSchema = z
   .record(z.string().regex(FIGURE_KEY), figureImageSchema)

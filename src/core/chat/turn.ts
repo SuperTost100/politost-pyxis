@@ -4,6 +4,7 @@ import { stripCheckFences, type AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import {
+  darkFigureKey,
   figureImages,
   figureKey,
   mapFigureBlocks,
@@ -1409,6 +1410,8 @@ async function answer(
       // A continued reply keeps the pictures its figures already had, drawn again by nobody.
       known: input.resumeFrom?.figures,
       onFigure: input.onFigure,
+      // An answer's figures also come in the dark theme's picture.
+      dark: true,
     });
   } catch (err) {
     requireTutorAvailable(db);
@@ -1497,6 +1500,9 @@ function finishReply(
     const image = carried?.[key];
     if (!image) return "";
     figures[key] = image;
+    // The picture for the dark theme goes with it, when it had one.
+    const dark = carried?.[darkFigureKey(key)];
+    if (dark) figures[darkFigureKey(key)] = dark;
     return null;
   });
   return saveReply(db, chatId, { body: parsed.body, followups: [] }, { ...meta, ...(Object.keys(figures).length ? { figures } : {}) });

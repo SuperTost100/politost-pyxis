@@ -75,14 +75,16 @@ A row, tile or card with a three-dots menu uses `ItemMenu`: the dots and a right
 
 ## Messages and content
 
-| Component      | What it's for                                                                      |
-| -------------- | ---------------------------------------------------------------------------------- |
-| `ChatMessage`  | A question or an answer in Chiedi, with its actions                                |
-| `MarkdownView` | Markdown with formulas, code and citations, shared by answers, lessons and sources |
-| `CitationChip` | A numbered citation that opens its source at the page                              |
-| `ContextBlock` | A quoted passage the next question refers to, with a way to remove it              |
-| `Figure`       | A figure drawn in the Python sandbox, with its caption                             |
-| `PythonBlock`  | A Python block in an answer that can run                                           |
+| Component        | What it's for                                                                                                                              |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ChatMessage`    | A question or an answer in Chiedi, with its actions                                                                                        |
+| `MarkdownView`   | Markdown with formulas, code and citations, shared by answers, lessons and sources                                                         |
+| `CitationChip`   | A numbered citation that opens its source at the page                                                                                      |
+| `ContextBlock`   | A quoted passage the next question refers to, with a way to remove it                                                                      |
+| `Figure`         | A figure drawn in the Python sandbox, with its caption, a menu on its three dots, a right-click and Shift+F10, and a viewer on a click     |
+| `ImageViewer`    | A figure or photo at the size of the window: zoom steps, download as PNG and close; it grows from where it was opened and Escape goes back |
+| `AttachmentChip` | A file attached to the message being written, with its own state (reading, ready, failed) and a way to remove it                           |
+| `PythonBlock`    | A Python block in an answer that can run                                                                                                   |
 
 ## Sources and AI tools
 

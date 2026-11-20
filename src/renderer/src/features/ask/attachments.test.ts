@@ -4,6 +4,8 @@ import {
   attachFailure,
   attachable,
   attachmentLine,
+  chipLine,
+  filesReading,
   isLocalFile,
   refusedFile,
   draftKey,
@@ -148,6 +150,35 @@ describe("what a chip says", () => {
     });
     expect(attachmentLine(view({ phase: "scan" }))).toEqual({ key: "ask.attach.scan" });
     expect(attachmentLine(view({ state: "needs-data" }))).toEqual({ key: "ask.attach.needsData" });
+  });
+
+  it("writes the line under a chip: the reading with the size, the size of a file that is ready, the reason of a failure", () => {
+    const says = (extra: Partial<AttachmentView>) =>
+      chipLine(
+        view({ size: 182_000_000, ...extra }),
+        (key, values) => `${key}${values ? ` ${JSON.stringify(values)}` : ""}`,
+        (bytes) => `${bytes / 1_000_000} MB`,
+      );
+    expect(says({ state: "ready" })).toBe("182 MB");
+    expect(says({ progress: 0.38 })).toBe('ask.attach.readingPercent {"percent":38,"size":"182 MB"}');
+    expect(says({ phase: "scan", page: 3, pages: 12 })).toBe('ask.attach.scanPage {"page":3,"pages":12,"size":"182 MB"}');
+    expect(says({ state: "failed", error: "password" })).toContain("ask.attach.error.password");
+    // A file with no size yet has nothing to say once it is ready.
+    expect(chipLine(view({ state: "ready", size: 0 }), (key) => key, () => "0 byte")).toBe("");
+  });
+
+  it("counts the files Invia waits for: only those still being read", () => {
+    expect(filesReading([])).toBe(0);
+    expect(
+      filesReading([
+        view({ id: "a" }),
+        view({ id: "b", state: "ready" }),
+        view({ id: "c", state: "failed", error: "password" }),
+        view({ id: "d", state: "needs-data", phase: "scan" }),
+        undefined,
+        view({ id: "e", phase: "scan", page: 1, pages: 4 }),
+      ]),
+    ).toBe(2);
   });
 
   it("gives each cause of a failure its own text, and the size limit the one of its kind", () => {

@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { FIGURE_KINDS, figureKinds } from "../../shared/figure-kinds";
-import { FIGURE_MAX, figureKey } from "../../shared/smart-text";
+import { FIGURE_MAX, darkFigureKey, figureKey } from "../../shared/smart-text";
 import {
   FIGURE_ERROR_MAX,
   drawFigures,
@@ -676,4 +676,34 @@ it("tells nothing after it has rejected, and lets go of the signal", async () =>
   await vi.waitFor(() => expect(removed).toHaveBeenCalled());
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(calls).toBe(1);
+});
+
+it("keeps a picture for the dark theme beside each new figure when asked, and tells it with the figure", async () => {
+  const code = "plt.plot([1, 2])";
+  const told: Array<{ key: string; image: string | null; dark?: string }> = [];
+  const drawn = await drawFigures(block(code), { python: drawsAll, dark: true, onFigure: (event) => told.push(event) });
+  const key = figureKey(code);
+  expect(Object.keys(drawn.figures)).toEqual([key, darkFigureKey(key)]);
+  expect(drawn.figures[darkFigureKey(key)]).toMatch(/^data:image\/png;base64,/);
+  expect(drawn.figures[darkFigureKey(key)]).not.toBe(PNG);
+  expect(told).toEqual([{ key, image: PNG, dark: drawn.figures[darkFigureKey(key)] }]);
+});
+
+it("keeps no dark picture unless asked, and none for a picture it cannot turn", async () => {
+  const code = "plt.plot([3])";
+  expect(Object.keys((await drawFigures(block(code), { python: drawsAll })).figures)).toEqual([figureKey(code)]);
+  // A palette picture is a good PNG to show, but not one that can be turned: the figure stays, without a dark one.
+  const palette = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEUAAACnej3aAAAAAXRSTlMAQObYZgAAAApJREFUCNdjYAAAAAIAAeIhvDMAAAAASUVORK5CYII=";
+  const drawsPalette: FigureRunner = async () => ({ stdout: "", stderr: "", images: [palette], timedOut: false, truncated: false });
+  const drawn = await drawFigures(block(code), { python: drawsPalette, dark: true });
+  expect(Object.keys(drawn.figures)).toEqual([figureKey(code)]);
+});
+
+it("keeps the dark picture a known figure had, and does not make one for a figure stored without it", async () => {
+  const kept = "plt.plot([5])";
+  const old = "plt.plot([6])";
+  const known = { [figureKey(kept)]: PNG, [darkFigureKey(figureKey(kept))]: "data:image/png;base64,KEPT", [figureKey(old)]: PNG };
+  const drawn = await drawFigures([block(kept), block(old)].join("\n\n"), { python: drawsAll, known, dark: true });
+  expect(drawn.figures[darkFigureKey(figureKey(kept))]).toBe("data:image/png;base64,KEPT");
+  expect(drawn.figures[darkFigureKey(figureKey(old))]).toBeUndefined();
 });

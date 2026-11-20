@@ -1,3 +1,4 @@
+import { darkFigureKey } from "../../../../shared/smart-text";
 import { latestEvery, liveValue } from "./throttle";
 
 /** A passage the reply being written may cite, with the label its stored message will show. */
@@ -15,7 +16,7 @@ export type Turn = {
   /** The question shown until the stored one arrives; null when the last question is answered again. */
   readonly question: string | null;
   /** The files the question carries, shown with it until the stored question arrives. */
-  readonly files: ReadonlyArray<{ id: string; name: string; kind: "document" | "photo" }>;
+  readonly files: ReadonlyArray<{ id: string; name: string; kind: "document" | "photo"; src?: string }>;
   readonly regenerating: boolean;
   /** The chat's last stored message when the question was sent, so the stored question is told from an older one. */
   readonly after: string | null;
@@ -89,6 +90,7 @@ export const turns = {
           chatId?: unknown;
           key?: unknown;
           image?: unknown;
+    dark?: unknown;
         };
         if (typeof data.text === "string") text.push(data.text);
         else if (data.type === "question" && typeof data.id === "string") {
@@ -98,7 +100,11 @@ export const turns = {
         else if (data.type === "passages" && Array.isArray(data.passages))
           passages.set(data.passages as TurnPassage[]);
         else if (data.type === "figure" && typeof data.key === "string")
-          figures.set({ ...figures.get(), [data.key]: typeof data.image === "string" ? data.image : "" });
+          figures.set({
+            ...figures.get(),
+            [data.key]: typeof data.image === "string" ? data.image : "",
+            ...(typeof data.dark === "string" ? { [darkFigureKey(data.key)]: data.dark } : {}),
+          });
       },
       questionId,
       stop: () => undefined,
