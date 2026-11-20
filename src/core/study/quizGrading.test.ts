@@ -1186,4 +1186,36 @@ describe("the open answers of one hand-in", () => {
     expect(sessions(db, attemptId)).toEqual([{ session_id: "grader-1", provider: "claude", turns: 2, in_step: 0 }]);
     db.close();
   });
+
+  it("repairs an invalid grade with the whole message, not the stored session's follow-up, when an engine without a session gave it", async () => {
+    const { db, attemptId } = fixture([open("a"), open("b")], "diagnostic");
+    const grader = tool();
+    // Answer "a" in the tool's session.
+    await gradeQuizQuestion(db, attemptId, "a", "ten", grader.run as never, {});
+    // Answer "b": an API provider answers the first call with a grade that fails validation, so no session received this
+    // request or that reply, and the repair goes to the tool.
+    const calls: Array<{ prompt: string; followUp?: string; session?: unknown }> = [];
+    const run = (async (input: Parameters<typeof grader.run>[0]) => {
+      calls.push({ prompt: input.prompt, followUp: input.conversation?.followUp, session: input.conversation?.session });
+      if (calls.length === 1)
+        return { text: "not a grade", model: "m", provider: "anthropic-api", inputTokens: 1, structuredError: "no score" };
+      // The repair's prompt is the message with the problems after it, so the tool's stand-in is not used here.
+      input.conversation?.onSession?.("grader-2", "claude", "/scratch");
+      return { ...reply(1), sessionId: "grader-2", cwd: "/scratch", continued: false };
+    }) as never;
+    const checked = await gradeQuizQuestion(db, attemptId, "b", "ten", run, {});
+    expect(checked.score).toBe(1);
+    expect(calls).toHaveLength(2);
+    // The stored session ("grader-1") is not resumed with only the validation error.
+    expect(calls[1]!.session).toBeNull();
+    expect(JSON.parse(calls[1]!.prompt.split("\n\nThe previous answer failed validation.")[0]!)).toMatchObject({ answer: "ten" });
+    expect(calls[1]!.prompt).toContain("The previous answer failed validation.");
+    expect(calls[1]!.prompt).toContain("no score");
+    // The tool opened a new session for it, which holds the grade it wrote; the first is left behind.
+    expect(db.prepare("SELECT session_id, ended_reason, in_step FROM tool_sessions WHERE owner = ? ORDER BY opened_at, rowid").all(`quiz:${attemptId}`)).toEqual([
+      { session_id: "grader-1", ended_reason: "gone", in_step: 0 },
+      { session_id: "grader-2", ended_reason: null, in_step: 1 },
+    ]);
+    db.close();
+  });
 });
