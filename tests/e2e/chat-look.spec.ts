@@ -89,10 +89,37 @@ for (const theme of ["light", "dark"] as const) {
       await expect(viewer.getByText("100%")).toBeVisible();
       await expect(viewer.getByText(FIGURE_CAPTION)).toBeVisible();
       await saveShot(page, `chat-look/figure-${theme}-viewer.png`, { animations: "disabled" });
-      // Tab stays inside the viewer.
-      for (let i = 0; i < 6; i++) await page.keyboard.press("Tab");
-      await expect(page.locator(":focus")).toHaveAccessibleName(/Riduci lo zoom|Aumenta lo zoom|Scarica PNG|Chiudi/);
-      await expect(viewer.locator(":focus")).toHaveCount(1);
+      // A right-click or Shift+F10 in the viewer does not open the menu of the figure behind it.
+      await viewer.getByText(FIGURE_CAPTION).click({ button: "right" });
+      await viewer.getByRole("button", { name: "Scarica PNG" }).focus();
+      await page.keyboard.press("Shift+F10");
+      await expect(menu()).toHaveCount(0);
+      await expect(viewer).toBeVisible();
+      // Tab stays inside the viewer, and the picture's own scroll area is one of its stops.
+      const stage = viewer.getByRole("region", { name: "Immagine: scorrila con le frecce" });
+      await viewer.getByRole("button", { name: "Chiudi" }).focus();
+      await page.keyboard.press("Tab");
+      await expect(stage).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(viewer.getByRole("button", { name: "Riduci lo zoom" })).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(stage).toBeFocused();
+      // Zoomed past the window, the arrow keys scroll the picture.
+      for (let i = 0; i < 3; i++) await page.keyboard.press("+");
+      await expect(viewer.getByText("300%")).toBeVisible();
+      expect(await stage.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+      await stage.focus();
+      const before = await stage.evaluate((el) => el.scrollLeft);
+      await page.keyboard.press("ArrowRight");
+      await expect.poll(() => stage.evaluate((el) => el.scrollLeft)).toBeGreaterThan(before);
+      // A zoom button that reaches its limit keeps the focus, so Escape still closes the viewer.
+      const zoomIn = viewer.getByRole("button", { name: "Aumenta lo zoom" });
+      await zoomIn.focus();
+      await page.keyboard.press("Enter");
+      await expect(zoomIn).toHaveAttribute("aria-disabled", "true");
+      await expect(zoomIn).toBeFocused();
+      await page.keyboard.press("0");
+      await expect(viewer.getByText("100%")).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(viewer).toHaveCount(0);
       await expect(figure.getByRole("button", { name: /^Ingrandisci la figura/ })).toBeFocused();
@@ -150,6 +177,16 @@ test("the outline has a mark per question from the third on, a card on hover and
     await expect(card).toContainText("Domanda 4 di 9");
     await expect(card).toContainText("Come trovo l'angolo a cui il blocco inizia a scivolare?");
     await expect(card).toContainText("Risposta 4.");
+    // The formulas in the card are drawn, never shown as their source.
+    await expect(card.locator(".katex").first()).toBeVisible();
+    const seen = await card.evaluate((el) => {
+      const copy = el.cloneNode(true) as HTMLElement;
+      copy.querySelectorAll(".katex-mathml").forEach((node) => node.remove());
+      return copy.textContent ?? "";
+    });
+    expect(seen).not.toMatch(/\\[a-z]|\$/);
+    // And a mark is named in words for a screen reader.
+    await expect(marks.nth(3)).toHaveAccessibleName("Domanda 4 di 9: Come trovo l'angolo a cui il blocco inizia a scivolare?");
     await saveShot(page, "chat-look/outline-card.png", { animations: "disabled" });
     await page.mouse.move(10, 10);
     await expect(card).toHaveCount(0);
@@ -284,3 +321,69 @@ for (const theme of ["light", "dark"] as const) {
     }
   });
 }
+
+test("a jump's mark does not follow the student to another chat, and the next chat marks its own part in view", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch((db) => {
+    seedOutlineChat(db, "look-short-a", 3, { short: true });
+    seedOutlineChat(db, "look-short-b", 3, { short: true });
+  });
+  try {
+    await open(page, "look-short-a");
+    const marks = page.getByRole("navigation", { name: "Indice della conversazione" }).getByRole("button");
+    await expect(marks).toHaveCount(3);
+    // Both chats fit the window, so both are at scroll 0 and nothing but the chat tells them apart.
+    expect(await page.evaluate(() => document.scrollingElement!.scrollHeight <= window.innerHeight + 1)).toBe(true);
+    await marks.first().click();
+    await expect(marks.first()).toHaveAttribute("aria-current", "true");
+    // Chat B opens with no reload, as from the sidebar. It ends where it opened, so its last question is the one in view.
+    await page.evaluate(() => {
+      location.hash = "/ask/look-short-b";
+    });
+    await expect(page.locator(".px-msg-user").first()).toBeVisible();
+    await expect(marks.last()).toHaveAttribute("aria-current", "true");
+    await expect(marks.first()).not.toHaveAttribute("aria-current", "true");
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("with a hundred questions the outline stays inside the window, every mark is reachable, and it follows the part in view", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch((db) => seedOutlineChat(db, "look-long", 100));
+  try {
+    await open(page, "look-long");
+    const nav = page.getByRole("navigation", { name: "Indice della conversazione" });
+    const marks = nav.getByRole("button");
+    await expect(marks).toHaveCount(100);
+    const height = await page.evaluate(() => window.innerHeight);
+    const box = await nav.boundingBox();
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(height);
+    const list = nav.locator("ul");
+    expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    // Every mark keeps a spacing of at least 8 px, and the last one, in view, is inside the window with the list scrolled to it.
+    const inside = async (index: number) => {
+      const mark = await marks.nth(index).boundingBox();
+      const frame = await list.boundingBox();
+      return mark!.y >= frame!.y - 1 && mark!.y + mark!.height <= frame!.y + frame!.height + 1 && mark!.y >= 0 && mark!.y + mark!.height <= height;
+    };
+    expect((await marks.nth(1).boundingBox())!.y - (await marks.nth(0).boundingBox())!.y).toBeGreaterThanOrEqual(8);
+    await expect(marks.last()).toHaveAttribute("aria-current", "true");
+    await expect.poll(() => inside(99)).toBe(true);
+    // The keys reach the first mark, the list scrolls to it, and Enter loads that question.
+    await marks.last().focus();
+    await page.keyboard.press("Home");
+    await expect(marks.first()).toBeFocused();
+    await expect.poll(() => inside(0)).toBe(true);
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".px-msg-user", { hasText: "Quanto vale la forza normale?" }).first()).toBeInViewport();
+    await expect(marks.first()).toHaveAttribute("aria-current", "true");
+    await expect.poll(() => inside(0)).toBe(true);
+    await saveShot(page, "chat-look/outline-long.png", { animations: "disabled" });
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

@@ -3067,7 +3067,8 @@
       "download": "Download PNG",
       "close": "Close",
       "saved": "Saved",
-      "saveFailed": "The picture couldn't be saved."
+      "saveFailed": "The picture couldn't be saved.",
+      "stage": "Picture: scroll it with the arrow keys"
     }
   },
   "math": {

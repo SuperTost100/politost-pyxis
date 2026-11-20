@@ -15,9 +15,13 @@ describe("replyPlainText", () => {
 });
 
 describe("answerPreview", () => {
-  it("takes the Markdown marks and passage markers off, on one line", () => {
-    const body = "## Il blocco\n\nLa **forza** vale $mg \\sin\\theta$ [P2], vedi [la lezione](https://x.y).\n\n- primo\n- secondo";
-    expect(answerPreview(body)).toBe("Il blocco La forza vale mg \\sin\\theta, vedi la lezione. primo secondo");
+  it("takes the Markdown marks and passage markers off, on one line, and keeps the formulas for the card to draw", () => {
+    const body = "## Il blocco\n\nLa **forza** vale $mg \\sin\\theta$ [P2], vedi [la lezione](https://x.y).\n\n- primo\n- secondo con $\\mu_s N$";
+    expect(answerPreview(body)).toBe("Il blocco La forza vale $mg \\sin\\theta$, vedi la lezione. primo secondo con $\\mu_s N$");
+  });
+
+  it("keeps the underscores of a formula and writes a display formula inline", () => {
+    expect(answerPreview("Sia $$F_{net} = m a$$ la legge.")).toBe("Sia $F_{net} = m a$ la legge.");
   });
 
   it("is empty for an empty reply", () => {

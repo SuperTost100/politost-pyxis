@@ -1,7 +1,7 @@
 import { crc32, deflateSync, inflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { FIGURE_IMAGE_MAX } from "../../shared/smart-text";
-import { darkFigure, darkPixel, DARK_GROUND } from "./dark-figure";
+import { contrastOnDark, darkFigure, darkPixel, DARK_GROUND } from "./dark-figure";
 
 /** A PNG of 8-bit RGB or RGBA with the filter given for every line. */
 function png(width: number, height: number, channels: 3 | 4, pixel: (x: number, y: number) => number[], options: { filter?: number; colour?: number; interlace?: number } = {}) {
@@ -78,6 +78,36 @@ describe("darkPixel", () => {
     // 4.5:1 is for text; a line needs 3:1 against the ground.
     const ground = luminance([...DARK_GROUND]);
     expect((luminance(blue) + 0.05) / (ground + 0.05)).toBeGreaterThan(3);
+  });
+});
+
+describe("contrast on the dark ground", () => {
+  const hex = (value: string) => [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16)) as [number, number, number];
+  const on = (value: string) => contrastOnDark(...darkPixel(...hex(value)));
+
+  it("keeps matplotlib's coloured series at 3:1 or more, with room", () => {
+    // The default colour cycle, and a few colours models name.
+    for (const series of ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf", "#2f5fd0", "#dc143c", "#000080", "#800000"])
+      expect(on(series), series).toBeGreaterThanOrEqual(3.5);
+  });
+
+  it("keeps text colours at 4.5:1 or more: black and greys that read on white, and coloured labels", () => {
+    // #767676 is the lightest grey that reads on white at 4.5:1.
+    for (const text of ["#000000", "#222222", "#333333", "#555555", "#666666", "#767676", "#7f7f7f", "#2f5fd0", "#d62728", "#1f77b4", "#2ca02c"])
+      expect(on(text), text).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("leaves fills and gridlines quiet: light tints stay close to the ground", () => {
+    for (const tint of ["#e1e6f7", "#e4e6ea", "#d3d3d3", "#ffffff", "#f0f0f0"]) expect(on(tint), tint).toBeLessThan(2.2);
+  });
+
+  it("is monotonic along the greys, so an antialiased edge never steps", () => {
+    let previous = Infinity;
+    for (let grey = 0; grey <= 255; grey += 5) {
+      const ratio = on(`#${[grey, grey, grey].map((v) => v.toString(16).padStart(2, "0")).join("")}`);
+      expect(ratio).toBeLessThanOrEqual(previous + 1e-9);
+      previous = ratio;
+    }
   });
 });
 

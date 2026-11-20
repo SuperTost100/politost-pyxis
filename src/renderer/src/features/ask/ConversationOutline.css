@@ -5,14 +5,22 @@
   z-index: 6;
   transform: translateY(-50%);
 }
+/* The list is never taller than the window: past that, its marks keep a minimum spacing and the list scrolls inside
+   itself, following the part in view (see ConversationOutline.tsx). Its scrollbar is not drawn; the keys and the
+   following reach every mark. */
 .ask-outline ul {
+  position: relative;
   display: grid;
+  max-height: 72vh;
   margin: 0;
   padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
   list-style: none;
 }
-.ask-outline li {
-  position: relative;
+.ask-outline ul::-webkit-scrollbar {
+  display: none;
 }
 .ask-outline button {
   display: grid;
@@ -53,7 +61,6 @@
 /* The card grows out of the mark it belongs to. */
 .ask-outline-card {
   position: absolute;
-  top: 50%;
   right: calc(100% + 4px);
   z-index: 7;
   width: 300px;

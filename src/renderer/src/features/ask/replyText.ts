@@ -1,4 +1,5 @@
 import { stripCheckFences } from "../../../../shared/math-check";
+import { parseMathText } from "../../components/math/mathString";
 import {
   mapFigureBlocks,
   stripPassageRefsOutsideCode,
@@ -17,13 +18,21 @@ export function replyPlainText(body: string): string {
     .trim();
 }
 
-/** A reply's start as a card quotes it: the plain text with its Markdown marks (headings, emphasis, code, math delimiters, links) taken off. */
+/**
+ * A reply's start as a card quotes it: one line of text with its block marks (headings, lists, quotes, code fences) and
+ * its emphasis and links taken off. Formulas stay as `$...$`, display ones as inline ones, for the card to draw.
+ */
 export function answerPreview(body: string): string {
-  return replyPlainText(body)
+  const text = replyPlainText(body)
     .replace(/```[a-z]*\n?/gi, "")
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/^\s{0,3}(?:#{1,6}|>|[-*+]|\d+[.)])\s+/gm, "")
-    .replace(/[*_`$]/g, "")
+    .replace(/^\s{0,3}(?:#{1,6}|>|[-*+]|\d+[.)])\s+/gm, "");
+  return parseMathText(text)
+    .map((segment) =>
+      segment.kind === "math"
+        ? `$${segment.latex.replace(/\s+/g, " ").trim()}$`
+        : segment.text.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`]/g, ""),
+    )
+    .join("")
     .replace(/\s+/g, " ")
     .trim();
 }

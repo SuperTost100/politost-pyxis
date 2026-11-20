@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentMark, firstLine, jumpRange, MARKS_FROM, outlineMarks, type OutlineRow } from "./outline";
+import { currentMark, firstLine, jumpRange, MARKS_FROM, outlineMarks, pinnedMark, plainReading, type OutlineRow } from "./outline";
 
 const rows = (count: number): OutlineRow[] =>
   Array.from({ length: count }, (_, i) => [
@@ -33,6 +33,47 @@ describe("outlineMarks", () => {
     const third = outlineMarks([...rows(2), { id: "q2", role: "user", body: "x" }, { id: "a2", role: "assistant", body: long }], plain)[2]!;
     expect(third.answer.length).toBeLessThanOrEqual(221);
     expect(third.answer.endsWith("…")).toBe(true);
+  });
+});
+
+describe("a formula in the card", () => {
+  const long = (formula: string) => `${Array.from({ length: 29 }, () => "parola").join(" ")} ${formula} e altro testo`;
+
+  it("is never cut in half: a formula the cut reaches into is left out whole", () => {
+    const third = outlineMarks([...rows(2), { id: "q2", role: "user", body: "x" }, { id: "a2", role: "assistant", body: long("$N = mg\\cos\\theta$") }], plain)[2]!;
+    expect((third.answer.match(/\$/g) ?? []).length % 2).toBe(0);
+    expect(third.answer.endsWith("…")).toBe(true);
+  });
+
+  it("keeps a formula the cut does not reach", () => {
+    const short = outlineMarks([...rows(2), { id: "q2", role: "user", body: "x" }, { id: "a2", role: "assistant", body: "Vale $N = mg$ qui." }], plain)[2]!;
+    expect(short.answer).toBe("Vale $N = mg$ qui.");
+  });
+});
+
+describe("plainReading", () => {
+  it("writes a formula in plain words and never leaves TeX", () => {
+    expect(plainReading("Quanto vale $N = mg\\cos\\theta$ con $\\mu_s$?")).toBe("Quanto vale N = mgcosθ con μ_s?");
+    expect(plainReading("$$F = m\\cdot a$$")).toBe("F = m· a");
+    expect(plainReading("Nessuna formula")).toBe("Nessuna formula");
+  });
+});
+
+describe("pinnedMark", () => {
+  const pin = { chat: "a", index: 0, top: 0 };
+
+  it("holds while the page stays where the jump left it, in the same chat", () => {
+    expect(pinnedMark(pin, "a", 0)).toBe(0);
+    expect(pinnedMark(pin, "a", 20)).toBe(0);
+  });
+
+  it("lets go once the student scrolls away", () => {
+    expect(pinnedMark(pin, "a", 60)).toBeNull();
+  });
+
+  it("does not follow the student to another chat, even when both fit the window at scroll 0", () => {
+    expect(pinnedMark(pin, "b", 0)).toBeNull();
+    expect(pinnedMark(null, "a", 0)).toBeNull();
   });
 });
 

@@ -43,20 +43,49 @@ function fromHsl(h: number, s: number, l: number): [number, number, number] {
   return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
 }
 
+const linear = (value: number) => {
+  const v = value / 255;
+  return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+};
+const luminance = (r: number, g: number, b: number) => 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+const GROUND_LUMINANCE = luminance(...DARK_GROUND);
+/** The contrast ratio of a colour on the dark ground. */
+export function contrastOnDark(r: number, g: number, b: number): number {
+  return (luminance(r, g, b) + 0.05) / (GROUND_LUMINANCE + 0.05);
+}
+
+/**
+ * The contrast a colour must keep on the dark ground, by its lightness on the white one. Ink, text and the dark colours
+ * (up to 0.5) reach 4.7:1, which is text's 4.5:1 with room, strokes in the middle (0.7) reach 3.5:1, the 3:1 a line needs,
+ * and the floor falls away to nothing for light tints (0.85 and up), which are fills and gridlines and stay quiet.
+ */
+function floorFor(lightness: number): number {
+  if (lightness <= 0.5) return 4.7;
+  if (lightness <= 0.7) return 4.7 - ((lightness - 0.5) / 0.2) * 1.2;
+  if (lightness <= 0.85) return 3.5 - ((lightness - 0.7) / 0.15) * 2.5;
+  return 1;
+}
+
 /** One pixel for the dark theme. Greys run from the dark ground (white) to the light ink (black), colours keep their hue. */
 export function darkPixel(r: number, g: number, b: number): [number, number, number] {
   const [h, s, l] = hsl(r, g, b);
   const grey = DARK_GROUND.map((ground, i) => ground * l + DARK_INK[i]! * (1 - l));
-  if (s < 0.02) return grey.map(Math.round) as [number, number, number];
   const inverted = DARKEST + (1 - l) * (LIGHTEST - DARKEST);
   const lifted = Math.min(LIGHTEST, inverted + LIFT * (1 - Math.abs(2 * inverted - 1)));
-  const colour = fromHsl(h, s, lifted);
-  const weight = Math.min(1, s * 2);
-  return colour.map((value, i) => Math.max(0, Math.min(255, Math.round(value * weight + grey[i]! * (1 - weight))))) as [
-    number,
-    number,
-    number,
-  ];
+  const weight = s < 0.02 ? 0 : Math.min(1, s * 2);
+  let colour = (s < 0.02 ? grey : fromHsl(h, s, lifted).map((value, i) => value * weight + grey[i]! * (1 - weight))).map((value) =>
+    Math.max(0, Math.min(255, Math.round(value))),
+  ) as [number, number, number];
+  // A colour that is text or a stroke on white must still read on the dark: its lightness is raised until it does.
+  const floor = floorFor(l);
+  if (floor > 1 && contrastOnDark(...colour) < floor) {
+    const [ch, cs, cl] = hsl(...colour);
+    for (let step = cl + 0.01; step <= 0.97; step += 0.01) {
+      colour = fromHsl(ch, cs, step).map((value) => Math.max(0, Math.min(255, Math.round(value)))) as [number, number, number];
+      if (contrastOnDark(...colour) >= floor) break;
+    }
+  }
+  return colour;
 }
 
 const SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);

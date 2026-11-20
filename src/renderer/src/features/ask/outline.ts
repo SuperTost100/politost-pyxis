@@ -15,12 +15,47 @@ export function firstLine(text: string): string {
   return line ? line.replace(/\s+/g, " ").trim() : "";
 }
 
+/** Whether every `$` of the text has its partner, so no formula is cut in half. */
+const closed = (text: string) => (text.match(/\$/g) ?? []).length % 2 === 0;
+
 function start(text: string): string {
   const flat = text.replace(/\s+/g, " ").trim();
   if (flat.length <= ANSWER_CHARS) return flat;
-  const cut = flat.slice(0, ANSWER_CHARS);
+  let cut = flat.slice(0, ANSWER_CHARS);
   const space = cut.lastIndexOf(" ");
-  return `${(space > ANSWER_CHARS / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
+  if (space > ANSWER_CHARS / 2) cut = cut.slice(0, space);
+  // A formula the cut reaches into is left out whole, so the card never shows half of one.
+  if (!closed(cut)) cut = cut.slice(0, cut.lastIndexOf("$"));
+  return `${cut.trimEnd()}…`;
+}
+
+const READINGS: Record<string, string> = {
+  alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ε", theta: "θ", lambda: "λ", mu: "μ", nu: "ν", pi: "π", rho: "ρ",
+  sigma: "σ", tau: "τ", phi: "φ", omega: "ω", Delta: "Δ", Omega: "Ω", Sigma: "Σ", cdot: "·", times: "×", pm: "±", leq: "≤",
+  geq: "≥", neq: "≠", approx: "≈", to: "→", infty: "∞", sqrt: "√", int: "∫", sum: "Σ", partial: "∂",
+};
+
+/**
+ * Text as it is read aloud or put in a label: the `$` marks off, and a formula's TeX in plain words (`\theta` is θ,
+ * `\cos` is cos, braces gone). Never the source of a formula.
+ */
+export function plainReading(text: string): string {
+  return text
+    .replace(/\$\$?/g, "")
+    .replace(/\\([A-Za-z]+)/g, (_, name: string) => READINGS[name] ?? name)
+    .replace(/\\[,;:! ]/g, " ")
+    .replace(/[{}]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** A jump's mark stays the one in view while the student has not scrolled away from where it left the page, in the chat it was made in. */
+export function pinnedMark(
+  pin: { chat: string; index: number; top: number } | null,
+  chat: string,
+  scrollTop: number,
+): number | null {
+  return pin && pin.chat === chat && Math.abs(scrollTop - pin.top) <= 24 ? pin.index : null;
 }
 
 /**

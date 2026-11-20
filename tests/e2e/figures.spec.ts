@@ -16,6 +16,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { contrastOnDark, darkPixel } from "../../src/core/math/dark-figure";
 import { figureProgram } from "../../src/core/math/figure-program";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
@@ -357,6 +358,81 @@ test("plots and circuits in a lesson and an Ask answer are drawn in the Python s
       await drawn.nth(1).scrollIntoViewIfNeeded();
       await saveShot(page, `figures/ask-circuit-${lang}-${theme}-${width}.png`);
     }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+// A plot as a student gets one: axis labels, a title, a legend and four coloured series.
+const SERIES = { seno: "#1f77b4", coseno: "#ff7f0e", "metà seno": "#2ca02c", "-coseno": "#d62728" } as const;
+const waves = [
+  "x = np.linspace(0, 6, 120)",
+  ...Object.entries(SERIES).map(([name, colour], i) => `plt.plot(x, ${["np.sin(x)", "np.cos(x)", "np.sin(x) / 2", "-np.cos(x)"][i]}, color='${colour}', lw=2, label='${name}')`),
+  "plt.xlabel('t (s)')",
+  "plt.ylabel('ampiezza')",
+  "plt.title('Quattro onde')",
+  "plt.legend()",
+].join("\n");
+
+test("a real plot with labels, a legend and coloured series keeps its colours on the dark picture and every series reads at 3:1", async () => {
+  test.skip(!packsPinned(), "Requires the pinned Pyodide and drawing fixtures in .tmp/pyodide and .tmp/drawing.");
+  test.setTimeout(240000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-figures-dark-"));
+  stagePacks(userData);
+  const app = await launchPyxis({
+    userData,
+    env: { PYXIS_E2E_REPLY: ["Quattro onde.", "", figure("Seno e coseno con le loro varianti.", waves), "", "Fine."].join("\n") },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const asked = (await page.evaluate(() => window.pyxis.invoke("chats.ask", { text: "Disegnami delle onde.", allowGeneral: true }))) as {
+      chatId: string;
+      message: { figures?: Record<string, string> };
+    };
+    const stored = asked.message.figures ?? {};
+    const key = Object.keys(stored).find((name) => !name.endsWith("-dark"))!;
+    expect(stored[`${key}-dark`]).toBeDefined();
+    // How many pixels of each colour the dark picture holds, counted in the page, which can decode a PNG.
+    const wanted = Object.values(SERIES).map((colour) => {
+      const dark = darkPixel(...([1, 3, 5].map((i) => parseInt(colour.slice(i, i + 2), 16)) as [number, number, number]));
+      return { colour, dark, contrast: contrastOnDark(...dark) };
+    });
+    const counts = await page.evaluate(
+      async ({ src, colours }) => {
+        const image = new Image();
+        image.src = src;
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+        return colours.map(([r, g, b]) => {
+          let found = 0;
+          for (let i = 0; i < data.length; i += 4) if (data[i] === r && data[i + 1] === g && data[i + 2] === b) found += 1;
+          return found;
+        });
+      },
+      { src: stored[`${key}-dark`]!, colours: wanted.map((item) => item.dark) },
+    );
+    wanted.forEach((item, index) => {
+      // Each series is there in the colour the rule gives it, and that colour reads on the dark ground.
+      expect(counts[index], `${item.colour} as ${item.dark}`).toBeGreaterThan(30);
+      expect(item.contrast, item.colour).toBeGreaterThanOrEqual(3.5);
+    });
+    await page.evaluate((chatId) => {
+      location.hash = `/ask/${chatId}`;
+    }, asked.chatId);
+    await page.evaluate(() => window.pyxis.setAppearance("dark"));
+    await expect(page.locator("figure.px-figure")).toHaveCount(1);
+    await expect(page.locator("figure.px-figure img.px-figure-dark")).toBeVisible();
+    await saveShot(page, "figures/plot-legend-dark.png", { animations: "disabled" });
+    await page.evaluate(() => window.pyxis.setAppearance("light"));
+    await saveShot(page, "figures/plot-legend-light.png", { animations: "disabled" });
   } finally {
     await app.close();
     removeTestFolder(userData);

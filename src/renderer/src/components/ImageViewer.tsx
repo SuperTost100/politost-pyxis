@@ -78,9 +78,10 @@ export function ImageViewer({
     else if (event.key === "0") setPercent(ZOOM_START);
     else if (event.key === "Tab") {
       // The viewer holds the focus: Tab goes round its own buttons.
-      const buttons = Array.from(root.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
-      const first = buttons[0];
-      const last = buttons.at(-1);
+      // The stage is part of the cycle: a zoomed picture is read by scrolling it, with the arrow keys, once it has the focus.
+      const stops = Array.from(root.current?.querySelectorAll<HTMLElement>("button, .px-viewer-stage") ?? []);
+      const first = stops[0];
+      const last = stops.at(-1);
       if (!first || !last) return;
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
@@ -120,7 +121,8 @@ export function ImageViewer({
           className="px-viewer-btn"
           aria-label={t("components.viewer.zoomOut")}
           title={t("components.viewer.zoomOut")}
-          disabled={percent <= ZOOM_STEPS[0]}
+          // aria-disabled, not disabled: a button that is disabled while it has the focus loses it, and Escape and the keys stop working.
+          aria-disabled={percent <= ZOOM_STEPS[0]}
           onClick={() => setPercent((now) => zoomFrom(now, -1))}
         >
           <Icon name="zoom-out" size={18} />
@@ -133,7 +135,7 @@ export function ImageViewer({
           className="px-viewer-btn"
           aria-label={t("components.viewer.zoomIn")}
           title={t("components.viewer.zoomIn")}
-          disabled={percent >= ZOOM_STEPS.at(-1)!}
+          aria-disabled={percent >= ZOOM_STEPS.at(-1)!}
           onClick={() => setPercent((now) => zoomFrom(now, 1))}
         >
           <Icon name="zoom-in" size={18} />
@@ -159,7 +161,7 @@ export function ImageViewer({
           <Icon name="x" size={18} />
         </button>
       </div>
-      <div className="px-viewer-stage">
+      <div className="px-viewer-stage" tabIndex={0} role="region" aria-label={t("components.viewer.stage")}>
         <figure className="px-viewer-figure" style={{ "--zoom": percent / 100 } as React.CSSProperties}>
           <div ref={card} className={`px-viewer-card is-${ground}`}>
             <img src={src} alt={caption ?? ""} draggable={false} />

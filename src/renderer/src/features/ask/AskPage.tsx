@@ -55,7 +55,7 @@ import { SubjectChip, type SubjectPick } from "./SubjectChip";
 import { UsedSources } from "./UsedSources";
 import { canContinue } from "./continuable";
 import { ConversationOutline } from "./ConversationOutline";
-import { currentMark, jumpRange, outlineMarks, type OutlineMark } from "./outline";
+import { currentMark, jumpRange, outlineMarks, pinnedMark, type OutlineMark } from "./outline";
 import { dayPart } from "./greeting";
 import { useEngineError } from "../../lib/engineError";
 import { useEngineNames } from "../../lib/useEngineNames";
@@ -787,14 +787,15 @@ export function AskPage() {
   const marks = useMemo(() => outlineMarks(messages, answerPreview), [messages]);
   const [inView, setInView] = useState(-1);
   // A jump marks the question it went to until the student scrolls away, whatever else the window shows.
-  const pinned = useRef<{ index: number; top: number } | null>(null);
+  const pinned = useRef<{ chat: string; index: number; top: number } | null>(null);
   useEffect(() => {
     if (marks.length === 0) return;
     let frame = 0;
     const measure = () => {
       frame = 0;
       const root = document.scrollingElement ?? document.documentElement;
-      if (pinned.current && Math.abs(root.scrollTop - pinned.current.top) <= 24) return setInView(pinned.current.index);
+      const held = pinnedMark(pinned.current, chatId ?? "", root.scrollTop);
+      if (held !== null) return setInView(held);
       pinned.current = null;
       const tops = marks.map(
         (mark) => document.querySelector(`[data-message="${CSS.escape(mark.id)}"]`)?.getBoundingClientRect().top ?? null,
@@ -816,7 +817,7 @@ export function AskPage() {
       window.removeEventListener("resize", schedule);
       watch?.disconnect();
     };
-  }, [marks, firstShown]);
+  }, [marks, firstShown, chatId]);
   const [jump, setJump] = useState<string | null>(null);
   const jumpTo = useStable((mark: OutlineMark) => {
     following.current = false;
@@ -831,7 +832,7 @@ export function AskPage() {
     setJump(null);
     question.scrollIntoView({ block: "start" });
     const index = marks.findIndex((mark) => mark.id === jump);
-    pinned.current = { index, top: (document.scrollingElement ?? document.documentElement).scrollTop };
+    pinned.current = { chat: chatId ?? "", index, top: (document.scrollingElement ?? document.documentElement).scrollTop };
     setInView(index);
     question.classList.add("is-spot");
     setTimeout(() => question.classList.remove("is-spot"), 1400);

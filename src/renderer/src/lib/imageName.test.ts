@@ -23,4 +23,12 @@ describe("imageFileName", () => {
     expect(imageFileName("../../etc/passwd", "figura")).toBe("etc-passwd.png");
     expect(imageFileName("∑ ∫ ≠", "figura")).toBe("figura.png");
   });
+
+  it("never gives a name Windows reserves for a device, whatever the case", () => {
+    for (const caption of ["AUX", "con", "Nul", "PRN", "COM1", "lpt9", "COM0", "Com5."])
+      expect(imageFileName(caption, "figura"), caption).toBe("figura.png");
+    // A reserved word inside a longer name is an ordinary name.
+    expect(imageFileName("AUX plot", "figura")).toBe("aux-plot.png");
+    expect(imageFileName("COM10", "figura")).toBe("com10.png");
+  });
 });

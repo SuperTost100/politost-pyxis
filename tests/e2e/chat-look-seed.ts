@@ -72,13 +72,13 @@ const QUESTIONS = [
 const ANSWER = (i: number) =>
   `Risposta ${i + 1}. Lungo l'asse perpendicolare al piano il blocco non si muove, quindi le forze si bilanciano: $N = mg\\cos\\theta$. Con un blocco di 2 kg e un piano a 30° ottieni $N = 17{,}0$ N, come nel primo esempio che abbiamo visto insieme.`;
 
-/** A chat of `count` questions, each answered, for the conversation outline. */
-export function seedOutlineChat(db: DatabaseSync, id = "look-outline", count = QUESTIONS.length) {
+/** A chat of `count` questions, each answered, for the conversation outline. `short` keeps it within one window. */
+export function seedOutlineChat(db: DatabaseSync, id = "look-outline", count = QUESTIONS.length, options: { short?: boolean } = {}) {
   db.prepare("INSERT INTO chats(id,title,created_at,updated_at) VALUES(?,?,1,?)").run(id, "Piano inclinato con attrito", count * 2);
   const message = db.prepare("INSERT INTO messages(id,chat_id,role,body,created_at) VALUES(?,?,?,?,?)");
   for (let i = 0; i < count; i++) {
     message.run(`${id}-q${i}`, id, "user", QUESTIONS[i % QUESTIONS.length]!, i * 2 + 1);
-    message.run(`${id}-a${i}`, id, "assistant", ANSWER(i), i * 2 + 2);
+    message.run(`${id}-a${i}`, id, "assistant", options.short ? `Risposta ${i + 1}.` : ANSWER(i), i * 2 + 2);
   }
 }
 

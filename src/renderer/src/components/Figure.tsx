@@ -22,8 +22,16 @@ export function figureMenu(
 ): MenuProps {
   return {
     items: [
-      { key: "zoom", icon: <Icon name="maximize-2" size={16} />, label: labels.zoom },
-      { key: "download", icon: <Icon name="download" size={16} />, label: labels.download },
+      {
+        key: "zoom",
+        icon: <Icon name="maximize-2" size={16} />,
+        label: labels.zoom,
+      },
+      {
+        key: "download",
+        icon: <Icon name="download" size={16} />,
+        label: labels.download,
+      },
       { key: "copy", icon: <Icon name="copy" size={16} />, label: labels.copy },
     ],
     onClick: ({ key }) => act(key as FigureAction),
@@ -57,14 +65,22 @@ export function Figure({
   }, [said]);
   // The picture the student sees now is the one they open, keep and copy.
   const shown = () =>
-    darkImage && document.documentElement.dataset.theme === "dark" ? darkImage : image;
+    darkImage && document.documentElement.dataset.theme === "dark"
+      ? darkImage
+      : image;
   async function act(action: FigureAction) {
     const src = shown();
     if (!src) return;
     if (action === "zoom") return setOpen(true);
     try {
       if (action === "download") {
-        if (await saveImage(src, imageFileName(caption, t("components.figure.fileName")))) setSaid("saved");
+        if (
+          await saveImage(
+            src,
+            imageFileName(caption, t("components.figure.fileName")),
+          )
+        )
+          setSaid("saved");
       } else {
         await copyImage(src);
         setSaid("copied");
@@ -81,7 +97,11 @@ export function Figure({
     },
     (action) => void act(action),
   );
-  const { bind, popup } = useItemMenu({ menu, region: t("components.figure.menu"), returnTo: () => opener.current });
+  const { bind, popup } = useItemMenu({
+    menu,
+    region: t("components.figure.menu"),
+    returnTo: () => opener.current,
+  });
   if (!image)
     return drawing ? (
       <div className="px-figure is-drawing">
@@ -89,46 +109,55 @@ export function Figure({
       </div>
     ) : null;
   return (
-    <figure className="px-figure" {...bind}>
-      <div className="px-figure-frame">
-        <button
-          ref={opener}
-          type="button"
-          className="px-figure-open"
-          aria-label={t("components.figure.open", { caption })}
-          onClick={() => setOpen(true)}
-        >
-          <img className="px-figure-light" src={image} alt={caption} />
-          {darkImage ? <img className="px-figure-dark" src={darkImage} alt={caption} /> : null}
-        </button>
-        <MenuButton
-          menu={menu}
-          label={t("components.figure.menu")}
-          size="sm"
-          className="px-figure-dots"
-        />
-        {said ? (
-          <span className="px-figure-said" role="status">
-            {t(`components.figure.${said}`)}
-          </span>
-        ) : null}
-      </div>
-      {/* The image's alt already reads the caption, so screen readers skip the visible copy. */}
-      <figcaption className="small" aria-hidden>
-        <InlineMarkdown>{caption}</InlineMarkdown>
-      </figcaption>
-      {popup}
+    <>
+      <figure className="px-figure" {...bind}>
+        <div className="px-figure-frame">
+          <button
+            ref={opener}
+            type="button"
+            className="px-figure-open"
+            aria-label={t("components.figure.open", { caption })}
+            onClick={() => setOpen(true)}
+          >
+            <img className="px-figure-light" src={image} alt={caption} />
+            {darkImage ? (
+              <img className="px-figure-dark" src={darkImage} alt={caption} />
+            ) : null}
+          </button>
+          <MenuButton
+            menu={menu}
+            label={t("components.figure.menu")}
+            size="sm"
+            className="px-figure-dots"
+          />
+          {said ? (
+            <span className="px-figure-said" role="status">
+              {t(`components.figure.${said}`)}
+            </span>
+          ) : null}
+        </div>
+        {/* The image's alt already reads the caption, so screen readers skip the visible copy. */}
+        <figcaption className="small" aria-hidden>
+          <InlineMarkdown>{caption}</InlineMarkdown>
+        </figcaption>
+        {popup}
+      </figure>
+      {/* Beside the figure, not in it: a right-click or Shift+F10 in the viewer must not reach the figure's menu. */}
       {open ? (
         <ImageViewer
           src={shown() ?? image}
           label={t("components.figure.viewer")}
           caption={caption}
           filename={imageFileName(caption, t("components.figure.fileName"))}
-          ground={darkImage && document.documentElement.dataset.theme === "dark" ? "dark" : "white"}
+          ground={
+            darkImage && document.documentElement.dataset.theme === "dark"
+              ? "dark"
+              : "white"
+          }
           origin={opener.current}
           onClose={() => setOpen(false)}
         />
       ) : null}
-    </figure>
+    </>
   );
 }

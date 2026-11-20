@@ -1,3 +1,6 @@
+/** The device names Windows reserves, which no file may be called. */
+const RESERVED = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])$/;
+
 /**
  * The file name a picture is saved under: its caption in lowercase words joined by hyphens and cut at a word, or
  * `fallback` when the caption has no letters or digits. A name never carries a path or a character a system refuses.
@@ -15,5 +18,6 @@ export function imageFileName(caption: string, fallback: string): string {
     if (next.length > 60) break;
     name = next;
   }
-  return `${name || fallback}.png`;
+  // Windows keeps these names for devices, with or without an extension, so a caption that is only one gets the fallback.
+  return `${name && !RESERVED.test(name) ? name : fallback}.png`;
 }

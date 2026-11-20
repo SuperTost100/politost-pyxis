@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import type { OutlineMark } from "./outline";
+import { InlineMarkdown } from "../../components/InlineMarkdown";
+import { MathText } from "../../components/math/MathText";
+import { plainReading, type OutlineMark } from "./outline";
 import "./ConversationOutline.css";
 
 /**
@@ -22,7 +24,14 @@ export function ConversationOutline({
   const list = useRef<HTMLUListElement>(null);
   // Where the Tab stop is: the mark last focused, else the one in view.
   const [stop, setStop] = useState<number | null>(null);
-  const [card, setCard] = useState<number | null>(null);
+  // The card is drawn beside the marks, outside their scrolling list, at the height of the mark it belongs to.
+  const [card, setCard] = useState<{ index: number; top: number } | null>(null);
+  const nav = useRef<HTMLElement>(null);
+  const showCard = (index: number, button: HTMLElement) => {
+    const at = button.getBoundingClientRect();
+    const box = nav.current?.getBoundingClientRect();
+    if (box) setCard({ index, top: at.top + at.height / 2 - box.top });
+  };
   const [left, setLeft] = useState<number | null>(null);
 
   // The marks sit just outside the composer's right edge, which is the answer column's.
@@ -42,6 +51,14 @@ export function ConversationOutline({
   }, []);
 
   useEffect(() => setStop((now) => (now !== null && now >= marks.length ? null : now)), [marks.length]);
+
+  // A list taller than the window scrolls inside itself, and follows the part in view.
+  useEffect(() => {
+    const box = list.current;
+    const mark = box?.querySelectorAll<HTMLElement>("li")[current];
+    if (!box || !mark || box.scrollHeight <= box.clientHeight) return;
+    box.scrollTop = mark.offsetTop - box.clientHeight / 2 + mark.offsetHeight / 2;
+  }, [current, marks.length, left]);
 
   if (left === null) return null;
   const tabbable = stop ?? Math.max(0, current);
@@ -66,7 +83,7 @@ export function ConversationOutline({
   }
 
   return (
-    <nav className="ask-outline" style={{ left, "--marks": marks.length } as CSSProperties} aria-label={t("ask.outline.label")}>
+    <nav ref={nav} className="ask-outline" style={{ left, "--marks": marks.length } as CSSProperties} aria-label={t("ask.outline.label")}>
       <ul ref={list} onKeyDown={onKeyDown}>
         {marks.map((mark, index) => (
           <li key={mark.id}>
@@ -75,28 +92,34 @@ export function ConversationOutline({
               data-index={index}
               tabIndex={index === tabbable ? 0 : -1}
               aria-current={index === current ? "true" : undefined}
-              aria-label={t("ask.outline.mark", { number: index + 1, total: marks.length, question: mark.question })}
+              aria-label={t("ask.outline.mark", { number: index + 1, total: marks.length, question: plainReading(mark.question) })}
               onClick={() => onJump(mark)}
-              onPointerEnter={(event) => event.pointerType === "mouse" && setCard(index)}
+              onPointerEnter={(event) => event.pointerType === "mouse" && showCard(index, event.currentTarget)}
               onPointerLeave={() => setCard(null)}
               onFocus={(event) => {
                 setStop(index);
-                if (event.currentTarget.matches(":focus-visible")) setCard(index);
+                if (event.currentTarget.matches(":focus-visible")) showCard(index, event.currentTarget);
               }}
               onBlur={() => setCard(null)}
             >
               <i />
             </button>
-            {card === index ? (
-              <div className="ask-outline-card" aria-hidden>
-                <small>{t("ask.outline.card", { number: index + 1, total: marks.length })}</small>
-                <b>{mark.question}</b>
-                {mark.answer ? <p>{mark.answer}</p> : null}
-              </div>
-            ) : null}
           </li>
         ))}
       </ul>
+      {card ? (
+        <div className="ask-outline-card" style={{ top: card.top }} aria-hidden>
+          <small>{t("ask.outline.card", { number: card.index + 1, total: marks.length })}</small>
+          <b>
+            <MathText text={marks[card.index]!.question} />
+          </b>
+          {marks[card.index]!.answer ? (
+            <p>
+              <InlineMarkdown>{marks[card.index]!.answer}</InlineMarkdown>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </nav>
   );
 }

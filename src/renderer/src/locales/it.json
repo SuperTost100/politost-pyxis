@@ -3067,7 +3067,8 @@
       "download": "Scarica PNG",
       "close": "Chiudi",
       "saved": "Salvata",
-      "saveFailed": "Non è stato possibile salvare l'immagine."
+      "saveFailed": "Non è stato possibile salvare l'immagine.",
+      "stage": "Immagine: scorrila con le frecce"
     }
   },
   "math": {
