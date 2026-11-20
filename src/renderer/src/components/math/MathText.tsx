@@ -1,5 +1,5 @@
-import katex from "katex";
 import { useMemo } from "react";
+import { formulaHtml } from "../../markdown/formulaHtml";
 import { parseMathText } from "./mathString";
 import "katex/dist/katex.min.css";
 import "./MathText.css";
@@ -10,18 +10,9 @@ export function MathText({ text }: { text: string }) {
     () =>
       parseMathText(text).map((segment) => {
         if (segment.kind === "text") return { text: segment.text };
-        try {
-          return {
-            html: katex.renderToString(segment.latex, {
-              throwOnError: true,
-              displayMode: segment.display === true,
-              strict: "ignore",
-            }),
-          };
-        } catch {
-          const fence = segment.display ? "$$" : "$";
-          return { text: `${fence}${segment.latex}${fence}` };
-        }
+        return {
+          html: formulaHtml(segment.latex, { displayMode: segment.display === true, strict: "ignore" }),
+        };
       }),
     [text],
   );

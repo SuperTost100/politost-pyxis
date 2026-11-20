@@ -4,7 +4,7 @@ import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState 
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { toPng } from "html-to-image";
-import katex from "katex";
+import { formulaHtml } from "../../markdown/formulaHtml";
 import { usePlace } from "../../app/usePlace";
 import { IconButton } from "../../components/IconButton";
 import { invoke } from "../../lib/ipc";
@@ -542,11 +542,7 @@ function Swatch({ style }: { style: CurveStyle }) {
 function MathFormula({ expression }: { expression: string }) {
   const html = useMemo(
     () =>
-      katex.renderToString(expression, {
-        throwOnError: false,
-        trust: false,
-        strict: "ignore",
-      }),
+      formulaHtml(expression, { trust: false, strict: "ignore" }),
     [expression],
   );
   return (
