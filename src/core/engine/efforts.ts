@@ -1,4 +1,4 @@
-import { nearestEffort } from "../../shared/effort";
+import { effortScale, nearestEffort } from "../../shared/effort";
 import { readableModel } from "../../shared/model-names";
 import { variantsOf } from "./effort-variants";
 import { lowEffortOn } from "./model-roles";
@@ -143,10 +143,18 @@ export function atLowEffort<T extends { provider: string; model: string; effort?
   // A selection with no effort of its own runs at the tool's default, which can be its highest: it is lowered when the
   // model lists levels, and left when it is not known to list any.
   if (!unfolded && !selection.effort && !effortsOf(selection.provider, model)?.length) return selection;
-  const effort = resolveEffort(selection.provider, model, "low");
+  // The lowest level the model lists (`minimal` below `low` where it has one), never `none`; `low` while the list is unread.
+  const listed = effortsOf(selection.provider, model);
+  const effort = listed ? lowestEffort(listed) : "low";
   const runs = runsAs(selection.provider, model, effort);
   const { effort: _stored, ...rest } = selection;
   return { ...rest, model: runs, ...(effort && runs === model ? { effort } : {}) } as T;
+}
+
+/** The lightest of `listed` on the effort scale, leaving out `none` and ids the scale does not know. */
+function lowestEffort(listed: readonly string[]): string | undefined {
+  const rank = (id: string) => effortScale.indexOf(id as (typeof effortScale)[number]);
+  return listed.filter((id) => rank(id) > 0).sort((a, b) => rank(a) - rank(b))[0];
 }
 
 export function forgetModels(): void {

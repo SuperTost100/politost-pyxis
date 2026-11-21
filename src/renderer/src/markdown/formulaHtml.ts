@@ -15,6 +15,7 @@ export function formulaHtml(latex: string, options: Omit<KatexOptions, "throwOnE
     return katex.renderToString(latex, { ...options, throwOnError: true });
   } catch {
     noteFormulaFailure(latex);
-    return `<span class="px-formula-source">${escapeHtml(latex)}</span>`;
+    // A display formula keeps the block layout its source would have in Markdown.
+    return `<span class="px-formula-source${options.displayMode ? " is-display" : ""}">${escapeHtml(latex)}</span>`;
   }
 }

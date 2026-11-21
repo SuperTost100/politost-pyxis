@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -7,7 +7,7 @@ import { openDatabase } from "../db/connection";
 import { createPlan } from "../plans/create";
 import { exportPlan, importPlan } from "../plans/file";
 import { planHandlers } from "../plans/handlers";
-import { freeUpSpace } from "./usage";
+import { freeUpSpace, removeBlobLeftovers } from "./usage";
 import { deleteLoosePassages } from "../chat/delete";
 
 type Db = ReturnType<typeof openDatabase>;
@@ -242,5 +242,29 @@ describe("free up space (#111)", () => {
     const { dir, db } = workspace();
     rmSync(join(dir, "blobs"), { recursive: true, force: true });
     expect(freeUpSpace(db, dir)).toEqual({ bytes: 0 });
+  });
+});
+
+describe("the leftovers removed when chats start", () => {
+  it("are removed from every blob folder that can be read, and a folder that cannot be read is passed over", () => {
+    const { dir } = workspace();
+    const leftover = (shard: string) => {
+      const folder = join(dir, "blobs", shard);
+      mkdirSync(folder, { recursive: true });
+      const path = join(folder, `.${shard}${"0".repeat(62)}.0b9c3e5a-1d2f-4a6b-8c7d-9e0f1a2b3c4d.tmp`);
+      writeFileSync(path, "xx");
+      return path;
+    };
+    leftover("aa");
+    const readable = leftover("bb");
+    // A folder the system will not list, as an antivirus or a permission change can leave one.
+    const locked = join(dir, "blobs", "aa");
+    chmodSync(locked, 0o000);
+    try {
+      expect(() => removeBlobLeftovers(dir)).not.toThrow();
+    } finally {
+      chmodSync(locked, 0o755);
+    }
+    expect(existsSync(readable)).toBe(false);
   });
 });

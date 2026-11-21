@@ -78,6 +78,10 @@ describe("plainReading keeps what a formula means", () => {
   it("keeps the grouping of a fraction whose parts are not single terms", () => {
     expect(plainReading("$\\frac{a+b}{c+d}$")).toBe("(a+b)/(c+d)");
     expect(plainReading("$\\frac{mg}{2}$")).toBe("mg/2");
+    // A fraction raised to a power keeps its grouping.
+    expect(plainReading("$\\frac{a}{b}^{2}$")).toBe("(a/b)²");
+    expect(plainReading("$\\frac{a+1}{b}^{n}$")).toBe("((a+1)/b)^n");
+    expect(plainReading("$\\tfrac12^2$")).toBe("(1/2)²");
     expect(plainReading("$\\frac{a+b}{2}$")).toBe("(a+b)/2");
     expect(plainReading("$\\tfrac12$")).toBe("1/2");
   });

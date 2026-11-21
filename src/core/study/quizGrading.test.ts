@@ -9,6 +9,7 @@ import {
   checkQuestion,
   checkedAnswer,
   finalizeAttempt,
+  gradeOpenAnswers,
   gradeQuizQuestion,
   graderReply,
   readQuizGrading,
@@ -1148,6 +1149,16 @@ describe("the open answers of one hand-in", () => {
     expect(grader.seen.map((call) => call.prompt)).toEqual(grader.seen.map((call) => call.followUp));
     expect(db.prepare("SELECT COUNT(*) FROM tool_sessions WHERE owner = ?").pluck().get(`quiz:${attemptId}`)).toBeGreaterThan(1);
     expect(sessions(db, attemptId).at(-1)).toMatchObject({ in_step: 1 });
+    db.close();
+  });
+
+  it("leave the session out of step when nothing saved the grade", async () => {
+    const grader = tool();
+    const { db, attemptId } = fixture([open("a")], "diagnostic");
+    // The in-process grading of the unit tests saves nothing of its own.
+    const grades = await gradeOpenAnswers(db, attemptId, { a: "ten" }, grader.run);
+    expect(grades?.get("a")).toMatchObject({ score: 1 });
+    expect(sessions(db, attemptId)).toEqual([{ session_id: "grader-1", provider: "claude", turns: 1, in_step: 0 }]);
     db.close();
   });
 

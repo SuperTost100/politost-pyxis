@@ -344,6 +344,17 @@ describe("choosing the subject of files added to the Library", () => {
     expect(sortView("unsure", "a", new Set(), ended)).toBe("unsure");
   });
 
+  it("takes how a file's sort ended from the job that ended last, though an older job was resumed and ended after it", () => {
+    const db = openDatabase(":memory:");
+    const job = db.prepare("INSERT INTO jobs (id, kind, params_json, state, created_at, updated_at) VALUES (?, 'library-sort', ?, ?, ?, ?)");
+    const params = JSON.stringify({ sourceIds: ["s"] });
+    // The newer job failed first; the older one, resumed afterwards, was stopped by the student last.
+    job.run("older", params, "cancelled", 1, 30);
+    job.run("newer", params, "failed", 2, 20);
+    expect(sortEnded(db).get("s")).toBe("stopped");
+    db.close();
+  });
+
   it("never sorts a chat or plan copy, a source with a subject or one the Library did not ask for", async () => {
     const ai = engine(() => ({ subject: "Analisi 1" }));
     const app = setup(ai.run);

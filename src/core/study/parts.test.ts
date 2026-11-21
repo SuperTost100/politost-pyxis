@@ -1340,14 +1340,19 @@ describe("a lesson in one tool session", () => {
     tool.gate.hold = new Promise<void>((resolve) => (release = resolve));
     tool.gate.started = started;
     const two = write(2);
-    await inFlight;
-    // Part 2 is being written in the session. Part 4 does not wait for it.
-    await write(4);
-    const beside = tool.calls.at(-1)!;
-    expect(beside.kept).toBe(false);
-    expect(beside.prompt).toContain("Part 4 of 4.");
-    expect(beside.prompt).toContain("Parts already written:");
-    release();
+    // The held write is let go whatever happens here: the owner's session stays busy until it ends, for later tests too.
+    try {
+      await inFlight;
+      // Part 2 is being written in the session. Part 4 does not wait for it.
+      await write(4);
+      const beside = tool.calls.at(-1)!;
+      expect(beside.kept).toBe(false);
+      expect(beside.prompt).toContain("Part 4 of 4.");
+      expect(beside.prompt).toContain("Parts already written:");
+    } finally {
+      release();
+      await two.catch(() => undefined);
+    }
     await two;
     // Each part holds its own text: the call that waited kept its own reply, and the one beside it its own.
     const text = (position: number) =>
@@ -1365,6 +1370,38 @@ describe("a lesson in one tool session", () => {
     expect(tool.calls.at(-1)!.followUp).toContain("Earlier in this conversation you wrote parts of this lesson.");
     expect(tool.calls.at(-1)!.followUp).toContain("Part 4");
     expect(session(db)).toHaveLength(1);
+    db.close();
+  });
+
+  it("does not count a part the session was told about only by its summary as one it holds", async () => {
+    // Replies in the order of the calls: part 1, part 2 (in the session), part 4 (beside it), part 3, part 2 again.
+    const { db, tool, write } = await lesson(partText("1"), partText("2"), partText("4"), partText("3"), partText("2 bis"));
+    await write(1);
+    let release!: () => void;
+    let started!: () => void;
+    const inFlight = new Promise<void>((resolve) => (started = resolve));
+    tool.gate.hold = new Promise<void>((resolve) => (release = resolve));
+    tool.gate.started = started;
+    const two = write(2);
+    try {
+      await inFlight;
+      await write(4);
+    } finally {
+      release();
+      await two.catch(() => undefined);
+    }
+    await two;
+    // Part 3 is asked with what the lesson holds: part 4 reaches the session as its headings and summary only.
+    await write(3);
+    const behind = tool.calls.at(-1)!;
+    expect(behind.followUp).toContain("Earlier in this conversation you wrote parts of this lesson.");
+    // So the next request still tells the session the lesson, instead of saying every written part is in the conversation.
+    await writePart(db, { planId: "p", topicId: "t", position: 2, run: tool.run, python: null, rewrite: "again" });
+    const again = tool.calls.at(-1)!;
+    expect(again.session).toMatchObject({ id: "tool-session-1" });
+    expect(again.followUp).toContain("Earlier in this conversation you wrote parts of this lesson.");
+    expect(again.followUp).not.toContain("The parts already written are in this conversation");
+    expect(again.followUp).toContain("Part 4");
     db.close();
   });
 

@@ -207,6 +207,35 @@ describe("CodeRabbit round 3, 7: two check markers in one paragraph", () => {
   });
 });
 
+describe("Catch-up review of #558, 9: a formula whose closing dollar starts the next line", () => {
+  it("is a formula unless a number says its first dollar is a price", () => {
+    expect(drawn(render("Value $x\n$ is valid.", false))).toBe(1);
+    expect(priceFormulas("Value $x\n$ is valid.")).toEqual([]);
+    expect(priceFormulas("Costa 5 $\n$x$ vale")).toEqual([8]);
+  });
+});
+
+describe("Catch-up review of #558, 10: a \\[ … \\] in a quote, and two \\( … \\) that touch", () => {
+  it("keeps the display formula in its quote", () => {
+    const html = render("> \\[x+1\\]\n> explanation", false);
+    expect(html.match(/<blockquote>/g)).toHaveLength(1);
+    expect(html.indexOf("katex-display")).toBeLessThan(html.indexOf("</blockquote>"));
+    expect(html.indexOf("explanation")).toBeLessThan(html.indexOf("</blockquote>"));
+  });
+
+  it("draws two formulas, and one beside a $ formula, apart", () => {
+    expect(drawn(render("In prose \\(x\\)\\(y\\) here.", false))).toBe(2);
+    expect(drawn(render("Then $a$\\(b\\)\\(c\\)$d$.", false))).toBe(4);
+    expect(undrawn(render("In prose \\(x\\)\\(y\\) here.", false))).toBe(0);
+  });
+});
+
+describe("Catch-up review of #558, 8: a citation marker inside a formula", () => {
+  it("is LaTeX to draw, and one in prose is still a link", () => {
+    expect(markdownSource("See $\\text{`[P1]`}$ and [P1].")).toBe("See $\\text{`[P1]`}$ and [P1](cite:p1).");
+  });
+});
+
 // GPT Sol 7, the one report for a lesson full of broken formulas, is in formulaFailure.test.ts.
 
 /** Code spans and blocks of a text, as the parser reads them. */
@@ -253,6 +282,7 @@ describe("property (a): the code the parser finds in a text is the same after pr
     "````\n```\n\\ce{H2O}\n```\n````\n\n~~~tex\n$$x$$\n~~~",
     "- elenco\n\n      codice $a$ \\(b\\)\n\n- altro `\\[c\\]`",
     "> citazione `$a$`\n>\n> ```\n> \\(b\\)\n> ```",
+    "See $\\text{`[P1]`}$ and `[P2]` and [P1].",
   ];
 
   it("holds for every text, complete", () => {
@@ -380,6 +410,9 @@ describe("property (c): a repair only adds formulas, never takes one away", () =
     "| a | $b$ |\n|---|---|\n| \\(c\\) | $d$ |",
     "Valore $\\text{`x`}$ e $25\\ \\$ + 1$",
     "$$\n25\\ \\$\n$$\n\ncosta \\(25\\ \\$\\)",
+    "Value $x\n$ is valid.",
+    "> \\[x+1\\]\n> explanation",
+    "In prose \\(x\\)\\(y\\) here, $a$\\(b\\).",
   ];
 
   it("holds for the examples, complete", () => {

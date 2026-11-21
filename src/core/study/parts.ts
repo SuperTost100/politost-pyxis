@@ -559,16 +559,35 @@ function lessonEntries(db: Database.Database, outline: Outline | null): LessonEn
   return (outline?.parts ?? []).map((part) => [part.position, part.itemId ?? null, part.itemId ? (itemBody(db, part.itemId) ?? "") : ""]);
 }
 
-const fingerprint = (outlineId: string | null, entries: LessonEntries) => contextHash(JSON.stringify([outlineId, entries]));
+/**
+ * What a session holds of a lesson: the outline, and for each written part its item and the hash of the text the session
+ * received, or `summary` for a part it was told about only by its headings and summary.
+ */
+type HeldEntries = Array<[number, string | null, string]>;
+const SUMMARY_ONLY = "summary";
+const heldState = (outlineId: string | null, entries: HeldEntries) => JSON.stringify([outlineId, entries]);
+const withText = (entries: LessonEntries): HeldEntries =>
+  entries.map(([position, itemId, body]) => [position, itemId, itemId ? contextHash(body) : ""]);
+
+/** The entries of a state kept for this outline, by position; none for another outline or a state of an earlier build. */
+function heldEntries(state: string | undefined, outlineId: string): Map<number, string> {
+  try {
+    const [id, entries] = JSON.parse(state ?? "") as [string, HeldEntries];
+    return id === outlineId ? new Map(entries.map(([position, itemId, text]) => [position, `${itemId}:${text}`])) : new Map();
+  } catch {
+    return new Map();
+  }
+}
 
 /**
- * What the lesson holds now, as a fingerprint: the live outline and the text of every written part. A session is in step
- * when it was last kept at this state, so a part that another writer wrote, a section rewritten on its own, a level
- * chosen or a new outline each leave it out of step with no case of their own.
+ * What the lesson holds now, as a session would have to hold it to be in step: the live outline and the text of every
+ * written part. A session is in step when it was last kept at this state, so a part that another writer wrote, a section
+ * rewritten on its own, a level chosen or a new outline each leave it out of step with no case of their own, and so does
+ * a part it was told about only by its summary.
  */
 export function lessonState(db: Database.Database, topicId: string): string {
   const outline = liveOutline(db, topicId);
-  return fingerprint(outline?.id ?? null, lessonEntries(db, outline));
+  return heldState(outline?.id ?? null, withText(lessonEntries(db, outline)));
 }
 
 export type PlanPartsInput = {
@@ -1094,11 +1113,17 @@ async function writePartIn(db: Database.Database, input: WritePartInput, session
   // A session that holds the lesson as it is now needs only the part's place and material; one that does not is told
   // what the lesson holds. A session of no use to this call (none, or lost) gets the whole request.
   const whole = partRequest(base);
+  const holds = session.inStep(heldState(outline.id, withText(known)), system);
   const next = partRequest({
     ...base,
-    session: session.inStep(fingerprint(outline.id, known), system) ? "held" : "behind",
+    session: holds ? "held" : "behind",
     ...(before ? { again: true } : {}),
   });
+  /**
+   * What the session that answers holds of the other written parts: all their texts (it was in step), the ones it held at
+   * its last keep (it was told the lesson by summaries), or none (a new session, told by summaries).
+   */
+  let basis: "all" | "kept" | "none" = "none";
   const selection = input.selection ?? selectionFor(db, "lesson");
   let problems: string[] = [];
   let shaped: Extract<PartShape, { ok: true }> | null = null;
@@ -1119,6 +1144,8 @@ async function writePartIn(db: Database.Database, input: WritePartInput, session
       continuesLast: retry,
     });
     input.signal?.throwIfAborted();
+    // A retry that continues the session goes on from what the first ask left there; one in a new session got summaries.
+    basis = !result.continued ? "none" : retry ? basis : holds ? "all" : "kept";
     const checked = partShape(result.text, {
       kind: part.kind,
       headings: [...headings.values()].flat(),
@@ -1166,15 +1193,23 @@ async function writePartIn(db: Database.Database, input: WritePartInput, session
     if (input.rewrite === "level" && !input.ahead) setOutlineWording(db, outline.id, context.wording);
     saved = true;
   })();
-  // The session wrote this part, and the lesson holds it: the next part needs only its place and material. What the
-  // session knows is the lesson it was sent plus this part, not a part another writer saved meanwhile.
+  // The session wrote this part, and the lesson holds it. What the session knows is this part's text and the texts of the
+  // other parts it received, not a part another writer saved meanwhile, nor one it was told about only by its summary: a
+  // session that holds every text gets only the next part's place and material, one that does not is told the lesson.
   if (saved) {
     const written = liveOutline(db, input.topicId)?.parts.find((entry) => entry.position === input.position)?.itemId;
+    const earlier = heldEntries(session.kept, outline.id);
     if (written)
       session.keep(
-        fingerprint(
+        heldState(
           outline.id,
-          known.map((entry) => (entry[0] === input.position ? [entry[0], written, itemBody(db, written) ?? ""] : entry)),
+          withText(known).map(([position, itemId, text]): HeldEntries[number] =>
+            position === input.position
+              ? [position, written, contextHash(itemBody(db, written) ?? "")]
+              : !itemId || basis === "all" || (basis === "kept" && earlier.get(position) === `${itemId}:${text}`)
+                ? [position, itemId, text]
+                : [position, itemId, SUMMARY_ONLY],
+          ),
         ),
       );
   }

@@ -1,5 +1,6 @@
 import { splitCitationGroups } from "../../../shared/smart-text";
 import { mapOutsideCode } from "../../../shared/math-delimiters";
+import { end, parseMarkdown, start, walk } from "../../../shared/markdown-tree";
 
 /**
  * The label a citation shows. `group` names what its chip stands for when the label alone does not tell, such as two
@@ -51,16 +52,35 @@ function thinCitationRuns(text: string, resolver: CitationResolver): string {
  * reply never stored) stays plain text, since there is nothing to open. Without one, every marker links by its number.
  */
 export function linkCitations(markdown: string, resolver?: CitationResolver): string {
-  return mapOutsideCode(markdown, (text) => {
-    const linked = splitCitationGroups(text).replace(/\[P(\d+)\]/g, (_, raw: string) => {
-      const id = Number(raw);
-      if (!resolver) return `[P${id}](cite:p${id})`;
-      const label = resolver(id);
-      return label === undefined ? literal(`[P${id}]`) : `[${literal(label)}](cite:p${id})`;
-    });
-    // Without a resolver the page owns the numbered list and every number must stay reachable.
-    return resolver ? thinCitationRuns(linked, resolver) : linked;
+  // A formula is LaTeX, where `[P1]` is text to draw, not a citation: only the prose between formulas is linked.
+  const formulas: Array<[number, number]> = [];
+  walk(parseMarkdown(markdown), (node) => {
+    if (node.type !== "inlineMath" && node.type !== "math") return;
+    formulas.push([start(node), end(node)]);
+    return false;
   });
+  return mapOutsideCode(markdown, (_text, from, to) => {
+    let out = "";
+    let at = from;
+    for (const [mathFrom, mathTo] of formulas) {
+      if (mathTo <= at || mathFrom >= to) continue;
+      out += linkProse(markdown.slice(at, Math.max(at, mathFrom)), resolver) + markdown.slice(Math.max(at, mathFrom), Math.min(to, mathTo));
+      at = Math.min(to, mathTo);
+    }
+    return out + linkProse(markdown.slice(at, to), resolver);
+  });
+}
+
+/** `linkCitations` for prose with no code and no formula in it. */
+function linkProse(text: string, resolver?: CitationResolver): string {
+  const linked = splitCitationGroups(text).replace(/\[P(\d+)\]/g, (_, raw: string) => {
+    const id = Number(raw);
+    if (!resolver) return `[P${id}](cite:p${id})`;
+    const label = resolver(id);
+    return label === undefined ? literal(`[P${id}]`) : `[${literal(label)}](cite:p${id})`;
+  });
+  // Without a resolver the page owns the numbered list and every number must stay reachable.
+  return resolver ? thinCitationRuns(linked, resolver) : linked;
 }
 
 /**

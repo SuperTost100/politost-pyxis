@@ -86,19 +86,28 @@ function removeBlobFiles(workspace: string, wanted: (sha: string, blob: boolean)
   for (const folder of readdirSync(root)) {
     if (!/^[a-f0-9]{2}$/.test(folder)) continue;
     const dir = join(root, folder);
-    if (!lstatSync(dir).isDirectory()) continue;
-    for (const name of readdirSync(dir)) {
+    let names: string[];
+    try {
+      if (!lstatSync(dir).isDirectory()) continue;
+      names = readdirSync(dir);
+    } catch (error) {
+      // A folder the system will not list is passed over, so the others are still cleaned and the caller (the chats'
+      // start among them) goes on; the next run tries it again.
+      console.error("pyxis-core: a blob folder could not be read", (error as NodeJS.ErrnoException).code ?? "");
+      continue;
+    }
+    for (const name of names) {
       const blob = BLOB_NAME.exec(name);
       const sha = (blob ?? TEMPORARY_NAME.exec(name))?.[1];
       if (!sha || !sha.startsWith(folder) || !wanted(sha, Boolean(blob))) continue;
       const path = join(dir, name);
-      const info = lstatSync(path);
-      if (!info.isFile()) continue;
       try {
+        const info = lstatSync(path);
+        if (!info.isFile()) continue;
         rmSync(path);
         freed += info.size;
       } catch {
-        /* Ceiling: a locked file (Windows) stays until the next run. */
+        /* Ceiling: a locked file (Windows), or one gone since the folder was listed, stays until the next run. */
       }
     }
   }

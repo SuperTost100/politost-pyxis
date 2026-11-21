@@ -46,7 +46,10 @@ export function plainReading(text: string): string {
   let reading = text
     .replace(/\$\$?/g, "")
     .replace(/\\(?:mathrm|mathbf|mathit|mathbb|text|textrm|operatorname|left|right|vec|hat|bar|overline)\b\s*/g, "")
-    .replace(/\\[dt]?frac\s*(\d)\s*(\d)/g, "$1/$2")
+    // A fraction with an exponent after it is read in parentheses: "(1/2)²", not "1/2²".
+    .replace(/\\[dt]?frac\s*(\d)\s*(\d)(?=(\s*\^)?)/g, (_, top: string, bottom: string, power?: string) =>
+      power ? `(${top}/${bottom})` : `${top}/${bottom}`,
+    )
     // A single digit after the caret is the whole exponent; a braced one is read below, whole.
     .replace(/\^([23])/g, (_, digit: string) => (digit === "2" ? "²" : "³"));
   // The innermost groups first, so a fraction in a fraction and a power in a fraction are read from the inside out.
@@ -54,7 +57,9 @@ export function plainReading(text: string): string {
     const before = reading;
     reading = reading
       .replace(/\^\{([^{}]*)\}/g, (_, part: string) => raised(part))
-      .replace(/\\[dt]?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, (_, top: string, bottom: string) => `${group(top)}/${group(bottom)}`);
+      .replace(/\\[dt]?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}(?=(\s*[\^²³])?)/g, (_, top: string, bottom: string, power?: string) =>
+        power ? `(${group(top)}/${group(bottom)})` : `${group(top)}/${group(bottom)}`,
+      );
     if (reading === before) break;
   }
   return reading

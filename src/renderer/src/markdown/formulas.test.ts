@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import corpus from "./formula-corpus.json";
 import { drawn, render, undrawn, visibleText } from "./formulaTestKit";
+import { formulaHtml } from "./formulaHtml";
 import { markdownSource } from "./source";
 
 /**
@@ -68,6 +69,11 @@ describe("a formula KaTeX cannot draw", () => {
       expect(html).toContain(`<span class="px-formula-source is-display">${body}</span>`);
       expect(html).not.toContain("cc0000");
     }
+  });
+
+  it("keeps a display formula's block layout outside Markdown too (a quiz option, a graph label)", () => {
+    expect(formulaHtml("\\frac{1}{", { displayMode: true })).toBe('<span class="px-formula-source is-display">\\frac{1}{</span>');
+    expect(formulaHtml("\\frac{1}{")).toBe('<span class="px-formula-source">\\frac{1}{</span>');
   });
 
   it("leaves the formulas around it drawn", () => {

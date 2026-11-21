@@ -35,6 +35,8 @@ export type SessionHandle = {
    * alone) leaves `state` out and asks only whether a session is open and in step.
    */
   inStep(state?: string, system?: string): boolean;
+  /** The state the session was last kept at, in step or not; undefined when it was never kept or the call runs beside it. */
+  readonly kept: string | undefined;
   /** A call on the session. A tool that keeps none, or an API or local provider, answers it from `fresh`. */
   generate(call: SessionCall): Promise<GenerateOutput>;
   /**
@@ -63,6 +65,7 @@ export async function withSession<T>(db: Database.Database, owner: string, body:
   if (busy.has(owner)) {
     return body({
       inStep: () => false,
+      kept: undefined,
       keep: () => undefined,
       generate: (call) => {
         const { fresh, followUp: _followUp, ...rest } = call;
@@ -84,11 +87,16 @@ export async function withSession<T>(db: Database.Database, owner: string, body:
         stepped &&
         (now === undefined || state === now) &&
         (system === undefined || !before?.instructions || before.instructions === contextHash(system)),
+      kept: state,
       keep: (marker) => {
         if (answeredBy) keepSession(db, owner, answeredBy, marker);
       },
       async generate(call) {
         const { fresh, followUp, continuesLast, ...rest } = call;
+        // A call goes out: until its result is kept, the session holds something the owner may never keep, even when an
+        // earlier call of this scope was kept.
+        markOutOfStep(db, owner);
+        answeredBy = undefined;
         const instructions = contextHash(call.system ?? "");
         const held = currentSession(db, owner);
         // A session opened under other instructions cannot take these: it is left, and a new one starts with `fresh`.

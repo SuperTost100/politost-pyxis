@@ -546,6 +546,12 @@ describe("atLowEffort", () => {
     expect(atLowEffort({ provider: "ollama", model: "local", effort: "high" }, "quiz").effort).toBe("high");
   });
 
+  it("takes minimal, not low, from a model that lists both, and keeps a selection already at minimal there", () => {
+    rememberModels("codex", [{ id: "light", efforts: levels("minimal", "low", "medium") }]);
+    expect(atLowEffort({ provider: "codex", model: "light", effort: "medium" }, "outline").effort).toBe("minimal");
+    expect(atLowEffort({ provider: "codex", model: "light", effort: "minimal" }, "outline").effort).toBe("minimal");
+  });
+
   it("uses the nearest level when the model has no low one, and none when it lists none", () => {
     rememberModels("codex", [{ id: "has-medium", efforts: levels("medium", "high") }]);
     rememberModels("claude", [{ id: "lists-none", efforts: [] }]);
