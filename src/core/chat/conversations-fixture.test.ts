@@ -126,6 +126,7 @@ describe("the conversations a chat reply is judged on", () => {
       expect(ok(end, "Correct: x = 2 and f(2) = 3. Can you confirm that f(x) ≥ f(2) for every real x?")).toEqual([]);
       expect(ok(end, "Right: x = 2 and the minimum is 3. Quanto vale f(2), allora?")).not.toEqual([]);
       expect(ok(end, "Right: x = 2, so the minimum is 3. And what is the value of x where it happens?")).not.toEqual([]);
+      expect(ok(end, "Right: x = 2 and f(2) = 3. What value of x gives the minimum?")).not.toEqual([]);
       expect(ok(end, "x = 2 and f(2) = 3.")).toEqual([expect.stringContaining("missing [Rr]ight")]);
     });
   });

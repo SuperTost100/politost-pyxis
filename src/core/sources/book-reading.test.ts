@@ -266,6 +266,9 @@ describe("reading a free book before it is added", () => {
     const library = await later.bookPreview({ id: "fisica-demo" });
     expect(library.package).toBe(nextSha);
     expect((await later.bookChapter({ id: "fisica-demo", chapter: 1, package: library.package }))[0]?.text).toContain("VERSIONE DUE");
+    // A Library copy whose checksum is not known is not taken for the package a reader names.
+    ctx.db.prepare("UPDATE sources SET blob_sha = NULL WHERE catalog_id = 'fisica-demo'").run();
+    await expect(later.bookChapter({ id: "fisica-demo", chapter: 1, package: first.package })).rejects.toMatchObject({ messageKey: "sources.books.changed" });
     ctx.db.close();
   });
 

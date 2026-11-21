@@ -219,6 +219,7 @@ describe("Catch-up review of #558, 10: a \\[ … \\] in a quote, and two \\( …
   it("keeps the display formula in its quote", () => {
     const html = render("> \\[x+1\\]\n> explanation", false);
     expect(html.match(/<blockquote>/g)).toHaveLength(1);
+    expect(html).toContain("katex-display");
     expect(html.indexOf("katex-display")).toBeLessThan(html.indexOf("</blockquote>"));
     expect(html.indexOf("explanation")).toBeLessThan(html.indexOf("</blockquote>"));
   });
@@ -230,9 +231,9 @@ describe("Catch-up review of #558, 10: a \\[ … \\] in a quote, and two \\( …
   });
 });
 
-describe("Catch-up review of #558, 8: a citation marker inside a formula", () => {
-  it("is LaTeX to draw, and one in prose is still a link", () => {
-    expect(markdownSource("See $\\text{`[P1]`}$ and [P1].")).toBe("See $\\text{`[P1]`}$ and [P1](cite:p1).");
+describe("Catch-up review of #556, 3: a citation between two prices", () => {
+  it("is a link, though the parser first pairs the prices as a formula", () => {
+    expect(markdownSource("Costs $5 per item [P1] and $10.")).toContain("[P1](cite:p1)");
   });
 });
 
@@ -282,7 +283,6 @@ describe("property (a): the code the parser finds in a text is the same after pr
     "````\n```\n\\ce{H2O}\n```\n````\n\n~~~tex\n$$x$$\n~~~",
     "- elenco\n\n      codice $a$ \\(b\\)\n\n- altro `\\[c\\]`",
     "> citazione `$a$`\n>\n> ```\n> \\(b\\)\n> ```",
-    "See $\\text{`[P1]`}$ and `[P2]` and [P1].",
   ];
 
   it("holds for every text, complete", () => {

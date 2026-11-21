@@ -329,7 +329,7 @@ export function sourceHandlers(
     // A reader that was shown the chapters of a package (`listed`) is answered from that package or not at all, so the
     // Library copy answers only when it is that package (an update in place or a newer version added gives it another).
     const added = addedBook(id);
-    if (added && (!listed || !added.sha || added.sha === listed))
+    if (added && (!listed || added.sha === listed))
       return { from: "library" as const, sourceId: added.id, title: added.title, version: added.version ?? "", sha: added.sha };
     const held = reading.heldFor(id);
     if (held && (!listed || held.sha === listed)) return { from: "held" as const, parsed: held.parsed, sha: held.sha };
