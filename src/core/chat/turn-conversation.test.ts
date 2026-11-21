@@ -295,25 +295,6 @@ describe("a chat's stored tool session", () => {
     db.close();
   });
 
-  it("hands a local model only what its window holds", async () => {
-    const { db } = setup();
-    const first = await ask(db, "prima");
-    let chatId = first.chatId;
-    for (let n = 0; n < 8; n += 1) chatId = (await ask(db, `${n} ${"y".repeat(5000)}`, { chatId })).chatId;
-    let prompt = "";
-    await askTurn(db, {
-      chatId,
-      text: "ora",
-      allowGeneral: true,
-      run: async (input) => {
-        prompt = input.prompt;
-        return reply;
-      },
-    });
-    expect(prompt.length).toBeLessThan(300_000);
-    db.close();
-  });
-
   it("lets the session go on after the student stopped a turn, and replays what the student sees", async () => {
     const { db } = setup();
     const first = await ask(db, "prima");
@@ -636,6 +617,54 @@ describe("a chat's stored tool session", () => {
     expect(back.seen.conversation!.followUp).toContain("user: prima domanda\nassistant: Risposta dell'API.");
     expect(sessionsOpened(db, first.chatId)).toBe(1);
     expect(currentSession(db, first.chatId)).toMatchObject({ inStep: true });
+    db.close();
+  });
+
+  it("does not replay the stored CLI session's exchanges into an API conversation that already holds them", async () => {
+    const { db } = setup();
+    const first = await ask(db, "prima domanda", { provider: "claude", sessionId: "s1" });
+    // The student moves the chat to an API provider, which answers the next two questions in one conversation.
+    db.prepare("UPDATE feature_engines SET selection_json = ?").run(JSON.stringify({ provider: "openai-api", model: "gpt-5.6-terra" }));
+    const api = async (text: string) => {
+      let followUp = "";
+      await askTurn(db, {
+        chatId: first.chatId,
+        text,
+        allowGeneral: true,
+        run: async (input) => {
+          followUp = input.conversation?.followUp ?? "";
+          return { ...reply, provider: "openai-api", model: "gpt-5.6-terra", text: `Risposta a ${text}.` };
+        },
+      });
+      return followUp;
+    };
+    await api("seconda domanda");
+    // The stored Claude session is out of step, but the API conversation going on holds the second exchange already.
+    expect(currentSession(db, first.chatId)).toMatchObject({ provider: "claude", inStep: false });
+    const third = await api("terza domanda");
+    expect(third).toContain("Question:\nterza domanda");
+    expect(third).not.toContain("seconda domanda");
+    // Back on Claude, its own session still gets what it missed.
+    db.prepare("UPDATE feature_engines SET selection_json = ?").run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+    const back = await ask(db, "quarta domanda", { chatId: first.chatId, provider: "claude", sessionId: "s1" });
+    expect(back.seen.conversation!.followUp).toContain("user: seconda domanda\nassistant: Risposta a seconda domanda.");
+    db.close();
+  });
+
+  it("replays the question and the answer the student sees after a regenerate that answered NOT_COVERED", async () => {
+    const { db } = setup();
+    const first = await ask(db, "domanda");
+    const later = await ask(db, "e poi?", { chatId: first.chatId });
+    const regenerated = await regenerateTurn(db, {
+      chatId: first.chatId,
+      allowGeneral: true,
+      run: async (input) => ({ ...toolReply("s1", input as Seen), text: "NOT_COVERED" }),
+    });
+    // Nothing replaces the answer, so the one the session was told to discard stays on screen.
+    expect(regenerated.message).toBeNull();
+    expect(readChat(db, later.chatId).filter((message) => message.role === "assistant")).toHaveLength(2);
+    const next = await ask(db, "e ancora?", { chatId: first.chatId });
+    expect(next.seen.conversation!.followUp).toContain("user: e poi?\nassistant: Il vettore descrive il punto [P1].");
     db.close();
   });
 

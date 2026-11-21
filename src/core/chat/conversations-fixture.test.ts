@@ -73,6 +73,13 @@ describe("the conversations a chat reply is judged on", () => {
       expect(ok(solution, `${worked}\nQuanto vale f(2)?`)).toHaveLength(1);
     });
 
+    it("judge the text of an ordinary fence, which the chat shows, and leave out only the blocks it hides", () => {
+      const attempt = "attempt-wrong-step";
+      expect(ok(attempt, "Ecco il passo:\n\n```text\nx = 4\n```\n\nCosa ottieni?")).toContain("has x=4\\b");
+      const figure = "```pyxis-figure\n" + JSON.stringify({ kind: "plot", caption: "c", code: "x = 4" }) + "\n```";
+      expect(ok(attempt, `Il segno del 6 cambia.\n${figure}\nQuanto vale $2x$ dopo aver sottratto 6?`)).toEqual([]);
+    });
+
     it("judge an answer on what the student sees, so working that sits in a hidden check block does not count", () => {
       const wrong = "check-wrong";
       const hidden = "Not correct.\n\n```check\n{\"kind\":\"derivative\",\"expr\":\"x**3\",\"claimed\":\"3*x**2\",\"vars\":[\"x\"],\"step\":\"3x^2\"}\n```";
@@ -115,6 +122,11 @@ describe("the conversations a chat reply is judged on", () => {
       const end = "guide-to-the-end";
       expect(ok(end, "Right: $x = 2$ and $f(2) = 3$, so the minimum is 3. To be sure it is a minimum, what does $f''(x)$ tell you?")).toEqual([]);
       expect(ok(end, "Right. What is f(2) then?")).not.toEqual([]);
+      // A further check that names f(2) without asking for it again is allowed.
+      expect(ok(end, "Correct: x = 2 and f(2) = 3. Can you confirm that f(x) ≥ f(2) for every real x?")).toEqual([]);
+      expect(ok(end, "Right: x = 2 and the minimum is 3. Quanto vale f(2), allora?")).not.toEqual([]);
+      expect(ok(end, "Right: x = 2, so the minimum is 3. And what is the value of x where it happens?")).not.toEqual([]);
+      expect(ok(end, "Right: x = 2 and f(2) = 3. What value of x gives the minimum?")).not.toEqual([]);
       expect(ok(end, "x = 2 and f(2) = 3.")).toEqual([expect.stringContaining("missing [Rr]ight")]);
     });
   });

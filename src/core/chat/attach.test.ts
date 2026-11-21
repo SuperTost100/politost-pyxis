@@ -55,6 +55,22 @@ it("SRC-04 sends HEIC pixels to vision or OCR and preserves the original", async
   } finally { db.close(); rmSync(workspace, { recursive: true, force: true }); }
 });
 
+it("SRC-04 decodes a held HEIC in the extract worker, though its stored file has no extension", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pyxis-heic-worker-"));
+  const db = openDatabase(":memory:");
+  try {
+    const photo = await heldPhoto(db, workspace, "tests/fixtures/synthetic-note.heic", async (file: string) => ({
+      mediaType: "image/png" as const,
+      bytes: (await heicToPng(new Uint8Array(readFileSync(file)))).png,
+    }));
+    expect(photo.file).not.toMatch(/\.heic$/i);
+    // The default decoder, the one a turn uses: OCR gets PNG pixels, not the HEIC bytes.
+    let width = 0;
+    await recognisePhoto(photo, workspace, async (bytes) => ((width = PNG.sync.read(Buffer.from(bytes)).width), "ok"));
+    expect(width).toBe(64);
+  } finally { db.close(); rmSync(workspace, { recursive: true, force: true }); }
+});
+
 describe("SRC-04 chat images fit provider limits", () => {
   const dirs: string[] = [];
   afterEach(() => {

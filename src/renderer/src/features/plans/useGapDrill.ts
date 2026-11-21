@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { invoke } from "../../lib/ipc";
 import { useStillHere } from "../../lib/useStillHere";
-import { drillQuizPath, drillStatus, readDrillRequest, stoppedTopic } from "./gapDrillRequest";
+import { cancelsStoppedStart, drillQuizPath, drillStatus, readDrillRequest, stoppedTopic } from "./gapDrillRequest";
 
 /**
  * Rivedi gli errori: a targeted drill on a topic's gaps, built by a durable job. The page watches the job and opens the
@@ -70,9 +70,12 @@ export function useGapDrill(planId: string, { replace = false }: { replace?: boo
   const latestStart = useRef(0);
   // The latest start the student stopped before its job was known: the job is stopped as soon as the start returns it.
   const stoppedStart = useRef(0);
+  // What the latest start asked for, so a stopped start leaves a job a later start of the same drill was handed.
+  const latestDrill = useRef<{ topicId: string; gapId?: string } | null>(null);
   async function start(topicId: string, gapId?: string) {
     if (preparing) return;
     const mine = (latestStart.current += 1);
+    latestDrill.current = { topicId, gapId };
     setFailedTopic(null);
     lastGap.current = gapId;
     setDrill({ topicId, gapId });
@@ -82,12 +85,17 @@ export function useGapDrill(planId: string, { replace = false }: { replace?: boo
         topicId,
         ...(gapId ? { gapId } : {}),
       });
-      if (stoppedStart.current >= mine) return void invoke("jobs.cancel", { jobId }).catch(() => undefined);
+      if (stoppedStart.current >= mine) {
+        const later = latestStart.current > mine ? latestDrill.current : null;
+        if (cancelsStoppedStart({ topicId, gapId }, later)) void invoke("jobs.cancel", { jobId }).catch(() => undefined);
+        return;
+      }
       // Only the drill this start made: the student may have asked for another one, or dismissed it, in the meantime.
       setDrill((current) => (current && current.topicId === topicId && current.gapId === gapId ? { ...current, jobId } : current));
       await client.invalidateQueries({ queryKey: ["gap-drill", planId] });
     } catch {
-      if (mine !== latestStart.current) return;
+      // A start the student stopped, or one a later start replaced, has nothing to say.
+      if (mine !== latestStart.current || stoppedStart.current >= mine) return;
       setDrill(null);
       setFailedTopic(topicId);
     }

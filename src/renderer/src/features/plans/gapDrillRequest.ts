@@ -58,3 +58,15 @@ export function drillStatus(
   if (read.state === "succeeded" && !read.attemptId) return { state: "failed", attemptId: null };
   return { state: read.state, attemptId: read.attemptId };
 }
+
+/**
+ * Whether a start the student stopped before its job was known stops that job once it comes back. Core hands a drill's
+ * job to every start of the same drill while the job is queued or running, so a later start of the same topic and gap may
+ * hold the same job: it is that start's now, and stays.
+ */
+export function cancelsStoppedStart(
+  stopped: { topicId: string; gapId?: string },
+  later: { topicId: string; gapId?: string } | null,
+): boolean {
+  return !later || later.topicId !== stopped.topicId || later.gapId !== stopped.gapId;
+}

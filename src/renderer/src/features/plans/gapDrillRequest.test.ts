@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drillQuizPath, drillStatus, readDrillRequest, readGapStart, stoppedTopic } from "./gapDrillRequest";
+import { cancelsStoppedStart, drillQuizPath, drillStatus, readDrillRequest, readGapStart, stoppedTopic } from "./gapDrillRequest";
 
 describe("readDrillRequest", () => {
   it("starts a request once, even when it is read twice before the parameter is removed", () => {
@@ -85,5 +85,16 @@ describe("drillStatus", () => {
 
   it("calls a drill that finished without an attempt stopped, since there is no quiz to open", () => {
     expect(drillStatus({ state: "succeeded", attemptId: null }, true)).toEqual({ state: "failed", attemptId: null });
+  });
+});
+
+describe("cancelsStoppedStart", () => {
+  it("stops the job of a stopped start, unless a later start of the same drill may hold it", () => {
+    expect(cancelsStoppedStart({ topicId: "t1" }, null)).toBe(true);
+    expect(cancelsStoppedStart({ topicId: "t1" }, { topicId: "t1" })).toBe(false);
+    expect(cancelsStoppedStart({ topicId: "t1", gapId: "g1" }, { topicId: "t1", gapId: "g1" })).toBe(false);
+    // Another topic or another gap has a job of its own.
+    expect(cancelsStoppedStart({ topicId: "t1" }, { topicId: "t2" })).toBe(true);
+    expect(cancelsStoppedStart({ topicId: "t1", gapId: "g1" }, { topicId: "t1", gapId: "g2" })).toBe(true);
   });
 });

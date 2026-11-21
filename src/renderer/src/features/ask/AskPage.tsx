@@ -91,7 +91,10 @@ type ChatRow = Awaited<ReturnType<typeof invoke<"chats.read">>>["messages"][numb
 /** A message taken out of the composer as it was sent, put back if its turn fails or is stopped. */
 type Held = { draft: string; files: PickedFile[] };
 type Skipped = Array<"too-large" | "unreadable" | "over-limit">;
-type LeftOut = Array<{ name: string; kind: "document" | "photo"; error: AttachmentView["error"] & string }>;
+/** The files a sent question went without. `key` is given when they arrive, so closing one notice leaves the others as they are. */
+type LeftOutFile = { name: string; kind: "document" | "photo"; error: AttachmentView["error"] & string };
+type LeftOut = Array<LeftOutFile & { key: number }>;
+let leftOutKeys = 0;
 
 /** Whether each chat's latest question was asked with "Answer generally", which Try again and Regenerate keep. */
 const askedGeneral = new Map<string, boolean>();
@@ -109,7 +112,7 @@ type Screen = {
   composer: () => string;
   restore: (held: Held) => void;
   /** The reply was saved in `to`: the notices for it, and a move there from a new chat. */
-  replied: (to: string, uncovered: string | null, skipped: Skipped, announce: boolean, leftOut?: LeftOut) => void;
+  replied: (to: string, uncovered: string | null, skipped: Skipped, announce: boolean, leftOut?: LeftOutFile[]) => void;
   fail: (err: unknown) => void;
 };
 let screen: { current: Screen } | null = null;
@@ -527,13 +530,8 @@ export function AskPage() {
     if (!trimmed || turns.get()) return;
     if (chatId && !thread.data) return;
     const startedIn = chatId ?? "";
-    // The turn starts now and belongs to the draft it was sent from: the composer shows it working (and offers Stop) while
-    // files still being registered with core, from a pick Enter caught half way, finish and go with this question.
-    const turn = turns.start(
-      startedIn,
-      trimmed,
-      false,
-      messages.at(-1)?.id ?? null,
+    /** The draft's files that go with the question, as the question shows them. */
+    const sentFiles = () =>
       options.textOnly
         ? []
         : drafts.files
@@ -544,8 +542,10 @@ export function AskPage() {
               name: file.name,
               kind: drafts.views.get()[file.id]?.kind ?? "document",
               src: drafts.previews.get()[file.id]?.src,
-            })),
-    );
+            }));
+    // The turn starts now and belongs to the draft it was sent from: the composer shows it working (and offers Stop) while
+    // files still being registered with core, from a pick Enter caught half way, finish and go with this question.
+    const turn = turns.start(startedIn, trimmed, false, messages.at(-1)?.id ?? null, sentFiles());
     if (!turn) return;
     setError(null);
     setAnnouncement("");
@@ -589,6 +589,7 @@ export function AskPage() {
     }
     // Only now are the draft's files known: the ones still being registered have been applied to it.
     const picked = drafts.files.get(startedIn);
+    if (!options.textOnly) turns.setFiles(turn, sentFiles());
     // A file refused before core held it never goes with the question.
     const attached = options.textOnly ? [] : picked.filter((file) => !isLocalFile(file));
     held.files = picked;
@@ -675,7 +676,7 @@ export function AskPage() {
     replied(to, notCovered, skippedImages, reply, left = []) {
       setUncovered(notCovered);
       setSkipped(skippedImages);
-      setLeftOut(left);
+      setLeftOut(left.map((file) => ({ ...file, key: (leftOutKeys += 1) })));
       if (reply) announce();
       if (to === (chatNow.current ?? "")) return;
       arrived.current = to;
@@ -1116,8 +1117,8 @@ export function AskPage() {
             {t("ask.skippedOverLimit")}
           </Notice>
         ) : null}
-        {leftOut.map((file, at) => (
-          <Notice key={`${at}-${file.name}`} tone="warning" onClose={() => setLeftOut((now) => now.filter((item) => item !== file))}>
+        {leftOut.map((file) => (
+          <Notice key={file.key} tone="warning" onClose={() => setLeftOut((now) => now.filter((item) => item !== file))}>
             {t("ask.attach.leftOut", { name: file.name })}{" "}
             {t(attachmentLine({ id: "", name: file.name, kind: file.kind, size: 0, state: "failed", error: file.error })!.key, { max: MAX_ATTACHED_FILES })}
           </Notice>

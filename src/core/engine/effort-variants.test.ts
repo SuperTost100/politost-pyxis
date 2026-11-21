@@ -3,11 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import { collapseEffortVariants, offeredModels } from "./effort-variants";
 import { forgetModels, rememberModels } from "./efforts";
-import { getFunnel } from "./funnel";
+import { getFunnel, runTurn } from "./funnel";
 import { generate } from "./generate";
 import { engineHandlers } from "./handlers";
 import { adoptModelFile, modelFile, resetModelFile, type ModelFile } from "./model-roles";
-import { clearBench } from "./bench";
+import { benchModel, clearBench } from "./bench";
 import type { AutoProvider } from "./auto";
 import { currentSelection, fallbackSelection, rememberReady, selectionFor, selectionOn } from "./selection";
 
@@ -107,6 +107,17 @@ describe("a pinned effort reaches the tool in a mixed listing", () => {
     expect(() => handlers.setEffort({ feature: "chat", effort: "max" })).toThrow();
     db.close();
   });
+  it("tests a level the tool lists as a model of its own on that model, with no effort flag", async () => {
+    const { db, handlers } = setup();
+    await handlers.models({ provider: "antigravity" });
+    vi.mocked(runTurn).mockImplementation(async (input) => ({ text: "ok", provider: "antigravity", model: input.selection.model, inputTokens: 1 }));
+    await handlers.test({ provider: "antigravity", model: "gemini-4-neon", effort: "xhigh" });
+    expect(vi.mocked(runTurn).mock.lastCall![0].selection).toMatchObject({ model: "gemini-4-neon-xhigh", effort: undefined });
+    await handlers.test({ provider: "antigravity", model: "gemini-4-neon", effort: "high" });
+    expect(vi.mocked(runTurn).mock.lastCall![0].selection).toMatchObject({ model: "gemini-4-neon", effort: "high" });
+    vi.mocked(runTurn).mockReset();
+    db.close();
+  });
 });
 
 describe("a recovery path runs the variant too in a mixed listing", () => {
@@ -145,6 +156,12 @@ describe("a recovery path runs the variant too in a mixed listing", () => {
     xhighStrong();
     const saved = { provider: "antigravity", model: "claude-opus-5-5", effort: "high", chosenFor: "plan" };
     expect(currentSelection(saved)).toEqual({ provider: "antigravity", model: "gemini-4-neon-xhigh", chosenFor: "plan" });
+  });
+
+  it("leaves out the level whose variant the subscription refused, and keeps the model's other levels", () => {
+    xhighStrong();
+    benchModel("antigravity", "gemini-4-neon-xhigh");
+    expect(selectionOn("antigravity", "plan")).toEqual({ provider: "antigravity", model: "gemini-4-neon", effort: "high" });
   });
 
   it("keeps the base model and the effort flag for a level the tool does not list as a model", () => {

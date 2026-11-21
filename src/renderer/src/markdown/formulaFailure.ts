@@ -11,7 +11,8 @@ let reportedAt = Number.NEGATIVE_INFINITY;
 let failures = 0;
 
 /**
- * Counts a formula KaTeX could not draw, once per distinct source in a session, here in the window and nowhere else.
+ * Counts a formula KaTeX could not draw, once per source while that source is remembered (`REMEMBERED`; past that many
+ * the memory starts over and a source can count again), here in the window and nowhere else.
  * The crash-report channel hears about it with a fixed diagnostic that carries no text, at most once per window, and
  * hears nothing while its switch is off. Main drops a repeated report only after counting it against the limit it shares
  * with every other error, so a lesson with many broken formulas must not send one report each.
@@ -26,5 +27,5 @@ export function noteFormulaFailure(source: string, now = Date.now(), report: typ
   report({ code: "formula-not-drawn" });
 }
 
-/** How many distinct formulas could not be drawn since the window opened by the app. */
+/** How many formulas could not be drawn since the window opened, a repeat of a remembered source not counted again. */
 export const formulaFailureCount = (): number => failures;

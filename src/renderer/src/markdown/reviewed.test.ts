@@ -207,6 +207,36 @@ describe("CodeRabbit round 3, 7: two check markers in one paragraph", () => {
   });
 });
 
+describe("Catch-up review of #558, 9: a formula whose closing dollar starts the next line", () => {
+  it("is a formula unless a number says its first dollar is a price", () => {
+    expect(drawn(render("Value $x\n$ is valid.", false))).toBe(1);
+    expect(priceFormulas("Value $x\n$ is valid.")).toEqual([]);
+    expect(priceFormulas("Costa 5 $\n$x$ vale")).toEqual([8]);
+  });
+});
+
+describe("Catch-up review of #558, 10: a \\[ … \\] in a quote, and two \\( … \\) that touch", () => {
+  it("keeps the display formula in its quote", () => {
+    const html = render("> \\[x+1\\]\n> explanation", false);
+    expect(html.match(/<blockquote>/g)).toHaveLength(1);
+    expect(html).toContain("katex-display");
+    expect(html.indexOf("katex-display")).toBeLessThan(html.indexOf("</blockquote>"));
+    expect(html.indexOf("explanation")).toBeLessThan(html.indexOf("</blockquote>"));
+  });
+
+  it("draws two formulas, and one beside a $ formula, apart", () => {
+    expect(drawn(render("In prose \\(x\\)\\(y\\) here.", false))).toBe(2);
+    expect(drawn(render("Then $a$\\(b\\)\\(c\\)$d$.", false))).toBe(4);
+    expect(undrawn(render("In prose \\(x\\)\\(y\\) here.", false))).toBe(0);
+  });
+});
+
+describe("Catch-up review of #556, 3: a citation between two prices", () => {
+  it("is a link, though the parser first pairs the prices as a formula", () => {
+    expect(markdownSource("Costs $5 per item [P1] and $10.")).toContain("[P1](cite:p1)");
+  });
+});
+
 // GPT Sol 7, the one report for a lesson full of broken formulas, is in formulaFailure.test.ts.
 
 /** Code spans and blocks of a text, as the parser reads them. */
@@ -380,6 +410,9 @@ describe("property (c): a repair only adds formulas, never takes one away", () =
     "| a | $b$ |\n|---|---|\n| \\(c\\) | $d$ |",
     "Valore $\\text{`x`}$ e $25\\ \\$ + 1$",
     "$$\n25\\ \\$\n$$\n\ncosta \\(25\\ \\$\\)",
+    "Value $x\n$ is valid.",
+    "> \\[x+1\\]\n> explanation",
+    "In prose \\(x\\)\\(y\\) here, $a$\\(b\\).",
   ];
 
   it("holds for the examples, complete", () => {

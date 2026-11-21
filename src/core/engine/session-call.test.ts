@@ -122,6 +122,25 @@ describe("a session for work that is not a chat", () => {
     db.close();
   });
 
+  it("leaves the session out of step when a call fails after an earlier call of the same scope was kept", async () => {
+    const db = database();
+    const t = tool();
+    await expect(
+      withSession(db, "lesson:t1", async (session) => {
+        await session.generate(call(t.run, "whole", "next"));
+        session.keep("v1");
+        // The session now holds a request whose result is never kept.
+        await session.generate({ ...call(t.run, "whole", "next"), run: (() => Promise.reject(new Error("offline"))) as never });
+      }),
+    ).rejects.toThrow("offline");
+    expect(currentSession(db, "lesson:t1")).toMatchObject({ sessionId: "s-1", inStep: false, syncedTo: "v1" });
+    await withSession(db, "lesson:t1", async (session) => {
+      expect(session.inStep("v1")).toBe(false);
+      expect(session.kept).toBe("v1");
+    });
+    db.close();
+  });
+
   it("stores the session the moment the tool names it, so a call that is stopped leaves one to continue", async () => {
     const db = database();
     const controller = new AbortController();

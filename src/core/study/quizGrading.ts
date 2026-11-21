@@ -180,11 +180,11 @@ async function gradeOpen(
   engine: Engine = {},
   steps?: string,
   /**
-   * Saves the grade, inside the attempt's session scope. The session is kept (told it holds this grade) only after it
-   * returns, so a stop between the grade and its save leaves the session behind what is stored. A caller with nothing to
-   * save leaves it out.
+   * Saves the grade, inside the attempt's session scope, and says whether this grade is the one stored. The session is
+   * kept (told it holds this grade) only then, so a stop between the grade and its save, a check of the same pick saved
+   * first, or a caller with nothing to save (which leaves it out) leaves the session behind what is stored.
    */
-  commit?: (grade: OpenGrade) => void,
+  commit?: (grade: OpenGrade) => boolean,
 ): Promise<OpenGrade | undefined> {
   if (question.answer.kind !== "open" || !pick.trim()) return undefined;
   const work = steps?.trim() ? steps : undefined;
@@ -244,8 +244,7 @@ async function gradeOpen(
       model: graded.model,
       prompt: promptProvenance("quiz.open-grade"),
     };
-    commit?.(grade);
-    session.keep(question.id);
+    if (commit?.(grade)) session.keep(question.id);
     return grade;
   });
   return result;
@@ -335,9 +334,9 @@ export async function gradeQuizQuestion(
   // An empty pick is the student's "I don't know": 0 for every kind, whatever the question would accept as blank.
   if (!pick.trim()) score = 0;
   let saved: CheckedAnswer | undefined;
-  // The grade is saved inside the session scope (`gradeOpen` keeps the session once it returns), and an answer that needs
-  // no model is saved here.
-  const save = (modelGrade?: OpenGrade) => {
+  // The grade is saved inside the session scope (`gradeOpen` keeps the session when this grade is the one saved), and an
+  // answer that needs no model is saved here.
+  const save = (modelGrade?: OpenGrade): boolean => {
     engine.signal?.throwIfAborted();
     if (modelGrade) {
       ({ score, explanation } = modelGrade);
@@ -363,6 +362,7 @@ export async function gradeQuizQuestion(
       replaceCheck(db, attemptId, checked);
       return checked;
     })();
+    return saved === checked;
   };
   engine.signal?.throwIfAborted();
   const modelGrade = await gradeOpen(db, attemptId, question, pick, run, engine, steps, save);
@@ -637,6 +637,7 @@ export function registerQuizGradingJobs(
                   params.next += 1;
                   ctx.setParams(params);
                 })();
+                return true;
               },
             );
             if (!graded) throw new Error("grade-missing");

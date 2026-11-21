@@ -172,8 +172,9 @@ const MATH_SYNTAX = /[=+*/^_\\{}<>-]/;
  * Whether the inline formula `node` that remark-math made is a price paired with the next dollar sign and some prose: it
  * starts with a number and then runs on in words (`$25 and the area is $`, `$5 and $`), or it opens after a number with a
  * space or a punctuation mark of its own and holds words and nothing mathematical (`25 $ e l'area è $`, `15 $, e $`, not
- * `Step 2 $ x+1 $`), or it runs over a line break and closes at the start of the next line, where a `$$` block or another
- * formula begins. Except in that last case, a space comes before its closing dollar sign.
+ * `Step 2 $ x+1 $`), or it starts as a price (a number after it, or one before it) and runs over a line break to close at
+ * the start of the next line, where a `$$` block or another formula begins. Except in that last case, a space comes before
+ * its closing dollar sign.
  */
 function pairsAPrice(text: string, node: MdNode): boolean {
   const from = start(node);
@@ -187,7 +188,8 @@ function pairsAPrice(text: string, node: MdNode): boolean {
   // One right after the last character closes a formula, such as `$2 ab!$`.
   const opensNext = /\s/.test(text[end(node) - 2] ?? "");
   return (
-    next ||
+    // The closing dollar sign at the start of the next line is a price's only when something says the first is a price.
+    (next && (startsWithNumber || afterNumber)) ||
     (opensNext && startsWithNumber && hasProse(value)) ||
     (opensNext && startsWithNumber && /\s/.test(value.trim()) && words) ||
     (opensNext && afterNumber && words)
@@ -237,13 +239,20 @@ function convertEdits(text: string): Edit[] {
     ([open, close]) => !taken.some(([from, to]) => open.at < to && from < close.at + 2),
   );
   const edits: Edit[] = [];
+  const opens = new Set(pairs.map(([open]) => open.at));
   for (const [open, close] of pairs) {
     const body = text.slice(open.at + 2, close.at);
-    edits.push({
-      from: open.at,
-      to: close.at + 2,
-      text: open.kind === "[" ? `\n$$\n${body.trim()}\n$$\n` : `$${body}$`,
-    });
+    if (open.kind === "[") {
+      // The block's lines start as the container's do, so a formula in a quote or a list item stays in it.
+      const line = text.slice(text.lastIndexOf("\n", open.at - 1) + 1, open.at);
+      const lead = continuation(/^(?:[ \t]*(?:>|[-*+](?=[ \t])|\d+[.)](?=[ \t])))*[ \t]*/.exec(line)![0]);
+      edits.push({ from: open.at, to: close.at + 2, text: `\n${lead}$$\n${lead}${body.trim()}\n${lead}$$\n${lead}` });
+      continue;
+    }
+    // `$x$$y$` is one formula to the parser: a space keeps two that touch apart, as it keeps one beside a `$` formula.
+    const before = text[open.at - 1] === "$" ? " " : "";
+    const after = text[close.at + 2] === "$" || opens.has(close.at + 2) ? " " : "";
+    edits.push({ from: open.at, to: close.at + 2, text: `${before}$${body}$${after}` });
   }
   const blockOf = (at: number) => root.children?.findIndex((block) => start(block) <= at && at <= end(block));
   const blocks = new Set(pairs.map(([open]) => blockOf(open.at)));

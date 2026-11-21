@@ -336,8 +336,10 @@ export function createHeldFiles(deps: HeldDeps) {
           entry.sourceId = queued.sourceId;
           bySource.set(queued.sourceId, id);
         } catch (error) {
-          entries.delete(id);
+          // The draft went meanwhile: its file is cancelled, not given back as a failed chip.
+          const owned = entries.delete(id);
           db.prepare(`DELETE FROM held_files WHERE id = ?`).run(id);
+          if (!owned) return { id, name, kind: base.kind, size, state: "failed", error: "cancelled" };
           throw error;
         }
         return refresh(entry);

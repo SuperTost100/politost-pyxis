@@ -83,6 +83,7 @@ for (const conv of conversations) {
   const { fails, words } = judge(conv, reply);
   results.push({ id: conv.id, pass: fails.length === 0, fails, words, firstMs: first, totalMs: Date.now() - started, reply });
   console.log(tool, tier, conv.id.padEnd(22), fails.length ? `FAIL ${fails.join("; ")}` : "PASS", `${Date.now() - started} ms`);
+  // Saved after each reply, so a run stopped half way keeps the replies it paid for.
+  writeFileSync(`.tmp/judge-chat-${tool}-${tier}.json`, JSON.stringify({ model, results }, null, 2));
 }
-writeFileSync(`.tmp/judge-chat-${tool}-${tier}.json`, JSON.stringify({ model, results }, null, 2));
 void figureKinds;

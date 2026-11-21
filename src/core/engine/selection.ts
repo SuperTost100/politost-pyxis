@@ -292,10 +292,17 @@ export function fallbackSelection(
     : undefined;
 }
 
-/** The providers with only the models their subscription has not refused today. */
+/**
+ * The providers with only the models their subscription has not refused today. A level the tool lists as a model of its
+ * own (`gemini-4-neon-xhigh`) is refused under that id, so it leaves its model's levels; a model left with none goes.
+ */
 export function withoutRefusedModels(providers: AutoProvider[]): AutoProvider[] {
   return providers.map((provider) => ({
     ...provider,
-    models: provider.models.filter((model) => !isModelBenched(provider.id, model.id)),
+    models: provider.models.flatMap((model) => {
+      if (isModelBenched(provider.id, model.id)) return [];
+      const efforts = model.efforts.filter((effort) => !isModelBenched(provider.id, runsAs(provider.id, model.id, effort.id)));
+      return model.efforts.length && !efforts.length ? [] : [{ ...model, efforts }];
+    }),
   }));
 }

@@ -54,12 +54,15 @@ export function sortingNow(db: Database.Database): Set<string> {
   return new Set(rows.flatMap((json) => (JSON.parse(json) as SortParams).sourceIds));
 }
 
-/** For each source, how the newest sort job that covered it ended, when it did not place it. */
+/**
+ * For each source, how the sort job that covered it and ended last ended, when it did not place it. An ended job is not
+ * written again, so its `updated_at` is when it ended; a job resumed after a newer one keeps its `created_at`.
+ */
 export function sortEnded(db: Database.Database): Map<string, SortEnd> {
   const rows = db
     .prepare(
       `SELECT state, params_json FROM jobs WHERE kind = 'library-sort' AND state IN ('cancelled', 'failed', 'interrupted')
-       ORDER BY created_at, rowid`,
+       ORDER BY updated_at, rowid`,
     )
     .all() as Array<{ state: "cancelled" | "failed" | "interrupted"; params_json: string }>;
   const ended = new Map<string, SortEnd>();

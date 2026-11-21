@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import type { MenuProps } from "antd";
 import { Clock, Download, Network } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useNavigationType } from "react-router";
 import { parseSmartText, partQuestions } from "@shared/smart-text";
@@ -231,9 +231,10 @@ export function PartPage({
   if (data.position !== firstPosition.current) turned.current = true;
 
   // The part on screen, read when an answer that was saving comes back.
-  // Written once the page has committed, so a render that React drops never says which part is on screen.
+  // Written in the commit, so a render that React drops never says which part is on screen, and a focus frame queued for
+  // the part before already sees the new one.
   const shown = useRef("");
-  useEffect(() => {
+  useLayoutEffect(() => {
     shown.current = `${topicId}:${data.position}`;
   }, [topicId, data.position]);
 

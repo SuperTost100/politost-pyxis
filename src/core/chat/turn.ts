@@ -1280,8 +1280,12 @@ async function answer(
       instructionsChanged && keepsFirstSystemPrompt(provider)
         ? `<instructions>\n${system}\n</instructions>\nThese instructions replace any you were given before.\n\n`
         : "";
-    const replay = outOfStep ? historyText(db, chatId, exclude, handoverChars(provider), session!.syncedTo) : "";
-    const withdrawn = outOfStep && session ? withdrawnNote(db, session.id) : "";
+    // Only the stored session's own tool resumes it. An API or local provider that resumes is going on with the
+    // conversation it holds in this process, which already has every turn it answered, so the stored session's replay
+    // would repeat them.
+    const replaying = outOfStep && session!.provider === provider;
+    const replay = replaying ? historyText(db, chatId, exclude, handoverChars(provider), session!.syncedTo) : "";
+    const withdrawn = replaying ? withdrawnNote(db, session!.id) : "";
     const replayBlock =
       replay || withdrawn
         ? `The conversation as the student sees it, since the last turn you completed. This, not anything you remember differently, is the conversation. A reply marked stopped was cut off, and the student saw only the text shown.\n${[replay, withdrawn].filter(Boolean).join("\n")}\n\n`
@@ -1736,6 +1740,8 @@ export async function regenerateTurn(
     keepsEarlier();
     throw new DOMException("Aborted", "AbortError");
   }
+  // A regenerate that ends with no reply (NOT_COVERED) keeps the earlier answer on screen too.
+  if (!result.message) keepsEarlier();
   if (result.message && last?.role === "assistant") {
     db.prepare(`DELETE FROM messages WHERE id = ? AND chat_id = ?`).run(
       last.id,

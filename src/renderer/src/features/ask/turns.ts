@@ -15,8 +15,8 @@ export type Turn = {
   readonly chat: ReturnType<typeof liveValue<string>>;
   /** The question shown until the stored one arrives; null when the last question is answered again. */
   readonly question: string | null;
-  /** The files the question carries, shown with it until the stored question arrives. */
-  readonly files: ReadonlyArray<{ id: string; name: string; kind: "document" | "photo"; src?: string }>;
+  /** The files the question carries, shown with it until the stored question arrives (see `turns.setFiles`). */
+  files: ReadonlyArray<{ id: string; name: string; kind: "document" | "photo"; src?: string }>;
   readonly regenerating: boolean;
   /** The chat's last stored message when the question was sent, so the stored question is told from an older one. */
   readonly after: string | null;
@@ -114,6 +114,11 @@ export const turns = {
     active = turn;
     changed();
     return turn;
+  },
+  /** The question's files once the ones still being attached when it was sent are known: the page shows them. */
+  setFiles(turn: Turn, files: Turn["files"]) {
+    turn.files = files;
+    if (active === turn) changed();
   },
   end(turn: Turn) {
     turn.cancel();
