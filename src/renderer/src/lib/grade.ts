@@ -3,43 +3,15 @@
  * universities mark exams, or out of 100. Nothing stored changes with the scale. These functions are pure, so unit
  * tests can import them; `useGradeScale` in `useGradeScale.ts` applies them to the profile's scale.
  */
-export type GradeScale = 30 | 100;
-export const gradeScales: readonly GradeScale[] = [30, 100];
-
-/** The scale for a profile that never picked one: out of 30 at university, out of 100 at every other level. */
-export function defaultGradeScale(level: string | undefined): GradeScale {
-  return (level ?? "university") === "university" ? 30 : 100;
-}
-
-/** The profile's scale: the one the student picked, or the default for their study level. No profile reads as university. */
-export function gradeScaleOf(
-  profile:
-    | { gradeScale?: GradeScale | null; educationLevel?: string }
-    | null
-    | undefined,
-): GradeScale {
-  return profile?.gradeScale ?? defaultGradeScale(profile?.educationLevel);
-}
-
-/**
- * A fraction on the scale: one decimal out of 30, whole numbers out of 100. It rounds down, so a grade never shows a
- * mark the student has not reached: 0.599 out of 30 is 17,9, not the pass mark 18. The small tolerance keeps floating
- * point from taking a step away (0.57 × 30 is 17.0999…, and reads 17,1).
- */
-export function gradeValue(fraction: number, scale: GradeScale): number {
-  const clamped = Math.max(0, Math.min(1, fraction));
-  const steps = scale === 30 ? 10 : 1;
-  return Math.floor(clamped * scale * steps + 1e-9) / steps;
-}
-
-/**
- * A fraction as a whole number on the scale, rounded down: 18,6 out of 30 is 18, and 29,99 is 29. The path bars use it
- * so a topic never looks at its goal before it is. Grades and goals that are precise (results, the goal itself) keep
- * `gradeValue`. The tolerance matches `gradeValue`'s.
- */
-export function gradeWhole(fraction: number, scale: GradeScale): number {
-  return Math.floor(Math.max(0, Math.min(1, fraction)) * scale + 1e-9);
-}
+export {
+  defaultGradeScale,
+  gradeScaleOf,
+  gradeScales,
+  gradeValue,
+  gradeWhole,
+  type GradeScale,
+} from "../../../shared/grade";
+import { gradeValue, gradeWhole, type GradeScale } from "../../../shared/grade";
 
 /**
  * A fraction's exact position on the scale (22,8 out of 30), for chart coordinates. Nothing is rounded, so a point never

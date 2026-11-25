@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { flashcardsTool } from "./flashcards";
+import { progressTool } from "./progress";
 import type { Tool } from "./server";
 
 /**
@@ -8,5 +9,5 @@ import type { Tool } from "./server";
  * state while it runs and its stored result where the model called it.
  */
 export function chatToolList(db: Database.Database): Tool[] {
-  return [flashcardsTool(db)];
+  return [flashcardsTool(db), progressTool(db)];
 }

@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { isValidElement, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { normalizeMathDelimiters } from "../../../../shared/math-delimiters";
 import { rehypePlugins, remarkPlugins } from "../../markdown/plugins";
+import { CHART_FENCE } from "../../../../shared/chat-blocks";
+import { ChartBlock } from "../../components/ChartBlock";
 import "./PrintPage.css";
 
 /** A concept map's drawing gets a page of its own size, so the PDF keeps it at full size. */
@@ -70,7 +72,17 @@ export function PrintPage() {
         skipHtml
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}
-        components={{ img: ({ alt }) => <span>{alt ?? ""}</span> }}
+        components={{
+          img: ({ alt }) => <span>{alt ?? ""}</span>,
+          // A chat's chart block, which the PDF export keeps for this page to draw.
+          pre: ({ children, node: _node, ...rest }) => {
+            const code = Array.isArray(children) ? children[0] : children;
+            const props = isValidElement(code) ? (code.props as { className?: string; children?: unknown }) : null;
+            if (props?.className === `language-${CHART_FENCE}`)
+              return <ChartBlock body={String(props.children ?? "")} still />;
+            return <pre {...rest}>{children}</pre>;
+          },
+        }}
       >
         {markdown ?? ""}
       </ReactMarkdown>

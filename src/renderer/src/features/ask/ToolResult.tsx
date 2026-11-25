@@ -32,7 +32,7 @@ export function ToolResult({
   const [state, setState] = useState<ToolResultView | undefined>(view);
   useEffect(() => setState(view), [view]);
   const first = useRef(pending ? "pending" : stateKey(view));
-  if (pending) return <Working />;
+  if (pending) return <Working tool={line.slice("pending:".length)} />;
   if (!state) return null;
   const arriving = first.current !== stateKey(state);
   return (
@@ -50,9 +50,18 @@ export function ToolResult({
 
 const stateKey = (view: ToolResultView | undefined) => (view ? (view.undone === null ? "done" : "undone") : "none");
 
-/** The tool at work: one quiet line and a grey shape where the card will be. */
-function Working() {
+/**
+ * The tool at work: one quiet line and a grey shape where the card will be. A tool that only reads, such as
+ * `read_progress`, leaves no card, so its line stands alone and goes when the call ends.
+ */
+function Working({ tool }: { tool: string }) {
   const { t } = useTranslation();
+  if (tool === "read_progress")
+    return (
+      <div className="px-toolres is-working" role="status">
+        <span className="small px-toolres-working-line">{t("components.toolResult.reading")}</span>
+      </div>
+    );
   return (
     <div className="px-toolres is-working" role="status">
       <span className="small px-toolres-working-line">{t("components.toolResult.working")}</span>

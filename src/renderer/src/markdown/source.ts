@@ -4,7 +4,7 @@ import {
   normalizeMathDelimiters,
   repairLatexInProse,
 } from "../../../shared/math-delimiters";
-import { mapFigureBlocks } from "../../../shared/smart-text";
+import { liftBlocks } from "../../../shared/chat-blocks";
 import { linkCitations, type KnownPassage } from "./citations";
 
 /**
@@ -50,9 +50,10 @@ export function markdownSource(
   writing = false,
   checkSteps: readonly string[] = [],
 ): string {
-  // A figure block indented as far as Markdown's indented code, in a list item, is lifted to where it reads as a figure.
-  // The text is classified as it will be drawn: its LaTeX escapes (a `\times` that arrived as a tab) are back first.
-  const repaired = repairLatexInProse(mapFigureBlocks(body, () => null));
+  // A figure, chart or question block indented as far as Markdown's indented code, in a list item, is lifted to where it
+  // reads as that block. The text is classified as it will be drawn: its LaTeX escapes (a `\times` that arrived as a tab)
+  // are back first.
+  const repaired = repairLatexInProse(liftBlocks(body));
   const held = writing ? holdOpenMath(repaired) : repaired;
   const steps = checkSteps.map(repairLatexInProse);
   return displayMathLines(normalizeMathDelimiters(known ? linkCitations(markChecks(held, steps), known) : markChecks(held, steps)));

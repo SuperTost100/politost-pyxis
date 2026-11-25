@@ -160,6 +160,8 @@ export function exportChat(
   db: Database.Database,
   chatId: string,
   language: ChatExportLanguage,
+  /** `drawn` keeps each valid chart as its block, for the PDF, whose page draws it; a Markdown file gets its table. */
+  charts: "table" | "drawn" = "table",
 ): { filename: string; markdown: string } {
   const title = chatTitle(db, chatId);
   if (title === undefined) throw new Error("chat-missing");
@@ -194,6 +196,9 @@ export function exportChat(
                 return view ? `*${toolLine(view, language)}*` : "";
               })
             : message.body,
+          language,
+          message.answers,
+          charts === "drawn",
         ),
         stopped: message.stopped,
         photos: photos.get(message.id) ?? 0,

@@ -13,6 +13,9 @@ import { PythonBlock, RunnablePython } from "./PythonBlock";
 import { Figure } from "./Figure";
 import { darkFigureKey, figureKey, parseFigure } from "@shared/smart-text";
 import { TOOL_FENCE } from "@shared/tool-blocks";
+import { CHART_FENCE, QUESTION_FENCE, chatQuestion } from "@shared/chat-blocks";
+import { ChartBlock } from "./ChartBlock";
+import { QuestionBlock } from "./QuestionBlock";
 import "./MarkdownView.css";
 
 export type { KnownPassage };
@@ -34,6 +37,21 @@ type MarkdownScope = {
   figures?: Record<string, string>;
   drawing: boolean;
   toolBlock?: (line: string) => ReactNode;
+  blocks?: ChatBlocks;
+};
+
+/**
+ * A chat reply's own blocks (```pyxis-chart, ```pyxis-question): the student's stored answers by question id, and what
+ * «Controlla» and «Un'altra domanda» do. Without it the view draws those fences as code, as anywhere else.
+ */
+export type ChatBlocks = {
+  answers?: Record<string, number>;
+  onCheck?: (questionId: string, pick: number) => Promise<number>;
+  onAnother?: () => void;
+  /** The question «Un'altra domanda» is offered on: the chat's latest one, so a request never refers to an older card. */
+  anotherFor?: string;
+  /** A question has an option picked and not checked yet (true), or no longer (false). */
+  onPicking?: (questionId: string, picking: boolean) => void;
 };
 const Scope = createContext<MarkdownScope>({ claims: [], canRun: false, drawing: false });
 
@@ -79,7 +97,7 @@ const components: Components = {
     </div>
   ),
   pre: function Pre({ children: preChildren, node: _node, ...rest }) {
-    const { canRun, figures, drawing, toolBlock } = useContext(Scope);
+    const { canRun, figures, drawing, toolBlock, blocks } = useContext(Scope);
     let codeText = "";
     let lang = "";
     const child = Array.isArray(preChildren) ? preChildren[0] : preChildren;
@@ -94,6 +112,21 @@ const components: Components = {
     if (lang === "python" && canRun) return <PythonBlock code={codeText} />;
     // What a Pyxis tool did, which the page that shows the reply draws; elsewhere nothing.
     if (lang === TOOL_FENCE) return <>{toolBlock?.(codeText.trim()) ?? null}</>;
+    // A chart or a practice question the reply wrote: drawn by the app, never shown as its JSON.
+    if (blocks && lang === CHART_FENCE) return <ChartBlock body={codeText} drawing={drawing} />;
+    if (blocks && lang === QUESTION_FENCE) {
+      const question = chatQuestion(codeText);
+      return (
+        <QuestionBlock
+          question={question}
+          pick={question ? blocks.answers?.[question.id] : undefined}
+          drawing={drawing}
+          onCheck={blocks.onCheck}
+          onAnother={question && question.id === blocks.anotherFor ? blocks.onAnother : undefined}
+          onPicking={blocks.onPicking}
+        />
+      );
+    }
     // Figure code is for the sandbox, never shown: the image, a placeholder while it is drawn, or nothing.
     if (lang === "pyxis-figure") {
       const figure = parseFigure(codeText);
@@ -124,6 +157,7 @@ export const MarkdownView = memo(function MarkdownView({
   figures,
   drawing = false,
   toolBlock,
+  blocks,
 }: {
   children: string;
   checks?: AnchoredCheck[];
@@ -144,6 +178,8 @@ export const MarkdownView = memo(function MarkdownView({
   runnable?: boolean;
   /** Draws a ```pyxis-tool block from its one line (a tool result's id, or `pending:<tool>`). Without it they show nothing. */
   toolBlock?: (line: string) => ReactNode;
+  /** Draws the chat's chart and question blocks; see `ChatBlocks`. */
+  blocks?: ChatBlocks;
 }) {
   const inherited = useContext(RunnablePython);
   const pageKnows = useContext(KnownPassages);
@@ -161,8 +197,8 @@ export const MarkdownView = memo(function MarkdownView({
     [children, known, claims, drawing],
   );
   const scope = useMemo(
-    () => ({ claims, canRun, knownPassage: known, figures, drawing, toolBlock }),
-    [claims, canRun, known, figures, drawing, toolBlock],
+    () => ({ claims, canRun, knownPassage: known, figures, drawing, toolBlock, blocks }),
+    [claims, canRun, known, figures, drawing, toolBlock, blocks],
   );
   // The same element for the same text, so React skips the parse; the renderers read a changed scope from context.
   const tree = useMemo(

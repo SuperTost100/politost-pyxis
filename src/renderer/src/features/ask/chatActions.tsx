@@ -56,6 +56,8 @@ export function useChatActions() {
       const file = await invoke("chats.export", {
         chatId: id,
         language: i18n.language === "en" ? "en" : "it",
+        // The printed chat draws its charts; a Markdown file has each chart's data as a table.
+        charts: format === "pdf" ? "drawn" : "table",
       });
       const result =
         format === "pdf"
