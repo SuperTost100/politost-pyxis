@@ -213,11 +213,11 @@ export function isSessionGone(err: unknown): boolean {
  * on 2026-11-25: "⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in
  * 3h30m10s." The message must be exactly that, give or take the space around it, and one of two signals must say agy
  * wrote it rather than a model quoting it: the turn reports no output tokens (19 of the 20 notices recorded that day came
- * with no usage at all), or the message came as agy frames it, one chunk that starts and ends with a line break (all 20
- * did, the one with usage too: the quota ran out after the model had reasoned and tried a tool, 930 output tokens). A
- * model that quotes the notice spends tokens and streams it in pieces or without those line breaks, so that is an
- * answer. The message is the text after the turn's last tool call, since the quota can run out after the model already
- * wrote and called a tool.
+ * with no usage at all), or a tool call came before it in the turn and it came as agy frames it, one chunk that starts and
+ * ends with a line break (the 20th: the quota ran out after the model had reasoned and tried a tool, 930 output tokens).
+ * Any other message that reports output tokens is an answer. The message is the text after the turn's last tool call,
+ * since the quota can run out after the model already wrote and called a tool. Known limit: a real reply that begins
+ * with the notice's words and is stopped before more arrives loses that held start.
  * shortcut: matches agy 1.5.17's English wording; remove once cli-funnel reports the notice as a limit.
  */
 const AGY_QUOTA_HEAD =
@@ -236,13 +236,12 @@ function antigravityQuota(
   provider: string,
   text: string,
   usage: { outputTokens?: number } | undefined,
-  /** The message came in one chunk. */
-  whole: boolean,
+  /** A tool call came before the message, and the message came in one chunk. */
+  afterCall: boolean,
   now = Date.now(),
 ): Error | undefined {
   if (provider !== "antigravity") return undefined;
-  const framed = whole && /^\n[^\n]+\n$/.test(text);
-  if ((usage?.outputTokens ?? 0) > 0 && !framed) return undefined;
+  if ((usage?.outputTokens ?? 0) > 0 && !(afterCall && /^\n[^\n]+\n$/.test(text))) return undefined;
   const detail = text.trim();
   const reset = detail.startsWith(AGY_QUOTA_HEAD) ? AGY_QUOTA_RESET.exec(detail.slice(AGY_QUOTA_HEAD.length)) : null;
   if (!reset) return undefined;
@@ -252,6 +251,14 @@ function antigravityQuota(
     code: "cli-failed",
     limit: { kind: "quota", detail, retryAfterMs: wait, resetAt: new Date(now + wait).toISOString() },
   });
+}
+
+/**
+ * True for the failure of a turn in which a call reached Pyxis's tools. The call may have saved something (cards), so the
+ * turn is not replayed on another tool, which would not know and make it again.
+ */
+export function reachedTools(err: unknown): boolean {
+  return Boolean(err && typeof err === "object" && "toolsReached" in err && err.toolsReached);
 }
 
 /** Thrown inside a turn when the tool started another session than the one it was asked to resume. */
@@ -537,8 +544,9 @@ async function turn(input: TurnInput): Promise<EngineResult> {
       // tool call is held like the first, from where it starts in `text`.
       let holding = selection.provider === "antigravity";
       let message = 0;
-      // The chunks the current message came in.
+      // The chunks the current message came in, and whether a tool call came before it.
       let chunks = 0;
+      let called = false;
       // A call reached Pyxis's server in this attempt (see `toolsRefused`).
       let reached = false;
       const following = trackCall(scope?.jobId);
@@ -562,6 +570,16 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         for await (const event of stream) {
           log?.event(event);
           following.event(event.type);
+          if (event.type === "tool.start" && selection.provider === "antigravity") {
+            // Held text before a call is not the notice: the call came after it. It goes out before the chat hears of the
+            // call, so the call's place follows it, and the next message is held like the first. A call's end is only
+            // its status.
+            if (holding && text.length > message) input.onDelta?.(text);
+            holding = true;
+            message = text.length;
+            chunks = 0;
+            called = true;
+          }
           if (event.type === "tool.start" && event.mcp?.server === TOOL_SERVER) reached = true;
           if (event.type === "tool.start" && event.mcp?.server === TOOL_SERVER && !event.parentId) {
             ours.set(event.id, event.mcp.tool);
@@ -576,13 +594,6 @@ async function turn(input: TurnInput): Promise<EngineResult> {
             sessionId = event.sessionId;
             if (tool) conversation!.onSession?.(event.sessionId, selection.provider, selection.cwd, Boolean(servers));
           }
-          if ((event.type === "tool.start" || event.type === "tool.end") && selection.provider === "antigravity") {
-            // Held text before a call is not the notice: the call came after it. It goes out before the next message.
-            if (holding && text.length > message) input.onDelta?.(text);
-            holding = true;
-            message = text.length;
-            chunks = 0;
-          }
           if (event.type !== "text.delta") continue;
           text += event.text;
           chunks += 1;
@@ -593,11 +604,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
           input.onDelta?.(text);
         }
         const result = await stream.result;
-        // Live Codex ends a stopped turn with a cancelled result, and a CLI killed on Stop can report what it printed as a
-        // finished answer. Either way the student stopped it.
-        if (result.finishReason === "cancelled" || input.signal?.aborted) {
-          // The tokens of a turn the student stopped were spent all the same. Codex and Antigravity report them for a
-          // cancelled turn; Claude Code reports none, and then nothing is recorded.
+        const spent = () =>
           reportUsage({
             text: "",
             model: result.model,
@@ -607,15 +614,25 @@ async function turn(input: TurnInput): Promise<EngineResult> {
             cacheReadTokens: result.usage?.cachedInputTokens ?? 0,
             cacheWriteTokens: result.usage?.cacheCreationInputTokens ?? 0,
           });
+        // Live Codex ends a stopped turn with a cancelled result, and a CLI killed on Stop can report what it printed as a
+        // finished answer. Either way the student stopped it.
+        if (result.finishReason === "cancelled" || input.signal?.aborted) {
+          // The tokens of a turn the student stopped were spent all the same. Codex and Antigravity report them for a
+          // cancelled turn; Claude Code reports none, and then nothing is recorded.
+          spent();
           throw new DOMException("Engine turn cancelled", "AbortError");
         }
         const quota = antigravityQuota(
           selection.provider,
           text ? text.slice(message) : result.text,
           result.usage,
-          !text || chunks === 1,
+          called && (!text || chunks === 1),
         );
-        if (quota) throw quota;
+        if (quota) {
+          // A turn that ran out mid-way reports what it spent before the notice.
+          spent();
+          throw quota;
+        }
         // A message that ended while it still looked like the notice, and is not it, is shown now.
         if (holding && text.length > message) input.onDelta?.(text);
         finished = true;
@@ -669,6 +686,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
           markToolsRefused(selection.provider);
           continue;
         }
+        if (reached && err && typeof err === "object") Object.assign(err, { toolsReached: true });
         throw err;
       }
     }

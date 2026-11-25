@@ -714,6 +714,60 @@ describe("Antigravity's quota notice", () => {
     run.mockResolvedValueOnce({ text: notice.trim(), usage });
     const unframed = await runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi" });
     expect(unframed.text).toBe(notice.trim());
+    // Framed as agy frames it, but with tokens and no tool call before it: the recorded mid-turn notice had a call.
+    run.mockResolvedValueOnce({ text: notice, usage });
+    const framed = await runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi" });
+    expect(framed.text).toBe(notice);
+  });
+
+  it("counts the tokens of a turn that ended on the notice", async () => {
+    const recorded: Array<{ provider: string; inputTokens: number; outputTokens?: number }> = [];
+    const { setUsageRecorder } = await import("./usage");
+    setUsageRecorder((usage) => recorded.push(usage));
+    try {
+      run.mockResolvedValueOnce({
+        events: [{ type: "tool.start", id: "s:c1", name: "read_file", input: {} }, { type: "tool.end", id: "s:c1" }],
+        text: notice,
+        usage: { inputTokens: 36531, outputTokens: 930 },
+      });
+      await runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi" }).catch(() => undefined);
+    } finally {
+      setUsageRecorder(undefined);
+    }
+    expect(recorded).toEqual([expect.objectContaining({ provider: "antigravity", inputTokens: 36531, outputTokens: 930 })]);
+  });
+
+  it("keeps a notice held through the end of a tool call, which is not a new message", async () => {
+    const shown: string[] = [];
+    run.mockResolvedValueOnce({
+      events: [
+        delta("Ecco le flashcard."),
+        { type: "tool.start", id: "s:c1", name: "create_flashcards", input: {} },
+        delta(notice),
+        { type: "tool.end", id: "s:c1" },
+      ],
+    });
+    const error = await runTurn({
+      selection: { provider: "antigravity", model: "m" },
+      prompt: "hi",
+      onDelta: (text) => shown.push(text),
+    }).catch((err: unknown) => err);
+    expect(error).toMatchObject({ limit: { kind: "quota" } });
+    expect(shown).toEqual(["Ecco le flashcard."]);
+  });
+
+  it("shows held text before telling the chat of the call that follows it, and marks a failure after Pyxis's tools", async () => {
+    const order: string[] = [];
+    const ours = { type: "tool.start", id: "s:c1", name: "x", input: {}, mcp: { server: "pyxis_tools", tool: "create_flashcards" } };
+    run.mockResolvedValueOnce({ events: [delta("⚠ Individual quota"), ours, { type: "tool.end", id: "s:c1" }, delta(notice)] });
+    const error = await runTurn({
+      selection: { provider: "antigravity", model: "m" },
+      prompt: "hi",
+      onDelta: (text) => order.push(`text:${text}`),
+      tools: { url: "http://127.0.0.1:1/mcp", token: "t", onTool: (event) => order.push(`tool:${event.phase}`) },
+    }).catch((err: unknown) => err);
+    expect(order).toEqual(["text:⚠ Individual quota", "tool:start", "tool:end"]);
+    expect(error).toMatchObject({ limit: { kind: "quota" }, toolsReached: true });
   });
 
   it("holds each message after a tool call like the first, and keeps the text streamed before it", async () => {
