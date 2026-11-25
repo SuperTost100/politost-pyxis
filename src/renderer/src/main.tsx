@@ -12,8 +12,14 @@ import "./styles/global.css";
 // Before the first render, so an error while the app starts is reported too (only while the crash-report switch is on).
 watchWindowErrors();
 
+// Every query and mutation reads or writes local data over IPC, so none waits for the network: with the default mode a
+// window "offline" event (a dropped Wi-Fi) paused all of them for good. A reconnect refetches nothing either, as a focus
+// does not: the data is kept fresh by invalidation, and some of it is costly to compute again (the exam list, Progress).
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+  defaultOptions: {
+    queries: { retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false, networkMode: "always" },
+    mutations: { networkMode: "always" },
+  },
 });
 // The exam list, a plan and its Progress tab are costly to compute. They stay fresh for 30 s unless a change marks
 // them stale: a finished job, a study write (the `plans.evidence` broadcast) or an explicit invalidation.
