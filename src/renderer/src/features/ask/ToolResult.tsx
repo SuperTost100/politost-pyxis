@@ -13,6 +13,7 @@ import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import { MapThumb } from "../maps/MapThumb";
 import { mapPath } from "../maps/mapPath";
 import "../maps/MapThumb.css";
+import { Proposal } from "./Proposal";
 import "./ToolResult.css";
 
 type Request = "chats.undoTool" | "chats.restoreTool" | "chats.retryTool";
@@ -32,19 +33,27 @@ export function ToolResult({
   line,
   view,
   onView,
+  onWaiting,
+  onAsk,
 }: {
   chatId: string;
   line: string;
   view?: ToolResultView;
   /** Hears the result's new state after «Annulla» or «Ripristina», for a reply still being written. */
   onView?: (view: ToolResultView) => void;
+  /** A proposal tells the chat whether it waits for the student (`Proposal`). */
+  onWaiting?: (id: string, waiting: boolean) => void;
+  /** Sends a message in the chat, for a proposal's «Chiedi di nuovo». */
+  onAsk?: (text: string) => void;
 }) {
   const client = useQueryClient();
   const pending = line.startsWith("pending:");
   // The state the card was first drawn in: a later one is a change the student sees happen, so it animates.
   const [state, setState] = useState<ToolResultView | undefined>(view);
   useEffect(() => setState(view), [view]);
-  const followsJob = !pending && !!chatId && (view?.tool === "create_map" || view?.tool === "create_quiz");
+  // A new exam created from a proposal follows its build as a map follows its job.
+  const followsJob =
+    !pending && !!chatId && (view?.tool === "create_map" || view?.tool === "create_quiz" || view?.tool === "propose_exam");
   const key = ["tool-result", chatId, line];
   const live = useQuery({
     queryKey: key,
@@ -52,7 +61,11 @@ export function ToolResult({
     enabled: followsJob,
     // A job's updates come with its steps, not with each model call: while it works the card looks again every few
     // seconds, so its note says what the call is doing.
-    refetchInterval: (query) => (query.state.data && "job" in query.state.data && query.state.data.job === "working" && !query.state.data.undone ? 3000 : false),
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (data?.tool === "propose_exam") return data.created?.job === "working" ? 3000 : false;
+      return data && "job" in data && data.job === "working" && !data.undone ? 3000 : false;
+    },
   });
   const shown = followsJob && live.data ? live.data : state;
   const first = useRef(pending ? "pending" : stateKey(view));
@@ -66,11 +79,15 @@ export function ToolResult({
   };
   if (shown.tool === "create_flashcards")
     return <Flashcards chatId={chatId} view={shown} arriving={arriving} onChange={onChange} />;
+  if (shown.tool === "propose_path_change" || shown.tool === "propose_exam" || shown.tool === "propose_delete")
+    return <Proposal chatId={chatId} view={shown} arriving={arriving} onChange={onChange} onWaiting={onWaiting} onAsk={onAsk} />;
   return <Made chatId={chatId} view={shown} arriving={arriving} onChange={onChange} />;
 }
 
 function stateKey(view: ToolResultView | undefined): string {
   if (!view) return "none";
+  if (view.tool === "propose_exam") return `${view.state}${view.created ? `-${view.created.job}` : ""}`;
+  if (view.tool === "propose_path_change" || view.tool === "propose_delete") return view.state;
   if (view.tool === "create_flashcards") return view.undone === null ? "done" : "undone";
   return view.undone ? "undone" : view.gone ? "gone" : view.job;
 }

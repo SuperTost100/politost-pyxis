@@ -63,7 +63,7 @@ export function useExamDraft({
   });
   const [title, setTitle] = useState(seed?.title ?? "");
   const [subject, setSubject] = useState(seed?.subject ?? "");
-  const [picked, setPicked] = useState<string[]>([]);
+  const [picked, setPicked] = useState<string[]>(seed?.picked ?? []);
   // A free PoliTost book named like the exam's subject or title, which the student does not have, is offered as one more
   // source, ticked. Leaving it out is remembered per book; nothing is downloaded until the exam is created with it ticked.
   const freeBooks = useFreeBooks(offers);

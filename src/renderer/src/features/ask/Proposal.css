@@ -1,0 +1,162 @@
+/* A proposal of an "ask first" tool (Proposal.tsx): a card as wide as a map's, with the old and the new values and the
+   path's topics as two lists; once decided, one line in its place. */
+.px-toolres.is-ask {
+  width: min(620px, 100%);
+  gap: 4px;
+  padding: 16px 18px 14px;
+}
+.px-toolres.is-ask .px-toolres-heading {
+  margin-bottom: 4px;
+}
+
+/* The old value struck through, an arrow, the new one. */
+.px-ask-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 18px;
+  margin: 8px 0 0;
+}
+.px-ask-facts dt {
+  color: var(--ink-muted);
+}
+.px-ask-facts dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.px-ask-facts del {
+  color: var(--ink-subtle);
+  text-decoration-thickness: 1px;
+}
+.px-ask-facts small {
+  color: var(--ink-subtle);
+}
+.px-ask-to {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-weight: 650;
+}
+.px-ask-to .px-icon {
+  align-self: center;
+  color: var(--ink-subtle);
+}
+
+/* The path now and after, side by side; one above the other when the reply is narrow. */
+.px-ask-diff {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 12px 18px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.px-ask-diff-head {
+  margin: 0 0 4px;
+  color: var(--ink-muted);
+}
+.px-ask-diff ol {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: px-ask-topic;
+}
+.px-ask-diff li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  margin: 0 -8px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  counter-increment: px-ask-topic;
+}
+.px-ask-diff li::before {
+  content: counter(px-ask-topic);
+  flex: none;
+  min-width: 1.2em;
+  color: var(--ink-subtle);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.px-ask-diff-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.px-ask-diff li em {
+  flex: none;
+  font-style: normal;
+  font-weight: 600;
+  font-size: 0.85em;
+}
+.px-ask-diff li.is-added {
+  background: var(--ok-soft);
+}
+.px-ask-diff li.is-added em {
+  color: var(--ok);
+}
+.px-ask-diff li.is-removed {
+  background: var(--danger-soft);
+}
+.px-ask-diff li.is-removed .px-ask-diff-title {
+  color: var(--ink-muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.px-ask-diff li.is-removed em {
+  color: var(--danger);
+}
+.px-ask-diff li.is-moved {
+  background: var(--surface-raised);
+}
+.px-ask-diff li.is-moved em {
+  color: var(--ink-muted);
+}
+.px-ask-note,
+.px-ask-body {
+  margin: 10px 0 0;
+  color: var(--ink-muted);
+}
+.px-ask-actions {
+  margin-top: 12px;
+}
+
+/* Decided: one line with its icon, as wide as the card it replaces. */
+.px-ask-outcome {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 12px;
+  min-height: 34px;
+  outline-offset: 4px;
+}
+.px-ask-outcome-icon {
+  color: var(--ink-subtle);
+}
+.px-ask-outcome.is-made-change .px-ask-outcome-icon {
+  color: var(--ok);
+}
+.px-ask-outcome-line {
+  margin: 0;
+  color: var(--ink);
+}
+.px-ask-outcome .px-toolres-failed {
+  grid-column: 2 / -1;
+}
+@media (max-width: 520px) {
+  .px-ask-outcome {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .px-ask-outcome > .px-btn {
+    grid-column: 2;
+    justify-self: start;
+  }
+}

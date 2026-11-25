@@ -15,6 +15,8 @@ export type WizardSeed = {
   /** The goal as stored, a fraction from 0.5 to 1. */
   target: number;
   language: "it" | "en";
+  /** Library sources already chosen as material, such as the ones a chat's proposal of this exam named. */
+  picked?: string[];
 };
 
 export function isWizardSeed(value: unknown): value is WizardSeed {
@@ -26,7 +28,8 @@ export function isWizardSeed(value: unknown): value is WizardSeed {
     ["", "none", "1", "2", "3", "10"].includes(seed.examChoice ?? "-") &&
     Array.isArray(seed.sessions) &&
     typeof seed.target === "number" &&
-    (seed.language === "it" || seed.language === "en")
+    (seed.language === "it" || seed.language === "en") &&
+    (seed.picked === undefined || (Array.isArray(seed.picked) && seed.picked.every((id) => typeof id === "string")))
   );
 }
 

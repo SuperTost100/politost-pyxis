@@ -223,11 +223,25 @@ const Reply = memo(function Reply({
     }),
     [row.answers, row.id, row.body, last, onAnswer, busy, onSuggest, t, onPicking],
   );
-  // A saved reply never has a tool at work: a `pending:` block in it is drawn as nothing (`savedToolLine`).
+  // A saved reply never has a tool at work: a `pending:` block in it is drawn as nothing (`savedToolLine`). A proposal
+  // waiting for the student counts as a pick waiting for «Controlla»: its confirming button is the primary, so «Invia»
+  // is quiet.
+  const proposalWaiting = useCallback(
+    (id: string, waiting: boolean) => onPicking(`${row.id}\nproposal:${id}`, waiting),
+    [onPicking, row.id],
+  );
   const toolBlock = useCallback((line: string) => {
     const saved = savedToolLine(line);
-    return saved ? <ToolResult chatId={chatId} line={saved} view={row.tools?.[saved]} /> : null;
-  }, [chatId, row.tools]);
+    return saved ? (
+      <ToolResult
+        chatId={chatId}
+        line={saved}
+        view={row.tools?.[saved]}
+        onWaiting={proposalWaiting}
+        onAsk={busy ? undefined : onSuggest}
+      />
+    ) : null;
+  }, [chatId, row.tools, proposalWaiting, busy, onSuggest]);
   return (
     <ChatMessage
       engine={
@@ -918,8 +932,8 @@ export function AskPage() {
     );
     return kept;
   });
-  // The practice questions with an option picked and not checked, by reply and question: while there is one, Invia is
-  // quiet.
+  // The practice questions with an option picked and not checked, by reply and question, and the proposals waiting for
+  // the student: while there is one, Invia is quiet.
   const [picking, setPicking] = useState<ReadonlySet<string>>(() => new Set());
   const pickingChanged = useStable((pick: string, on: boolean) =>
     setPicking((current) => {
