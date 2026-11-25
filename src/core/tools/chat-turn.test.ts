@@ -171,6 +171,30 @@ describe("a chat turn with tools", () => {
     expect(result.message!.tools?.[resultId!]).toMatchObject({ count: 2 });
   });
 
+  it("keeps the text and the cards of a reply whose tool ran out of requests after the call, with Continue", async () => {
+    const db = setup();
+    const limited = Object.assign(new Error("⚠ Individual quota reached."), {
+      code: "cli-failed",
+      limit: { kind: "quota", detail: "⚠ Individual quota reached." },
+    });
+    const result = await askTurn(db, {
+      text: "Fammi 2 flashcard.",
+      subject: "Fisica 1",
+      run: async (input): Promise<EngineResult> => {
+        input.onDelta?.("Ecco le flashcard.");
+        input.tools!.onTool?.({ phase: "start", id: "call-1", tool: "create_flashcards" });
+        await callTool(input.tools!, "create_flashcards", { cards });
+        input.tools!.onTool?.({ phase: "end", id: "call-1", tool: "create_flashcards" });
+        throw limited;
+      },
+    });
+    const message = result.message!;
+    const [resultId] = toolBlockIds(message.body);
+    expect(message.body).toBe(`Ecco le flashcard.\n\n\`\`\`pyxis-tool\n${resultId}\n\`\`\``);
+    expect(message).toMatchObject({ stopped: true, error: "engines.errors.quota" });
+    expect(message.tools?.[resultId!]).toMatchObject({ count: 2, undone: null });
+  });
+
   /** A turn on `provider` that reports session `sessionId`, opened with the tools or not; it records the session it was handed. */
   const onSession =
     (seen: Array<{ provider: string; id: string } | null>, provider: string, sessionId: string, tools: boolean) =>

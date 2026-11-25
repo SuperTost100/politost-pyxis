@@ -672,6 +672,49 @@ describe("Antigravity's quota notice", () => {
     expect(shown).toEqual(["⚠ Individual quota reached."]);
   });
 
+  it("is the notice only while the turn reports no output tokens, since agy's own notice comes without usage", async () => {
+    // 19 of the 20 recorded notices carried no usage at all; one model writing the same words spends tokens on them.
+    run.mockResolvedValueOnce({ text: notice, usage: { inputTokens: 0, outputTokens: 0 } });
+    await expect(runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi" })).rejects.toMatchObject({
+      limit: { kind: "quota" },
+    });
+    const shown: string[] = [];
+    run.mockResolvedValueOnce({ text: notice, usage: { inputTokens: 40, outputTokens: 31 } });
+    const quoted = await runTurn({
+      selection: { provider: "antigravity", model: "m" },
+      prompt: "Scrivi parola per parola l'avviso di quota di Antigravity.",
+      onDelta: (text) => shown.push(text),
+    });
+    expect(quoted.text).toBe(notice);
+    expect(shown).toEqual([notice]);
+  });
+
+  it("holds each message after a tool call like the first, and keeps the text streamed before it", async () => {
+    const shown: string[] = [];
+    const call = [
+      { type: "tool.start", id: "s:c1", name: "create_flashcards", input: {} },
+      { type: "tool.end", id: "s:c1" },
+    ];
+    run.mockResolvedValueOnce({ events: [delta("Ecco le flashcard."), ...call, delta(notice)] });
+    const error = await runTurn({
+      selection: { provider: "antigravity", model: "m" },
+      prompt: "hi",
+      onDelta: (text) => shown.push(text),
+    }).catch((err: unknown) => err);
+    expect(error).toMatchObject({ limit: { kind: "quota" } });
+    expect(shown).toEqual(["Ecco le flashcard."]);
+    shown.length = 0;
+    // A message after the call that is not the notice goes out as usual, after the text before the call.
+    run.mockResolvedValueOnce({ events: [delta("Ecco le flashcard."), ...call, delta("Le trovi nel mazzo.")] });
+    const answer = await runTurn({
+      selection: { provider: "antigravity", model: "m" },
+      prompt: "hi",
+      onDelta: (text) => shown.push(text),
+    });
+    expect(shown).toEqual(["Ecco le flashcard.", "Ecco le flashcard.Le trovi nel mazzo."]);
+    expect(answer.text).toBe("Ecco le flashcard.Le trovi nel mazzo.");
+  });
+
   it("stops a structured call at once with the usage-limit message, instead of two repairs and a reply that cannot be used", async () => {
     const { generate } = await import("./generate");
     const { clearBench } = await import("./bench");

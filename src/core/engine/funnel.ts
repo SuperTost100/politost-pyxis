@@ -211,7 +211,10 @@ export function isSessionGone(err: unknown): boolean {
  * cli-funnel 1.0.0 passes it on as text. Read as an answer, a structured call repairs it twice and stops as a reply that
  * cannot be used, and a chat, a lesson or a quiz streams it as the start of a reply. The wording is agy 1.5.17's, recorded
  * on 2026-11-25: "⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in
- * 3h30m10s." Only a reply that is exactly that, give or take the space around it, counts.
+ * 3h30m10s." Only a message that is exactly that, give or take the space around it, in a turn that reports no output
+ * tokens counts: 19 of the 20 notices recorded that day came with no usage at all, while a model that writes the same
+ * words spends tokens on them. The message is the text after the turn's last tool call, since the quota can run out
+ * after the model already wrote and called a tool.
  * shortcut: matches agy 1.5.17's English wording; remove once cli-funnel reports the notice as a limit.
  */
 const AGY_QUOTA_HEAD =
@@ -226,8 +229,13 @@ function mayBeAgyQuota(text: string): boolean {
 }
 
 /** The usage-limit error, shaped as cli-funnel shapes one, for Antigravity's quota notice; undefined for any other reply. */
-function antigravityQuota(provider: string, text: string, now = Date.now()): Error | undefined {
-  if (provider !== "antigravity") return undefined;
+function antigravityQuota(
+  provider: string,
+  text: string,
+  usage: { outputTokens?: number } | undefined,
+  now = Date.now(),
+): Error | undefined {
+  if (provider !== "antigravity" || (usage?.outputTokens ?? 0) > 0) return undefined;
   const detail = text.trim();
   const reset = detail.startsWith(AGY_QUOTA_HEAD) ? AGY_QUOTA_RESET.exec(detail.slice(AGY_QUOTA_HEAD.length)) : null;
   if (!reset) return undefined;
@@ -518,8 +526,10 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         ...(input.system ? { system: input.system } : {}),
       });
       text = "";
-      // Antigravity's reply is held back while it may be its quota notice (see `mayBeAgyQuota`).
+      // Antigravity's message is held back while it may be its quota notice (see `mayBeAgyQuota`). Each message after a
+      // tool call is held like the first, from where it starts in `text`.
       let holding = selection.provider === "antigravity";
+      let message = 0;
       // A call reached Pyxis's server in this attempt (see `toolsRefused`).
       let reached = false;
       const following = trackCall(scope?.jobId);
@@ -557,11 +567,17 @@ async function turn(input: TurnInput): Promise<EngineResult> {
             sessionId = event.sessionId;
             if (tool) conversation!.onSession?.(event.sessionId, selection.provider, selection.cwd, Boolean(servers));
           }
+          if ((event.type === "tool.start" || event.type === "tool.end") && selection.provider === "antigravity") {
+            // Held text before a call is not the notice: the call came after it. It goes out before the next message.
+            if (holding && text.length > message) input.onDelta?.(text);
+            holding = true;
+            message = text.length;
+          }
           if (event.type !== "text.delta") continue;
           text += event.text;
-          // Antigravity's quota notice must not reach the screen as the start of a reply: the text waits while it may
+          // Antigravity's quota notice must not reach the screen as part of a reply: the message waits while it may
           // still be the notice, and goes out whole once it cannot.
-          if (holding && mayBeAgyQuota(text)) continue;
+          if (holding && mayBeAgyQuota(text.slice(message))) continue;
           holding = false;
           input.onDelta?.(text);
         }
@@ -582,10 +598,10 @@ async function turn(input: TurnInput): Promise<EngineResult> {
           });
           throw new DOMException("Engine turn cancelled", "AbortError");
         }
-        const quota = antigravityQuota(selection.provider, result.text || text);
+        const quota = antigravityQuota(selection.provider, text ? text.slice(message) : result.text, result.usage);
         if (quota) throw quota;
-        // A reply that ended while it still looked like the notice, and is not it, is shown now.
-        if (holding && text) input.onDelta?.(text);
+        // A message that ended while it still looked like the notice, and is not it, is shown now.
+        if (holding && text.length > message) input.onDelta?.(text);
         finished = true;
         continued = continuing;
         following.end();
