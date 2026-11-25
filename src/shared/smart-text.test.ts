@@ -20,6 +20,7 @@ import {
   stripPassageRefsOutsideCode,
   writtenSections,
 } from "./smart-text";
+import { repairLatexInProse } from "./math-delimiters";
 
 const check = {
   question: "Quanto vale $F$ se $m=2$ e $a=3$?",
@@ -89,48 +90,15 @@ describe("smart text", () => {
     });
   });
 
-  it("reads a single-backslash escape in block JSON by the text around it", () => {
-    // Raw model text, as a block body holds it: in String.raw, `\n` is the two characters of a JSON escape.
-    const read = (json: string) => (parseLooseJson(json) as { body: string }).body;
-    // A display formula laid out on lines of its own: the line breaks are line breaks, not \nu or \ne.
-    expect(read(String.raw`{"body": "$$\nu(t) = e^{t}\n$$"}`)).toBe("$$\nu(t) = e^{t}\n$$");
-    expect(read(String.raw`{"body": "$$\ne^{-st} e^{2t} = e^{(2-s)t}.\n$$"}`)).toBe("$$\ne^{-st} e^{2t} = e^{(2-s)t}.\n$$");
-    // The same commands in the middle of a formula are commands.
-    expect(read(String.raw`{"body": "$$\nu = \frac{1}{T}$$ e $a \neq b$ e $x \to 0$"}`)).toBe(
-      "$$\\nu = \\frac{1}{T}$$ e $a \\neq b$ e $x \\to 0$",
-    );
-  });
-
-  it("keeps the id and the option order a block had in 0.5.0-dev.13, whose reading of an escape this build changed", () => {
-    // The ids and orders here are the ones dev.13 gave these blocks, so answers saved under them stay with their questions.
-    const check = String.raw`{"question": "Quale funzione risolve l'equazione?", "options": ["$u(t)=e^t$", "$u(t)=e^{-t}$", "$u(t)=t$"], "answer": 0, "explanation": "Sostituendo:\n$$\nu(t)=e^t\n$$\nche soddisfa $u'=u$."}`;
-    const [checkSegment] = parseSmartText(`\`\`\`pyxis-check\n${check}\n\`\`\``);
-    if (checkSegment?.type !== "block" || checkSegment.block.kind !== "check") throw new Error("not a check");
-    expect(checkSegment.block.id).toBe("check-2e493wqykq");
-    expect(checkSegment.block.order).toEqual([1, 0, 2]);
-    // What is shown is the new reading: the formula opens with a line break, not with \nu.
-    expect(checkSegment.block.explanation).toBe("Sostituendo:\n$$\nu(t)=e^t\n$$\nche soddisfa $u'=u$.");
-    const steps = String.raw`{"prompt": "Risolvi.", "steps": ["Primo:\n$$\nu(t)=e^t\n$$", "Secondo:\n$$\nu(t)=e^t\n$$"], "answer": "$u(t)=e^t$"}`;
-    const [trySegment] = parseSmartText(`\`\`\`pyxis-try\n${steps}\n\`\`\``);
-    if (trySegment?.type !== "block" || trySegment.block.kind !== "try") throw new Error("not a try");
-    expect(trySegment.block.id).toBe("try-280okot5c8f");
-    // Every string of an array is a value, the later ones too.
-    expect(trySegment.block.steps).toEqual(["Primo:\n$$\nu(t)=e^t\n$$", "Secondo:\n$$\nu(t)=e^t\n$$"]);
-  });
-
-  it("keeps every question of a recap, its id, place, option order and saved pick, when the new reading drops one", () => {
-    // The first question's option writes `\\nu` and its answer `\nu`, in display maths laid out on lines. dev.13 read both as
-    // ν; the new reading takes the answer's `\n` for a line break, so the answer names no option and the question fails.
-    const body = String.raw`{"questions": [{"question": "Quale soluzione?", "options": ["$$\\nu\n$$", "$$x\n$$", "$$y\n$$"], "answer": "$$\nu\n$$"}, {"question": "Seconda?", "options": ["a", "b", "c"], "answer": 2}, {"question": "Terza?", "options": ["d", "e", "f"], "answer": 1}]}`;
-    const [segment] = parseSmartText(`\`\`\`pyxis-recap\n${body}\n\`\`\``);
-    if (segment?.type !== "block" || segment.block.kind !== "recap") throw new Error("not a recap");
-    // The ids, options in their shown order and answers dev.13 gave these questions. A saved pick is an id and a shown
-    // option's index, so the same options at the same indexes keep every pick on the option the student chose.
-    expect(segment.block.questions.map(({ id, options, answer, order }) => ({ id, options, answer, order }))).toEqual([
-      { id: "recap-uyn63lqd5g.1", options: ["$$x\n$$", "$$y\n$$", "$$\\nu\n$$"], answer: 2, order: [1, 2, 0] },
-      { id: "recap-uyn63lqd5g.2", options: ["b", "c", "a"], answer: 1, order: [1, 2, 0] },
-      { id: "recap-uyn63lqd5g.3", options: ["d", "f", "e"], answer: 2, order: [0, 2, 1] },
-    ]);
+  it("keeps the id and option order of a block whose formulas open with a line break before e, u or i", () => {
+    // Real line breaks inside the JSON strings, as a model writes them. The block is read as before, so an answer saved
+    // under its id stays; only the drawing of its formulas changed, which keeps those line breaks.
+    const body = '{"question": "Quale vale?", "options": ["$$\ne^{x}\n$$", "$$\nu(t)\n$$", "$$\ni_{k}\n$$"], "answer": 1, "explanation": "Quindi\n$$\nu(t)=e^{t}\n$$"}';
+    const [segment] = parseSmartText(`\`\`\`pyxis-check\n${body}\n\`\`\``);
+    if (segment?.type !== "block" || segment.block.kind !== "check") throw new Error("not a check");
+    // The id, order and answer 0.5.0-dev.13 gave this block.
+    expect(segment.block).toMatchObject({ id: "check-o49o0rs94p", order: [1, 0, 2], answer: 0 });
+    for (const text of [...segment.block.options, segment.block.explanation!]) expect(repairLatexInProse(text)).toBe(text);
   });
 
   it("drops invalid and unknown blocks instead of showing raw JSON", () => {

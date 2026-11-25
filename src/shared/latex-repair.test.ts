@@ -107,6 +107,14 @@ describe("a line break before e, u or i that the formula around it shows is real
     expect(repairLatexEscapes("$$\\ne^{-st} e^{2t} = e^{(2-s)t}.$$")).toBe("$$\ne^{-st} e^{2t} = e^{(2-s)t}.$$");
   });
 
+  it("leaves a formula inside Markdown code as written", () => {
+    // A LaTeX listing in a fenced block, with a display formula that opens with a line break before e and a `\nu`.
+    const listing = "Scrivi così:\n\n```latex\n$$\ne^{x} \\nu\n$$\n```\n";
+    expect(repairLatexOutsideCode(listing)).toBe(listing);
+    const lost = "Scrivi così:\n\n```latex\n$$a \neq b\n$$\n```\n";
+    expect(repairLatexOutsideCode(lost)).toBe(lost);
+  });
+
   it("is the same in a structured answer", () => {
     expect(repairModelStrings({ body: "Quindi\n$$\ne^{-st} e^{2t}\n$$" })).toEqual({ body: "Quindi\n$$\ne^{-st} e^{2t}\n$$" });
   });

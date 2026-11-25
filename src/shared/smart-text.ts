@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { seededRandom, shuffleChoices } from "./choices";
 import { figureKind, type FigureKind } from "./figure-kinds";
-import { lineBreakReader } from "./latex-repair";
 import { mapOutsideCode } from "./math-delimiters";
 import { indentWidth, inListItem } from "./markdown-tree";
 
@@ -167,39 +166,10 @@ function decodedKey(written: string): string {
 }
 
 /**
- * The JSON string that starts at `from` of `text`, read up to its closing quote with every `\n` escape as a line break,
- * and where each of those escapes lands in it. The other escapes that may be LaTeX stay a backslash and their letter.
- * Only the text around an escape is read from it, so the string is read once for all its escapes.
- */
-function readString(text: string, from: number): { text: string; at: Map<number, number> } {
-  let read = "";
-  const at = new Map<number, number>();
-  for (let i = from; i < text.length && text[i] !== '"'; i++) {
-    const char = text[i]!;
-    const next = text[i + 1] ?? "";
-    if (char === "\\" && next === "n") {
-      at.set(i, read.length);
-      read += "\n";
-      i++;
-    } else if (char === "\\" && next === "u" && /^[0-9a-fA-F]{4}/.test(text.slice(i + 2, i + 6))) {
-      read += String.fromCharCode(parseInt(text.slice(i + 2, i + 6), 16));
-      i += 5;
-    } else if (char === "\\" && next) {
-      read += next === "\\" || next === '"' || next === "/" ? next : char + next;
-      i++;
-    } else if (char !== "\r") read += char;
-  }
-  return { text: read, at };
-}
-
-/**
  * Makes model JSON parseable without changing what it meant: a single backslash before a LaTeX command is doubled
  * (JSON would read \frac as a form feed and \alpha as an error), and raw line breaks inside strings become \n.
- * `\n` before a command name is ambiguous: a line break before "u" may be one, or `\nu`. With `byContext`, in a value
- * it is the command unless the formula around it says it is a line break (`lineBreakReader`). Without it, it is read as
- * every build up to 0.5.0-dev.13 read it, which is what a block's structure and ids are made from.
  */
-function repairJsonText(text: string, verbatim: readonly string[] = [], byContext = true): string {
+function repairJsonText(text: string, verbatim: readonly string[] = []): string {
   let out = "";
   let inString = false;
   // The key whose value is being read, and where in `out` the string being read starts, to tell a key from a value when it ends.
@@ -207,33 +177,15 @@ function repairJsonText(text: string, verbatim: readonly string[] = [], byContex
   let valueOf: string | null = null;
   let stringAt = 0;
   let valueString = false;
-  // Whether the string being read is a value, for reading its escapes by context: a string after a colon, and every string
-  // of an array, the ones after the first included. `valueString` keeps its narrower meaning for keys and verbatim values.
-  const containers: string[] = [];
-  let afterColon = false;
-  let isValue = false;
-  // The string being read as JSON will read it, and the reader of its escapes, made on its first ambiguous escape.
-  let stringFrom = 0;
-  let context: { read: ReturnType<typeof readString>; isBreak: ReturnType<typeof lineBreakReader> } | null = null;
   for (let i = 0; i < text.length; i++) {
     const char = text[i]!;
     if (!inString) {
       if (char === '"') {
         inString = true;
         valueString = valueOf !== null;
-        isValue = containers.at(-1) === "[" || afterColon;
         stringAt = out.length + 1;
-        stringFrom = i + 1;
-        context = null;
-      } else if (char === ":") {
-        valueOf = key;
-        afterColon = true;
-      } else if (char === "," || char === "{" || char === "}") {
-        valueOf = null;
-        afterColon = false;
-      }
-      if (char === "{" || char === "[") containers.push(char);
-      else if (char === "}" || char === "]") containers.pop();
+      } else if (char === ":") valueOf = key;
+      else if (char === "," || char === "{" || char === "}") valueOf = null;
       out += char;
       continue;
     }
@@ -273,16 +225,7 @@ function repairJsonText(text: string, verbatim: readonly string[] = [], byContex
     } else if (next === "u" && /^[0-9a-fA-F]{4}/.test(text.slice(i + 2))) {
       out += char;
     } else if (next === "n") {
-      let command = latexAfterN.has(word);
-      if (command && byContext && isValue) {
-        if (!context) {
-          const read = readString(text, stringFrom);
-          context = { read, isBreak: lineBreakReader(read.text) };
-        }
-        const at = context.read.at.get(i);
-        command = at === undefined || !context.isBreak(at, word);
-      }
-      out += command ? "\\\\" : "\\";
+      out += latexAfterN.has(word) ? "\\\\" : "\\";
     } else if ("bfrt".includes(next) && next !== "" && word.length > 1) {
       out += "\\\\";
     } else if ("bfrt".includes(next) && next !== "") {
@@ -298,14 +241,14 @@ function repairJsonText(text: string, verbatim: readonly string[] = [], byContex
  * The JSON value a model's text holds, or undefined. The strings under the top-level keys named in `verbatim` are read
  * as JSON says, since they are code and not prose: a tab before `plt` stays a tab and is not repaired into a LaTeX `\tplt`.
  */
-export function parseLooseJson(body: string, verbatim: readonly string[] = [], byContext = true): unknown {
+export function parseLooseJson(body: string, verbatim: readonly string[] = []): unknown {
   const trimmed = body.trim();
   const start = trimmed.search(/[[{]/);
   const end = Math.max(trimmed.lastIndexOf("}"), trimmed.lastIndexOf("]"));
   const candidates = [trimmed];
   if (start >= 0 && end > start) candidates.push(trimmed.slice(start, end + 1));
   for (const candidate of candidates) {
-    const repaired = repairJsonText(candidate, verbatim, byContext);
+    const repaired = repairJsonText(candidate, verbatim);
     for (const text of [repaired, repaired.replace(/,\s*([}\]])/g, "$1")]) {
       try {
         return JSON.parse(text);
@@ -487,30 +430,28 @@ export function mapFigureBlocks(
   return out.join("\n");
 }
 
-/** A recap's questions that can be shown, at most five, each with its place in the model's list. */
-function recapChecks(raw: unknown): Array<{ source: number; data: CheckData }> {
-  const value = record(raw);
-  const list = Array.isArray(raw)
-    ? raw
-    : Array.isArray(value?.questions)
-      ? value.questions
-      : Array.isArray(value?.checks)
-        ? value.checks
-        : [];
-  return (list as unknown[])
-    .map((item, source) => ({ source, data: repairCheck(item) }))
-    .filter((item): item is { source: number; data: CheckData } => item.data != null)
-    .slice(0, 5);
-}
-
-function repairBlock(kind: SmartBlockKind, raw: unknown, body: string): BlockData | null {
+function repairBlock(
+  kind: SmartBlockKind,
+  body: string,
+): BlockData | null {
+  const raw = parseLooseJson(body, kind === "figure" ? FIGURE_CODE_KEYS : []);
   const value = record(raw);
   if (kind === "check") {
     const data = repairCheck(raw);
     return data ? { kind, ...data } : null;
   }
   if (kind === "recap") {
-    const questions = recapChecks(raw).map((item) => item.data);
+    const list = Array.isArray(raw)
+      ? raw
+      : Array.isArray(value?.questions)
+        ? value.questions
+        : Array.isArray(value?.checks)
+          ? value.checks
+          : [];
+    const questions = (list as unknown[])
+      .map(repairCheck)
+      .filter((item): item is CheckData => item != null)
+      .slice(0, 5);
     return questions.length
       ? { kind, questions: questions as CheckQuestion[] }
       : null;
@@ -556,40 +497,6 @@ function repairBlock(kind: SmartBlockKind, raw: unknown, body: string): BlockDat
         .join("\n\n"),
   });
   return parsed.success ? { kind, ...parsed.data } : null;
-}
-
-/** A block's shape: everything in it but its texts, which is what its id, its questions and their order rest on. */
-function shape(value: unknown): string {
-  return JSON.stringify(value, (key, item: unknown) =>
-    typeof item === "string" && key !== "kind" && key !== "style" && key !== "figureKind" ? "" : item,
-  );
-}
-
-/**
- * A block read twice. `keyed` is the block as 0.5.0-dev.13 read it, before `\n` escapes were read by the formula around
- * them: which questions exist, their order, the block's id and the order of each question's options come from it, so an
- * answer saved before keeps its question, its place and its option. That reading must not change in later builds, or
- * saved answers lose their questions. `shown` is what is drawn: the new reading's texts wherever its shape is the same,
- * and the keyed texts of a question the new reading reads differently. A body without `\n` before a letter reads the same
- * both ways and is read once.
- */
-function readBlock(kind: SmartBlockKind, body: string): { keyed: BlockData; shown: BlockData } | null {
-  const verbatim = kind === "figure" ? FIGURE_CODE_KEYS : [];
-  const shownRaw = parseLooseJson(body, verbatim);
-  const shown = repairBlock(kind, shownRaw, body);
-  if (!/\\n[A-Za-z]/.test(body)) return shown && { keyed: shown, shown };
-  const keyedRaw = parseLooseJson(body, verbatim, false);
-  const keyed = repairBlock(kind, keyedRaw, body);
-  // A block only the new reading can show had no id before, so no answer is saved under one.
-  if (!keyed) return shown && { keyed: shown, shown };
-  if (!shown || keyed.kind !== shown.kind) return { keyed, shown: keyed };
-  if (keyed.kind !== "recap" || shown.kind !== "recap") return { keyed, shown: shape(keyed) === shape(shown) ? shown : keyed };
-  const texts = new Map(recapChecks(shownRaw).map((item) => [item.source, item.data]));
-  const questions = recapChecks(keyedRaw).map(({ source, data }) => {
-    const text = texts.get(source);
-    return text && shape(text) === shape(data) ? text : data;
-  });
-  return { keyed, shown: { kind: "recap", questions: questions as CheckQuestion[] } };
 }
 
 const OPEN = /^ {0,3}(`{3,}|~{3,})\s*([^\s`]*)\s*$/;
@@ -644,10 +551,9 @@ export function parseSmartText(
       segments.push({ type: "pending", kind });
       continue;
     }
-    const read = kind ? readBlock(kind, body) : null;
-    if (!read) continue;
-    const repaired = read.shown;
-    const base = `${kind}-${hash(JSON.stringify(read.keyed))}`;
+    const repaired = kind ? repairBlock(kind, body) : null;
+    if (!repaired) continue;
+    const base = `${kind}-${hash(JSON.stringify(repaired))}`;
     const count = (seen.get(base) ?? 0) + 1;
     seen.set(base, count);
     const id = count > 1 ? `${base}-${count}` : base;

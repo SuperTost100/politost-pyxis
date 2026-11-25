@@ -1,3 +1,4 @@
+import { insideMath } from "./inside-math";
 import { mapOutsideCode } from "./outside-code";
 
 /**
@@ -36,29 +37,6 @@ const AFTER_N = new Set(BY_LETTER.n);
 const ONE_LETTER = new Set(["ne", "nu", "ni"]);
 const CONTROL: Record<string, string> = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v" };
 
-/**
- * True when `index` is inside a `$...$`, `$$...$$`, `\(...\)` or `\[...\]` span that is not closed yet. An escaped dollar
- * sign is not a delimiter.
- */
-function insideMath(text: string, index: number): boolean {
-  let open: "$" | "$$" | "\\" | null = null;
-  for (let i = 0; i < index; i += 1) {
-    const char = text[i];
-    if (char === "\\") {
-      const next = text[i + 1];
-      if (open === null && (next === "(" || next === "[")) open = "\\";
-      else if (open === "\\" && (next === ")" || next === "]")) open = null;
-      i += 1;
-    } else if (char === "$") {
-      const mark = text[i + 1] === "$" ? "$$" : "$";
-      if (mark === "$$") i += 1;
-      if (open === null) open = mark;
-      else if (open === mark) open = null;
-    }
-  }
-  return open !== null;
-}
-
 /** Where a row of a display formula begins: after its opening `$$` or `\[`, a `\\` row break or a `\begin{…}` and its arguments. */
 const ROW_START = /(?:\$\$|\\\[|(?<!\\)\\\\|\\begin\{[^{}]*\}(?:\{[^{}]*\})*)$/;
 
@@ -85,15 +63,6 @@ function lineBreakInFormula(text: string, at: number, end: number, name: string,
   const close = text.indexOf(open === "$$" ? "$$" : "\\]", at + 1);
   // A formula still being written is laid out as it began.
   return close < 0 || /\n[ \t>]*$/.test(text.slice(at, close));
-}
-
-/**
- * For the JSON text repair: the `\n` escapes of one string, which `text` holds read with every `\n` as a line break.
- * The returned function tells whether the escape at `at`, before the letters `name` (the n and those after it), is a
- * line break inside a formula by `lineBreakInFormula`, although `\name` is a LaTeX command too.
- */
-export function lineBreakReader(text: string): (at: number, name: string) => boolean {
-  return (at, name) => insideMath(text, at) && lineBreakInFormula(text, at, at + name.length, name, false);
 }
 
 const PATTERNS = Object.entries(BY_LETTER).map(([letter, rest]) => ({
@@ -124,8 +93,10 @@ function literalBreaks(text: string): string {
   if (!text.includes("\\n")) return text;
   return text.replace(/(?<!\\)\\n([A-Za-z]*)/g, (match, tail: string, offset: number, whole: string) => {
     const name = `n${tail}`;
+    // The name first: finding the formula reads the text from its start, which ordinary text must not pay for every line.
+    if (!AFTER_N.has(name)) return `\n${tail}`;
     const inMath = insideMath(whole, offset);
-    const command = AFTER_N.has(name) && (inMath || tail.length > 1);
+    const command = inMath || tail.length > 1;
     return command && !(inMath && lineBreakInFormula(whole, offset, offset + match.length, name, true)) ? match : `\n${tail}`;
   });
 }
