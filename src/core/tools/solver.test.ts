@@ -3,7 +3,7 @@ import { openDatabase } from "../db/connection";
 import { askTurn, readChat, regenerateTurn } from "../chat/turn";
 import { currentSession } from "../chat/sessions";
 import { clearBench, isBenched } from "../engine/bench";
-import { acknowledgeProviders, configureDisclosure, type EngineResult, type TurnInput } from "../engine/funnel";
+import type { EngineResult, TurnInput } from "../engine/funnel";
 import { rememberReady, setFeatureOff, solverSelection } from "../engine/selection";
 import { setUsageRecorder, type UsageScope } from "../engine/usage";
 import type { AutoProvider } from "../engine/auto";
@@ -82,31 +82,35 @@ describe("ask_stronger_model: which model", () => {
     expect(solverSelection(db, { provider: "claude", model: "claude-sonnet-5-5" })).toBeNull();
   });
 
-  it("follows the effort the student picked for the task, a pinned model, and Spento", () => {
+  it("is always on the tool answering the chat, whatever a stored row names", () => {
     const db = setup();
-    rememberReady([claude, codex]);
+    rememberReady([claude, codex, gemini]);
+    // A row on another tool, pinned or automatic, as no Settings choice can make any more.
+    for (const row of [{ provider: "codex", model: "gpt-6.2-sol" }, { provider: "codex", model: "gpt-6.2-sol", auto: true }]) {
+      pin(db, row);
+      for (const chat of [
+        { provider: "claude", model: "claude-sonnet-5-5" },
+        { provider: "codex", model: "gpt-6.1-terra" },
+        { provider: "antigravity", model: "gemini-3.8-flash" },
+      ])
+        expect(solverSelection(db, chat)?.provider).toBe(chat.provider);
+    }
+  });
+
+  it("follows the effort the student picked for the task, and Spento", () => {
+    const db = setup();
+    rememberReady([claude, gemini]);
     rememberModels("claude", claude.models);
     pin(db, { provider: "claude", model: "claude-opus-5-5", effort: "high", auto: true, effortChoice: "medium" });
-    expect(solverSelection(db, { provider: "claude", model: "claude-sonnet-5-5" })).toMatchObject({ model: "claude-opus-5-5", effort: "medium" });
-    // A model pinned for hard exercises runs as pinned, whatever tool answers the chat.
-    pin(db, { provider: "claude", model: "claude-sonnet-5-5", effort: "high" });
-    expect(solverSelection(db, { provider: "claude", model: "claude-haiku-5-5" })).toMatchObject({ provider: "claude", model: "claude-sonnet-5-5", effort: "high" });
-    expect(solverSelection(db, { provider: "codex", model: "gpt-6.1-terra" })).toMatchObject({ provider: "claude", model: "claude-sonnet-5-5" });
-    // The pinned model is the one answering: nothing stronger to hand the exercise to.
-    expect(solverSelection(db, { provider: "claude", model: "claude-sonnet-5-5" })).toBeNull();
-    setFeatureOff(db, "solve", true);
-    expect(solverSelection(db, { provider: "claude", model: "claude-haiku-5-5" })).toBeNull();
-    setFeatureOff(db, "solve", false);
-    // A level the student picked for the task wins over Antigravity's cap.
-    rememberReady([gemini]);
+    expect(solverSelection(db, { provider: "claude", model: "claude-sonnet-5-5" })).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "medium" });
+    // A level the student picked wins over Antigravity's cap.
     rememberModels("antigravity", gemini.models);
     pin(db, { provider: "antigravity", model: "gemini-4-carbon", effort: "medium", auto: true, effortChoice: "high" });
-    expect(solverSelection(db, { provider: "antigravity", model: "gemini-3.8-flash" })).toMatchObject({ model: "gemini-4-carbon", effort: "high" });
-    pin(db, { provider: "claude", model: "claude-sonnet-5-5", effort: "high" });
+    expect(solverSelection(db, { provider: "antigravity", model: "gemini-3.8-flash" })).toEqual({ provider: "antigravity", model: "gemini-4-carbon", effort: "high" });
     setFeatureOff(db, "solve", true);
-    expect(solverSelection(db, { provider: "claude", model: "claude-haiku-5-5" })).toBeNull();
+    expect(solverSelection(db, { provider: "antigravity", model: "gemini-3.8-flash" })).toBeNull();
     setFeatureOff(db, "solve", false);
-    expect(solverSelection(db, { provider: "claude", model: "claude-haiku-5-5" })).toMatchObject({ model: "claude-sonnet-5-5" });
+    expect(solverSelection(db, { provider: "claude", model: "claude-sonnet-5-5" })).toMatchObject({ model: "claude-opus-5-5" });
   });
 
   it("is not offered to a chat already on the strong model", () => {
@@ -175,29 +179,6 @@ describe("ask_stronger_model: the sub-call", () => {
     );
     expect(outcome.text).toContain("usage limit on the student's subscription is reached");
     expect(isBenched("claude")).toBe(true);
-  });
-
-  it("keeps the student's results from a solver whose tool is not cleared for them", async () => {
-    const db = setup();
-    configureDisclosure(db);
-    acknowledgeProviders(["claude"]);
-    rememberReady([claude, codex]);
-    let ran = 0;
-    const run = async (input: TurnInput) => {
-      ran += 1;
-      return solved(input);
-    };
-    // Pinned to another tool, whose notice naming the results the student never confirmed.
-    pin(db, { provider: "codex", model: "gpt-6.2-sol" });
-    const refused = await solverTool(db).run(toolTurn(run, { results: 1 }), solverInput.parse(EXERCISE));
-    expect(refused.text).toContain("may not receive the student's results");
-    expect(ran).toBe(0);
-    // The chat's own tool has the confirmation: the sub-call runs.
-    pin(db, { provider: "claude", model: "claude-opus-5-5", auto: true });
-    const allowed = await solverTool(db).run(toolTurn(run, { results: 1 }), solverInput.parse(EXERCISE));
-    expect(allowed.text).toContain("15\\pi");
-    expect(allowed.shown).toBeDefined();
-    expect(ran).toBe(1);
   });
 });
 
@@ -289,5 +270,69 @@ describe("ask_stronger_model in a chat turn", () => {
     setFeatureOff(db, "solve", false);
     db.prepare("UPDATE feature_engines SET selection_json = ? WHERE feature = 'default'").run(JSON.stringify({ provider: "claude", model: "claude-opus-5-5" }));
     expect(await names()).not.toContain(SOLVER_TOOL);
+  });
+});
+
+describe("ask_stronger_model: review fixes", () => {
+  it("runs at a level the tool lists as a model of its own as that model, with no effort beside it", () => {
+    const db = setup({ provider: "antigravity", model: "gemini-3.8-flash" });
+    // `agy models` lists Neon with low to high, and `gemini-4-neon-xhigh` beside it with none.
+    const reported = [
+      { id: "gemini-3.8-flash", efforts },
+      { id: "gemini-4-neon", efforts },
+      { id: "gemini-4-neon-xhigh", efforts: [] },
+    ];
+    const offered = [
+      { id: "gemini-3.8-flash", efforts },
+      { id: "gemini-4-neon", efforts: [...efforts, { id: "xhigh" }] },
+    ];
+    rememberModels("antigravity", offered, reported);
+    rememberReady([{ id: "antigravity", kind: "cli", effort: true, models: offered }]);
+    pin(db, { provider: "antigravity", model: "gemini-4-neon", effort: "high", auto: true, effortChoice: "xhigh" });
+    expect(solverSelection(db, { provider: "antigravity", model: "gemini-3.8-flash" })).toEqual({
+      provider: "antigravity",
+      model: "gemini-4-neon-xhigh",
+    });
+  });
+
+  it("asks the stronger model once per reply, also when the reply is continued", async () => {
+    const db = setup();
+    rememberReady([claude]);
+    const stop = new AbortController();
+    const subCalls: TurnInput[] = [];
+    const first = await askTurn(db, {
+      text: "Calcola l'integrale doppio di x^2+y^2 sulla corona 1 <= r <= 2.",
+      subject: "Analisi 2",
+      signal: stop.signal,
+      run: async (input): Promise<EngineResult> => {
+        if (isSolverCall(input.system)) {
+          subCalls.push(input);
+          return solved(input);
+        }
+        input.onDelta?.("Passo in coordinate polari.");
+        input.tools!.onTool?.({ phase: "start", id: "s1", tool: SOLVER_TOOL });
+        await rpc(input.tools!, "tools/call", { name: SOLVER_TOOL, arguments: EXERCISE });
+        input.tools!.onTool?.({ phase: "end", id: "s1", tool: SOLVER_TOOL });
+        input.onDelta?.("Passo in coordinate polari. Il risultato");
+        stop.abort();
+        throw new DOMException("Engine turn cancelled", "AbortError");
+      },
+    });
+    expect(first.message!.stopped).toBe(true);
+    let again = "";
+    await regenerateTurn(db, {
+      chatId: first.chatId,
+      resume: true,
+      run: async (input): Promise<EngineResult> => {
+        if (isSolverCall(input.system)) {
+          subCalls.push(input);
+          return solved(input);
+        }
+        again = (await rpc(input.tools!, "tools/call", { name: SOLVER_TOOL, arguments: EXERCISE })).result.content![0]!.text;
+        return { text: " è $\\frac{15\\pi}{4}$.", model: "claude-sonnet-5-5", provider: "claude", inputTokens: 1 };
+      },
+    });
+    expect(subCalls).toHaveLength(1);
+    expect(again).toContain("already asked the stronger model");
   });
 });

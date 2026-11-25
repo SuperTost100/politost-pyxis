@@ -12,9 +12,12 @@ type Model = RequestOutput<"engines.models">[number];
 type Features = RequestOutput<"engines.features">;
 
 const AUTO = "__auto__";
-/** Hard exercises can be switched off: the chat then never hands one to the stronger model. */
+/**
+ * Hard exercises go to the strong model of the tool answering the chat, so they have no model to pin: the field offers
+ * Automatico and Spento, which means the chat never hands one on.
+ */
 const OFF = "__off__";
-const canSwitchOff = (feature: Feature) => feature === "solve";
+const followsChat = (feature: Feature) => feature === "solve";
 
 /**
  * The model and the reasoning effort of each kind of work, for a student who wants to set them by hand. "Automatic"
@@ -36,6 +39,7 @@ export function EngineTasks({
   onModel,
   onEffort,
   onAutomatic,
+  off,
   onOff,
 }: {
   features: Features | undefined;
@@ -59,7 +63,9 @@ export function EngineTasks({
   onEffort: (feature: Feature, effort: string | undefined) => void;
   /** Hands one task, or all of them when none is named, back to Pyxis. */
   onAutomatic: (feature?: Feature) => void;
-  /** Switches a task off (only hard exercises). Picking a model or "Automatic" switches it on again. */
+  /** The tasks switched off, which may have no model row to show. */
+  off: { solve: boolean } | undefined;
+  /** Switches a task off (only hard exercises). "Automatic" switches it on again. */
   onOff: (feature: Feature) => void;
 }) {
   const { t } = useTranslation();
@@ -98,8 +104,8 @@ export function EngineTasks({
         </div>
         {featureNames.map((feature) => {
           const selection = features?.[feature];
-          const off = selection?.off === true;
-          const isAuto = !selection || selection.auto === true;
+          const isOff = followsChat(feature) && off?.solve === true;
+          const isAuto = !selection || selection.auto === true || followsChat(feature);
           const value = selection ? JSON.stringify([selection.provider, selection.model]) : "";
           const row = overview?.find((item) => item.id === selection?.provider);
           const listed = (
@@ -131,9 +137,9 @@ export function EngineTasks({
               <div className="engines-feature-model">
                 <select
                   id={`engine-${feature}`}
-                  className={isAuto || off ? "px-ctl-field" : "px-ctl-field is-pinned"}
+                  className={isAuto || isOff ? "px-ctl-field" : "px-ctl-field is-pinned"}
                   disabled={busy}
-                  value={off ? OFF : isAuto ? AUTO : value}
+                  value={isOff ? OFF : isAuto ? AUTO : value}
                   onChange={(event) => {
                     const next = event.target.value;
                     if (next === OFF) return onOff(feature);
@@ -152,9 +158,9 @@ export function EngineTasks({
                       ? t("engines.autoToday", { model: autoLabel(selection.provider, selection.model) })
                       : t("engines.automatic")}
                   </option>
-                  {canSwitchOff(feature) ? <option value={OFF}>{t("engines.off")}</option> : null}
-                  {missing ? <option value={value}>{labelOf(selection.provider, selection.model)}</option> : null}
-                  {groups.map((group) => (
+                  {followsChat(feature) ? <option value={OFF}>{t("engines.off")}</option> : null}
+                  {missing && !followsChat(feature) ? <option value={value}>{labelOf(selection.provider, selection.model)}</option> : null}
+                  {followsChat(feature) ? null : groups.map((group) => (
                     <optgroup key={group} label={group}>
                       {choices
                         .filter((choice) => choice.group === group)
@@ -176,7 +182,7 @@ export function EngineTasks({
                   id={`engine-effort-${feature}`}
                   className="px-ctl-field"
                   aria-label={`${t(`engines.feature.${feature}`)}: ${t("engines.effort")}`}
-                  disabled={!listed.length || busy || off}
+                  disabled={!listed.length || busy || isOff}
                   value={pickedListed ? picked : AUTO}
                   onChange={(event) =>
                     onEffort(feature, event.target.value === AUTO ? undefined : event.target.value)

@@ -3,24 +3,21 @@ import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
 import { IpcError, isAbort } from "../../shared/ipc";
 import { dataBlock } from "../chat/prompts";
-import { isProviderCurrent } from "../engine/funnel";
 import { generate } from "../engine/generate";
 import { systemPrompt } from "../engine/prompts";
 import { solverSelection } from "../engine/selection";
 import type { Tool, ToolTurn } from "./server";
 
 /**
- * `ask_stronger_model`: the chat runs on a quick model, and an exercise beyond what it solves reliably goes to the
- * strong model of the same tool as one sub-call (`solverSelection`), whose checked solution comes back as the tool's
- * result. The chat's model then writes the answer as it always does; the solver's text is material for it. The call
+ * `ask_stronger_model`: the chat runs on a quick model, and a hard exercise goes to the strong model of the same tool as
+ * one sub-call (`solverSelection`), whose checked solution comes back as the tool's result. The chat's model then writes the answer as it always does; the solver's text is material for it. The call
  * shows a working line in the answer, and the tag under the answer names both models (`chat_tool_results` keeps which).
  *
- * What it sends: only what the chat's model passes in the arguments, which it took from this chat's conversation, its
- * passages and its attached files, the same content every chat turn already sends to the same tool. A pinned model of
- * another tool is the student's own choice in Settings, and `runTurn` refuses a tool whose notice the student has not
- * confirmed, as it does for the chat. The student's results are the one thing a chat sends only to a tool cleared for
- * them (`read_progress`): a turn that read them hands nothing on unless the solver's tool is cleared too
- * (`isProviderCurrent`), which the chat's own tool always is when it read them. No other chat, no file outside this chat
+ * What it sends: only what the chat's model passes in the arguments, and the solver always runs on the tool that
+ * answers the chat ("Esercizi difficili" has no model to pin). So nothing new leaves: the arguments can hold only what
+ * the chat's model holds, which that same tool already received. That includes the student's results only when the tool
+ * is cleared for them: `read_progress` is offered only to such a tool, and a conversation handed to another tool shows
+ * a reply that read them as one neutral line (`historyText` in `chat/turn.ts`). No other chat, no file outside this chat
  * and no stored data is read here.
  *
  * The sub-call is a one-shot run: no conversation, so it never touches the chat's stored session, the "in step" record
@@ -113,10 +110,6 @@ export function solverTool(db: Database.Database): Tool {
       const call = turn.call?.();
       const selection = solverSelection(db, turn.engine());
       if (!call || !selection) return { text: FAILED };
-      if ((turn.tally.results ?? 0) > 0 && !isProviderCurrent(selection.provider))
-        return {
-          text: `The stronger model may not receive the student's results, which this answer read. Do not call it again. ${ALONE}`,
-        };
       turn.tally[SOLVER_TOOL] = 1;
       const started = Date.now();
       const deadline = new AbortController();

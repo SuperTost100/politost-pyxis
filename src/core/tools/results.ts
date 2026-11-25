@@ -225,6 +225,15 @@ export function madeResultIds(db: Database.Database, chatId: string, ids: readon
   return ids.filter((id) => !solved.has(id));
 }
 
+/**
+ * The per-turn counts a tool call starts from (`ToolTurn.tally`). A turn that continues a reply carries on that reply's
+ * own: the stronger model it already asked counts, so a reply asks it once however often it is continued.
+ */
+export function startingTally(db: Database.Database, chatId: string, continued: string): Record<string, number> {
+  const ids = toolBlockIds(continued);
+  return madeResultIds(db, chatId, ids).length < ids.length ? { [SOLVER_TOOL]: 1 } : {};
+}
+
 /** Puts back what `takeBackToolResults` undid, when the reply it was taken from stays on screen. */
 export function restoreToolResults(db: Database.Database, chatId: string, ids: readonly string[]): void {
   for (const id of ids) {

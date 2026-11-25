@@ -1,6 +1,9 @@
 import type { TFunction } from "i18next";
 
-/** Tasks in the order the disclosure names them, the same order as the engine summary. */
+/**
+ * Tasks in the order the disclosure names them, the same order as the engine summary. Hard exercises (`solve`) always go
+ * to the tool that answers the chat, so the chat's entry covers them.
+ */
 const tasks = ["chat", "map", "plan", "lesson", "cards", "vision", "grading"] as const;
 
 type Features = Record<string, { provider: string } | undefined>;

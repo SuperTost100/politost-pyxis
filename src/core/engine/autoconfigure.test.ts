@@ -59,6 +59,20 @@ async function withFunnel<T>(
 }
 
 describe("automatic engine choice", () => {
+  it("puts hard exercises on the strong model of the chat's tool, the pinned chat's too", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    const planned = await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
+    expect(planned.features.solve).toMatchObject({ provider: planned.features.chat!.provider, auto: true });
+    // The chat pinned to the other tool takes hard exercises with it.
+    const other = planned.features.chat!.provider === "claude" ? "codex" : "claude";
+    const model = other === "claude" ? "claude-sonnet-5" : "gpt-5.6-terra";
+    db.prepare("UPDATE feature_engines SET selection_json = ? WHERE feature = 'chat'").run(JSON.stringify({ provider: other, model }));
+    const pinned = await withFunnel({ claude: true, codex: true }, () => handlers.autoConfigure({}));
+    expect(pinned.features.solve).toMatchObject({ provider: other, model: other === "claude" ? "claude-opus-5-5" : "gpt-6-sol", auto: true });
+    db.close();
+  });
+
   it("chooses engines for every feature, marks them automatic and hides the flag from callers", async () => {
     const db = openDatabase(":memory:");
     const handlers = engineHandlers(db, () => undefined);

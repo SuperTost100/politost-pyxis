@@ -11,8 +11,8 @@ import { saveShot } from "./shots";
 
 /*
  * A hard exercise handed to the stronger model. The recorded engine calls `ask_stronger_model` through the app's own MCP
- * server, as a CLI would, and the server runs the sub-call on the recorded engine too, as the model the task is pinned to
- * (the fixture has no automatic plan to pick the strong model from). The tool, its working line, its stored result and
+ * server, as a CLI would, and the server runs the sub-call on the recorded engine too, as the strong model of the chat's
+ * tool that the stored automatic row names (the fixture lists no models, so no plan runs before it). The tool, its working line, its stored result and
  * the tag under the answer run for real; only the models' words are recorded.
  */
 
@@ -46,7 +46,7 @@ function seed(userData: string) {
       INSERT INTO messages(id,chat_id,role,body,engine_provider,model_id,model_source,created_at)
         VALUES('a0','solver-chat','assistant','La dinamica studia il moto dei corpi a partire dalle forze che lo causano.','claude','claude-sonnet-5-5','reported',2);
       INSERT OR REPLACE INTO feature_engines(feature,selection_json,updated_at)
-        VALUES('solve','{"provider":"claude","model":"claude-opus-5-5"}',1);
+        VALUES('solve','{"provider":"claude","model":"claude-opus-5-5","auto":true}',1);
     `);
   } finally {
     db.close();

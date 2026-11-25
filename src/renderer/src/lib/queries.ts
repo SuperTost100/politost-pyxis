@@ -45,6 +45,12 @@ export const engineFeaturesQuery = queryOptions({
   queryFn: () => invoke("engines.features", {}),
 });
 
+/** The tasks switched off, under the features' key so every refresh of the features reads it again. */
+export const engineSwitchedOffQuery = queryOptions({
+  queryKey: ["engine-features", "off"],
+  queryFn: () => invoke("engines.switchedOff", {}),
+});
+
 export const planQuery = (planId: string) =>
   queryOptions({
     queryKey: ["plan", planId],

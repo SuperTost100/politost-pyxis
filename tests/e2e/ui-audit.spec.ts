@@ -2461,9 +2461,10 @@ const toolTurnFile = (userData: string) => join(userData, "tool-turn");
 const toolGoFile = (userData: string) => join(userData, "tool-go");
 /**
  * While this file exists, the reply hands an exercise to the stronger model, whose answer is held until `solver-go`
- * exists. The audit's chat runs on the recorded engine, which Pyxis has no plan for, so the state pins a model for hard
- * exercises while it runs, and only then: the Settings states show the tasks as automatic.
+ * exists. The audit's chat runs on the recorded engine, which Pyxis has no plan for, so the state stores the strong model
+ * of the chat's tool for hard exercises while it runs, and only then: the Settings states show what the plan gives.
  */
+const SOLVER_ROW = JSON.stringify({ provider: "claude", model: "claude-opus-5-5", auto: true });
 const solverTurnFile = (userData: string) => join(userData, "solver-turn");
 const solverGoFile = (userData: string) => join(userData, "solver-go");
 function prepareToolTurn(name: string) {
@@ -2476,10 +2477,8 @@ function prepareToolTurn(name: string) {
   rmSync(solverGoFile(auditUserData), { force: true });
   withDb((db) => {
     if (solver)
-      db.prepare("INSERT OR REPLACE INTO feature_engines (feature, selection_json, updated_at) VALUES ('solve', ?, 1)").run(
-        JSON.stringify({ provider: "claude", model: "claude-opus-5-5" }),
-      );
-    else db.prepare("DELETE FROM feature_engines WHERE feature = 'solve' AND json_extract(selection_json, '$.auto') IS NULL").run();
+      db.prepare("INSERT OR REPLACE INTO feature_engines (feature, selection_json, updated_at) VALUES ('solve', ?, 1)").run(SOLVER_ROW);
+    else db.prepare("DELETE FROM feature_engines WHERE feature = 'solve' AND selection_json = ?").run(SOLVER_ROW);
   });
 }
 
@@ -3769,6 +3768,11 @@ async function openState(page: Page, name: string) {
     }
     case "ask-solver-working": {
       await expect(page.getByText("La dinamica studia il moto dei corpi a partire dalle forze che lo causano.")).toBeVisible();
+      // Written again just before the question: Pyxis drops an automatic row whenever it plans with no tool ready, as it
+      // may have done since the state was prepared.
+      withDb((db) =>
+        db.prepare("INSERT OR REPLACE INTO feature_engines (feature, selection_json, updated_at) VALUES ('solve', ?, 1)").run(SOLVER_ROW),
+      );
       const box = page.getByRole("textbox", { name: both("Messaggio", "Message") });
       await box.fill(SOLVER_QUESTION);
       await box.press("Enter");

@@ -20,7 +20,7 @@ import { ProviderSetup } from "../../components/ProviderSetup";
 import { Working } from "../../components/Working";
 import { engineStatus, keyStatus, manualChoice } from "../../lib/engineStatus";
 import { invoke, onBroadcast } from "../../lib/ipc";
-import { engineChoiceQuery, engineFeaturesQuery, enginesQuery } from "../../lib/queries";
+import { engineChoiceQuery, engineFeaturesQuery, enginesQuery, engineSwitchedOffQuery } from "../../lib/queries";
 import { isConnected, limitWhen, movedOrder, shownOrder, toggledUse } from "../../lib/toolOrder";
 import { roleItems, roleModelName, roleSummary, roles as roleOrder, rolesOfModel, type Role } from "../../lib/toolRoles";
 import { useEngineNames } from "../../lib/useEngineNames";
@@ -215,6 +215,7 @@ export function EnginesPanel() {
   const engines = useEngineSetup();
   const names = useEngineNames();
   const { overview, features, choice, choose, reorder } = engines;
+  const switchedOff = useQuery(engineSwitchedOffQuery).data;
   const allowed = choice.data?.allowed ?? null;
   const order = choice.data?.order ?? null;
   const engineName = (id: string) =>
@@ -411,6 +412,8 @@ export function EnginesPanel() {
       fast?: boolean;
     }) => {
       const [provider, model] = JSON.parse(value) as [string, string];
+      // Hard exercises offer no model to pick (`EngineTasks`), so they never reach here.
+      if (feature === "solve") throw new Error("solve-not-pinnable");
       return invoke("engines.setFeature", { feature, provider, model, effort, fast });
     },
     onSuccess: refresh,
@@ -527,14 +530,15 @@ export function EnginesPanel() {
     }
   }
   // A task switched off runs no model, so a tool's row does not name its model.
-  const featuresInUse = features.data && Object.fromEntries(Object.entries(features.data).filter(([, value]) => !value.off));
+  const featuresInUse =
+    features.data &&
+    Object.fromEntries(Object.entries(features.data).filter(([feature]) => !(feature === "solve" && switchedOff?.solve)));
   const pinnedCount = featureNames.filter(
     (feature) => features.data?.[feature] && !features.data[feature]!.auto,
   ).length;
   // Returning to automatic also undoes efforts the student picked on tasks Pyxis chose the model for.
   const customised =
-    pinnedCount > 0 ||
-    featureNames.some((feature) => !!features.data?.[feature]?.effortChoice || !!features.data?.[feature]?.off);
+    pinnedCount > 0 || !!switchedOff?.solve || featureNames.some((feature) => !!features.data?.[feature]?.effortChoice);
   const toAcknowledge = unacknowledged(readyRows);
   const toAcknowledgeKey = toAcknowledge.map((row) => row.id).join(",");
   useEffect(() => {
@@ -935,6 +939,7 @@ export function EnginesPanel() {
             }}
             onEffort={(feature, picked) => setEffortFor.mutate({ feature, effort: picked })}
             onAutomatic={(feature) => automatic.mutate(feature)}
+            off={switchedOff}
             onOff={(feature) => switchOff.mutate(feature)}
           />
           <DebugSwitch />

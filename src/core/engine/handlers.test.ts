@@ -433,3 +433,17 @@ describe("text-only engines", () => {
     }
   });
 });
+
+describe("hard exercises switched off", () => {
+  it("says the task is off with no model to show, and Automatico switches it on again", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    // No tool is connected yet, so no row names a model for hard exercises.
+    handlers.setFeatureOff({ feature: "solve", off: true });
+    expect(handlers.features()).toEqual({});
+    expect(handlers.switchedOff()).toEqual({ solve: true });
+    await handlers.autoConfigure({ reset: true, features: ["solve"] });
+    expect(handlers.switchedOff()).toEqual({ solve: false });
+    db.close();
+  });
+});

@@ -29,6 +29,7 @@ import {
   linkToolResults,
   madeResultIds,
   restoreToolResults,
+  startingTally,
   spliceToolBlocks,
   takeBackToolResults,
   toolNote,
@@ -1512,7 +1513,7 @@ async function answer(
   };
   // A server that cannot start leaves the turn without tools, as on an engine that takes none.
   const access = await chatTools(chatId).catch(() => null);
-  const tally: Record<string, number> = {};
+  const tally: Record<string, number> = startingTally(db, chatId, resume);
   /** This turn's reply holds the student's results: read_progress ran, or the reply it continues had them. */
   const readResults = () => (tally.results ?? 0) > 0 || Boolean(input.resumeFrom?.results);
   const toolTurn: Parameters<typeof armChatTools>[0] = {

@@ -448,8 +448,6 @@ const engineSelection = z.object({
   auto: z.boolean().optional(),
   /** The reasoning effort the student picked for a task Pyxis chose the model for. */
   effortChoice: z.string().optional(),
-  /** The student switched the task off (only `solve` can be): the row keeps what it runs once it is on again. */
-  off: z.boolean().optional(),
 });
 /** Tokens counted over some model calls. `inputTokens` includes the ones read from and written to the prompt cache. */
 /** Why a file attached to a chat is not usable. Each has its own text, shown on the file's own chip. */
@@ -893,7 +891,8 @@ export const requests = {
   },
   "engines.setFeature": {
     input: z.object({
-      feature: engineFeature,
+      /** Hard exercises have no model of their own to pin: they follow the chat's tool. */
+      feature: engineFeature.exclude(["solve"]),
       provider: z.string(),
       model: z.string(),
       effort: z.string().optional(),
@@ -908,6 +907,11 @@ export const requests = {
       effort: z.string().optional(),
     }),
     output: z.object({ ok: z.literal(true) }),
+  },
+  /** The tasks the student switched off, read apart from the model rows, which may not exist yet. */
+  "engines.switchedOff": {
+    input: z.object({}),
+    output: z.object({ solve: z.boolean() }),
   },
   /** Switches a task off, or on again as it was (only `solve`, which then is never offered to the chat). */
   "engines.setFeatureOff": {
