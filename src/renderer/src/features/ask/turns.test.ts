@@ -100,3 +100,38 @@ describe("the Ask page's turn", () => {
     expect(runsIn(turn, "chat-other")).toBe(false);
   });
 });
+
+describe("the tool results of the Ask page's turn", () => {
+  afterEach(() => {
+    const turn = turns.get();
+    if (turn) turns.end(turn);
+  });
+
+  const view = (undone: number | null) => ({
+    id: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+    tool: "create_flashcards" as const,
+    count: 8,
+    duplicates: 0,
+    title: "sui tre principi",
+    deck: "Fisica 1",
+    fronts: ["Primo?"],
+    undone,
+  });
+
+  it("keeps «Annulla» pressed while the reply is written, so the reply shows it again when the page comes back", () => {
+    const turn = turns.start("chat-1", "Fammi 8 flashcard.")!;
+    turn.onEvent({ type: "tool", view: view(null) });
+    turns.toolChanged(turn, view(8));
+    expect(turn.tools.get()[view(8).id]).toEqual(view(8));
+  });
+
+  it("starts a Continue with the saved reply's text, passages and tool results, so its card stays on screen", () => {
+    const turn = turns.start("chat-1", null, true)!;
+    const body = "Ecco.\n\n```pyxis-tool\n" + view(null).id + "\n```\n\nIl testo";
+    turns.continueFrom(turn, { body, citations: [{ index: 1, label: "P1" }], tools: { [view(null).id]: view(null) } });
+    expect(turn.live.get()).toBe(body);
+    expect(turn.passages.get()).toEqual([{ index: 1, label: "P1" }]);
+    expect(turn.tools.get()).toEqual({ [view(null).id]: view(null) });
+  });
+});
+

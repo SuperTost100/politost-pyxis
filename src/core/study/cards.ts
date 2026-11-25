@@ -541,6 +541,27 @@ export function restoreCard(db: Database.Database, cardId: string): void {
   if (result.changes === 0) throw new Error("card-missing");
 }
 
+/**
+ * Removes several cards the way `deleteCard` removes a seeded one: they leave the deck and keep their reviews, so
+ * `restoreCards` brings them back as they were. Only seeded cards still in the deck are touched (the cards a chat tool
+ * creates are seeded); the ids it removed are returned, so an undo restores exactly those and never a card the student
+ * removed by hand.
+ */
+export function removeCards(db: Database.Database, cardIds: readonly string[]): string[] {
+  return db.transaction(() => {
+    const remove = db.prepare(`UPDATE cards SET removed = 1 WHERE id = ? AND removed = 0 AND seed_key IS NOT NULL`);
+    return cardIds.filter((id) => remove.run(id).changes > 0);
+  })();
+}
+
+/** Brings back cards `removeCards` removed, with their reviews. A card deleted for good since is skipped. */
+export function restoreCards(db: Database.Database, cardIds: readonly string[]): number {
+  return db.transaction(() => {
+    const restore = db.prepare(`UPDATE cards SET removed = 0 WHERE id = ? AND removed = 1`);
+    return cardIds.reduce((count, id) => count + restore.run(id).changes, 0);
+  })();
+}
+
 export function suspendedCards(
   db: Database.Database,
   planId: string,

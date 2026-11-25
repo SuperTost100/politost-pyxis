@@ -23,15 +23,20 @@ type Seen = {
     key: string;
     followUp: string;
     session?: { provider: string; id: string; cwd: string } | null;
-    onSession?: (sessionId: string, provider: string, cwd: string) => void;
+    onSession?: (sessionId: string, provider: string, cwd: string, tools?: boolean) => void;
   };
   cache?: boolean;
+  /** Pyxis's tools, which every chat turn offers. */
+  tools?: unknown;
 };
 
-/** An answer of a CLI tool: the session it ran in, and whether it continued the one the chat stored. */
+/**
+ * An answer of a CLI tool: the session it ran in, whether it continued the one the chat stored, and whether the run had
+ * Pyxis's tools, as a CLI run that takes them reports.
+ */
 function toolReply(sessionId: string, input: Seen, provider = "claude"): EngineResult {
   const continued = input.conversation?.session?.id === sessionId && input.conversation.session.provider === provider;
-  return { ...reply, provider, sessionId, cwd: "/scratch", continued };
+  return { ...reply, provider, sessionId, cwd: "/scratch", continued, ...(input.tools ? { tools: true } : {}) };
 }
 
 function setup() {
@@ -607,7 +612,7 @@ describe("a chat's stored tool session", () => {
       text: "prima domanda",
       allowGeneral: true,
       run: async (input) => {
-        (input as Seen).conversation?.onSession?.("c1", "claude", "/scratch");
+        (input as Seen).conversation?.onSession?.("c1", "claude", "/scratch", true);
         return { ...reply, provider: "openai-api", model: "gpt-5.6-terra", text: "Risposta dell'API." };
       },
     });
