@@ -39,6 +39,26 @@ export function storeFlashcards(
   return id;
 }
 
+/**
+ * Adds a later call's cards to the result an earlier call of the same reply stored, so one reply shows one card of what
+ * it made however the model split the list.
+ */
+export function addFlashcards(
+  db: Database.Database,
+  chatId: string,
+  id: string,
+  more: { cardIds: string[]; duplicates: number; fronts: string[] },
+): void {
+  const { data } = flashcardsRow(db, chatId, id);
+  const next: FlashcardsData = {
+    ...data,
+    cardIds: [...data.cardIds, ...more.cardIds],
+    duplicates: data.duplicates + more.duplicates,
+    fronts: [...data.fronts, ...more.fronts].slice(0, LISTED),
+  };
+  db.prepare(`UPDATE chat_tool_results SET data_json = ? WHERE id = ?`).run(JSON.stringify(next), id);
+}
+
 type Row = { id: string; tool: string; data_json: string; undone_json: string | null };
 
 function view(row: Row): ToolResultView | null {

@@ -27,6 +27,7 @@ function turn(place: { planId: string | null; subject: string | null }, chatId =
   return {
     chatId,
     tally: {},
+    kept: {},
     place: () => place,
     engine: () => ({ provider: "claude", model: "claude-sonnet-5" }),
     started: () => undefined,
@@ -119,6 +120,23 @@ describe("create_flashcards", () => {
     expect(() => flashcardsInput.parse({ cards: [{ front: " ", back: "x" }] })).toThrow();
     expect(() => flashcardsInput.parse({ cards: cards(1), place: "elsewhere" })).toThrow();
     expect(flashcardsInput.parse({ cards: cards(1), title: "x".repeat(120) }).title).toHaveLength(80);
+  });
+
+  it("adds a later call of the same answer to the result the first one stored", async () => {
+    const db = fixture();
+    const tool = flashcardsTool(db);
+    const answer = turn({ planId: null, subject: "Fisica 1" });
+    const first = await tool.run(answer, args(2, "sui principi"));
+    const second = await tool.run(answer, flashcardsInput.parse({ cards: cards(3, 10) }));
+    expect(second.shown).toEqual(first.shown);
+    expect(toolView(db, "chat", first.shown!.resultId)).toMatchObject({ count: 5, title: "sui principi", fronts: [
+      "Che cosa dice il principio 1?",
+      "Che cosa dice il principio 2?",
+      "Che cosa dice il principio 11?",
+    ] });
+    expect(db.prepare("SELECT COUNT(*) FROM chat_tool_results").pluck().get()).toBe(1);
+    // Undo takes all five out.
+    expect(undoToolResult(db, "chat", first.shown!.resultId).undone).toBe(5);
   });
 
   it("undoes the cards, reviewed ones included, and restores exactly those with their reviews", async () => {

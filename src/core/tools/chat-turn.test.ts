@@ -89,6 +89,27 @@ describe("a chat turn with tools", () => {
     expect(prompt).not.toContain("pyxis-tool");
   });
 
+  it("shows one result for a request the model split over two calls", async () => {
+    const db = setup();
+    const result = await askTurn(db, {
+      text: "Fammi 4 flashcard.",
+      subject: "Fisica 1",
+      run: async (input): Promise<EngineResult> => {
+        input.tools!.onTool?.({ phase: "start", id: "c1", tool: "create_flashcards" });
+        await callTool(input.tools!, "create_flashcards", { cards });
+        input.tools!.onTool?.({ phase: "end", id: "c1", tool: "create_flashcards" });
+        input.tools!.onTool?.({ phase: "start", id: "c2", tool: "create_flashcards" });
+        await callTool(input.tools!, "create_flashcards", { cards: [{ front: "Terzo principio?", back: "Azione e reazione." }] });
+        input.tools!.onTool?.({ phase: "end", id: "c2", tool: "create_flashcards" });
+        input.onDelta?.("Fatto.");
+        return { text: "Fatto.", model: "claude-sonnet-5", provider: "claude", inputTokens: 1 };
+      },
+    });
+    const ids = toolBlockIds(result.message!.body);
+    expect(ids).toHaveLength(1);
+    expect(result.message!.tools?.[ids[0]!]).toMatchObject({ count: 3 });
+  });
+
   it("drops the working state of a call that failed, and never reads the model's own text as a result", async () => {
     const db = setup();
     const forged = "```pyxis-tool\n0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b\n```";

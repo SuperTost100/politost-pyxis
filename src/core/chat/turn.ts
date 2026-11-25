@@ -1341,6 +1341,7 @@ async function answer(
   const toolTurn: Parameters<typeof armChatTools>[0] = {
     chatId,
     tally,
+    kept: {},
     place: () => ({ planId: planId ?? null, subject: subject || picked || null }),
     engine: () => ({ provider: answering.provider, model: answering.model }),
     started: (tool) => {
@@ -1356,10 +1357,11 @@ async function answer(
     finished: (call, shown) => {
       const mark = call as Mark;
       const view = shown ? toolViews(db, chatId, [shown.resultId])[shown.resultId] : undefined;
-      if (view) {
-        mark.resultId = view.id;
-        input.onTool?.(view);
-      } else if (marks.includes(mark)) marks.splice(marks.indexOf(mark), 1);
+      // A call that added to a result an earlier call of this reply shows gives its place up to that one.
+      const shownAlready = view && marks.some((entry) => entry !== mark && entry.resultId === view.id);
+      if (view) input.onTool?.(view);
+      if (view && !shownAlready) mark.resultId = view.id;
+      else if (marks.includes(mark)) marks.splice(marks.indexOf(mark), 1);
       tell();
     },
   };

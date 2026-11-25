@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { saveProposedCardIds } from "../study/cardsFromText";
-import { storeFlashcards } from "./results";
+import { addFlashcards, storeFlashcards } from "./results";
 import type { Tool, ToolTurn } from "./server";
 
 /** Cards one call may create. A longer list is refused whole, before anything is saved. */
@@ -69,9 +69,11 @@ function cardPlace(
   return null;
 }
 
+const TOOL_NAME = "create_flashcards";
+
 export function flashcardsTool(db: Database.Database): Tool {
   return {
-    name: "create_flashcards",
+    name: TOOL_NAME,
     description: FLASHCARDS_DESCRIPTION,
     input: flashcardsInput,
     run(turn, raw) {
@@ -102,16 +104,25 @@ export function flashcardsTool(db: Database.Database): Tool {
           prompt: "chat.tutor",
         });
         if (result.ids.length === 0) return { ...result, resultId: null };
-        const rows = db
-          .prepare(`SELECT front FROM cards WHERE id IN (SELECT value FROM json_each(?)) ORDER BY rowid LIMIT 3`)
-          .all(JSON.stringify(result.ids)) as Array<{ front: string }>;
+        const fronts = (
+          db
+            .prepare(`SELECT front FROM cards WHERE id IN (SELECT value FROM json_each(?)) ORDER BY rowid LIMIT 3`)
+            .all(JSON.stringify(result.ids)) as Array<{ front: string }>
+        ).map((row) => row.front);
+        // A model that splits one request over several calls still gets one card in the reply.
+        const earlier = turn.kept[TOOL_NAME];
+        if (earlier) {
+          addFlashcards(db, turn.chatId, earlier, { cardIds: result.ids, duplicates: result.skipped, fronts });
+          return { ...result, resultId: earlier };
+        }
         const resultId = storeFlashcards(db, turn.chatId, {
           cardIds: result.ids,
           duplicates: result.skipped,
           title: args.title || null,
           deck: where.deck,
-          fronts: rows.map((row) => row.front),
+          fronts,
         });
+        turn.kept[TOOL_NAME] = resultId;
         return { ...result, resultId };
       })();
       if (!saved.resultId)

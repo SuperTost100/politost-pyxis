@@ -42,6 +42,8 @@ export type ToolTurn = {
   engine(): { provider: string; model: string };
   /** What this turn's calls have done so far, for the tool's own per-turn caps. Tools add to it. */
   readonly tally: Record<string, number>;
+  /** The result a tool stored in this turn, by tool, so a later call of the same tool adds to it. Tools set it. */
+  readonly kept: Record<string, string>;
   /** The tool started, before its arguments are read: the chat shows its working state. Returns the call's handle. */
   started(tool: string): unknown;
   /** The call ended: a result to show in the chat, or nothing when it failed (the model was told why). */

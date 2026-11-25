@@ -54,6 +54,7 @@ function turnFor(chatId: string): ToolTurn {
   return {
     chatId,
     tally: {},
+    kept: {},
     place: () => ({ planId: null, subject: "Fisica" }),
     engine: () => ({ provider: "claude", model: "test" }),
     started: (tool) => ({ tool }),
