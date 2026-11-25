@@ -42,8 +42,8 @@ export function docxOf(parts: Array<string | Uint8Array>): Uint8Array {
   });
 }
 
-/** A .pptx of `slides` in order, each with its text and its pictures. */
-export function pptxOf(slides: Array<{ text?: string; pictures?: Uint8Array[] }>): Uint8Array {
+/** A .pptx of `slides` in order, each with its text, its pictures and its speaker notes. */
+export function pptxOf(slides: Array<{ text?: string; pictures?: Uint8Array[]; notes?: string }>): Uint8Array {
   const files: Record<string, Uint8Array> = {};
   let picture = 0;
   slides.forEach((slide, index) => {
@@ -58,6 +58,12 @@ export function pptxOf(slides: Array<{ text?: string; pictures?: Uint8Array[] }>
     files[`ppt/slides/slide${n}.xml`] = strToU8(
       `<p:sld><p:cSld><p:spTree>${slide.text ? `<p:sp><p:txBody><a:p><a:r><a:t>${slide.text}</a:t></a:r></a:p></p:txBody></p:sp>` : ""}${shapes.join("")}</p:spTree></p:cSld></p:sld>`,
     );
+    if (slide.notes) {
+      rels.push(`<Relationship Id="rIdN" Type="${R}/notesSlide" Target="../notesSlides/notesSlide${n}.xml"/>`);
+      files[`ppt/notesSlides/notesSlide${n}.xml`] = strToU8(
+        `<p:notes><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>${slide.notes}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:notes>`,
+      );
+    }
     if (rels.length) files[`ppt/slides/_rels/slide${n}.xml.rels`] = strToU8(`<Relationships>${rels.join("")}</Relationships>`);
   });
   return zipSync({

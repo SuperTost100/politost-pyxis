@@ -474,17 +474,21 @@ function isFollowUp(text: string): boolean {
 }
 
 /**
- * Words that, in a message with files, point at the files or say what the student does with them, and name no topic:
- * "sto studiando questo", "riassumi questi appunti", "help me understand this". A Library passage that shares only
- * such words with the question is not about it.
+ * Words that, in a message with files, point at the files, say what the student does with them or make the request, and
+ * name no topic: "sto studiando questo", "puoi riassumere questi appunti?", "can you summarize this?". A Library passage
+ * that shares only such words with the question is not about it.
  */
 const POINTING = new Set([
+  // Italian
   "questo", "questa", "questi", "queste", "quello", "quella", "quelli", "quelle", "qui", "qua",
   "sto", "stai", "sta", "stiamo", "studiando", "studio", "studiare", "ripassando", "ripassare", "leggendo", "leggere",
-  "aiutami", "aiuto", "capire", "capisco", "spiegami", "riassumi", "riassunto", "dimmi", "parlami",
+  "aiutami", "aiutarmi", "aiuto", "capire", "capisco", "spiegami", "spiegarmi", "spiegare", "riassumi", "riassumere",
+  "riassunto", "dimmi", "parlami", "fammi", "mostrami", "puoi", "potresti", "può", "vorrei", "voglio", "favore", "grazie",
   "file", "allegato", "allegata", "allegati", "allegate", "documento", "foto", "immagine", "immagini", "appunti",
   "slide", "pagina", "pagine",
-  "this", "these", "that", "those", "here", "studying", "study", "reading", "read", "help", "understand",
+  // English
+  "this", "these", "that", "those", "here", "can", "could", "would", "will", "you", "your", "please", "thanks", "give",
+  "show", "want", "need", "help", "understand", "studying", "study", "reading", "read", "going", "through", "over",
   "summarise", "summarize", "summary", "attached", "document", "photo", "picture", "image", "notes", "slides", "page",
   "pages", "what's", "whats",
 ]);
@@ -532,20 +536,32 @@ async function gatherWithFiles(
   const sourceIds = scope.sourceIds.filter((id) => !own.includes(id));
   if (!scope.withLibrary && sourceIds.length === 0) return { hits: [], covered: false, usedVectors: false, relevant: [] };
   const topic = topicWords(text, POINTING).join(" ");
-  const searches = [];
   const options = { ...scope, sourceIds, limit: CHAT_PASSAGES, nearDistance: FILES_NEAR_DISTANCE };
-  if (filesText) searches.push(await retrieveWithModel(db, `${topic}\n${filesText}`, { ...options, embed }));
+  const files = filesText ? await retrieveWithModel(db, `${topic}\n${filesText}`, { ...options, embed }) : undefined;
   // The question's own vector, already computed, with only its topic words for the lexical side.
-  if (topic) searches.push(await retrieveWithModel(db, topic, { ...options, embed: question }));
-  const byId = new Map(searches.flatMap((found) => found.hits.map((hit) => [hit.id, hit] as const)));
-  const ids = fuseRanks(searches.map((found) => found.hits.filter((hit) => found.relevant.includes(hit.id)).map((hit) => hit.id)));
-  const hits = ids.slice(0, CHAT_PASSAGES).map((id) => byId.get(id)!);
+  const asked = topic ? await retrieveWithModel(db, topic, { ...options, embed: question }) : undefined;
+  const hits = mergeFileSearches(files, asked, CHAT_PASSAGES);
+  const searches = [files, asked].filter((found) => found !== undefined);
   return {
     hits,
     covered: searches.some((found) => found.covered),
     usedVectors: searches.some((found) => found.usedVectors),
     relevant: hits.map((hit) => hit.id),
   };
+}
+
+/** The relevant hits of the two Library searches of a message with files, merged by rank, at most `limit` of them. */
+export function mergeFileSearches(
+  files: { hits: PassageHit[]; relevant: string[] } | undefined,
+  asked: { hits: PassageHit[]; relevant: string[] } | undefined,
+  limit: number,
+): PassageHit[] {
+  const searches = [files, asked].filter((found) => found !== undefined);
+  const byId = new Map(searches.flatMap((found) => found.hits.map((hit) => [hit.id, hit] as const)));
+  const ids = fuseRanks(searches.map((found) => found.hits.filter((hit) => found.relevant.includes(hit.id)).map((hit) => hit.id)));
+  // The question's own best passage always has a place: an even rank with the files' best would leave it to the id.
+  const best = asked?.hits.find((hit) => asked.relevant.includes(hit.id))?.id;
+  return [...new Set([...(best ? [best] : []), ...ids])].slice(0, limit).map((id) => byId.get(id)!);
 }
 
 /**

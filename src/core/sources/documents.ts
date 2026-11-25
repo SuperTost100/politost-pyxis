@@ -192,7 +192,7 @@ export function scanPictures(bytes: Uint8Array, ext: string): ScanPicture[] {
     return picturesOf(entries, DOCX_BODY).map((path, index) => ({ section: `picture ${index + 1}`, locator: { picture: index + 1 }, read: read(path) }));
   if (ext === ".pptx")
     return slidesOf(entries)
-      .flatMap((slide) => (slide.text.length < emptyPage ? picturesOf(entries, slide.key).map((path) => ({ slide: slide.number, path })) : []))
+      .flatMap((slide) => (slide.shown.length < emptyPage ? picturesOf(entries, slide.key).map((path) => ({ slide: slide.number, path })) : []))
       .map(({ slide, path }, index) => ({ section: `slide ${slide}`, locator: { slide, picture: index + 1 }, read: read(path) }));
   return [];
 }
@@ -267,7 +267,7 @@ function slideNotes(entries: BoundedZip, slidePath: string): string {
 }
 
 /** The slides of a presentation in its order: the part each is stored in and its text, with its speaker notes. */
-function slidesOf(entries: BoundedZip): Array<{ number: number; key: string; text: string }> {
+function slidesOf(entries: BoundedZip): Array<{ number: number; key: string; text: string; shown: string }> {
   const presentation = textOf(entries, "ppt/presentation.xml");
   const rels = textOf(entries, "ppt/_rels/presentation.xml.rels");
   const targets = new Map<string, string>();
@@ -276,7 +276,7 @@ function slidesOf(entries: BoundedZip): Array<{ number: number; key: string; tex
     const target = /\bTarget="([^"]+)"/.exec(tag[0])?.[1];
     if (id && target) targets.set(id, target);
   }
-  const slides: Array<{ number: number; key: string; text: string }> = [];
+  const slides: Array<{ number: number; key: string; text: string; shown: string }> = [];
   let slide = 0;
   for (const match of presentation.matchAll(/<p:sldId\b[^<>]*r:id="([^"<>]+)"/g)) {
     const id = match[1];
@@ -292,7 +292,7 @@ function slidesOf(entries: BoundedZip): Array<{ number: number; key: string; tex
     const text = notes
       ? `${shown}${shown ? "\n\n" : ""}${SPEAKER_NOTES_LABEL} ${notes}`
       : shown;
-    slides.push({ number: slide, key, text });
+    slides.push({ number: slide, key, text, shown });
   }
   return slides;
 }
@@ -309,7 +309,8 @@ export function extractPptx(bytes: Uint8Array): ExtractedDocument {
     locator: { slide: slide.number },
     section: `slide ${slide.number}`,
   }));
-  const pictured = slides.filter((slide) => slide.text.length < emptyPage && picturesOf(entries, slide.key).length > 0).length;
+  // A slide's own text decides whether it is a picture to read: its speaker notes go with its passage, not on the slide.
+  const pictured = slides.filter((slide) => slide.shown.length < emptyPage && picturesOf(entries, slide.key).length > 0).length;
   return { pages, scanned: pictured * 2 > slides.length };
 }
 
@@ -488,6 +489,15 @@ function keptPages(extracted: ExtractedDocument): ExtractedPage[] {
 }
 
 /**
+ * Whether a new version has text worth publishing over the one in use. A scan needs a page of real text: a Word file or
+ * deck whose only text is a caption is still a scan, and publishing it would take its pictures' text out of search
+ * until OCR read them again, so it is refused as a wholly scanned PDF is.
+ */
+function hasText(extracted: ExtractedDocument, kept: ExtractedPage[]): boolean {
+  return kept.some((page) => !extracted.scanned || page.text.trim().length >= emptyPage);
+}
+
+/**
  * Publishes `pages` as the next extraction version of a source and marks every item that cites an older version
  * stale. Older passages stay for citations. `updateSource` writes the source row in the same transaction.
  */
@@ -540,7 +550,7 @@ export function addDocumentVersion(
     .get(sourceId);
   if (!existing) throw new Error("source-missing");
   const kept = keptPages(input.extracted);
-  if (kept.length === 0) throw new Error("replace-no-text");
+  if (!hasText(input.extracted, kept)) throw new Error("replace-no-text");
   const sha = storeOriginal(workspace, input, input.mime, input.ext);
   const status = input.extracted.scanned ? "needs-ocr" : "ready";
   const kind = kindFor(input.ext);
@@ -586,7 +596,7 @@ export function addExtractionVersion(
   if (!source) throw new Error("source-missing");
   if (!source.sha) throw new Error("reextract-unavailable");
   const kept = keptPages(extracted);
-  if (kept.length === 0) throw new Error("reextract-no-text");
+  if (!hasText(extracted, kept)) throw new Error("reextract-no-text");
   // A link import records its snapshot's kind as a document of that type, so a fetched-again one does the same.
   const kind = snapshot ? kindFor(snapshot.ext) : source.kind;
   appendVersion(db, sourceId, snapshot?.sha ?? source.sha, kind, kept, extracted.extractor, (now) => {
@@ -630,7 +640,7 @@ export function addLinkedVersion(
     .get(sourceId) as { title: string; kind: string } | undefined;
   if (!source) throw new Error("source-missing");
   const kept = keptPages(extracted);
-  if (kept.length === 0) throw new Error("reextract-no-text");
+  if (!hasText(extracted, kept)) throw new Error("reextract-no-text");
   appendVersion(db, sourceId, null, source.kind, kept, extracted.extractor, (now) => {
     db.prepare(`UPDATE sources SET status = 'ready', blob_sha = NULL, updated_at = ? WHERE id = ?`).run(now, sourceId);
   });

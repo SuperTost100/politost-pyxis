@@ -110,6 +110,8 @@ const locatorSchema = z.object({
   paragraph: z.string().optional(),
   page: z.number().optional(),
   slide: z.number().optional(),
+  /** A picture of a Word file or deck that OCR read: its number among the file's pictures. */
+  picture: z.number().optional(),
 });
 
 /** A quiz question as the quiz screen gets it: what to answer and the kind of answer, never the answer itself. */

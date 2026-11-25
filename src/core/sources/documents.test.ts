@@ -67,6 +67,10 @@ describe("document extract", () => {
       ["slide 3", three.length],
     ]);
     expect(extractPptx(pptxOf([{ text: "Alcani: idrocarburi saturi con formula generale CnH2n+2", pictures: [one] }])).scanned).toBe(false);
+    // Speaker notes are kept with the slide, but a screenshot with a note is still a slide to read by OCR.
+    const noted = pptxOf([{ pictures: [one], notes: "Spiegare alla classe la nomenclatura." }]);
+    expect(extractPptx(noted)).toMatchObject({ scanned: true, pages: [{ text: "Speaker notes: Spiegare alla classe la nomenclatura." }] });
+    expect(scanPictures(noted, ".pptx").map((picture) => picture.section)).toEqual(["slide 1"]);
   });
 
   it("reads slide text from a pptx zip", () => {

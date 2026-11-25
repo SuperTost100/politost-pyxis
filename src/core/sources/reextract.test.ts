@@ -88,6 +88,18 @@ describe("SRC-12 re-extract from the stored original", () => {
     db.close();
   });
 
+  it("keeps the earlier reading of a Word file read as a scan when the new one has only a short caption", async () => {
+    const { db, runner, workspace, sourceId } = setup(async () => ({
+      document: { pages: [{ text: "Chimica organica", locator: { heading: "Chimica organica" }, section: "Chimica organica" }], scanned: true },
+    }));
+    const { jobId } = enqueueReextract(db, workspace, runner, sourceId, true);
+    await expect.poll(done(db, jobId!), { timeout: 15_000 }).toEqual({ state: "failed" });
+    expect(db.prepare(`SELECT error FROM jobs WHERE id = ?`).get(jobId)).toEqual({ error: "reextract-no-text" });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM source_documents WHERE source_id = ?`).get(sourceId)).toEqual({ n: 1 });
+    expect(db.prepare(`SELECT status FROM sources WHERE id = ?`).get(sourceId)).toEqual({ status: "ready" });
+    db.close();
+  });
+
   it("keeps the earlier reading when the new one finds no text, and says why", async () => {
     const { db, runner, workspace, sourceId, passageId } = setup(async () => ({
       document: { pages: [{ text: "  ", locator: { page: 1 }, section: "p. 1" }], scanned: false },
