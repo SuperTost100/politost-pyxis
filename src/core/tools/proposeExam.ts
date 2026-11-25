@@ -112,7 +112,10 @@ export type ExamRequest = z.infer<typeof examInput>;
  * id and title, or why there is none (an exam of that name exists, the date is not a day to come).
  */
 function resolve(db: Database.Database, args: ExamRequest, ctx: Omit<ProposalContext, "resultId">): ExamProposal | { refused: string } {
-  if (sameExam(db, args.title))
+  // The name is checked as it would be saved, without the controls a card strips.
+  const title = plainName(args.title).replace(/\s+/g, " ").trim();
+  if (title.length < 2) return { refused: "The exam needs a name of at least two characters, so nothing was proposed." };
+  if (sameExam(db, title))
     return {
       refused: `The student already has an exam called "${args.title}" in Pyxis, so nothing was proposed. Tell them in one sentence; you can offer to change its path instead.`,
     };
@@ -123,10 +126,10 @@ function resolve(db: Database.Database, args: ExamRequest, ctx: Omit<ProposalCon
       return { refused: `${args.exam_date} is not a valid date, so nothing was proposed. Give it as YYYY-MM-DD.` };
     if (date < startOfDay(ctx.now)) return { refused: `${args.exam_date} is already past, so nothing was proposed. Ask the student for the date.` };
   }
-  const subject = args.subject ?? args.title;
+  const subject = args.subject ? plainName(args.subject).replace(/\s+/g, " ").trim() || title : title;
   return {
-    title: plainName(args.title),
-    subject: plainName(subject),
+    title,
+    subject,
     date,
     language: language(db),
     sources: subjectSources(db, subject).map(({ id, title }) => ({ id, title: plainName(title) })),

@@ -195,6 +195,9 @@ function planTopics(
     const match = existing(move.title);
     if (!match || !work.some((topic) => topic.id === match.id)) return unknown(move.title);
   }
+  const asked = (args.add_topics ?? []).map((add) => folded(add.title));
+  const repeated = (args.add_topics ?? []).find((add, i) => asked.indexOf(folded(add.title)) !== i);
+  if (repeated) return { refused: `The call adds "${repeated.title}" twice, so nothing was proposed. Add each topic once.` };
   for (const add of args.add_topics ?? [])
     if (work.some((topic) => folded(topic.title) === folded(add.title)) || before.some((topic) => folded(topic.title) === folded(add.title)))
       return { refused: `The path already has a topic called "${add.title}", so nothing was proposed. To move it, use move_topics.` };
@@ -231,6 +234,18 @@ function planTopics(
   }
   if (work.length === 0) return { refused: "That would leave the path with no topics, so nothing was proposed. Tell the student a path needs at least one topic." };
   if (work.length > PATH_TOPICS_MAX) return { refused: `A path holds at most ${PATH_TOPICS_MAX} topics, so nothing was proposed.` };
+  // Each placement must still hold in the final order: a later move can carry its anchor past it.
+  const at = (title: string) => {
+    const byTitle = work.findIndex((topic) => folded(topic.title) === folded(title));
+    if (byTitle >= 0) return byTitle;
+    const match = existing(title);
+    return match ? work.findIndex((topic) => topic.id === match.id) : -1;
+  };
+  for (const step of [...(args.move_topics ?? []), ...(args.add_topics ?? [])])
+    if (step.after && !step.first && at(step.after) >= at(step.title))
+      return {
+        refused: `The placements contradict each other: in the order they give, "${step.title}" no longer comes after "${step.after}". Nothing was proposed. Give the order again so that every placement holds.`,
+      };
   // A move that lands where the topic already was changes nothing, and is not shown as one.
   for (const [index, topic] of work.entries()) if (topic.movedFrom !== null && before[index]?.id === topic.id) topic.movedFrom = null;
   const same = work.length === before.length && work.every((topic, i) => topic.id === before[i]!.id);

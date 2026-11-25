@@ -143,6 +143,16 @@ export function chatPlace(db: Database.Database, chatId: string): ReturnType<Too
   };
 }
 
+/** Whether a later proposal of the same kind was saved with a reply of the chat. */
+function newerSaved(db: Database.Database, row: Row): boolean {
+  return !!db
+    .prepare(
+      `SELECT 1 FROM chat_tool_results r JOIN messages m ON m.id = r.message_id AND m.chat_id = r.chat_id
+       WHERE r.chat_id = ? AND r.tool = ? AND r.id != ? AND (r.created_at > ? OR (r.created_at = ? AND r.id > ?)) LIMIT 1`,
+    )
+    .get(row.chat_id, row.tool, row.id, row.created_at, row.created_at, row.id);
+}
+
 /** Whether the reply that made the proposal is saved, so the student can decide on it. */
 const replySaved = (db: Database.Database, row: Row) =>
   !!row.message_id && !!db.prepare("SELECT 1 FROM messages WHERE id = ? AND chat_id = ?").get(row.message_id, row.chat_id);
@@ -225,7 +235,8 @@ export function decideProposal(
     } else if (action === "decline" && (state === "pending" || state === "stale")) {
       decision = { state: "declined", at: now };
     } else if (action === "reopen" && state === "declined") {
-      decision = null;
+      // A later proposal of its kind saved since replaced it for good: reopened, it reads as lapsed, never pending.
+      decision = newerSaved(db, row) ? { state: "expired", at: now } : null;
     } else if (action === "undo" && state === "applied" && kind.undo && data.decision?.state === "applied") {
       const applied = data.decision;
       const result = guarded(db, () => kind.undo!(db, data.proposal, applied.outcome, ctx));
@@ -255,7 +266,9 @@ export function expireOlderProposals(db: Database.Database, chatId: string, ids:
       (other) => other.tool === row.tool && (other.created_at > row.created_at || (other.created_at === row.created_at && other.id > row.id)),
     );
     const data = JSON.parse(row.data_json) as ProposalData;
-    if (!newer || (data.decision && data.decision.state !== "withdrawn")) continue;
+    // Only a proposal still waiting lapses. One withdrawn by a regenerate stays withdrawn, so a stopped or failed new
+    // answer still brings it back (`unwithdrawProposal`); a regenerate that keeps its new answer drops it with the old one.
+    if (!newer || data.decision) continue;
     db.prepare(`UPDATE chat_tool_results SET data_json = ? WHERE id = ?`).run(
       JSON.stringify({ ...data, decision: { state: "expired", at: now } } satisfies ProposalData),
       row.id,

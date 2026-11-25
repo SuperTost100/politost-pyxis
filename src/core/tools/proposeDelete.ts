@@ -6,6 +6,7 @@ import { GIVEN_UP } from "../jobs/runner";
 import { deleteMap, listMaps, readStoredMap, storeMap, type StoredMap } from "../maps/store";
 import { unfinishedActivities } from "../plans/unfinished";
 import { jobRow } from "./jobs";
+import { TOPIC_TITLE_MAX } from "../plans/topicsEdit";
 import { chatExam } from "./proposePath";
 import { digest, plainName, propose, ProposalStale, registerProposalKind, type ProposalContext, type ProposalKind } from "./proposals";
 import { handedIn, matchTitle, quizTopic, restorableQuiz, restoreQuiz, undoQuiz, type QuizData, type QuizUndone } from "./quiz";
@@ -36,8 +37,10 @@ export const deleteInput = z
     kind: z.enum(["flashcards", "map", "quiz"]).describe("What to delete."),
     topic: z
       .string()
-      .max(240)
-      .transform((text) => text.replace(/\s+/g, " ").trim().slice(0, 120))
+      .max(320)
+      .transform((text) => text.replace(/\s+/g, " ").trim())
+      // Matched whole: a name cut short could match a shorter topic it begins with.
+      .pipe(z.string().max(TOPIC_TITLE_MAX))
       .optional()
       .describe("For flashcards and a quiz, the exam topic they are on; for a map, its title."),
     made_in_chat: z
@@ -207,6 +210,14 @@ function resolve(db: Database.Database, args: DeleteRequest, ctx: Omit<ProposalC
     if (!args.topic) return { refused: "Name the topic whose flashcards to delete (`topic`), or set `made_in_chat`. Nothing was proposed." };
     const exam = chatExam(db, where);
     if ("refused" in exam) return exam;
+    // Two topics of one exam can share a title (an "Introduzione" from each source): the words then name neither.
+    const twins = (
+      db.prepare("SELECT title FROM topics WHERE plan_id = ? AND archived_at IS NULL").pluck().all(exam.id) as string[]
+    ).filter((title) => matchTitle([{ title }], args.topic!)?.exact);
+    if (twins.length > 1)
+      return {
+        refused: `${twins.length} topics of ${exam.title} are called "${twins[0]}", so nothing was proposed: the name does not say which one. Tell the student to delete those flashcards in Flashcard, where they can see each topic's.`,
+      };
     const topic = quizTopic(db, exam.id, args.topic);
     if (!topic) {
       const titles = db.prepare("SELECT title FROM topics WHERE plan_id = ? AND archived_at IS NULL ORDER BY position").pluck().all(exam.id) as string[];

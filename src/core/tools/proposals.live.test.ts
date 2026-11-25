@@ -96,12 +96,14 @@ describe.skipIf(!live)("proposal tools, live", () => {
     setScratch(tempDir("pyxis-live-scratch-"));
     const [provider, model, effort] = (process.env["PYXIS_LIVE_ENGINE"] ?? "claude/claude-sonnet-5-5/medium").split("/") as [string, string, string?];
     const wanted = process.env["PYXIS_LIVE_SCENARIOS"]?.split(",");
-    const { db, planId } = setup(provider, model, effort);
+    // Each scenario starts on its own fresh workspace, so which scenarios run does not change what each one exercises.
+    let { db, planId } = setup(provider, model, effort);
     const state = () => ({
       sessions: db.prepare("SELECT date FROM plan_sessions ORDER BY date").pluck().all(),
       hours: db.prepare("SELECT value_json FROM settings WHERE key = 'planner'").pluck().get(),
       topics: db.prepare("SELECT title, archived_at IS NOT NULL AS archived FROM topics ORDER BY plan_id, position").all(),
-      removedCards: db.prepare("SELECT count(*) FROM cards WHERE removed = 1").pluck().get(),
+      // Every card with its state, so a card a turn created or removed before any confirm shows.
+      cards: db.prepare("SELECT id, removed FROM cards ORDER BY id").all(),
       plans: db.prepare("SELECT title FROM plans ORDER BY created_at").pluck().all(),
       grades: db.prepare("SELECT payload_json FROM attempt_answers").pluck().all(),
       reviews: db.prepare("SELECT count(*) FROM card_reviews").pluck().get(),
@@ -125,16 +127,16 @@ describe.skipIf(!live)("proposal tools, live", () => {
       return { chatId: result.chatId, turn, ids };
     };
 
-    const scenarios: Record<string, () => Promise<{ turns: Turn[]; unchanged: boolean }>> = {
+    const scenarios: Record<string, () => Promise<{ turns: Turn[]; unchanged: boolean; applied?: boolean }>> = {
       date: async () => {
         const before = state();
         const first = await ask(undefined, "Il prof ha spostato l'esame: sposta l'esame al 15 gennaio.");
         const unchanged = JSON.stringify(state()) === JSON.stringify(before);
         // The student applies it, and the next turn hears so.
         const id = first.ids.find((entry) => toolView(db, first.chatId, entry)?.tool === "propose_path_change");
-        if (id) decideProposal(db, first.chatId, id, "apply", (toolView(db, first.chatId, id) as ProposalView).seen);
+        const applied = id ? decideProposal(db, first.chatId, id, "apply", (toolView(db, first.chatId, id) as ProposalView).seen).state === "applied" : false;
         const second = await ask(first.chatId, "Fatto. Allora quando ho l'esame adesso?");
-        return { turns: [first.turn, second.turn], unchanged };
+        return { turns: [first.turn, second.turn], unchanged, applied };
       },
       combo: async () => {
         const before = state();
@@ -170,21 +172,53 @@ describe.skipIf(!live)("proposal tools, live", () => {
         return { turns: [first.turn], unchanged: JSON.stringify(state()) === JSON.stringify(before) };
       },
     };
-    const report: Array<{ scenario: string; unchanged: boolean; turns: Turn[] }> = [];
-    for (const [name, scenario] of Object.entries(scenarios)) {
-      if (wanted && !wanted.includes(name)) continue;
-      try {
-        report.push({ scenario: name, ...(await scenario()) });
-      } catch (err) {
-        report.push({ scenario: name, unchanged: false, turns: [{ question: "(failed)", body: err instanceof Error ? `${err.name}: ${err.message}` : String(err), ms: 0, provider: null, model: null, proposals: [] }] });
+    const report: Array<{ scenario: string; unchanged: boolean; applied?: boolean; turns: Turn[] }> = [];
+    try {
+      let first = true;
+      for (const [name, scenario] of Object.entries(scenarios)) {
+        if (wanted && !wanted.includes(name)) continue;
+        if (!first) {
+          db.close();
+          ({ db, planId } = setup(provider, model, effort));
+        }
+        first = false;
+        try {
+          report.push({ scenario: name, ...(await scenario()) });
+        } catch (err) {
+          report.push({ scenario: name, unchanged: false, turns: [{ question: "(failed)", body: err instanceof Error ? `${err.name}: ${err.message}` : String(err), ms: 0, provider: null, model: null, proposals: [] }] });
+        }
+        writeFileSync(join(out, `${provider}-${model}${process.env["PYXIS_LIVE_TAG"] ?? ""}.json`), JSON.stringify(report, null, 2));
       }
-      writeFileSync(join(out, `${provider}-${model}${process.env["PYXIS_LIVE_TAG"] ?? ""}.json`), JSON.stringify(report, null, 2));
+    } finally {
+      endConversations();
+      await stopToolServer();
+      setTools([]);
+      setToolRunner(undefined);
+      db.close();
     }
-    endConversations();
-    await stopToolServer();
     expect(report.length).toBeGreaterThan(0);
-    // The report above is for reading; the run fails when a scenario failed, or when a turn changed the workspace before
-    // anything was confirmed.
-    expect(report.filter((entry) => !entry.unchanged || entry.turns.some((turn) => turn.question === "(failed)")).map((entry) => entry.scenario)).toEqual([]);
+    // The report above is for reading. The run fails when a scenario failed, when a turn changed the workspace before
+    // anything was confirmed, when a scenario's first answer did not make the proposal it should (or made one it should
+    // not), and when the date the student confirmed was not applied.
+    const expected: Record<string, string | null> = {
+      date: "propose_path_change",
+      combo: "propose_path_change",
+      remove: "propose_path_change",
+      exam: "propose_exam",
+      delete: "propose_delete",
+      grade: null,
+      question: null,
+    };
+    expect(
+      report.flatMap((entry) => {
+        const made = entry.turns[0]?.proposals.map((proposal) => proposal.tool) ?? [];
+        const want = expected[entry.scenario];
+        return [
+          ...(!entry.unchanged || entry.turns.some((turn) => turn.question === "(failed)") ? [`${entry.scenario}: failed or changed`] : []),
+          ...((want ? made.join() !== want : made.length > 0) ? [`${entry.scenario}: made ${made.join() || "nothing"}`] : []),
+          ...(entry.scenario === "date" && !entry.applied ? ["date: not applied"] : []),
+        ];
+      }),
+    ).toEqual([]);
   });
 });

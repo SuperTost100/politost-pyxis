@@ -70,6 +70,11 @@ export function ToolResult({
       return data && "job" in data && data.job === "working" && !data.undone ? 3000 : false;
     },
   });
+  // A proposal's card read again with the chat (it lapsed, or the student decided elsewhere) replaces what the query
+  // held, so the card never keeps buttons the chat no longer offers. The build of a created exam keeps polling.
+  useEffect(() => {
+    if (view?.tool === "propose_exam" && followsJob) client.setQueryData(key, view);
+  }, [view]);
   const shown = followsJob && live.data ? live.data : state;
   const first = useRef(pending ? "pending" : stateKey(view));
   if (pending) return <Working tool={line.slice("pending:".length)} />;

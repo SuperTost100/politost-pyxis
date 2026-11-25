@@ -204,11 +204,13 @@ test("a proposal whose path changed is not applied, a pending one lapses on a re
     await openChat(page, "path-chat");
     await expect(card().getByRole("button", { name: "Applica" })).toBeEnabled({ timeout: 30000 });
 
-    // «Rigenera» takes the pending proposal with its reply; the new answer proposes again.
+    // «Rigenera» takes the pending proposal with its reply; the new answer proposes again, as a new result.
+    const results = () => query<{ id: string }>(userData, "SELECT id FROM chat_tool_results").map((row) => row.id);
+    const [original] = results();
     await page.getByRole("button", { name: "Rigenera" }).last().click();
     await expect(page.getByRole("button", { name: "Interrompi", exact: true })).toHaveCount(0, { timeout: 30000 });
     await expect(page.getByRole("region", { name: /^Da confermare/ })).toHaveCount(1);
-    expect(query<{ n: number }>(userData, "SELECT count(*) AS n FROM chat_tool_results")[0]!.n).toBe(1);
+    await expect.poll(results).toEqual([expect.not.stringMatching(original!)]);
 
     // The exam is renamed in its settings before Applica: nothing is applied, and the line says why.
     await page.evaluate(() =>
@@ -285,6 +287,10 @@ test("a new exam is a draft until «Crea l'esame», which starts its build; «Mo
     expect(query(userData, `SELECT source_id FROM plan_sources WHERE plan_id = '${plan[0]!.id}'`)).toEqual([{ source_id: "disp" }]);
     await shots(page, "exam-building");
     writeFileSync(hold, "");
+    // The build ends with the exam ready, not only with the working line gone.
+    await expect
+      .poll(() => query<{ status: string }>(userData, `SELECT status FROM plans WHERE id = '${plan[0]!.id}'`)[0]!.status, { timeout: 60000 })
+      .toBe("ready");
     await expect(reply.getByText("Preparo il percorso…")).toHaveCount(0, { timeout: 60000 });
     await shots(page, "exam-created");
     await reply.getByRole("button", { name: "Apri l'esame" }).click();

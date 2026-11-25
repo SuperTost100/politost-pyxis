@@ -13,6 +13,7 @@ import { decidedSince, decideProposal } from "./proposals";
 import { CARDS_PER_DELETION, deleteInput, proposeDeleteTool } from "./proposeDelete";
 import { examInput, proposeExamTool } from "./proposeExam";
 import { pathInput, proposePathTool } from "./proposePath";
+import { quizInput, quizTool } from "./quiz";
 import { chatToolList } from "./registry";
 import { dropStrayToolResults, linkToolResults, restoreToolResults, takeBackToolResults, toolNote, toolView, undoToolResult } from "./results";
 import type { ToolTurn } from "./server";
@@ -383,7 +384,11 @@ describe("propose_delete", () => {
     expect(db.prepare("SELECT count(*) FROM items WHERE id = 'open'").pluck().get()).toBe(0);
     expect(record(db)).toEqual(before);
     decideProposal(db, "chat", quiz, "undo", undefined);
-    expect(db.prepare("SELECT count(*) FROM attempt_answers WHERE id = 'open-aa'").pluck().get()).toBe(1);
+    // The draft answer comes back as it was given, under its attempt.
+    expect(db.prepare("SELECT attempt_id, payload_json FROM attempt_answers WHERE id = 'open-aa'").get()).toEqual({
+      attempt_id: "open-a",
+      payload_json: '{"draft":{"picks":{"q1":"A"}}}',
+    });
     expect(record(db)).toEqual(before);
   });
 
@@ -446,12 +451,16 @@ describe("a proposal whose data moved on is never applied, and its card can alwa
     jobs(db);
     const tomorrow = fromToday(1);
     const path = (await proposePathTool(db).run(turn({ planId, subject: null }), pathInput.parse({ exam_date: tomorrow.key }))).shown!.resultId;
-    const exam = (await proposeExamTool(db).run(turn({ planId: null, subject: null }), examInput.parse({ title: "Chimica generale", exam_date: tomorrow.key }))).shown!.resultId;
+    // The exam is proposed in another chat, so this one keeps the exam the path proposal resolves in.
+    const exam = (await proposeExamTool(db).run(turn({ planId: null, subject: null }, "other"), examInput.parse({ title: "Chimica generale", exam_date: tomorrow.key }))).shown!.resultId;
     save(db, "chat", path);
-    save(db, "chat", exam);
+    save(db, "other", exam);
+    // Both are pending at the time they were made: only the clock makes them stale below.
+    expect(toolView(db, "chat", path)).toMatchObject({ state: "pending" });
+    expect(toolView(db, "other", exam)).toMatchObject({ state: "pending" });
     const later = Date.now() + 3 * DAY;
     expect(decideProposal(db, "chat", path, "apply", (toolView(db, "chat", path) as PathProposalView).seen, later).state).toBe("stale");
-    expect(decideProposal(db, "chat", exam, "apply", (toolView(db, "chat", exam) as ExamProposalView).seen, later).state).toBe("stale");
+    expect(decideProposal(db, "other", exam, "apply", (toolView(db, "other", exam) as ExamProposalView).seen, later).state).toBe("stale");
     expect(readSessions(db, planId).map((session) => session.date)).toEqual([day(NEXT_YEAR, 1, 22)]);
     expect(db.prepare("SELECT count(*) FROM plans WHERE title = 'Chimica generale'").pluck().get()).toBe(0);
   });
@@ -619,6 +628,91 @@ describe("what the security read asked for", () => {
     db.prepare("UPDATE topics SET title = ? WHERE id = ?").run("Ciner‮amatica", topic("Cinematica"));
     const id = (await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "flashcards", topic: "Ciner‮amatica" }))).shown!.resultId;
     expect((toolView(db, "chat", id) as DeleteProposalView).name).toBe("Cineramatica");
+  });
+});
+
+describe("the second review", () => {
+  it("never makes a declined proposal pending again once a later one of its kind was saved", async () => {
+    const { db, planId } = fixture();
+    const tool = proposePathTool(db);
+    const a = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 9 }))).shown!.resultId;
+    save(db, "chat", a);
+    decideProposal(db, "chat", a, "decline", undefined);
+    const b = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 10 }))).shown!.resultId;
+    save(db, "chat", b);
+    expect(decideProposal(db, "chat", a, "reopen", undefined).state).toBe("expired");
+    expect(decideProposal(db, "chat", a, "apply", (toolView(db, "chat", a) as PathProposalView).seen).state).toBe("expired");
+    expect(readPlannerSettings(db).weeklyHours).toBe(6);
+  });
+
+  it("matches a topic by its whole name, refuses a name over the limit, and refuses a title two topics share", async () => {
+    const { db, planId } = fixture();
+    jobs(db);
+    const long = "Cinematica ".repeat(11).trim();
+    db.prepare("INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('short', ?, ?, 20, 1), ('longer', ?, ?, 21, 1)").run(
+      planId,
+      long.slice(0, 120).trim(),
+      planId,
+      `${long} e dinamica`,
+    );
+    db.prepare("INSERT INTO cards (id, plan_id, topic_id, front, back, seed_key, created_at) VALUES ('l1', ?, 'longer', 'f', 'b', 'l1', 1), ('s1', ?, 'short', 'f', 'b', 's1', 1)").run(planId, planId);
+    const tool = proposeDeleteTool(db);
+    const out = await tool.run(turn({ planId, subject: null }), deleteInput.parse({ kind: "flashcards", topic: `${long} e dinamica` }));
+    expect((toolView(db, "chat", out.shown!.resultId) as DeleteProposalView).name).toBe(`${long} e dinamica`);
+    expect(deleteInput.safeParse({ kind: "flashcards", topic: "x".repeat(161) }).success).toBe(false);
+    db.prepare("INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('intro1', ?, 'Introduzione', 30, 1), ('intro2', ?, 'Introduzione', 31, 1)").run(planId, planId);
+    db.prepare("INSERT INTO cards (id, plan_id, topic_id, front, back, seed_key, created_at) VALUES ('i1', ?, 'intro1', 'f', 'b', 'i1', 1)").run(planId);
+    const twin = await tool.run(turn({ planId, subject: null }), deleteInput.parse({ kind: "flashcards", topic: "Introduzione" }));
+    expect(twin.isError).toBe(true);
+    expect(twin.text).toMatch(/2 topics of Fisica 1 are called "Introduzione"/);
+  });
+
+  it("checks for an existing exam with the name it would save", async () => {
+    const { db } = fixture();
+    jobs(db);
+    const out = await proposeExamTool(db).run(turn({ planId: null, subject: null }), examInput.parse({ title: "Fisica‎ 1" }));
+    expect(out.isError).toBe(true);
+    expect(out.text).toMatch(/already has an exam/);
+  });
+
+  it("refuses the same topic added twice, and a placement the final order contradicts", async () => {
+    const { db, planId } = fixture();
+    const tool = proposePathTool(db);
+    const twice = await tool.run(turn({ planId, subject: null }), pathInput.parse({ add_topics: [{ title: "Urti" }, { title: "urti" }] }));
+    expect(twice.text).toMatch(/"urti" twice/);
+    const crossed = await tool.run(
+      turn({ planId, subject: null }),
+      pathInput.parse({ move_topics: [{ title: "Cinematica", after: "Dinamica" }, { title: "Dinamica", after: "Lavoro ed energia" }] }),
+    );
+    expect(crossed.isError).toBe(true);
+    expect(crossed.text).toMatch(/"Cinematica" no longer comes after "Dinamica"/);
+    // A move after a topic that stays where it is still works.
+    const fine = await tool.run(turn({ planId, subject: null }), pathInput.parse({ move_topics: [{ title: "Cinematica", after: "Dinamica" }] }));
+    expect(fine.isError).toBeUndefined();
+  });
+
+  it("gives a quiz no exam that is still being built", async () => {
+    const { db, planId } = fixture();
+    jobs(db);
+    db.prepare("UPDATE plans SET status = 'building' WHERE id = ?").run(planId);
+    const out = await quizTool(db).run(turn({ planId, subject: null }), quizInput.parse({ topic: "Dinamica" }));
+    expect(out.isError).toBe(true);
+    expect(out.text).toMatch(/still being built/);
+  });
+
+  it("brings back the proposal a stopped regenerate withdrew, even when the stopped reply saved one of its kind", async () => {
+    const { db, planId } = fixture();
+    const tool = proposePathTool(db);
+    const a = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 9 }))).shown!.resultId;
+    save(db, "chat", a);
+    expect(takeBackToolResults(db, "chat", [a])).toEqual([a]);
+    // The new answer is stopped after saving a proposal of the same kind; its reply is then discarded.
+    const b = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 10 }))).shown!.resultId;
+    save(db, "chat", b);
+    db.prepare("DELETE FROM messages WHERE body LIKE ?").run(`%${b}%`);
+    restoreToolResults(db, "chat", [a]);
+    dropStrayToolResults(db, "chat");
+    expect(toolView(db, "chat", a)).toMatchObject({ state: "pending" });
   });
 });
 

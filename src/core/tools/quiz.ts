@@ -80,7 +80,7 @@ type Exam = { planId: string; title: string };
  * counts on the exam's path), so a chat on a subject uses the subject's exam when it has exactly one.
  */
 function quizExam(db: Database.Database, place: ReturnType<ToolTurn["place"]>): Exam | { refused: string } {
-  const live = `archived_at IS NULL AND EXISTS (SELECT 1 FROM topics t WHERE t.plan_id = plans.id AND t.archived_at IS NULL)`;
+  const live = `archived_at IS NULL AND status != 'building' AND EXISTS (SELECT 1 FROM topics t WHERE t.plan_id = plans.id AND t.archived_at IS NULL)`;
   // A chat of an exam makes its quiz there or nowhere: never in another exam of its subject.
   if (place.planId) {
     const plan = db.prepare(`SELECT id AS planId, title, ${live} AS live FROM plans WHERE id = ?`).get(place.planId) as
