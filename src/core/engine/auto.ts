@@ -18,6 +18,7 @@ export const autoFeatures = [
   "map",
   "vision",
   "cards",
+  "solve",
 ] as const;
 export type AutoFeature = (typeof autoFeatures)[number];
 
@@ -247,14 +248,18 @@ export function planAuto(
   return choices(assigned, features);
 }
 
-/** The model and effort of each feature on the provider it was given. */
+/**
+ * The model and effort of each feature on the provider it was given. A hard exercise the chat hands on (`solve`) goes to
+ * the strong model of the chat's own tool, never to another tool's: what the chat sends there is what the chat already
+ * sends to that tool. Its weight in `model-tiers.json` is 0, so it moves no other task while the load is shared out.
+ */
 function choices(
   assigned: ReadonlyMap<string, AutoProvider>,
   features: readonly string[],
 ): AutoPlan {
   const plan: AutoPlan = {};
   for (const feature of features) {
-    const provider = assigned.get(feature);
+    const provider = feature === "solve" ? (assigned.get("chat") ?? assigned.get(feature)) : assigned.get(feature);
     if (!provider) continue;
     const choice = choiceFor(provider, feature);
     if (choice) plan[feature as AutoFeature] = choice;

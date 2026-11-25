@@ -261,6 +261,14 @@ export const SOURCES_LESSON = SOURCES_ANSWER(MEAN)
 /** The question the tool-at-work state sends. */
 export const TOOL_QUESTION = "Fammi 8 flashcard sui tre principi della dinamica.";
 
+/** A hard exercise the chat hands to the stronger model, as the states and specs of that tool send it. */
+export const SOLVER_QUESTION =
+  "Un blocco scende lungo un piano inclinato di 30° con attrito dinamico 0,2: trova l'accelerazione e la velocità dopo 3 m partendo da fermo.";
+export const SOLVER_ARGS = {
+  exercise: SOLVER_QUESTION,
+  request: "Lo studente chiede la soluzione completa.",
+};
+
 export const TOOL_CARDS = [
   { front: "Che cosa afferma il primo principio della dinamica?", back: "Un corpo con forza risultante nulla resta in quiete o in moto rettilineo uniforme." },
   { front: "Che cos'è un sistema di riferimento inerziale?", back: "Un sistema in cui vale il primo principio." },

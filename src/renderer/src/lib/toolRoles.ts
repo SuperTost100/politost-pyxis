@@ -5,7 +5,7 @@ export const roles: readonly Role[] = ["fast", "mid", "strong"];
 export type RoleModels = Record<Role, string | null>;
 
 /** The tasks the explanatory line under the list names, in the order it says them. */
-export const sentenceTasks: readonly string[] = ["chat", "cards", "map", "lesson", "grading", "plan"];
+export const sentenceTasks: readonly string[] = ["chat", "cards", "map", "lesson", "grading", "plan", "solve"];
 
 /**
  * A model's name inside its own tool's row. "Claude Haiku 5.5" reads "Haiku 5.5" under Claude, which the row already

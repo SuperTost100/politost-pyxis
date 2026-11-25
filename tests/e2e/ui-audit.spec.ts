@@ -52,6 +52,8 @@ import {
   seedStoppedChat,
   seedTallSourcesChat,
   seedToolChat,
+  SOLVER_ARGS,
+  SOLVER_QUESTION,
   TOOL_CARDS,
   TOOL_QUESTION,
   writeBlob,
@@ -462,6 +464,8 @@ const routes = [
   ["ask-stopped", "/ask/look-stopped"],
   // What the chat's flashcard tool did, in the reply: at work, the card of what it made, and the line after «Annulla».
   ["ask-tool-working", "/ask/look-tool-working"],
+  // The stronger model at work on a hard exercise: one quiet line with the time it has taken.
+  ["ask-solver-working", "/ask/look-tool-working"],
   ["ask-tool-done", "/ask/look-tool-done"],
   ["ask-tool-undone", "/ask/look-tool-undone"],
   // The map and the quiz the chat's tools made: at work after the reply ended, the card, and the line after «Annulla».
@@ -2445,6 +2449,7 @@ async function stopHeldTurn(page: Page) {
     await expect(stop).toHaveCount(0);
   } catch (error) {
     writeFileSync(toolGoFile(auditUserData), "");
+    writeFileSync(solverGoFile(auditUserData), "");
     await expect(stop).toHaveCount(0, { timeout: 30_000 }).catch(() => undefined);
     throw error;
   }
@@ -2454,10 +2459,27 @@ async function stopHeldTurn(page: Page) {
 const toolTurnFile = (userData: string) => join(userData, "tool-turn");
 /** The held call goes on once this file exists, which only a Stop that failed creates (`stopHeldTurn`). */
 const toolGoFile = (userData: string) => join(userData, "tool-go");
+/**
+ * While this file exists, the reply hands an exercise to the stronger model, whose answer is held until `solver-go`
+ * exists. The audit's chat runs on the recorded engine, which Pyxis has no plan for, so the state stores the strong model
+ * of the chat's tool for hard exercises while it runs, and only then: the Settings states show what the plan gives.
+ */
+const SOLVER_ROW = JSON.stringify({ provider: "claude", model: "claude-opus-5-5", auto: true });
+const solverTurnFile = (userData: string) => join(userData, "solver-turn");
+const solverGoFile = (userData: string) => join(userData, "solver-go");
 function prepareToolTurn(name: string) {
   if (name === "ask-tool-working") writeFileSync(toolTurnFile(auditUserData), "");
   else rmSync(toolTurnFile(auditUserData), { force: true });
   rmSync(toolGoFile(auditUserData), { force: true });
+  const solver = name === "ask-solver-working";
+  if (solver) writeFileSync(solverTurnFile(auditUserData), "");
+  else rmSync(solverTurnFile(auditUserData), { force: true });
+  rmSync(solverGoFile(auditUserData), { force: true });
+  withDb((db) => {
+    if (solver)
+      db.prepare("INSERT OR REPLACE INTO feature_engines (feature, selection_json, updated_at) VALUES ('solve', ?, 1)").run(SOLVER_ROW);
+    else db.prepare("DELETE FROM feature_engines WHERE feature = 'solve' AND selection_json = ?").run(SOLVER_ROW);
+  });
 }
 
 /** Pyxis stays at work on the new-flashcard dialog until this file exists; every other state finds it there. */
@@ -3372,7 +3394,7 @@ async function openState(page: Page, name: string) {
     }
     case "settings-engines-advanced":
       await openAdvancedEngines(page);
-      await expect(page.locator(".engines-feature-row")).toHaveCount(8);
+      await expect(page.locator(".engines-feature-row")).toHaveCount(9);
       await expect(page.locator(".engines-feature-row").first()).toBeVisible();
       break;
     case "settings-engines-debug":
@@ -3742,6 +3764,20 @@ async function openState(page: Page, name: string) {
       await box.press("Enter");
       await expect(page.getByText(both("Creo le flashcard…", "Creating the flashcards…"))).toBeVisible();
       await expect(page.locator(".px-toolres-ghost")).toBeVisible();
+      break;
+    }
+    case "ask-solver-working": {
+      await expect(page.getByText("La dinamica studia il moto dei corpi a partire dalle forze che lo causano.")).toBeVisible();
+      // Written again just before the question: Pyxis drops an automatic row whenever it plans with no tool ready, as it
+      // may have done since the state was prepared.
+      withDb((db) =>
+        db.prepare("INSERT OR REPLACE INTO feature_engines (feature, selection_json, updated_at) VALUES ('solve', ?, 1)").run(SOLVER_ROW),
+      );
+      const box = page.getByRole("textbox", { name: both("Messaggio", "Message") });
+      await box.fill(SOLVER_QUESTION);
+      await box.press("Enter");
+      await expect(page.getByText(both("Chiedo al modello più forte…", "Asking the stronger model…"))).toBeVisible();
+      await expect(page.locator(".px-toolres.is-working .px-toolres-activity")).toHaveText(/^\d+:\d\d$/);
       break;
     }
     case "ask-tool-done":
@@ -6013,7 +6049,11 @@ test.beforeAll(async () => {
         title: "sui tre principi della dinamica",
         cards: TOOL_CARDS,
       })}`,
+      `@@tool ask_stronger_model ${JSON.stringify({ _when: solverTurnFile(userData), ...SOLVER_ARGS })}`,
       "La forza è $F=ma$ [P1].",
+      "@@solver",
+      `@@hold ${solverGoFile(userData)}`,
+      "1. Il blocco scende lungo il piano con $a = g(\\sin\\theta - \\mu\\cos\\theta)$.",
     ].join("\n"),
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
       // A subject's flashcards from the new-flashcard dialog: held while that state shows Pyxis at work.
@@ -6164,6 +6204,8 @@ function lookChats(name: string) {
     }
     if (name === "ask-figure" || name === "ask-viewer") seedFigureChat(db);
     else if (name.startsWith("ask-tool-")) seedToolChat(db, name.slice("ask-tool-".length) as "working" | "done" | "undone");
+    // The stronger model is asked in the same chat the flashcard tool works in.
+    else if (name === "ask-solver-working") seedToolChat(db, "working");
     else if (name.startsWith("ask-map-") || name.startsWith("ask-quiz-")) {
       const [, tool, state] = name.split("-") as [string, "map" | "quiz", "working" | "done" | "undone"];
       seedMadeChat(db, tool, state);
@@ -6449,7 +6491,7 @@ async function walk(slice: typeof auditRoutes) {
             record.write();
             // The turn ask-tool-working holds would keep its chat busy in the next language, theme or width: it is stopped,
             // and a Stop that fails is the state's failure, recorded like any other, while the walk goes on.
-            if (name === "ask-tool-working")
+            if (name === "ask-tool-working" || name === "ask-solver-working")
               await stopHeldTurn(page).catch((error: unknown) => {
                 failures.push(`${key}: the held turn did not stop: ${String(error).slice(0, 600)}`);
                 records.push({ name, route, language, theme, width, failed: `the held turn did not stop: ${String(error)}` });
