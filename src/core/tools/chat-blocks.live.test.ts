@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 import { mapChatBlocks, type ChartData, type ChatQuestion } from "../../shared/chat-blocks";
 import { openDatabase } from "../db/connection";
 import { askTurn } from "../chat/turn";
-import { endConversations, setScratch } from "../engine/funnel";
+import { acknowledgeProviders, configureDisclosure, endConversations, setScratch } from "../engine/funnel";
+import { putSetting } from "../settings";
 import { importSmartbook } from "../sources/smartbook";
 import { tempDir } from "../test-temp";
 import { chatToolList } from "./registry";
@@ -17,6 +18,9 @@ import { setTools, stopToolServer, type Tool } from "./server";
  *
  *   PYXIS_LIVE_CHAT_BLOCKS=1 PYXIS_LIVE_ENGINE=claude/claude-sonnet-5-5/medium PYXIS_LIVE_OUT=.tmp/chat-blocks \
  *   npm test -- src/core/tools/chat-blocks.live.test.ts
+ *
+ * PYXIS_LIVE_NOTICE=old runs as a student who confirmed the tools' notice before it named results, so read_progress
+ * is not offered and the model must say it cannot see them; `current` (the default) as one who confirmed it as it is.
  *
  * PYXIS_LIVE_SCENARIOS picks scenarios by name (comma-separated); PYXIS_LIVE_RUNS repeats `grades` and `test-me`. Each
  * reply, what read_progress returned, the charts and questions it holds, and the numbers in its charts that the tool
@@ -67,6 +71,10 @@ function setup(provider: string, model: string, effort: string | undefined, grad
       run("INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES (?, ?, ?, ?)", `aa${index}`, `a${index}`, JSON.stringify({ picks: {}, score }), nov(day!));
     });
   }
+  // The notice as core keeps it: confirmed before it named results (`true`), or as it is now.
+  configureDisclosure(db);
+  if (process.env["PYXIS_LIVE_NOTICE"] === "old") putSetting(db, `engine-disclosure:${provider}`, true);
+  else acknowledgeProviders([provider]);
   const calls: Array<{ tool: string; text: string }> = [];
   // Every call and what the model read back, so a chart's numbers can be held against the tool's.
   setTools(

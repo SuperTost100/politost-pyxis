@@ -1,7 +1,7 @@
 import { activeSimulation } from "../study/simulation";
-import { keepsFirstSystemPrompt, toolsAttach } from "../engine/funnel";
+import { isProviderCurrent, keepsFirstSystemPrompt, toolsAttach } from "../engine/funnel";
 import { checkSelection, needsSolverChecks, splitChecks, solverChecks } from "./checks";
-import { chatAnswers } from "./questions";
+import { carryAnswers, chatAnswers } from "./questions";
 import { stripCheckFences, type AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
@@ -1356,6 +1356,8 @@ async function answer(
     kept: {},
     place: () => ({ planId: planId ?? null, subject: subject || picked || null }),
     engine: () => ({ provider: answering.provider, model: answering.model }),
+    // The student's results go only to a tool on this computer, or one whose notice naming them the student confirmed.
+    results: () => isProviderCurrent(answering.provider),
     started: (tool) => {
       let mark = marks.find((entry) => entry.tool === tool && !entry.server && entry.callId !== undefined);
       if (mark) mark.server = true;
@@ -1873,6 +1875,8 @@ export async function regenerateTurn(
   // A regenerate that ends with no reply (NOT_COVERED) keeps the earlier answer on screen too.
   if (!result.message) keepsEarlier();
   if (result.message && last?.role === "assistant") {
+    // A Continue keeps the reply, so the answers the student gave to its practice questions stay with it.
+    if (resumeFrom) carryAnswers(db, last.id, result.message.id, result.message.body);
     db.prepare(`DELETE FROM messages WHERE id = ? AND chat_id = ?`).run(
       last.id,
       input.chatId,

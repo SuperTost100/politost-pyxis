@@ -19,6 +19,7 @@ import { offeredModels } from "./effort-variants";
 import { automaticEffortOn } from "./model-roles";
 import {
   acknowledgeProviders,
+  isProviderCurrent,
   endConversations,
   getFunnel,
   isProviderAcknowledged,
@@ -181,6 +182,8 @@ type OverviewRow = {
   /** The installed program is older than cli-funnel can run: the tool is not usable until it is updated. */
   outdated: boolean;
   acknowledged: boolean;
+  /** The notice the student confirmed is the current one, which names their results too (`DISCLOSURE_VERSION`). */
+  current: boolean;
   capabilities: { effort: boolean; fast: boolean; signOut: boolean };
 };
 
@@ -260,6 +263,7 @@ async function readProviders(): Promise<Omit<OverviewRow, "refused">[]> {
         withinTestedRange: row.installation.withinTestedRange ?? true,
         outdated: tooOld(row.id, row.installation.version),
         acknowledged: isProviderAcknowledged(row.id),
+        current: isProviderCurrent(row.id),
         capabilities: {
           effort: row.capabilities.effort,
           fast: row.capabilities.fast,

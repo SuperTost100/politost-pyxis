@@ -1904,7 +1904,8 @@ function prepareEngines(name: string) {
     // What the signed-in tools receive is already confirmed, so their notice covers none of these states.
     if (CONNECTED_TOOLS.includes(name))
       for (const provider of ["claude", "antigravity"])
-        db.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES(?,'true',?)").run(
+        // The current notice's version (`DISCLOSURE_VERSION`): an older one would bring the notice back over the state.
+        db.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES(?,'2',?)").run(
           `engine-disclosure:${provider}`,
           Date.now(),
         );

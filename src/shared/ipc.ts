@@ -730,6 +730,11 @@ export const requests = {
         outdated: z.boolean().optional(),
         /** The student has seen what this provider receives. Pyxis sends it nothing until then. */
         acknowledged: z.boolean(),
+        /**
+         * The notice the student confirmed is the current one, which names their results too. A tool confirmed before
+         * works without the chat's results tool, and gets the notice once more. Always true for the local model.
+         */
+        current: z.boolean().optional(),
         /** The student lets Pyxis use this engine (always true in automatic mode). */
         allowed: z.boolean(),
         /** Models its subscription refused today. The engine still works on its other models. */

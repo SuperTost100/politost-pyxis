@@ -90,6 +90,13 @@ export function acknowledgeProviders(providers: readonly string[]) {
 export function isProviderAcknowledged(provider: string): boolean {
   return disclosure?.isAcknowledged(provider) ?? true;
 }
+/**
+ * True when the student confirmed the notice as it is now, which names their results too, or the provider runs on this
+ * computer. Only then may a chat tool send the student's results to it (`Tool.results`). Without a store, true.
+ */
+export function isProviderCurrent(provider: string): boolean {
+  return disclosure?.isCurrent(provider) ?? true;
+}
 
 export function setScratch(path: string): void {
   scratch = path;
