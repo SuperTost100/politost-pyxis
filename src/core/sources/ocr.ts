@@ -3,7 +3,14 @@ import { chunkText } from "./chunk";
 import { latestDocument } from "./documents";
 import { uuidv7 } from "../../shared/ids";
 
-export type OcrPage = { page: number; text: string };
+/**
+ * One page of a scan as OCR read it. `section` names it in its passages, `p. <page>` when absent. A picture of a Word file
+ * or deck has a `locator` of its own, with its number among the pictures as `picture` and no `page`.
+ */
+export type OcrPage = { page: number; text: string; section?: string; locator?: { picture: number; slide?: number } };
+
+/** The page number of an OCR passage: a PDF's page, or the picture of a Word file or deck. */
+const SCAN_PAGE = "COALESCE(json_extract(locator_json, '$.picture'), json_extract(locator_json, '$.page'))";
 
 function sourceStatus(
   db: Database.Database,
@@ -33,7 +40,7 @@ function pagePassageId(
   const row = db
     .prepare(
       `SELECT id FROM passages
-       WHERE source_id = ? AND document_id = ? AND json_extract(locator_json, '$.page') = ?
+       WHERE source_id = ? AND document_id = ? AND ${SCAN_PAGE} = ?
        LIMIT 1`,
     )
     .get(sourceId, documentId, page) as { id: string } | undefined;
@@ -146,22 +153,25 @@ export function applyOcrPage(db: Database.Database, sourceId: string, page: OcrP
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     for (const chunk of chunkText(text)) {
       insert.run(uuidv7(), sourceId, document_id, version, chunk.text,
-        JSON.stringify({ page: page.page }), `p. ${page.page}`, chunk.start, chunk.end, now);
+        JSON.stringify(page.locator ?? { page: page.page }), page.section ?? `p. ${page.page}`, chunk.start, chunk.end, now);
     }
   })();
   return true;
 }
 
-/** Mark OCR complete. `ready` when the source has passages, otherwise `failed`. */
+/**
+ * Mark OCR complete. `ready` when the document has any passage, its own text or what OCR read, otherwise `failed`. Its
+ * page count counts the pages and pictures OCR read or the import kept.
+ */
 export function finishOcr(db: Database.Database, sourceId: string): "ready" | "failed" {
   const row = sourceStatus(db, sourceId);
   if (!row) throw new Error("source-missing");
   if (row.status !== "ocr-queued") throw new Error("ocr-not-active");
   const current = documentId(db, sourceId);
   const count = db
-    .prepare(`SELECT COUNT(DISTINCT json_extract(locator_json, '$.page')) AS n FROM passages WHERE source_id = ? AND document_id = ?`)
-    .get(sourceId, current) as { n: number };
-  const status = count.n > 0 ? "ready" : "failed";
+    .prepare(`SELECT COUNT(*) AS passages, COUNT(DISTINCT ${SCAN_PAGE}) AS n FROM passages WHERE source_id = ? AND document_id = ?`)
+    .get(sourceId, current) as { passages: number; n: number };
+  const status = count.passages > 0 ? "ready" : "failed";
   const now = Date.now();
   touchSource(db, sourceId, status, now);
   db.prepare(`UPDATE source_documents SET tree_json = json_remove(tree_json, '$.ocrNext', '$.ocrRun') WHERE id = ?`).run(current);

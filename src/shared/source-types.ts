@@ -23,6 +23,9 @@ export const MAX_FOLDER_ENTRIES = 20_000;
  */
 export const MAX_ATTACHED_FILES = 8;
 
+/** The kinds of source that can be a scan read by local OCR: a PDF, or a Word file or presentation made of pictures. */
+export const SCAN_KINDS: readonly string[] = ["pdf", "docx", "pptx"];
+
 /** The most files one drop can hand to main. */
 export const MAX_DROPPED_FILES = 20;
 
