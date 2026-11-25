@@ -1,11 +1,15 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { removeCards, restoreCards } from "../study/cards";
-import type { ToolResultView } from "../../shared/ipc";
+import type { MadeResultView, ToolResultView } from "../../shared/ipc";
 import { mapToolBlocks, TOOL_FENCE, toolBlockIds } from "../../shared/tool-blocks";
 import { resumeToolJobs } from "./jobs";
 import { dropMap, mapView, restoreMap, retryMap, undoMap, type MapData, type MapUndone } from "./map";
 import { dropQuiz, quizView, restoreQuiz, retryQuiz, undoQuiz, type QuizData, type QuizUndone } from "./quiz";
+import { isProposal, proposalView, unwithdrawProposal, withdrawProposal } from "./proposals";
+import { deleteNote } from "./proposeDelete";
+import { examNote } from "./proposeExam";
+import { pathNote } from "./proposePath";
 
 /**
  * What a chat tool did, stored with the reply that called it (`chat_tool_results`) and shown there as a ```pyxis-tool
@@ -73,6 +77,7 @@ export function addFlashcards(
 type Row = { id: string; tool: string; data_json: string; undone_json: string | null };
 
 function view(db: Database.Database, row: Row): ToolResultView | null {
+  if (isProposal(row.tool)) return proposalView(db, row.id);
   const undone = row.undone_json ? (JSON.parse(row.undone_json) as unknown) : null;
   if (row.tool === "create_map") return mapView(db, row.id, JSON.parse(row.data_json) as MapData, undone as MapUndone | null);
   if (row.tool === "create_quiz") return quizView(db, row.id, JSON.parse(row.data_json) as QuizData, undone as QuizUndone | null);
@@ -122,7 +127,8 @@ function resultRow(db: Database.Database, chatId: string, id: string): Row {
   const row = db
     .prepare(`SELECT id, tool, data_json, undone_json FROM chat_tool_results WHERE id = ? AND chat_id = ?`)
     .get(id, chatId) as Row | undefined;
-  if (!row) throw new Error("tool-result-missing");
+  // A proposal is answered only through `decideProposal`, never undone, restored or retried as a made thing.
+  if (!row || isProposal(row.tool)) throw new Error("tool-result-missing");
   return row;
 }
 
@@ -140,7 +146,7 @@ function flashcardsRow(db: Database.Database, chatId: string, id: string): { dat
  * exactly that. Cards leave the deck by their own soft delete, reviewed or not. A map leaves Mappe and a quiz leaves the
  * exam (`undoMap`, `undoQuiz`), and one still being made stops. A second undo changes nothing.
  */
-export function undoToolResult(db: Database.Database, chatId: string, id: string): ToolResultView {
+export function undoToolResult(db: Database.Database, chatId: string, id: string): MadeResultView {
   return db.transaction(() => {
     const row = resultRow(db, chatId, id);
     if (row.undone_json === null) {
@@ -153,12 +159,12 @@ export function undoToolResult(db: Database.Database, chatId: string, id: string
             : removeCards(db, (data as FlashcardsData).cardIds);
       db.prepare(`UPDATE chat_tool_results SET undone_json = ? WHERE id = ?`).run(JSON.stringify(undone), id);
     }
-    return toolView(db, chatId, id)!;
+    return toolView(db, chatId, id) as MadeResultView;
   })();
 }
 
 /** «Ripristina»: what the undo took away comes back, the cards with their reviews, a map or a quiz as it was. */
-export function restoreToolResult(db: Database.Database, chatId: string, id: string): ToolResultView {
+export function restoreToolResult(db: Database.Database, chatId: string, id: string): MadeResultView {
   return db.transaction(() => {
     const row = resultRow(db, chatId, id);
     if (row.undone_json !== null) {
@@ -169,19 +175,19 @@ export function restoreToolResult(db: Database.Database, chatId: string, id: str
       else restoreCards(db, undone as string[]);
       db.prepare(`UPDATE chat_tool_results SET undone_json = NULL WHERE id = ?`).run(id);
     }
-    return toolView(db, chatId, id)!;
+    return toolView(db, chatId, id) as MadeResultView;
   })();
 }
 
 /** «Riprova» or «Riprendi» on a map or a quiz whose job failed or stopped: the job goes on from where it was. */
-export function retryToolResult(db: Database.Database, chatId: string, id: string): ToolResultView {
+export function retryToolResult(db: Database.Database, chatId: string, id: string): MadeResultView {
   return db.transaction(() => {
     const row = resultRow(db, chatId, id);
     if (row.undone_json !== null) throw new Error("tool-result-undone");
     if (row.tool === "create_map") retryMap(db, JSON.parse(row.data_json) as MapData);
     else if (row.tool === "create_quiz") retryQuiz(db, JSON.parse(row.data_json) as QuizData);
     else throw new Error("tool-result-missing");
-    return toolView(db, chatId, id)!;
+    return toolView(db, chatId, id) as MadeResultView;
   })();
 }
 
@@ -197,6 +203,8 @@ export function takeBackToolResults(db: Database.Database, chatId: string, ids: 
       | { tool: string; data_json: string; undone_json: string | null }
       | undefined;
     if (!row || row.undone_json !== null) return false;
+    // A pending proposal is withdrawn while the new answer is written; one the student decided on stays theirs.
+    if (isProposal(row.tool)) return withdrawProposal(db, chatId, id);
     try {
       undoToolResult(db, chatId, id);
       return true;
@@ -210,6 +218,11 @@ export function takeBackToolResults(db: Database.Database, chatId: string, ids: 
 /** Puts back what `takeBackToolResults` undid, when the reply it was taken from stays on screen. */
 export function restoreToolResults(db: Database.Database, chatId: string, ids: readonly string[]): void {
   for (const id of ids) {
+    const tool = db.prepare(`SELECT tool FROM chat_tool_results WHERE id = ? AND chat_id = ?`).pluck().get(id, chatId) as string | undefined;
+    if (tool && isProposal(tool)) {
+      unwithdrawProposal(db, chatId, id);
+      continue;
+    }
     try {
       restoreToolResult(db, chatId, id);
     } catch (err) {
@@ -237,6 +250,11 @@ export function dropStrayToolResults(db: Database.Database, chatId: string, keep
     for (const row of stray) {
       if (keep.includes(row.id)) continue;
       const data = JSON.parse(row.data_json) as unknown;
+      // A proposal made nothing; one the student applied made the change as the student, which stays theirs.
+      if (isProposal(row.tool)) {
+        db.prepare(`DELETE FROM chat_tool_results WHERE id = ?`).run(row.id);
+        continue;
+      }
       if (row.tool === "create_map") dropMap(db, data as MapData, row.undone_json !== null);
       else if (row.tool === "create_quiz") dropQuiz(db, data as QuizData, row.undone_json !== null);
       else if (row.undone_json === null) removeCards(db, (data as FlashcardsData).cardIds);
@@ -293,6 +311,9 @@ export function describeToolBlocks(
 
 /** How the conversation handed to a model tells what a tool did: what the model would have read as the tool's result. */
 export function toolNote(view: ToolResultView): string {
+  if (view.tool === "propose_path_change") return pathNote(view);
+  if (view.tool === "propose_exam") return examNote(view);
+  if (view.tool === "propose_delete") return deleteNote(view);
   if (view.tool === "create_map") {
     const what = `the concept map "${view.topic}" in Mappe, under ${view.subject}`;
     if (view.undone) return `[Pyxis tool create_map: started ${what}; the student then undid it, so it is not in Mappe.]`;

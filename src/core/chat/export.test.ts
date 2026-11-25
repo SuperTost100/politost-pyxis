@@ -305,6 +305,41 @@ describe("exportChat", () => {
     db.close();
   });
 
+  it("writes a line for each proposal with what the student chose", () => {
+    const db = openDatabase(":memory:");
+    const pathId = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a61";
+    const deleteId = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a62";
+    const blocks = [pathId, deleteId].map((id) => "```pyxis-tool\n" + id + "\n```").join("\n\n");
+    const to = new Date(2027, 0, 15, 12).getTime();
+    const path = {
+      proposal: { planId: "mech", exam: "Meccanica", date: { sessionId: null, from: null, to, label: null }, hours: { from: 6, to: 8 }, topics: null },
+      basis: "b",
+      decision: { state: "applied", at: 3, outcome: { date: to, hours: 8, changed: 0 } },
+    };
+    const remove = {
+      proposal: { kind: "flashcards", planId: "mech", topicId: "t", name: "Cinematica", place: "Meccanica", cardIds: ["a", "b"], handMade: 0, others: 0, chatId: "c" },
+      basis: "b",
+      decision: { state: "declined", at: 3 },
+    };
+    db.exec(`
+      INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('mech', 'Meccanica', 'ready', 1, 1);
+      INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c', 'Percorso', 1, 1);
+      INSERT INTO messages (id, chat_id, role, body, created_at) VALUES ('u', 'c', 'user', 'Sposta l''esame.', 1);
+      INSERT INTO messages (id, chat_id, role, body, created_at) VALUES ('r', 'c', 'assistant', '${blocks.replace(/\n/g, "' || char(10) || '")}', 2);
+      INSERT INTO chat_tool_results (id, chat_id, message_id, tool, data_json, created_at) VALUES
+        ('${pathId}', 'c', 'r', 'propose_path_change', '${JSON.stringify(path)}', 2),
+        ('${deleteId}', 'c', 'r', 'propose_delete', '${JSON.stringify(remove)}', 2);
+    `);
+    const reply = (language: "en" | "it") => exportChat(db, "c", language).markdown.split("## Pyxis\n\n")[1]!.trim();
+    expect(reply("it")).toBe(
+      "*Pyxis ha proposto di cambiare il percorso di Meccanica: hai applicato la modifica (esame il 15 gennaio 2027, 8 ore a settimana).*\n\n*Pyxis ha proposto di eliminare 2 flashcard di Cinematica: hai scelto di no.*",
+    );
+    expect(reply("en")).toBe(
+      "*Pyxis proposed a change to the path of Meccanica: you applied it (exam on 15 January 2027, 8 hours a week).*\n\n*Pyxis proposed deleting 2 flashcards of Cinematica: you chose not to.*",
+    );
+    db.close();
+  });
+
   it("leaves a fence in the tool's language as it is in the student's own message", () => {
     const db = openDatabase(":memory:");
     db.exec(`

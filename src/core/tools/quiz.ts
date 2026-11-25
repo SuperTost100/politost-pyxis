@@ -110,13 +110,21 @@ export function quizTopic(db: Database.Database, planId: string, asked: string):
   const topics = db
     .prepare(`SELECT id, title FROM topics WHERE plan_id = ? AND archived_at IS NULL ORDER BY position, id`)
     .all(planId) as Array<{ id: string; title: string }>;
+  return matchTitle(topics, asked);
+}
+
+/**
+ * The item whose title is the words, else the only one whose title holds them or is held in them, as whole words. Null
+ * when none does, or when several do.
+ */
+export function matchTitle<T extends { title: string }>(items: readonly T[], asked: string): (T & { exact: boolean }) | null {
   const want = foldText(asked).replace(/\s+/g, " ").trim();
-  const exact = topics.find((topic) => foldText(topic.title).trim() === want);
+  const exact = items.find((item) => foldText(item.title).replace(/\s+/g, " ").trim() === want);
   if (exact) return { ...exact, exact: true };
   // Whole words only: "Attrito statico" holds the topic Attrito, but "Termodinamica" does not hold Dinamica.
   const askedWords = wordsOf(asked);
-  const near = topics.filter((topic) => {
-    const title = wordsOf(topic.title);
+  const near = items.filter((item) => {
+    const title = wordsOf(item.title);
     return title.join(" ").length >= 4 && askedWords.join(" ").length >= 4 && (holds(askedWords, title) || holds(title, askedWords));
   });
   // Words that name two topics ("Cinematica e dinamica") are no one topic: the quiz spans the exam on them.
@@ -203,7 +211,7 @@ function buildJob(db: Database.Database, attemptId: string): string | undefined 
 }
 
 /** Handing in starts a grading job before the attempt is closed: from then on the quiz is handed in and has a grade. */
-function handedIn(db: Database.Database, itemId: string): boolean {
+export function handedIn(db: Database.Database, itemId: string): boolean {
   return !!db
     .prepare(
       `SELECT 1 FROM attempts a WHERE a.item_id = ? AND (a.submitted_at IS NOT NULL OR EXISTS (

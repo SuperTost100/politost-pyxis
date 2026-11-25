@@ -561,8 +561,102 @@ const quizResultView = z.object({
   minutes: z.number().int(),
   handedIn: z.boolean(),
 });
-export const toolResultView = z.discriminatedUnion("tool", [flashcardsResultView, mapResultView, quizResultView]);
+/**
+ * Where a proposal of an "ask first" tool stands. `pending` waits for the student; `stale` can no longer be applied
+ * because what it was computed from changed since; `expired` was replaced by a later proposal of the same kind (or its
+ * reply was answered again); `declined` the student said no; `applied` the student said yes and the app made the change;
+ * `restored` a deletion the student then undid.
+ */
+const proposalState = z.enum(["pending", "stale", "expired", "declined", "applied", "restored"]);
+export type ProposalState = z.infer<typeof proposalState>;
+const proposalBase = {
+  id: z.string(),
+  state: proposalState,
+  /** The reply that made it is saved: until then the card's buttons wait. */
+  ready: z.boolean(),
+  /** What the card shows, as a fingerprint the confirming call sends back. */
+  seen: z.string(),
+};
+/**
+ * `propose_path_change`: a change to the chat's exam, shown as the old and the new value. `date` moves the exam's next
+ * session; `hours` are the planner's weekly hours, which hold for every exam; `before` and `after` are the path's
+ * topics now and after the change. A removed topic is archived, an added one is new or an archived one brought back.
+ * `changed` counts the topics removed, added and moved; `gone` is set once the exam was deleted.
+ */
+const pathProposalView = z.object({
+  ...proposalBase,
+  tool: z.literal("propose_path_change"),
+  planId: z.string(),
+  exam: z.string(),
+  gone: z.boolean(),
+  date: z.object({ from: z.number().nullable(), to: z.number(), label: z.string().nullable() }).nullable(),
+  hours: z.object({ from: z.number().nullable(), to: z.number(), exams: z.number().int() }).nullable(),
+  before: z.array(z.object({ title: z.string(), removed: z.boolean() })),
+  after: z.array(
+    z.object({ title: z.string(), added: z.boolean(), restored: z.boolean(), movedFrom: z.number().int().nullable() }),
+  ),
+  changed: z.number().int(),
+});
+/**
+ * `propose_exam`: a new exam as a draft, with the Library's material of its subject, which the build would read. Once
+ * created, `created` follows the exam's build job as a map's card follows its job. `existing` names an exam of that
+ * name made since, which leaves the proposal stale.
+ */
+const examProposalView = z.object({
+  ...proposalBase,
+  tool: z.literal("propose_exam"),
+  title: z.string(),
+  subject: z.string().nullable(),
+  date: z.number().nullable(),
+  sources: z.array(z.object({ id: z.string(), title: z.string() })),
+  existing: z.string().nullable(),
+  created: z
+    .object({
+      planId: z.string(),
+      job: z.enum(["working", "done", "failed", "cancelled", "interrupted"]),
+      error: z.string().nullable(),
+      activity: JobActivity.nullable(),
+      gone: z.boolean(),
+    })
+    .nullable(),
+});
+/**
+ * `propose_delete`: flashcards, a concept map or a quiz not handed in, in the chat's exam or subject, counted by the app.
+ * Flashcards: `count` go, `reviewed` of them were reviewed (their reviews stay with them), `handMade` cards the student
+ * wrote stay, as do `others` of the exam or subject. A map has `count` concepts; a quiz has `count` questions with
+ * `answered` answers given. Every deletion can be undone from the chat («Annulla»).
+ */
+const deleteProposalView = z.object({
+  ...proposalBase,
+  tool: z.literal("propose_delete"),
+  kind: z.enum(["flashcards", "map", "quiz"]),
+  /** The topic, the map's title or the quiz's topic; for cards made in the chat, null. */
+  name: z.string().nullable(),
+  /** The exam or the subject it is in. */
+  place: z.string(),
+  count: z.number().int(),
+  reviewed: z.number().int(),
+  handMade: z.number().int(),
+  others: z.number().int(),
+  answered: z.number().int(),
+  /** False once what it went into is gone, so «Annulla» can no longer bring it back. */
+  restorable: z.boolean(),
+});
+export const toolResultView = z.discriminatedUnion("tool", [
+  flashcardsResultView,
+  mapResultView,
+  quizResultView,
+  pathProposalView,
+  examProposalView,
+  deleteProposalView,
+]);
 export type ToolResultView = z.infer<typeof toolResultView>;
+export type PathProposalView = z.infer<typeof pathProposalView>;
+export type ExamProposalView = z.infer<typeof examProposalView>;
+export type DeleteProposalView = z.infer<typeof deleteProposalView>;
+export type ProposalView = PathProposalView | ExamProposalView | DeleteProposalView;
+/** What a tool made, as opposed to what it proposed. */
+export type MadeResultView = FlashcardsResultView | MapResultView | QuizResultView;
 export type FlashcardsResultView = z.infer<typeof flashcardsResultView>;
 export type MapResultView = z.infer<typeof mapResultView>;
 export type QuizResultView = z.infer<typeof quizResultView>;
@@ -3398,6 +3492,20 @@ export const requests = {
   /** «Riprova» or «Riprendi» on a map or a quiz whose job failed or stopped: the job goes on from where it was. */
   "chats.retryTool": {
     input: z.object({ chatId: z.string(), resultId: z.string() }),
+    output: toolResultView,
+  },
+  /**
+   * The student's answer to a proposal in a reply (`propose_*`): `apply` makes the change only while the data is still
+   * what the card showed (`seen`), `decline` says no, `reopen` takes a no back, `undo` brings back what a deletion
+   * removed. Returns the card as it stands after.
+   */
+  "chats.decideTool": {
+    input: z.object({
+      chatId: z.string(),
+      resultId: z.string(),
+      action: z.enum(["apply", "decline", "reopen", "undo"]),
+      seen: z.string().max(64).optional(),
+    }),
     output: toolResultView,
   },
   /**

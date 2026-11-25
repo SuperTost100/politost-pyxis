@@ -17,6 +17,7 @@ import { answerQuestion } from "./questions";
 import { chatToolList } from "../tools/registry";
 import { restoreToolResult, retryToolResult, startToolResults, toolView, undoToolResult } from "../tools/results";
 import { setToolRunner } from "../tools/jobs";
+import { decideProposal, type ProposalAction } from "../tools/proposals";
 import { revokeChatTools, setTools } from "../tools/server";
 import type { ToolResultView } from "../../shared/ipc";
 import type { FigureEvent } from "../math/figures";
@@ -225,6 +226,9 @@ export function chatHandlers(
     },
     retryTool(input: { chatId: string; resultId: string }) {
       return retryToolResult(db, input.chatId, input.resultId);
+    },
+    decideTool(input: { chatId: string; resultId: string; action: ProposalAction; seen?: string }) {
+      return decideProposal(db, input.chatId, input.resultId, input.action, input.seen);
     },
     answerQuestion(input: { chatId: string; messageId: string; questionId: string; pick: number }) {
       return { pick: answerQuestion(db, input) };

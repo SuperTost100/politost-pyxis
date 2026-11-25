@@ -54,12 +54,12 @@ describe("read_progress and the notice", () => {
     // Confirmed before the notice named results: the tool runs, without read_progress.
     putSetting(db, "engine-disclosure:claude", true);
     const before = await turnSees(db, "claude");
-    expect(before.listed).toEqual(["create_flashcards"]);
+    expect(before.listed).toEqual(["create_flashcards", "propose_path_change"]);
     expect(before.answer).toBe("Unknown tool.");
 
     acknowledgeProviders(["claude"]);
     const after = await turnSees(db, "claude");
-    expect(after.listed).toEqual(["create_flashcards", "read_progress"]);
+    expect(after.listed).toEqual(["create_flashcards", "read_progress", "propose_path_change"]);
     expect(JSON.parse(after.answer)).toMatchObject({ subject: "Meccanica", scale: 30 });
     expect(db.prepare("SELECT value_json FROM settings WHERE key = 'engine-disclosure:claude'").pluck().get()).toBe("2");
   });
