@@ -39,7 +39,16 @@ import { radialFixtures, storedGraph } from "../fixtures/maps";
 import type Database from "better-sqlite3";
 import { partMarkdown, seedOutline, type SeedPart } from "../../src/core/study/test-parts";
 import { figureKey } from "../../src/shared/smart-text";
-import { seedFigureChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat, seedToolChat, writeBlob } from "./chat-look-seed";
+import {
+  seedFigureChat,
+  seedOutlineChat,
+  seedSentFilesChat,
+  seedStoppedChat,
+  seedToolChat,
+  TOOL_CARDS,
+  TOOL_QUESTION,
+  writeBlob,
+} from "./chat-look-seed";
 import { photoPng } from "./pictures";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
@@ -2377,6 +2386,21 @@ function prepareAnswerSheet(name: string) {
   });
 }
 
+/** Stops the turn a state left running in Chiedi, with the composer's Stop, and waits until the composer can send again. */
+async function stopHeldTurn(page: Page) {
+  const stop = page.locator(".px-composer-bar").getByRole("button", { name: both("Interrompi", "Stop") });
+  if (!(await stop.isVisible().catch(() => false))) return;
+  await stop.click();
+  await expect(stop).toHaveCount(0);
+}
+
+/** While this file exists, a question sent in Chiedi gets a reply that calls the flashcard tool and holds it at work. */
+const toolTurnFile = (userData: string) => join(userData, "tool-turn");
+function prepareToolTurn(name: string) {
+  if (name === "ask-tool-working") writeFileSync(toolTurnFile(auditUserData), "");
+  else rmSync(toolTurnFile(auditUserData), { force: true });
+}
+
 /** Pyxis stays at work on the new-flashcard dialog until this file exists; every other state finds it there. */
 const newCardsHold = () => join(auditUserData, "subject-cards-hold");
 function prepareNewCards(name: string) {
@@ -2487,6 +2511,7 @@ function prepareState(name: string) {
   prepareOldLessons(name);
   prepareRadialMaps(name);
   prepareNewCards(name);
+  prepareToolTurn(name);
   prepareAnswerSheet(name);
   prepareEngines(name);
   prepareExamsArchived(name);
@@ -3597,9 +3622,15 @@ async function openState(page: Page, name: string) {
       expect(box!.x + box!.width).toBeLessThanOrEqual(msg!.x);
       break;
     }
-    case "ask-tool-working":
+    case "ask-tool-working": {
+      // A saved reply never shows a tool at work, so the state asks for the cards and the recorded engine holds its call.
+      const box = page.getByRole("textbox", { name: both("Messaggio", "Message") });
+      await box.fill(TOOL_QUESTION);
+      await box.press("Enter");
       await expect(page.getByText(both("Creo le flashcard…", "Creating the flashcards…"))).toBeVisible();
+      await expect(page.locator(".px-toolres-ghost")).toBeVisible();
       break;
+    }
     case "ask-tool-done":
       await expect(page.getByText(both("8 flashcard sui tre principi della dinamica", "8 flashcards sui tre principi della dinamica"))).toBeVisible();
       await expect(page.getByRole("button", { name: both("Annulla", "Undo") })).toBeVisible();
@@ -5760,7 +5791,18 @@ test.beforeAll(async () => {
     PYXIS_E2E_BOOKS: booksSite,
     PYXIS_E2E_FILE: importFolder,
     ...updateEnv(),
-    PYXIS_E2E_REPLY: "La forza è $F=ma$ [P1].",
+    // The reply every sent question gets. Only in ask-tool-working, which creates the `tool-turn` file, does it first call
+    // the flashcard tool through the app's own server, and that call stays at work (`tool-go` is never created) until the
+    // state stops the turn.
+    PYXIS_E2E_REPLY: [
+      `@@tool create_flashcards ${JSON.stringify({
+        _when: toolTurnFile(userData),
+        _hold: join(userData, "tool-go"),
+        title: "sui tre principi della dinamica",
+        cards: TOOL_CARDS,
+      })}`,
+      "La forza è $F=ma$ [P1].",
+    ].join("\n"),
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
       // A subject's flashcards from the new-flashcard dialog: held while that state shows Pyxis at work.
       subjectCards: {
@@ -6154,6 +6196,8 @@ async function walk(slice: typeof auditRoutes) {
               });
             }
             record.write();
+            // The turn ask-tool-working holds would keep its chat busy in the next language, theme or width: it is stopped.
+            if (name === "ask-tool-working") await stopHeldTurn(page);
             console.log(
               `M14 ${key}: ${failures.at(-1)?.startsWith(key) ? failures.at(-1) : "passed"}`,
             );
