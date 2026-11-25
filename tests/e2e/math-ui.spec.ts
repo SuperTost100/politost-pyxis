@@ -145,8 +145,10 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
       window.location.hash = `/ask/${chatId}`;
     }, result.chatId);
     await expectFailedBadge(page);
-    await page.locator(".px-check-badge.is-failed").focus();
-    await expect(page.locator(".px-check-badge.is-failed")).toBeFocused();
+    // A failed check says so under its step, with the reason in words, and the row under the answer counts it. The loop
+    // above left the app in English.
+    await expect(page.locator(".px-check-badge.is-failed")).toHaveText("Not verifiedThe result does not match the expected value.");
+    await expect(page.locator(".px-sources")).toHaveText("1 result not verified");
     await expectNoAxeViolations(page);
     await saveShot(page, "m9-failed-light.png");
   } catch (error) {
@@ -286,9 +288,10 @@ test("MATH-02 ASK-05 live Solver verification and attached drawing vision", asyn
     await page.evaluate((id) => {
       window.location.hash = `/ask/${id}`;
     }, solver.chatId);
-    await expect(
-      page.locator(".px-check-badge.is-verified").first(),
-    ).toBeVisible({ timeout: 30000 });
+    // The grey check beside the step shows while the row under the answer, which counts it, is pressed.
+    await expect(page.locator(".px-check-badge.is-verified").first()).toBeAttached({ timeout: 30000 });
+    await page.locator(".px-msg:not(.px-msg-user)").last().locator(".px-sources-bar button").first().click();
+    await expect(page.locator(".px-check-badge.is-verified").first()).toBeVisible();
     await saveShot(page, "m9-live-verified.png");
     await page.evaluate(() => {
       window.location.hash = "/tools/graph";

@@ -4,10 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type HTMLAttributes, type
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router";
-import type { RequestOutput } from "@shared/ipc";
 import { Working } from "../../components/Working";
-import { CitationChip } from "../../components/CitationChip";
-import { openSourceViewer } from "../../components/SourceViewer";
 import { stepPath } from "../plans/reopen";
 import "./Reader.css";
 import { StudyBar, type StudyTitleMenu } from "./StudyBar";
@@ -433,45 +430,5 @@ export function ReaderEnd({
         </p>
       ) : null}
     </section>
-  );
-}
-
-type Sources = RequestOutput<"study.lesson">["sources"];
-
-/** Collapsed list of what the lesson was given; each place opens the source viewer there. */
-export function SourcesFooter({ sources }: { sources: Sources }) {
-  const { t } = useTranslation();
-  if (!sources.length) return null;
-  return (
-    <details className="px-reader-sources">
-      <summary>
-        <span className="label">{t("lesson.sources")}</span>
-        <span className="meta ink-muted">{sources.length}</span>
-      </summary>
-      <ul>
-        {sources.map((source) => (
-          <li key={source.sourceId}>
-            <p className="body-strong">{source.title}</p>
-            <div className="px-reader-places">
-              {source.places.map((place) => (
-                <CitationChip
-                  key={place.passageId}
-                  kind={place.page != null ? "pdf" : "smartbook"}
-                  onClick={() => openSourceViewer({ passageId: place.passageId })}
-                >
-                  {place.page != null
-                    ? t("lesson.page", { n: place.page })
-                    : place.slide != null
-                      ? t("lesson.slide", { n: place.slide })
-                      : place.chapter != null
-                        ? t("lesson.chapter", { n: place.chapter })
-                        : (place.section ?? t("lesson.open"))}
-                </CitationChip>
-              ))}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </details>
   );
 }

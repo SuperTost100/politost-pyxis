@@ -547,6 +547,44 @@ function viewerPassages(db: Database.Database, sourceId: string, chapter?: numbe
   );
 }
 
+/**
+ * Where each passage asked for sits: its source, the source's title (also for a file that left the Library or was only
+ * attached), its place and the version of the file it was read from, without its text, in the order asked. A passage
+ * that is gone is left out.
+ */
+export function passagePlaces(db: Database.Database, passageIds: readonly string[]) {
+  if (passageIds.length === 0) return [];
+  const rows = db
+    .prepare(
+      `SELECT p.id, p.source_id, p.locator_json, p.section_path, s.title, d.version
+       FROM passages p LEFT JOIN sources s ON s.id = p.source_id LEFT JOIN source_documents d ON d.id = p.document_id
+       WHERE p.id IN (SELECT value FROM json_each(?))`,
+    )
+    .all(JSON.stringify(passageIds)) as Array<{
+    id: string;
+    source_id: string | null;
+    locator_json: string | null;
+    section_path: string | null;
+    title: string | null;
+    version: number | null;
+  }>;
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return passageIds.flatMap((id) => {
+    const row = byId.get(id);
+    if (!row) return [];
+    return [
+      {
+        passageId: row.id,
+        sourceId: row.source_id ?? "",
+        sourceTitle: row.title ?? "",
+        locator: row.locator_json ? (JSON.parse(row.locator_json) as PassageHit["locator"]) : {},
+        sectionPath: row.section_path,
+        ...(row.version != null ? { version: row.version } : {}),
+      },
+    ];
+  });
+}
+
 export function passagesAround(db: Database.Database, passageId: string) {
   const row = db
     .prepare(
@@ -604,7 +642,7 @@ export function passagesAround(db: Database.Database, passageId: string) {
     locator_json: string | null;
     char_start?: number;
   }>;
-  return mergeViewerParagraphs(
+  const merged = mergeViewerParagraphs(
     rows.map((item) => ({
       id: item.id,
       sourceId: row.source_id ?? "",
@@ -616,6 +654,11 @@ export function passagesAround(db: Database.Database, passageId: string) {
       current: item.id === passageId,
     })),
     rows.map((item) => item.char_start ?? 0),
+  );
+  // The viewer reads merged paragraphs; a quote of the citation needs the cited passage's own words.
+  const own = rows.find((item) => item.id === passageId)?.text;
+  return merged.map((item): (typeof merged)[number] & { quote?: string } =>
+    item.current && own !== undefined ? { ...item, quote: own } : item,
   );
 }
 

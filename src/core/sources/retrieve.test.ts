@@ -83,6 +83,21 @@ describe("retrieve", () => {
     expect(found.hits.some((hit) => hit.id === near)).toBe(true);
   });
 
+  it("counts a vector hit as relevant only within the distance asked for", () => {
+    const db = openDatabase(":memory:");
+    // At L2 distance 0.55 from the query: near enough by default (0.6), not under a stricter 0.5.
+    const angled = new Float32Array(384);
+    angled[0] = 1 - 0.55 ** 2 / 2;
+    angled[1] = Math.sqrt(1 - angled[0] ** 2);
+    const id = passage(db, "il calore aumenta l energia interna", angled);
+    const ask = (nearDistance?: number) =>
+      retrieve(db, "fotosintesi", { embed: () => unit(0), ...(nearDistance ? { nearDistance } : {}) });
+    expect(ask().relevant).toEqual([id]);
+    expect(ask(0.5).relevant).toEqual([]);
+    // It still ranks: only the bar for relevance moved.
+    expect(ask(0.5).hits.map((hit) => hit.id)).toEqual([id]);
+  });
+
   it("reports no coverage when both scores are weak", () => {
     const db = openDatabase(":memory:");
     passage(db, "la velocità è la derivata dello spazio", unit(0));

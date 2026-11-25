@@ -19,6 +19,7 @@ export function ChatMessage({
   suggestions,
   onSuggest,
   lead,
+  sources,
   text,
   onMakeCards,
   reaction,
@@ -41,8 +42,10 @@ export function ChatMessage({
   engine?: string;
   suggestions?: string[];
   onSuggest?: (text: string) => void;
-  /** A line above the answer, such as what it used. */
+  /** A line above the answer, such as one that says it comes from general knowledge. */
   lead?: ReactNode;
+  /** The row under the answer that names its sources and counts its checked results (`SourcesRow`). */
+  sources?: ReactNode;
   text?: string;
   /** Opens the flashcard dialog for this reply. */
   onMakeCards?: () => void;
@@ -86,7 +89,7 @@ export function ChatMessage({
       <span className="px-msg-avatar" aria-hidden>
         <Logo size={22} />
       </span>
-      <div className="px-msg-body">
+      <div className="px-msg-body" data-cited-host>
         <span className="visually-hidden">{t("components.chat.pyxis")}: </span>
         {lead}
         <div className="px-msg-text">
@@ -114,6 +117,7 @@ export function ChatMessage({
             {t("components.chat.checking")}
           </p>
         ) : null}
+        {sources}
         {streaming ? null : (
           <div className="px-msg-foot">
             <IconButton

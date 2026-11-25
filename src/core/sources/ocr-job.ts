@@ -1,6 +1,7 @@
 import { linkedFile, readableLinkedPath } from "./linked-file";
 import type Database from "better-sqlite3";
 import type { Runner } from "../jobs/runner";
+import { SCAN_KINDS } from "../../shared/source-types";
 import { hasBlob, readBlob } from "../blobs";
 import { heldMark, isHeldReading, sourceTitle } from "./jobs";
 import {
@@ -19,11 +20,15 @@ import {
 export const OCR_BATCH = 8;
 
 export type ScanDeps = {
-  /** Draws and reads `pages` of the PDF at `path`; pages past the end are skipped, and the page count comes back. */
+  /**
+   * Reads `pages` of the scan at `path`, whose type `ext` gives: the drawn pages of a PDF, or the pictures of a .docx or
+   * .pptx (see `scanPictures`). Pages past the end are skipped, and the page count comes back.
+   */
   readPages: (
     path: string,
     pages: number[],
     signal: AbortSignal,
+    ext: string,
   ) => Promise<{ count: number; pages: OcrPage[] }>;
   /** Refuses with `ocr-data-*` while the language files are missing or damaged. */
   requireData: () => Promise<void>;
@@ -75,7 +80,7 @@ export function registerOcrJob(
           }
           const mine = currentOcrRun(db, sourceId)!;
           try {
-            if (row.kind !== "pdf") throw new Error("ocr-not-scan");
+            if (!SCAN_KINDS.includes(row.kind)) throw new Error("ocr-not-scan");
             // A scan Pyxis keeps a copy of is read from it, even when a linked folder holds the file too; any other
             // scan in a linked folder is read where it is.
             const linked = !row.blob_sha && linkedFile(db, sourceId) !== null;
@@ -91,7 +96,7 @@ export function registerOcrJob(
               for (let page = next; pages.length < OCR_BATCH && (count === null || page <= count); page += 1)
                 if (!hasOcrPage(db, sourceId, mine, page)) pages.push(page);
               if (count !== null && pages.length === 0) break;
-              const batch = await deps.readPages(file, pages, ctx.signal);
+              const batch = await deps.readPages(file, pages, ctx.signal, `.${row.kind}`);
               ctx.signal.throwIfAborted();
               count = batch.count;
               if (params.pages !== count) {
@@ -168,7 +173,7 @@ export function waitingScans(db: Database.Database): string[] {
   return (
     db
       .prepare(
-        `SELECT id FROM sources WHERE status = 'needs-ocr' AND kind = 'pdf'
+        `SELECT id FROM sources WHERE status = 'needs-ocr' AND kind IN (${SCAN_KINDS.map((kind) => `'${kind}'`).join(", ")})
          AND (blob_sha IS NOT NULL
            OR id IN (SELECT source_id FROM linked_files WHERE missing_at IS NULL AND source_id IS NOT NULL))
          ORDER BY created_at, rowid`,

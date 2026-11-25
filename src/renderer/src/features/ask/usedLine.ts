@@ -41,3 +41,12 @@ export function usedLine(reply: {
   }
   return { key: "ask.used.library", values: { count, ...context } };
 }
+
+/**
+ * The line kept above an answer, now that the row under it names the sources: one that says the answer comes from
+ * general knowledge, or that the chat's subject had nothing on the question, both warnings to read before the answer.
+ */
+export function noteLine(reply: Parameters<typeof usedLine>[0]): UsedLine {
+  const line = usedLine(reply);
+  return line && (reply.grounding === "general" || line.values.context === "wider") ? line : null;
+}

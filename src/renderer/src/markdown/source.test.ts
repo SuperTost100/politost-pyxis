@@ -69,3 +69,13 @@ describe("a chat answer with its check and figure blocks inside list items", () 
     expect(visibleText(html)).not.toMatch(/[$`]|kind/);
   });
 });
+
+describe("citation marks are hidden only where the page knows its passages", () => {
+  it("leaves a stored text's literal [P1] as written when no passages are given", () => {
+    expect(markdownSource("Label [P1].")).toBe("Label [P1].");
+  });
+
+  it("turns a known mark into an anchor when the page gives its passages", () => {
+    expect(markdownSource("Label [P1].", (n) => n === 1)).toBe("Label[](cite:p1).");
+  });
+});

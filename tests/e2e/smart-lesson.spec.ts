@@ -235,10 +235,10 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     // The end offers a primary "Done, continue" and a quieter "Done".
     await expect(page.getByRole("button", { name: "Fatto, continua" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Fatto", exact: true })).toBeVisible();
-    // Citation chips name the cited section, as in Ask, instead of "P1".
-    const chip = page.locator(".px-smart .px-cite").first();
-    await expect(chip).toBeVisible();
-    await expect(chip).not.toHaveText(/^\s*P\d+\s*$/);
+    // The text carries no citation marks: each is an anchor with no words, and the row at the end names the sources.
+    await expect(page.locator(".px-smart .px-cite-mark").first()).toBeAttached();
+    await expect(page.locator(".px-smart")).not.toContainText(/\[P\d|\bP\d+\b/);
+    await expect(page.locator(".px-sources")).toBeVisible();
     // A display formula alone on its line is a centred block, not inline text.
     const display = page.locator(".px-smart .katex-display");
     await expect(display).toHaveCount(1);
@@ -402,23 +402,26 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await expect.poll(checkAnswers).toBe(5);
     await language(page, "it", "light");
 
-    // Sources used: collapsed, and each place opens the source viewer.
-    const sources = page.locator(".px-reader-sources");
-    await expect(sources.getByRole("button", { name: /cap\. 1/ })).toBeHidden();
-    await sources.locator("summary").click();
-    await expect(sources.getByRole("button", { name: /cap\. 1/ })).toBeVisible();
+    // The row at the end of the lesson names its sources; a place in it opens the source viewer there. With more than one
+    // place the row opens into the list first.
+    const sources = page.locator(".px-sources");
+    const openRow = async () => {
+      const row = sources.locator(".px-sources-row");
+      if ((await row.getAttribute("aria-expanded")) === "false") await row.click();
+    };
     for (const [lang, theme] of [["it", "light"], ["it", "dark"], ["en", "light"], ["en", "dark"]] as const) {
       await language(page, lang, theme);
       const region = page.getByRole("region", { name: /^(Ripasso finale|Recap)$/ });
       await region.scrollIntoViewIfNeeded();
       await saveShot(page, `smart-text/lesson-recap-${lang}-${theme}.png`);
-      await page.locator(".px-reader-sources summary").click();
-      await page.locator(".px-reader-sources").scrollIntoViewIfNeeded();
+      await openRow();
+      await expect(sources.getByRole("button", { name: /(cap|ch)\. 1/ })).toBeVisible();
+      await sources.scrollIntoViewIfNeeded();
       await saveShot(page, `smart-text/lesson-sources-${lang}-${theme}.png`);
     }
     await language(page, "it", "light");
-    await page.locator(".px-reader-sources summary").click();
-    const place = page.locator(".px-reader-sources").getByRole("button", { name: /cap\. 1/ });
+    await openRow();
+    const place = sources.getByRole("button", { name: /cap\. 1/ });
     await place.click();
     await expect(page.getByText("La forza cambia lo stato di moto.")).toBeVisible();
     // It opens in the source panel, at the passage the lesson used, marked; Escape goes back to the lesson's source.

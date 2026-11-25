@@ -255,6 +255,10 @@ describe("markdown export", () => {
     expect(english).toContain("Answer: true");
     expect(exportCardsCsv(db, { planId: "en" }).csv).toContain("Source: 1. Moti");
     expect(lessonMarkdown("Moti", "Testo", ["1. Moti"], exportLabels.it)).toContain("## Fonti\n\n- 1. Moti");
+    // The text carries no citation marks: the list at the end names the sources. Code keeps its brackets.
+    expect(lessonMarkdown("Moti", "Vale $v = at$ [P1], come a p. 3 [P2; P3].\n\n`a[P1]`", ["1. Moti"])).toBe(
+      "# Moti\n\nVale $v = at$, come a p. 3.\n\n`a[P1]`\n\n## Sources\n\n- 1. Moti\n",
+    );
     db.close();
   });
 

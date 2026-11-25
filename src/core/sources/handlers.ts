@@ -78,6 +78,7 @@ import { maxSourceBytes, MAX_SOURCE_BYTES } from "../../shared/source-types";
 import {
   chapterPassages,
   listSources,
+  passagePlaces,
   passagesAround,
   parsedChapter,
   smartbookChapters,
@@ -184,10 +185,10 @@ export function sourceHandlers(
   });
   registerLibrarySort(db, runner, { run: linkOptions.run });
   registerOcrJob(db, workspace, runner, {
-    readPages: (path, pages, signal) =>
-      work<{ count: number; pages: Array<{ page: number; text: string }> }>(
+    readPages: (path, pages, signal, ext) =>
+      work<{ count: number; pages: Array<{ page: number; text: string; section?: string }> }>(
         "extract-worker",
-        { path, ext: ".pdf", tess, mode: "ocr-pdf", pages },
+        { path, ext, tess, mode: ext === ".pdf" ? "ocr-pdf" : "ocr-pictures", pages },
         signal,
       ),
     requireData: () => requireOcrData(),
@@ -973,6 +974,9 @@ export function sourceHandlers(
     },
     passage(input: { passageId: string }) {
       return passagesAround(db, input.passageId);
+    },
+    places(input: { passageIds: string[] }) {
+      return passagePlaces(db, input.passageIds);
     },
     viewerDocument(input: { sourceId?: string; passageId?: string }) {
       const row = db

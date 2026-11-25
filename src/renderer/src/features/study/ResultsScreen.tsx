@@ -7,6 +7,7 @@ import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { Logo } from "../../components/Logo";
 import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MarkdownView } from "../../components/MarkdownView";
+import { CitedText } from "../../components/CitedText";
 import { Notice } from "../../components/Notice";
 import { openSourceViewer } from "../../components/SourceViewer";
 import type { RequestOutput } from "@shared/ipc";
@@ -475,7 +476,7 @@ function Answer({ id, item, planId }: { id: string; item: ResultItem; planId: st
       <InlineMarkdown>{value}</InlineMarkdown>
     );
   const citations = item.citations ?? [];
-  // A source the explanation cites is a chip in its text; the row under it lists only the others.
+  // A source the explanation cites is in the sources row under it; the actions list only the others.
   const inline = new Set([...(item.explanation ?? "").matchAll(/\[P(\d+)\]/g)].map((match) => Number(match[1]) - 1));
   const listed = citations.filter((_, index) => !inline.has(index));
   return (
@@ -515,16 +516,7 @@ function Answer({ id, item, planId }: { id: string; item: ResultItem; planId: st
       {waiting ? null : item.explanation || item.missed?.length ? (
         <div className="px-res-why">
           {item.explanation ? (
-            <MarkdownView
-              variant="body"
-              citationResolver={(n) => citations[n - 1]?.label}
-              onCitationClick={(n) => {
-                const cite = citations[n - 1];
-                if (cite) openSourceViewer({ passageId: cite.passageId });
-              }}
-            >
-              {item.explanation}
-            </MarkdownView>
+            <CitedText citations={citations}>{item.explanation}</CitedText>
           ) : null}
           {item.missed?.length ? (
             <>

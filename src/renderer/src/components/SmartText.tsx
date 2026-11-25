@@ -12,7 +12,8 @@ import {
 import { arrowTarget, letterIndex, letterKeysHere, letterQuestion } from "./finalKeys";
 import { Figure } from "./Figure";
 import { InlineMarkdown } from "./InlineMarkdown";
-import { MarkdownView, type CitationResolver } from "./MarkdownView";
+import { KnownPassages } from "../markdown/knownPassages";
+import { MarkdownView, type KnownPassage } from "./MarkdownView";
 import { QuizOption } from "./QuizOption";
 import "./SmartText.css";
 import { Working } from "./Working";
@@ -55,8 +56,7 @@ export function SmartText({
   answers = {},
   onAnswer,
   streaming = false,
-  onCitationClick,
-  citationResolver,
+  knownPassage,
   figures = {},
   final,
 }: {
@@ -64,9 +64,8 @@ export function SmartText({
   answers?: Record<string, number>;
   onAnswer?: SmartAnswer;
   streaming?: boolean;
-  onCitationClick?: (passageId: number) => void;
-  /** The chip label of each [Pn]; without it the chips read "Pn". */
-  citationResolver?: CitationResolver;
+  /** Which [Pn] marks name one of the lesson's passages; the sources row under the text lists them. */
+  knownPassage?: KnownPassage;
   /** Images of the figure blocks, by `figureKey`. While `streaming`, a figure without one is still being drawn. */
   figures?: Record<string, string>;
   /**
@@ -139,37 +138,39 @@ export function SmartText({
     return () => document.removeEventListener("keydown", onKey);
   }, [keys, closing, segments]);
   return (
-    <div className="px-smart">
-      {segments.map((segment, index) =>
-        segment.type === "markdown" ? (
-          <MarkdownView
-            key={index}
-            runnable
-            // Only the text at the end can still be growing: a formula in it waits for its closing delimiter.
-            drawing={streaming && index === segments.length - 1}
-            onCitationClick={onCitationClick}
-            citationResolver={citationResolver}
-          >
-            {segment.text}
-          </MarkdownView>
-        ) : segment.type === "pending" && segment.kind === "figure" ? (
-          <Figure key={index} caption="" drawing />
-        ) : segment.type === "pending" ? (
-          <div key={index} className="px-sb is-pending">
-            <Working line={t("smart.preparing")} />
-          </div>
-        ) : segment.block.kind === "figure" ? (
-          <Figure
-            key={segment.block.id}
-            caption={segment.block.caption}
-            image={figures[figureKey(segment.block.code, segment.block.figureKind)]}
-            drawing={streaming && figures[figureKey(segment.block.code, segment.block.figureKind)] === undefined}
-          />
-        ) : (
-          <Block key={segment.block.id} block={segment.block} answers={state} />
-        ),
-      )}
-    </div>
+    // The blocks' own texts (a worked example, a question's explanation) know the lesson's passages too.
+    <KnownPassages.Provider value={knownPassage}>
+      <div className="px-smart">
+        {segments.map((segment, index) =>
+          segment.type === "markdown" ? (
+            <MarkdownView
+              key={index}
+              runnable
+              // Only the text at the end can still be growing: a formula in it waits for its closing delimiter.
+              drawing={streaming && index === segments.length - 1}
+              knownPassage={knownPassage}
+            >
+              {segment.text}
+            </MarkdownView>
+          ) : segment.type === "pending" && segment.kind === "figure" ? (
+            <Figure key={index} caption="" drawing />
+          ) : segment.type === "pending" ? (
+            <div key={index} className="px-sb is-pending">
+              <Working line={t("smart.preparing")} />
+            </div>
+          ) : segment.block.kind === "figure" ? (
+            <Figure
+              key={segment.block.id}
+              caption={segment.block.caption}
+              image={figures[figureKey(segment.block.code, segment.block.figureKind)]}
+              drawing={streaming && figures[figureKey(segment.block.code, segment.block.figureKind)] === undefined}
+            />
+          ) : (
+            <Block key={segment.block.id} block={segment.block} answers={state} />
+          ),
+        )}
+      </div>
+    </KnownPassages.Provider>
   );
 }
 

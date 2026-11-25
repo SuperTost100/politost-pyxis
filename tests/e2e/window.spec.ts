@@ -555,14 +555,17 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       .getByRole("textbox", { name: "Messaggio", exact: true })
       .fill("What is velocity?");
     await page.getByRole("button", { name: "Invia", exact: true }).click();
-    await expect(
-      page.getByRole("button", { name: /Velocity/ }).first(),
-    ).toBeVisible({ timeout: 120000 });
+    // The answer names its source in the row under it: the row is the link to one passage, or opens into the list of
+    // several, whose first place opens the passage.
+    const reply = page.locator(".px-msg:not(.px-msg-user)").last();
+    const row = reply.locator(".px-sources-row");
+    await expect(row).toBeVisible({ timeout: 120000 });
+    await expect(reply.locator(".px-msg-text")).not.toContainText(/\[P\d/);
     await clean(page);
-    await page
-      .getByRole("button", { name: /Velocity/ })
-      .first()
-      .click();
+    if ((await row.getAttribute("aria-expanded")) === "false") {
+      await row.click();
+      await reply.locator(".px-sources-place, .px-sources-name").first().click();
+    } else await row.click();
     await expect(page.getByText(/12 metres/).first()).toBeVisible();
     await clean(page);
     if (!live) expect(coreLog.split("\n").filter((line) => /pyxis-core:.*failed/.test(line))).toEqual([]);

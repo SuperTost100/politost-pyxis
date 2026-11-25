@@ -838,7 +838,7 @@ describe("askTurn", () => {
     expect(aside.message?.grounding).toBe("general");
   });
 
-  it("embeds the question once for its own search and each attached document", async () => {
+  it("embeds the question once for its own search and each attached document, and the files' opening once for the Library", async () => {
     const dir = tempDir("pyxis-attach-");
     const files = ["a.txt", "b.txt"].map((name, index) => {
       const file = join(dir, name);
@@ -859,7 +859,10 @@ describe("askTurn", () => {
     } finally {
       setRetrievalModel(undefined);
     }
-    expect(embedded).toEqual(["query: velocita"]);
+    expect(embedded).toEqual([
+      "query: velocita",
+      "query: velocita\ndocumento 0: la velocita e la derivata dello spazio\ndocumento 1: la velocita e la derivata dello spazio",
+    ]);
   });
 
   it("reads an image with local OCR when the model cannot see it", async () => {

@@ -83,6 +83,8 @@ test("a chat answer creates flashcards with the tool: at work, done, undone and 
   let again: Awaited<ReturnType<typeof launchPyxis>> | undefined;
   try {
     await openChat(page);
+    // Enter sends only once the chat is read, which its earlier answer on screen shows.
+    await expect(page.getByText("La dinamica studia il moto dei corpi a partire dalle forze che lo causano.")).toBeVisible();
     await page.getByRole("textbox", { name: "Messaggio" }).fill(QUESTION);
     await page.keyboard.press("Enter");
 
