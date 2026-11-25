@@ -183,12 +183,38 @@ test("the outline has a mark per question from the third on, a card on hover and
     await expect(page.getByText("Quanto vale la forza normale?")).toHaveCount(0);
     await expect(marks.last()).toHaveAttribute("aria-current", "true");
 
-    // The pointer on a mark shows its question and the start of its answer.
+    // The outline sits along the left edge of the chat pane beside the sidebar, clear of message text.
+    const checkLeftPlacement = async () => {
+      const current = outline.locator('button[aria-current="true"] i');
+      const other = outline.locator('button:not([aria-current="true"]) i').first();
+      await expect.poll(async () => (await current.boundingBox())!.width).toBeCloseTo(22, 0);
+      const box = await outline.boundingBox();
+      const pane = await page.locator(".ask-page").boundingBox();
+      const side = await page.locator("aside.px-side").boundingBox();
+      const msg = await page.locator(".px-msg-text").last().boundingBox();
+      const shortBar = await other.boundingBox();
+      const currentBar = await current.boundingBox();
+      expect(box!.x).toBeCloseTo(pane!.x + 6, 0);
+      expect(box!.x).toBeGreaterThanOrEqual(side!.x + side!.width);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(msg!.x);
+      // Marks align to the left edge and the current mark grows to the right.
+      expect(currentBar!.x).toBeCloseTo(shortBar!.x, 0);
+      expect(currentBar!.x).toBeCloseTo(pane!.x + 10, 0);
+      expect(currentBar!.width).toBeGreaterThan(shortBar!.width);
+    };
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await checkLeftPlacement();
+
+    // The pointer on a mark shows its question and the start of its answer, opening to the right of the marks.
     await marks.nth(3).hover();
     const card = outline.locator(".ask-outline-card");
     await expect(card).toContainText("Domanda 4 di 9");
     await expect(card).toContainText("Come trovo l'angolo a cui il blocco inizia a scivolare?");
     await expect(card).toContainText("Risposta 4.");
+    const outlineBox = await outline.boundingBox();
+    const cardBox = await card.boundingBox();
+    expect(cardBox!.x).toBeGreaterThanOrEqual(outlineBox!.x + outlineBox!.width);
+    expect(await card.evaluate((el) => getComputedStyle(el).transformOrigin)).toMatch(/^0px /);
     // The formulas in the card are drawn, never shown as their source.
     await expect(card.locator(".katex").first()).toBeVisible();
     const seen = await card.evaluate((el) => {
@@ -229,6 +255,19 @@ test("the outline has a mark per question from the third on, a card on hover and
     await marks.nth(6).click();
     await expect(page.locator(".px-msg-user", { hasText: "Mi fai un esempio con i numeri?" })).toBeInViewport();
     await expect(marks.nth(6)).toHaveAttribute("aria-current", "true");
+
+    // Folding the sidebar moves the outline to the left edge of the content; unfolding moves it back.
+    await page.getByRole("button", { name: "Riduci la barra" }).click();
+    await expect.poll(async () => (await outline.boundingBox())!.x).toBeLessThan(120);
+    await checkLeftPlacement();
+    await page.getByRole("button", { name: "Espandi la barra" }).click();
+    await expect.poll(async () => (await outline.boundingBox())!.x).toBeGreaterThan(250);
+    await checkLeftPlacement();
+
+    // At 960 px wide the sidebar folds and the outline stays at the left edge without covering text.
+    await page.setViewportSize({ width: 960, height: 800 });
+    await expect.poll(async () => (await outline.boundingBox())!.x).toBeLessThan(120);
+    await checkLeftPlacement();
   } finally {
     await app.close();
     removeTestFolder(userData);

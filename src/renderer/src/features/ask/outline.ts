@@ -120,3 +120,12 @@ export function currentMark(tops: ReadonlyArray<number | null>, line: number, at
 export function jumpRange(firstShown: number, row: number): number {
   return Math.min(firstShown, row);
 }
+
+/**
+ * Horizontal position of the outline box from the window's left edge: 6 px past the chat pane's left edge
+ * (beside the sidebar, open or folded), or null when fewer than 40 px separate that edge from the message column.
+ */
+export function outlineLeft(paneLeft: number | undefined, columnLeft: number | undefined): number | null {
+  if (paneLeft === undefined || columnLeft === undefined || columnLeft - paneLeft < 40) return null;
+  return paneLeft + 6;
+}
