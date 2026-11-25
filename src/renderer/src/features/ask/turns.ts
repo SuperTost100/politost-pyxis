@@ -123,6 +123,19 @@ export const turns = {
     changed();
     return turn;
   },
+  /**
+   * A Continue keeps the cut-off reply on screen while it runs: its text, its citation chips and what its tool calls made,
+   * which core does not send again, so a card stays where it was.
+   */
+  continueFrom(turn: Turn, saved: { body: string; citations: TurnPassage[]; tools?: Record<string, ToolResultView> }) {
+    turn.live.set(saved.body);
+    turn.passages.set(saved.citations.map(({ index, label }) => ({ index, label })));
+    if (saved.tools) turn.tools.set({ ...saved.tools });
+  },
+  /** «Annulla» or «Ripristina» on a result while the reply is written: the turn keeps the new state for every later mount. */
+  toolChanged(turn: Turn, view: ToolResultView) {
+    turn.tools.set({ ...turn.tools.get(), [view.id]: view });
+  },
   /** The question's files once the ones still being attached when it was sent are known: the page shows them. */
   setFiles(turn: Turn, files: Turn["files"]) {
     turn.files = files;

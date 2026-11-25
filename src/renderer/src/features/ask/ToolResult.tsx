@@ -15,7 +15,18 @@ import "./ToolResult.css";
  * shows nothing. A state reached while the card is on screen grows out of the one before it: the working shape becomes
  * the card, and «Annulla» folds the card into its one line.
  */
-export function ToolResult({ chatId, line, view }: { chatId: string; line: string; view?: ToolResultView }) {
+export function ToolResult({
+  chatId,
+  line,
+  view,
+  onView,
+}: {
+  chatId: string;
+  line: string;
+  view?: ToolResultView;
+  /** Hears the result's new state after «Annulla» or «Ripristina», for a reply still being written. */
+  onView?: (view: ToolResultView) => void;
+}) {
   const pending = line.startsWith("pending:");
   // The state the card was first drawn in: a later one is a change the student sees happen, so it animates.
   const [state, setState] = useState<ToolResultView | undefined>(view);
@@ -24,7 +35,17 @@ export function ToolResult({ chatId, line, view }: { chatId: string; line: strin
   if (pending) return <Working />;
   if (!state) return null;
   const arriving = first.current !== stateKey(state);
-  return <Flashcards chatId={chatId} view={state} arriving={arriving} onChange={setState} />;
+  return (
+    <Flashcards
+      chatId={chatId}
+      view={state}
+      arriving={arriving}
+      onChange={(next) => {
+        setState(next);
+        onView?.(next);
+      }}
+    />
+  );
 }
 
 const stateKey = (view: ToolResultView | undefined) => (view ? (view.undone === null ? "done" : "undone") : "none");
