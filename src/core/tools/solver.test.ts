@@ -75,7 +75,8 @@ describe("ask_stronger_model: which model", () => {
     rememberReady([claude, codex, gemini]);
     expect(solverSelection(db, { provider: "claude", model: "claude-sonnet-5-5" })).toMatchObject({ provider: "claude", model: "claude-opus-5-5", effort: "high" });
     expect(solverSelection(db, { provider: "codex", model: "gpt-6.1-terra" })).toMatchObject({ provider: "codex", model: "gpt-6.2-sol", effort: "high" });
-    expect(solverSelection(db, { provider: "antigravity", model: "gemini-3.8-flash" })).toMatchObject({ provider: "antigravity", model: "gemini-4-carbon" });
+    // Antigravity's 180-second limit cannot be raised: its strong model thinks at medium effort there.
+    expect(solverSelection(db, { provider: "antigravity", model: "gemini-3.8-flash" })).toEqual({ provider: "antigravity", model: "gemini-4-carbon", effort: "medium" });
     // The chat's tool is out: no other tool's strong model takes its place.
     rememberReady([codex]);
     expect(solverSelection(db, { provider: "claude", model: "claude-sonnet-5-5" })).toBeNull();
@@ -93,6 +94,15 @@ describe("ask_stronger_model: which model", () => {
     expect(solverSelection(db, { provider: "codex", model: "gpt-6.1-terra" })).toMatchObject({ provider: "claude", model: "claude-sonnet-5-5" });
     // The pinned model is the one answering: nothing stronger to hand the exercise to.
     expect(solverSelection(db, { provider: "claude", model: "claude-sonnet-5-5" })).toBeNull();
+    setFeatureOff(db, "solve", true);
+    expect(solverSelection(db, { provider: "claude", model: "claude-haiku-5-5" })).toBeNull();
+    setFeatureOff(db, "solve", false);
+    // A level the student picked for the task wins over Antigravity's cap.
+    rememberReady([gemini]);
+    rememberModels("antigravity", gemini.models);
+    pin(db, { provider: "antigravity", model: "gemini-4-carbon", effort: "medium", auto: true, effortChoice: "high" });
+    expect(solverSelection(db, { provider: "antigravity", model: "gemini-3.8-flash" })).toMatchObject({ model: "gemini-4-carbon", effort: "high" });
+    pin(db, { provider: "claude", model: "claude-sonnet-5-5", effort: "high" });
     setFeatureOff(db, "solve", true);
     expect(solverSelection(db, { provider: "claude", model: "claude-haiku-5-5" })).toBeNull();
     setFeatureOff(db, "solve", false);

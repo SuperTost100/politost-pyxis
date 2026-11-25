@@ -8,7 +8,7 @@ import { setFeatureOff } from "../engine/selection";
 import { tempDir } from "../test-temp";
 import { chatToolList } from "./registry";
 import { setTools, stopToolServer } from "./server";
-import { isSolverCall } from "./solver";
+import { isSolverCall, solverInput, solverTool } from "./solver";
 
 /**
  * `ask_stronger_model` on a signed-in CLI. It spends subscription usage on the strong model, so it runs only with
@@ -18,7 +18,8 @@ import { isSolverCall } from "./solver";
  *   PYXIS_LIVE_OUT=.tmp/solver npm test -- src/core/tools/solver.live.test.ts
  *
  * PYXIS_LIVE_SCENARIOS picks scenarios by name (comma-separated). A scenario ending in `-alone` asks the same exercise
- * with the task switched off, so the chat's model answers by itself, for comparison. Each turn's reply, the solver's
+ * with the task switched off, so the chat's model answers by itself, for comparison. One ending in `-direct` skips the
+ * chat and calls the tool with the exercise as its argument, to time the stronger model alone. Each turn's reply, the solver's
  * text and the times go to PYXIS_LIVE_OUT as JSON. A usage notice ends the run: nothing is retried against it.
  */
 const live = process.env["PYXIS_LIVE_SOLVER"] === "1";
@@ -67,7 +68,36 @@ describe.skipIf(!live)("ask_stronger_model, live", () => {
     setTools(chatToolList(db, false));
 
     const report: Turn[] = [];
-    for (const name of wanted) {
+    db.prepare("INSERT INTO chats (id, title, created_at, updated_at) VALUES ('direct', 'direct', 1, 1)").run();
+    for (const name of wanted.filter((entry) => entry.endsWith("-direct"))) {
+      const question = SCENARIOS[name.slice(0, -"-direct".length)]!;
+      const t0 = Date.now();
+      let solverModel: string | null = null;
+      const outcome = await Promise.resolve(solverTool(db).run(
+        {
+          chatId: "direct",
+          tally: {},
+          kept: {},
+          place: () => ({ planId: null, subject: "Analisi 2" }),
+          engine: () => ({ provider, model }),
+          call: () => ({
+            run: async (input: TurnInput) => {
+              const answer = await runTurn(input);
+              solverModel = answer.model;
+              return answer;
+            },
+            usage: { kind: "chat" },
+            language: "Italian",
+          }),
+          started: () => null,
+          finished: () => undefined,
+        },
+        solverInput.parse({ exercise: question, request: "Lo studente chiede la soluzione completa." }),
+      )).catch((err: unknown) => ({ text: `error: ${String(err)}` }));
+      report.push({ scenario: name, question, body: "", turnMs: Date.now() - t0, called: true, solverMs: Date.now() - t0, solver: outcome.text, solverModel, error: null });
+      writeFileSync(join(out, `${provider}-${model}.json`), JSON.stringify(report, null, 2));
+    }
+    for (const name of wanted.filter((entry) => !entry.endsWith("-direct"))) {
       const alone = name.endsWith("-alone");
       const question = SCENARIOS[alone ? name.slice(0, -"-alone".length) : name]!;
       setFeatureOff(db, "solve", alone);

@@ -1,7 +1,7 @@
 import { IpcError } from "../../shared/ipc";
 import { isRetiredProvider } from "../../shared/limits";
 import type Database from "better-sqlite3";
-import { nearestEffort, studentEffort } from "../../shared/effort";
+import { effortScale, nearestEffort, studentEffort } from "../../shared/effort";
 import { planAuto, type AutoFeature, type AutoProvider } from "./auto";
 import { isBenched, isModelBenched } from "./bench";
 import { effortsOf, runsAs, unfoldVariant, wasReported } from "./efforts";
@@ -349,6 +349,11 @@ export function solverSelection(
     choice = selectionOn(chat.provider, "solve");
     const picked = own?.effortChoice;
     if (choice && picked && effortsOf(choice.provider, choice.model)?.includes(picked)) choice = { ...choice, effort: picked };
+    // Antigravity ends a tool call after 180 seconds and cannot be given longer. Its strong model at high effort took
+    // 91 seconds on one exercise and more than 150 on another in a live check, so the automatic choice there thinks at
+    // medium effort; a level the student picked for the task is kept.
+    else if (choice?.provider === "antigravity" && choice.effort && effortScale.indexOf(choice.effort as never) > effortScale.indexOf("medium"))
+      choice = { ...choice, effort: "medium" };
   }
   if (!choice || (choice.provider === chat.provider && choice.model === chat.model)) return null;
   return choice;

@@ -169,7 +169,7 @@ Their «Annulla» moves what they made out of the tables every list reads, into 
 
 What the sub-call sends is what the chat's model put in the arguments, taken from this chat, the same content the chat already sends to that tool. A pinned model of another tool is the student's choice, and its notice must be confirmed as for the chat. A turn that read the student's results passes nothing on unless the solver's tool may receive them, which the chat's own tool always may when it read them.
 
-Each CLI ends a call to an MCP tool at its own limit, measured live: Claude Code 2.1.332 after 60 seconds unless the server sets `toolTimeoutSec`, Codex 0.166.0 not within the 200 seconds the check waited, and Antigravity 1.5.17 after 180 seconds, which cannot be raised over ACP. Core gives Claude Code and Codex 300 seconds (`TOOL_CALL_LIMIT_SEC`), and the sub-call stops itself after 150 seconds (`SOLVER_DEADLINE_MS`), inside every limit. Then the chat's model is told to solve the exercise itself and to say it is less sure.
+Each CLI ends a call to an MCP tool at its own limit, measured live: Claude Code 2.1.332 after 60 seconds unless the server sets `toolTimeoutSec`, Codex 0.166.0 not within the 200 seconds the check waited, and Antigravity 1.5.17 after 180 seconds, which cannot be raised over ACP. Core gives Claude Code and Codex 300 seconds (`TOOL_CALL_LIMIT_SEC`), and the sub-call stops itself after 150 seconds (`SOLVER_DEADLINE_MS`), inside every limit. On Antigravity the automatic choice runs the strong model at medium effort, since at high effort it once took longer than 150 seconds. Then the chat's model is told to solve the exercise itself and to say it is less sure.
 
 ### Photos sent to a vision model
 
