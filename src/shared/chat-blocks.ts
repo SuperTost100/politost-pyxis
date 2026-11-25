@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { arranged, hash, mapFencedBlocks, parseLooseJson } from "./smart-text";
+import { arranged, hash, mapFencedBlocks, parseLooseJson, stripPassageRefs } from "./smart-text";
 
 /**
  * Two blocks a chat answer can hold, written by the model as fenced code blocks whose body is JSON:
@@ -68,16 +68,28 @@ const chartSchema = z
       .max(CHART_SERIES_MAX),
     reference: z.object({ value, label: plain(CHART_LABEL_MAX) }).optional(),
   })
-  .refine((chart) => chartLabels(chart).length <= CHART_POINTS_MAX, "Too many points")
+  .refine((chart) => chartCategories(chart).length <= CHART_POINTS_MAX, "Too many points")
   .refine((chart) => chart.min === undefined || chart.max === undefined || chart.min < chart.max, "Empty range");
 
 export type ChartData = z.infer<typeof chartSchema>;
 
-/** The categories of a chart along its axis, in the order they first appear in any series. */
-export function chartLabels(chart: { series: ReadonlyArray<{ points: ReadonlyArray<{ label: string }> }> }): string[] {
-  const seen = new Set<string>();
-  for (const series of chart.series) for (const point of series.points) seen.add(point.label);
-  return [...seen];
+type Point = { label: string; value: number | null; note?: string };
+
+/**
+ * The categories of a chart along its axis, each with the point of every series there (null where a series has none).
+ * One series keeps its points as written, so a line of quizzes over time may label two points with the same topic.
+ * Several series line up by label, in the order the labels first appear.
+ */
+export function chartCategories<P extends Point>(chart: { series: ReadonlyArray<{ points: ReadonlyArray<P> }> }): Array<{
+  label: string;
+  points: Array<P | null>;
+}> {
+  if (chart.series.length === 1) return chart.series[0]!.points.map((point) => ({ label: point.label, points: [point] }));
+  const labels = [...new Set(chart.series.flatMap((series) => series.points.map((point) => point.label)))];
+  return labels.map((label) => ({
+    label,
+    points: chart.series.map((series) => series.points.find((point) => point.label === label) ?? null),
+  }));
 }
 
 type Loose = Record<string, unknown>;
@@ -180,13 +192,15 @@ function repairQuestion(raw: unknown): QuestionData | null {
   }
   const feedback = first(value, "feedback", "feedbacks");
   const explanation = text(first(value, "explanation", "why"));
+  // A passage marker cannot link inside the block, so it goes, as from the rest of a reply's text.
+  const clean = (said: string | undefined) => (said === undefined ? undefined : stripPassageRefs(said));
   const parsed = questionSchema.safeParse({
-    question: text(first(value, "question", "stem", "prompt")),
-    options,
+    question: clean(text(first(value, "question", "stem", "prompt"))),
+    options: options.map((option) => clean(option)),
     answer,
-    feedback: Array.isArray(feedback) ? feedback.map((item) => text(item) ?? "") : undefined,
-    right: text(first(value, "right", "correctFeedback")) ?? (typeof feedback === "string" ? feedback : explanation),
-    wrong: text(first(value, "wrong", "wrongFeedback")) ?? (typeof feedback === "string" ? feedback : explanation),
+    feedback: Array.isArray(feedback) ? feedback.map((item) => clean(text(item)) ?? "") : undefined,
+    right: clean(text(first(value, "right", "correctFeedback")) ?? (typeof feedback === "string" ? feedback : explanation)),
+    wrong: clean(text(first(value, "wrong", "wrongFeedback")) ?? (typeof feedback === "string" ? feedback : explanation)),
   });
   return parsed.success ? parsed.data : null;
 }
@@ -301,12 +315,10 @@ export function formatChartValue(value: number, unit: string | undefined, locale
 
 /** A chart as Markdown: its title and the same data as a table, which export and «Copia» write in its place. */
 export function chartText(chart: ChartData, labels: ChatBlockLabels, locale: string): string {
-  const categories = chartLabels(chart);
   const head = [chart.x || "", ...chart.series.map((series) => series.name || chart.y || "")];
-  const rows = categories.map((category) => [
-    category,
-    ...chart.series.map((series) => {
-      const point = series.points.find((item) => item.label === category);
+  const rows = chartCategories(chart).map((category) => [
+    category.label,
+    ...category.points.map((point) => {
       if (!point) return "";
       if (point.value === null) return point.note || labels.missing;
       const shown = formatChartValue(point.value, chart.unit, locale);

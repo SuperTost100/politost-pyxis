@@ -1,4 +1,4 @@
-import { chartLabels, type ChartData } from "../../../shared/chat-blocks";
+import { chartCategories, type ChartData } from "../../../shared/chat-blocks";
 
 /** A step of 1, 2, 2.5 or 5 times a power of ten that splits `span` into about `count` parts. */
 function niceStep(span: number, count: number): number {
@@ -30,10 +30,7 @@ export function chartDomain(chart: ChartData): { lo: number; hi: number; ticks: 
   return { lo: niceLo, hi: niceHi, ticks };
 }
 
-/** Each category with the value of every series at it (null where the series has none or a missing value). */
+/** Each category with the point of every series at it (null where the series has none). */
 export function chartRows(chart: ChartData) {
-  return chartLabels(chart).map((label) => ({
-    label,
-    points: chart.series.map((series) => series.points.find((point) => point.label === label) ?? null),
-  }));
+  return chartCategories(chart);
 }

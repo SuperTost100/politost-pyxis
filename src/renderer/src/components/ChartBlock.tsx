@@ -439,7 +439,9 @@ function lineChart(
   const f = size.font;
   const tick = (number: number) => new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(number);
   const left = Math.max(...ticks.map((item) => measure(tick(item)))) + 10;
-  const right = 10;
+  // The reference line's label sits past the line's right end, outside the plot, where no point can cover it.
+  const refLabel = chart.reference ? fit(chart.reference.label, size.width * 0.28, measure) : "";
+  const right = refLabel ? measure(refLabel) * 0.9 + 14 : 10;
   const top = chart.y ? Math.ceil(f * 1.8) : Math.ceil(f * 0.7);
   const plotHeight = Math.round(Math.min(260, Math.max(160, size.width * 0.38)));
   const bottom = Math.ceil(f * 1.9) + (chart.x ? Math.ceil(f * 1.5) : 0);
@@ -494,8 +496,8 @@ function lineChart(
       {chart.reference ? (
         <g className="px-chart-ref">
           <line x1={left} x2={size.width - right} y1={y(chart.reference.value)} y2={y(chart.reference.value)} />
-          <text x={size.width - right} y={y(chart.reference.value) - f * 0.6} textAnchor="end" fontSize={f * 0.9}>
-            {chart.reference.label}
+          <text x={size.width - right + 6} y={y(chart.reference.value)} dominantBaseline="central" fontSize={f * 0.9}>
+            {refLabel}
           </text>
         </g>
       ) : null}

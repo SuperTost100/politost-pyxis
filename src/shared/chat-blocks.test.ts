@@ -188,3 +188,28 @@ describe("question blocks", () => {
     expect(text).not.toContain("feedback");
   });
 });
+
+describe("question text", () => {
+  it("drops passage markers the model wrote inside the block, which cannot link there", () => {
+    const question = chatQuestion(
+      JSON.stringify({ ...QUESTION, question: "Quanto vale [P1]?", feedback: ["Solo al limite [P1].", "Equilibra la spinta [P1; P2].", "No."] }),
+    )!;
+    expect(question.question).toBe("Quanto vale?");
+    expect(question.feedback).toEqual(["Solo al limite.", "Equilibra la spinta.", "No."]);
+  });
+});
+
+describe("chart categories", () => {
+  it("keeps every point of one series, even two with the same label, and lines several series up by label", () => {
+    const line = parseChart(
+      chart({
+        title: "Andamento",
+        kind: "line",
+        series: [{ name: "Voto", points: [{ label: "Cinematica", value: 18 }, { label: "Cinematica", value: 26 }, { label: "Dinamica", value: 21 }] }],
+      }),
+    )!;
+    expect(chatBlocksAsText(`\`\`\`pyxis-chart\n${chart(line)}\n\`\`\``, CHAT_BLOCK_TEXT.en, "en")).toContain(
+      "| Cinematica | 18 |\n| Cinematica | 26 |\n| Dinamica | 21 |",
+    );
+  });
+});

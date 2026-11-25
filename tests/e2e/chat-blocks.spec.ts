@@ -1,13 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis, setUp } from "./app-under-test";
-import { GRADES_CHART, PRACTICE_QUESTION } from "./chat-look-seed";
+import { GRADES_CHART, PRACTICE_QUESTION, seedBlocksChat } from "./chat-look-seed";
+import { answerNextMenu } from "./native-menu";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
-import { saveShot } from "./shots";
+import { saveShot, SHOTS } from "./shots";
 
 /*
  * The chat's own blocks: a chart the app draws from the numbers in the answer, and a practice question answered in the
@@ -255,6 +256,72 @@ test("a practice question is answered in the chat, kept after a reopen and a res
     expect(counted(userData).graded).toEqual(before.graded);
   } finally {
     await (again ?? app).close().catch(() => undefined);
+    removeTestFolder(userData);
+  }
+});
+
+/** The text a PDF holds, page after page, as pdf.js reads it. */
+async function pdfText(path: string): Promise<string> {
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const doc = await getDocument({ data: new Uint8Array(readFileSync(path)), useSystemFonts: true }).promise;
+  const pages: string[] = [];
+  for (let number = 1; number <= doc.numPages; number += 1) {
+    const content = await (await doc.getPage(number)).getTextContent();
+    pages.push(content.items.map((item) => ("str" in item ? item.str : "")).join(" "));
+  }
+  return pages.join("\n").replace(/\s+/g, " ");
+}
+
+test("a chat with a chart exports its data as a table in Markdown and prints the chart in the PDF", async () => {
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-chat-blocks-export-"));
+  const saved = join(userData, "export.bin");
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_SAVE: saved } });
+  try {
+    const page = await setUp(app, userData, async () => {
+      const first = await app.firstWindow();
+      await first.getByRole("button", { name: "Salta" }).click();
+      await fromChiediToExams(first);
+      const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+      try {
+        seedBlocksChat(db, "chart");
+      } finally {
+        db.close();
+      }
+      return first;
+    });
+    await page.evaluate(() => {
+      location.hash = "/ask/look-chart";
+    });
+    await expect(page.locator("figure.px-chart")).toBeVisible();
+    const exportWith = async (item: string) => {
+      rmSync(saved, { force: true });
+      await answerNextMenu(app, item);
+      await page.getByRole("button", { name: "Azioni per Come vado in Fisica 1" }).click();
+      await expect.poll(() => readFileSync(saved, { flag: "a+" }).length, { timeout: 30000 }).toBeGreaterThan(0);
+    };
+    await exportWith("Esporta come Markdown");
+    const markdown = readFileSync(saved, "utf8");
+    expect(markdown).toContain("| Argomento | Voto |");
+    expect(markdown).toContain("| Oscillazioni | 17/30 (quiz del 16 novembre) |");
+    expect(markdown).not.toContain("pyxis-chart");
+
+    await exportWith("Esporta come PDF");
+    await expect.poll(() => readFileSync(saved).subarray(0, 5).toString(), { timeout: 30000 }).toBe("%PDF-");
+    // The drawing's own labels are in the PDF (the value at each bar's end, the reference line's label), and no table.
+    if (SHOTS) {
+      mkdirSync(join(SHOTS, "blocks"), { recursive: true });
+      copyFileSync(saved, join(SHOTS, "blocks", "chart-print.pdf"));
+    }
+    const text = await pdfText(saved);
+    expect(text).toContain("I tuoi voti nei quiz di Fisica 1");
+    expect(text).toContain("26/30");
+    expect(text).toContain("sufficienza, 18");
+    expect(text).toContain("non ancora fatto");
+    expect(text).not.toContain("|");
+    expect(text).not.toContain('"series"');
+  } finally {
+    await app.close().catch(() => undefined);
     removeTestFolder(userData);
   }
 });
