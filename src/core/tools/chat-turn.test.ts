@@ -148,7 +148,7 @@ describe("a chat turn with tools", () => {
     expect(result.message!.tools?.[resultId!]).toMatchObject({ count: 2 });
   });
 
-  it("does not resume an Antigravity session that began without the tools, and resumes one that began with them", async () => {
+  it("does not resume a session that began without the tools, and resumes one that began with them", async () => {
     const db = setup();
     const answer = (sessionId: string, tools: boolean) => async (input: TurnInput): Promise<EngineResult> => {
       seen.push(input.conversation?.session ?? null);

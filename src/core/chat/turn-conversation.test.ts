@@ -23,7 +23,7 @@ type Seen = {
     key: string;
     followUp: string;
     session?: { provider: string; id: string; cwd: string } | null;
-    onSession?: (sessionId: string, provider: string, cwd: string) => void;
+    onSession?: (sessionId: string, provider: string, cwd: string, tools?: boolean) => void;
   };
   cache?: boolean;
   /** Pyxis's tools, which every chat turn offers. */
@@ -612,7 +612,7 @@ describe("a chat's stored tool session", () => {
       text: "prima domanda",
       allowGeneral: true,
       run: async (input) => {
-        (input as Seen).conversation?.onSession?.("c1", "claude", "/scratch");
+        (input as Seen).conversation?.onSession?.("c1", "claude", "/scratch", true);
         return { ...reply, provider: "openai-api", model: "gpt-5.6-terra", text: "Risposta dell'API." };
       },
     });

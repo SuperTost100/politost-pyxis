@@ -1366,13 +1366,14 @@ async function answer(
     },
   };
   let disarm = () => undefined as void;
-  // Antigravity does not give Pyxis's tools to a session that began without them: checked on agy 1.5.17 with
-  // gemini-3.8-flash, the server was listed, and the model answered that it had no such tool and wrote the cards as text.
-  // Such a session (every one stored before the tools, and one whose tools were refused) is not resumed when the tools
-  // would attach now: a new session starts with the whole conversation. Claude Code and Codex take the tools in a
-  // resumed session, and a session that began with them takes a new address and token after a restart on all three.
+  // A stored session that began without Pyxis's tools is not resumed when the tools would attach now: a new session starts
+  // with the whole conversation. Checked on agy 1.5.17 with gemini-3.8-flash: such a session never used the tools (the
+  // server was listed, and the model said it had no such tool and wrote the cards as text). Codex took them in four runs of
+  // five and wrote text in the fifth; Claude Code took them in four of four. This happens once for each chat opened before
+  // the tools, or whose tools were refused. A session that began with them takes a new address and token after a restart
+  // on all three.
   const withoutTools = (stored: NonNullable<typeof session>) =>
-    stored.provider === "antigravity" && !stored.tools && access !== null && toolsAttach("antigravity");
+    !stored.tools && access !== null && toolsAttach(stored.provider);
   // Fitting a saved photo can take seconds, so it runs in the extract worker. A photo left out is reported, not dropped silently.
   const saved =
     input.workspace && engineSeesImages(selection)

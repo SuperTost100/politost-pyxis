@@ -573,8 +573,8 @@ END;`,
   // names the row in a ```pyxis-tool block; `message_id` is set once the reply is saved. `data_json` is the tool's own
   // record (for flashcards: the ids of the cards it created). `undone_json` lists what «Annulla» took away, so «Ripristina»
   // brings back exactly those; null while the result stands. The cards themselves stay in `cards`.
-  // `tool_sessions.tools` says the session was opened with Pyxis's tools attached: Antigravity does not give them to a
-  // session that began without them, so such a session is not resumed once they attach (`chat/turn.ts`). Every session
+  // `tool_sessions.tools` says the session was opened with Pyxis's tools attached: a session that began without them does
+  // not reliably use them (Antigravity never did), so it is not resumed once they attach (`chat/turn.ts`). Every session
   // stored before this step began without them.
   {
     version: 38,
