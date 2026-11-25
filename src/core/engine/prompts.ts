@@ -9,6 +9,7 @@ import gapInsight from "../../../resources/prompts/gap.insight.md?raw";
 import figureFix from "../../../resources/prompts/figure.fix.md?raw";
 import chatChecks from "../../../resources/prompts/chat.checks.md?raw";
 import chatTutor from "../../../resources/prompts/chat.tutor.md?raw";
+import chatSolve from "../../../resources/prompts/chat.solve.md?raw";
 import lessonWrite from "../../../resources/prompts/lesson.write.md?raw";
 import lessonAgent from "../../../resources/prompts/lesson.agent.md?raw";
 import lessonOutline from "../../../resources/prompts/lesson.outline.md?raw";
@@ -53,6 +54,7 @@ export const TEMPLATE_SOURCES = {
   "figure.fix": figureFix,
   "chat.checks": chatChecks,
   "chat.tutor": chatTutor,
+  "chat.solve": chatSolve,
   "lesson.write": lessonWrite,
   "lesson.agent": lessonAgent,
   "lesson.outline": lessonOutline,

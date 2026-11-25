@@ -68,7 +68,7 @@ describe("automatic engine choice", () => {
     // Antigravity is disabled, so it is never counted as ready.
     expect(result.ready).toEqual(["claude", "codex"]);
     expect(Object.keys(result.features).sort()).toEqual(
-      ["cards", "chat", "default", "grading", "lesson", "map", "plan", "vision"].sort(),
+      ["cards", "chat", "default", "grading", "lesson", "map", "plan", "solve", "vision"].sort(),
     );
     // The model file runs the chat on the mid role of Claude and ChatGPT.
     expect(result.features.chat).toEqual({

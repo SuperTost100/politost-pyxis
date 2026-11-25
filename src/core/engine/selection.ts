@@ -306,3 +306,50 @@ export function withoutRefusedModels(providers: AutoProvider[]): AutoProvider[] 
     }),
   }));
 }
+
+const offKey = (feature: string) => `feature-off:${feature}`;
+
+/**
+ * Whether the student switched this task off in Settings. Only `solve` can be: the chat then never offers its model the
+ * stronger model. Kept in `settings` beside the task's row, which stays as it was, so switching it on again brings back
+ * the automatic choice or the model pinned before.
+ */
+export function isFeatureOff(db: Database.Database, feature: string): boolean {
+  const row = db.prepare("SELECT value_json FROM settings WHERE key = ?").get(offKey(feature)) as { value_json: string } | undefined;
+  return row?.value_json === "true";
+}
+
+export function setFeatureOff(db: Database.Database, feature: string, off: boolean): void {
+  if (off)
+    db.prepare(
+      `INSERT INTO settings (key, value_json, updated_at) VALUES (?, 'true', ?)
+       ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
+    ).run(offKey(feature), Date.now());
+  else db.prepare("DELETE FROM settings WHERE key = ?").run(offKey(feature));
+}
+
+/**
+ * The model a chat turn hands a hard exercise to (`tools/solver.ts`), or null when the chat has none to hand it to. A
+ * model the student pinned for "Esercizi difficili" is used as pinned. Otherwise it is the strong model of the tool that
+ * answers the chat, never another tool's, at the task's effort or the one the student picked for it. Null when the task
+ * is switched off, when that tool is out, and when the model would be the one already answering (a chat pinned to the
+ * strong model, or "answer again with the strongest model").
+ */
+export function solverSelection(
+  db: Database.Database,
+  chat: { provider: string; model: string },
+): Omit<StoredSelection, "auto" | "effortChoice" | "chosenFor"> | null {
+  if (isFeatureOff(db, "solve")) return null;
+  const own = readRow(db, "solve");
+  let choice: Omit<StoredSelection, "auto" | "effortChoice" | "chosenFor"> | undefined;
+  if (own && own.auto !== true) {
+    const { chosenFor: _none, auto: _auto, effortChoice: _pick, ...pinned } = selectionFor(db, "solve");
+    choice = pinned;
+  } else {
+    choice = selectionOn(chat.provider, "solve");
+    const picked = own?.effortChoice;
+    if (choice && picked && effortsOf(choice.provider, choice.model)?.includes(picked)) choice = { ...choice, effort: picked };
+  }
+  if (!choice || (choice.provider === chat.provider && choice.model === chat.model)) return null;
+  return choice;
+}

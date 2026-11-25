@@ -12,6 +12,13 @@ import {
   undoToolResult,
 } from "./results";
 import type { ToolTurn } from "./server";
+import type { FlashcardsResultView, ToolResultView } from "../../shared/ipc";
+
+/** A flashcard result's view, which the undo and restore functions return as any tool's. */
+function cardsView(view: ToolResultView): FlashcardsResultView {
+  if (view.tool !== "create_flashcards") throw new Error(`not a flashcard result: ${view.tool}`);
+  return view;
+}
 
 function fixture() {
   const db = openDatabase(":memory:");
@@ -136,7 +143,7 @@ describe("create_flashcards", () => {
     ] });
     expect(db.prepare("SELECT COUNT(*) FROM chat_tool_results").pluck().get()).toBe(1);
     // Undo takes all five out.
-    expect(undoToolResult(db, "chat", first.shown!.resultId).undone).toBe(5);
+    expect(cardsView(undoToolResult(db, "chat", first.shown!.resultId)).undone).toBe(5);
   });
 
   it("keeps a later call's cards in the undo when the student undid the result while the answer was still running", async () => {
@@ -145,12 +152,12 @@ describe("create_flashcards", () => {
     const answer = turn({ planId: null, subject: "Fisica 1" });
     const first = await tool.run(answer, args(2));
     const id = first.shown!.resultId;
-    expect(undoToolResult(db, "chat", id).undone).toBe(2);
+    expect(cardsView(undoToolResult(db, "chat", id)).undone).toBe(2);
     await tool.run(answer, flashcardsInput.parse({ cards: cards(3, 10) }));
     // The later cards are out of the deck with the others, and the undo record holds all five.
     expect(db.prepare("SELECT removed FROM cards ORDER BY rowid").pluck().all()).toEqual([1, 1, 1, 1, 1]);
     expect(toolView(db, "chat", id)).toMatchObject({ count: 5, undone: 5 });
-    expect(restoreToolResult(db, "chat", id).undone).toBeNull();
+    expect(cardsView(restoreToolResult(db, "chat", id)).undone).toBeNull();
     expect(db.prepare("SELECT removed FROM cards ORDER BY rowid").pluck().all()).toEqual([0, 0, 0, 0, 0]);
   });
 
@@ -166,7 +173,7 @@ describe("create_flashcards", () => {
     expect(undoToolResult(db, "chat", id)).toMatchObject({ count: 3, undone: 2 });
     expect(db.prepare("SELECT removed FROM cards ORDER BY rowid").pluck().all()).toEqual([1, 1, 1]);
     // A second undo changes nothing.
-    expect(undoToolResult(db, "chat", id).undone).toBe(2);
+    expect(cardsView(undoToolResult(db, "chat", id)).undone).toBe(2);
     expect(browseCards(db, { made: id }, 10).total).toBe(0);
     expect(browseCards(db, { made: id, status: "removed" }, 10).total).toBe(3);
 

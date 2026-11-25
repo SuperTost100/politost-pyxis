@@ -438,6 +438,7 @@ const engineFeature = z.enum([
   "map",
   "vision",
   "cards",
+  "solve",
 ]);
 const engineSelection = z.object({
   provider: z.string(),
@@ -447,6 +448,8 @@ const engineSelection = z.object({
   auto: z.boolean().optional(),
   /** The reasoning effort the student picked for a task Pyxis chose the model for. */
   effortChoice: z.string().optional(),
+  /** The student switched the task off (only `solve` can be): the row keeps what it runs once it is on again. */
+  off: z.boolean().optional(),
 });
 /** Tokens counted over some model calls. `inputTokens` includes the ones read from and written to the prompt cache. */
 /** Why a file attached to a chat is not usable. Each has its own text, shown on the file's own chip. */
@@ -561,11 +564,22 @@ const quizResultView = z.object({
   minutes: z.number().int(),
   handedIn: z.boolean(),
 });
-export const toolResultView = z.discriminatedUnion("tool", [flashcardsResultView, mapResultView, quizResultView]);
+/**
+ * `ask_stronger_model`: the chat's model handed an exercise to a stronger model, which solved it. It shows nothing where
+ * it was called (the reply holds what came of it); the tag under the reply names this model beside the one that wrote it.
+ */
+const solverResultView = z.object({
+  id: z.string(),
+  tool: z.literal("ask_stronger_model"),
+  provider: z.string(),
+  model: z.string(),
+});
+export const toolResultView = z.discriminatedUnion("tool", [flashcardsResultView, mapResultView, quizResultView, solverResultView]);
 export type ToolResultView = z.infer<typeof toolResultView>;
 export type FlashcardsResultView = z.infer<typeof flashcardsResultView>;
 export type MapResultView = z.infer<typeof mapResultView>;
 export type QuizResultView = z.infer<typeof quizResultView>;
+export type SolverResultView = z.infer<typeof solverResultView>;
 
 const messageFile = z.object({
   id: z.string(),
@@ -893,6 +907,11 @@ export const requests = {
       /** Leave out to return the task to its automatic level. */
       effort: z.string().optional(),
     }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  /** Switches a task off, or on again as it was (only `solve`, which then is never offered to the chat). */
+  "engines.setFeatureOff": {
+    input: z.object({ feature: z.literal("solve"), off: z.boolean() }),
     output: z.object({ ok: z.literal(true) }),
   },
   "engines.features": {

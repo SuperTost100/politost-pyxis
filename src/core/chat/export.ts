@@ -37,7 +37,7 @@ const labels = {
 } as const;
 
 /** What a chat tool made, in the export's language, where the reply showed its card. */
-function toolLine(view: ToolResultView, language: ChatExportLanguage): string {
+function toolLine(view: Exclude<ToolResultView, { tool: "ask_stronger_model" }>, language: ChatExportLanguage): string {
   const it = language === "it";
   if (view.tool === "create_map") {
     const map = it
@@ -214,7 +214,8 @@ export function exportChat(
           message.role === "assistant"
             ? mapToolBlocks(message.body, (id) => {
                 const view = message.tools?.[id];
-                return view ? `*${toolLine(view, language)}*` : "";
+                // A sub-call to the stronger model made nothing: the reply holds what came of it.
+                return view && view.tool !== "ask_stronger_model" ? `*${toolLine(view, language)}*` : "";
               })
             : message.body,
           language,

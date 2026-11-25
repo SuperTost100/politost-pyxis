@@ -305,6 +305,7 @@ const routes = {
   "engines.choose": ["engines", "choose"],
   "engines.reorder": ["engines", "reorder"],
   "engines.setEffort": ["engines", "setEffort"],
+  "engines.setFeatureOff": ["engines", "setFeatureOff"],
   "engines.features": ["engines", "features", "bare"],
   "engines.names": ["engines", "names", "bare"],
   "engines.roles": ["engines", "roles"],

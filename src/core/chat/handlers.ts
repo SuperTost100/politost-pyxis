@@ -17,6 +17,7 @@ import { answerQuestion } from "./questions";
 import { chatToolList } from "../tools/registry";
 import { restoreToolResult, retryToolResult, startToolResults, toolView, undoToolResult } from "../tools/results";
 import { setToolRunner } from "../tools/jobs";
+import { isSolverCall, setSolverDeadline } from "../tools/solver";
 import { revokeChatTools, setTools } from "../tools/server";
 import type { ToolResultView } from "../../shared/ipc";
 import type { FigureEvent } from "../math/figures";
@@ -89,14 +90,53 @@ function recordedReply(text: string, delayMs: number) {
 }
 
 /**
- * The recorded run of a chat turn: the recorded reply for the tutor, and the recorded `figureFix` replies of the plan
- * fixture, when there is one, for the call that corrects a figure.
+ * The recorded answer of the stronger model (`tools/solver.ts`), from the part of the recorded reply after a line
+ * `@@solver`. Its first lines may be `@@hold <path>`, which keeps the sub-call at work until the test creates that file,
+ * and `@@deadline <ms>`, which shortens the sub-call's deadline so a test sees it run out. It answers as the model it
+ * was called on, so the tag under the reply names that model.
+ */
+function recordedSolver(text: string) {
+  const hold = /^@@hold (.+)$/m.exec(text)?.[1];
+  const deadline = /^@@deadline (\d+)$/m.exec(text)?.[1];
+  setSolverDeadline(deadline ? Number(deadline) : undefined);
+  const answer = text.replace(/^@@(?:hold|deadline) .*\n?/gm, "").trim();
+  return async (input: { signal?: AbortSignal; selection: { provider: string; model: string } }) => {
+    while (hold && !existsSync(hold)) {
+      input.signal?.throwIfAborted();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    input.signal?.throwIfAborted();
+    return {
+      text: answer,
+      model: input.selection.model,
+      provider: input.selection.provider,
+      inputTokens: 900,
+      outputTokens: Math.ceil(answer.length / 4),
+    };
+  };
+}
+
+/**
+ * The recorded run of a chat turn: the recorded reply for the tutor, the recorded `figureFix` replies of the plan
+ * fixture, when there is one, for the call that corrects a figure, and the stronger model's answer after `@@solver`.
  */
 function recordedChat(text: string, delayMs: number, figureFixes?: string) {
-  const reply = recordedReply(text, delayMs);
+  const [recorded, solved] = text.split(/^@@solver\n/m) as [string, string?];
+  // A line `@@engine <provider> <model>` names the model the reply says it came from, for the tag under it.
+  const engine = /^@@engine (\S+) (\S+)\n?/m.exec(recorded);
+  const tutor = engine ? recorded.replace(engine[0], "") : recorded;
+  const replied = recordedReply(tutor, delayMs);
+  const reply = (engine
+    ? async (input: Parameters<typeof replied>[0]) => ({ ...(await replied(input)), provider: engine[1]!, model: engine[2]! })
+    : replied) as typeof replied;
+  const solver = solved === undefined ? undefined : recordedSolver(solved);
   const fixes = figureFixes ? recordedPlanRun(figureFixes) : undefined;
-  return ((input: Parameters<typeof reply>[0] & { system?: string }) =>
-    fixes && isFigureFixCall(input.system) ? fixes(input as never) : reply(input)) as unknown as typeof reply;
+  return ((input: Parameters<typeof reply>[0] & { system?: string; selection: { provider: string; model: string } }) =>
+    solver && isSolverCall(input.system)
+      ? solver(input)
+      : fixes && isFigureFixCall(input.system)
+        ? fixes(input as never)
+        : reply(input)) as unknown as typeof reply;
 }
 
 export function chatHandlers(

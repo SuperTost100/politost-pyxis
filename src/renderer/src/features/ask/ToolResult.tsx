@@ -5,7 +5,7 @@ import { useNavigate } from "react-router";
 import type { FlashcardsResultView, MapResultView, QuizResultView, ToolResultView } from "@shared/ipc";
 import { Button } from "../../components/Button";
 import { Icon } from "../../components/Icon";
-import { ActivityNote } from "../../components/ActivityNote";
+import { ActivityNote, elapsedText } from "../../components/ActivityNote";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { invoke } from "../../lib/ipc";
 import { useEngineError } from "../../lib/engineError";
@@ -57,7 +57,8 @@ export function ToolResult({
   const shown = followsJob && live.data ? live.data : state;
   const first = useRef(pending ? "pending" : stateKey(view));
   if (pending) return <Working tool={line.slice("pending:".length)} />;
-  if (!shown) return null;
+  // A sub-call to the stronger model leaves nothing where it ran: the reply is what came of it, and the tag names the model.
+  if (!shown || shown.tool === "ask_stronger_model") return null;
   const arriving = first.current !== stateKey(shown);
   const onChange = (next: ToolResultView) => {
     setState(next);
@@ -71,6 +72,7 @@ export function ToolResult({
 
 function stateKey(view: ToolResultView | undefined): string {
   if (!view) return "none";
+  if (view.tool === "ask_stronger_model") return "done";
   if (view.tool === "create_flashcards") return view.undone === null ? "done" : "undone";
   return view.undone ? "undone" : view.gone ? "gone" : view.job;
 }
@@ -144,6 +146,7 @@ function Working({
   rootRef?: Ref<HTMLDivElement>;
 }) {
   const { t } = useTranslation();
+  if (tool === "ask_stronger_model") return <Solving />;
   // A tool that only reads, such as `read_progress`, leaves no card, so its line stands alone and goes when the call ends.
   if (tool === "read_progress")
     return (
@@ -175,6 +178,31 @@ function Working({
         </div>
       </div>
       {failure}
+    </div>
+  );
+}
+
+/**
+ * The stronger model at work: one quiet line, as a tool that only reads has, with the time since it started, since the
+ * call can take a minute or two. The time counts from when the line appeared: the reply does not stream meanwhile, so the
+ * line stays in place. The seconds are not a live region, as in `ActivityNote`.
+ */
+function Solving() {
+  const { t } = useTranslation();
+  const [since] = useState(() => Date.now());
+  const [now, setNow] = useState(since);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <div className="px-toolres is-working">
+      <div className="px-toolres-working-head">
+        <span className="small px-toolres-working-line" role="status">
+          {t("components.toolResult.solving")}
+        </span>
+        <span className="px-activity-note px-toolres-activity">{elapsedText(now - since)}</span>
+      </div>
     </div>
   );
 }

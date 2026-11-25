@@ -52,7 +52,7 @@ describe("a tool's roles in its row", () => {
     expect(rolesOfModel(models, "c")).toEqual([]);
   });
 
-  const base = { chat: "fast", cards: "fast", map: "fast", lesson: "mid", grading: "mid", plan: "strong" } as const;
+  const base = { chat: "fast", cards: "fast", map: "fast", lesson: "mid", grading: "mid", plan: "strong", solve: "strong" } as const;
   const balancedChat = { ...base, chat: "mid" } as const;
 
   it("says one role for a task when every tool agrees, and lists each role's tasks in the sentence's order", () => {
@@ -62,7 +62,7 @@ describe("a tool's roles in its row", () => {
         { name: "ChatGPT", tasks: balancedChat },
       ]),
     ).toEqual({
-      agreed: { fast: ["cards", "map"], mid: ["chat", "lesson", "grading"], strong: ["plan"] },
+      agreed: { fast: ["cards", "map"], mid: ["chat", "lesson", "grading"], strong: ["plan", "solve"] },
       split: [],
     });
   });
@@ -75,7 +75,7 @@ describe("a tool's roles in its row", () => {
         { name: "Gemini", tasks: base },
       ]),
     ).toEqual({
-      agreed: { fast: ["cards", "map"], mid: ["lesson", "grading"], strong: ["plan"] },
+      agreed: { fast: ["cards", "map"], mid: ["lesson", "grading"], strong: ["plan", "solve"] },
       split: [
         {
           task: "chat",
@@ -89,7 +89,7 @@ describe("a tool's roles in its row", () => {
   });
 
   it("follows the tiers of model-tiers.json for a tool with no data yet, and for no tool at all", () => {
-    expect(roleSummary([])).toEqual({ agreed: { fast: ["chat", "cards", "map"], mid: ["lesson", "grading"], strong: ["plan"] }, split: [] });
+    expect(roleSummary([])).toEqual({ agreed: { fast: ["chat", "cards", "map"], mid: ["lesson", "grading"], strong: ["plan", "solve"] }, split: [] });
     expect(roleSummary([{ name: "Gemini", tasks: {} }]).split).toEqual([]);
   });
 
@@ -102,7 +102,7 @@ describe("a tool's roles in its row", () => {
     expect([...placed].sort()).toEqual([...sentenceTasks].sort());
   });
 
-  it("names in the sentence the six tasks, and puts each in the role model-tiers.json gives it when no tool says otherwise", () => {
+  it("names in the sentence the seven tasks, and puts each in the role model-tiers.json gives it when no tool says otherwise", () => {
     const features = tiers.features as Record<string, { tier: string }>;
     const { agreed } = roleSummary([]);
     for (const [role, tasks] of Object.entries(agreed)) for (const task of tasks) expect(features[task]?.tier).toBe(role);

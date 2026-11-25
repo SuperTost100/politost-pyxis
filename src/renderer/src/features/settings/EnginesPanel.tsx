@@ -421,6 +421,10 @@ export function EnginesPanel() {
       invoke("engines.setEffort", { feature, effort }),
     onSuccess: refresh,
   });
+  const switchOff = useMutation({
+    mutationFn: (feature: Feature) => invoke("engines.setFeatureOff", { feature: feature as "solve", off: true }),
+    onSuccess: refresh,
+  });
   // Returns one feature, or all of them, to Pyxis's own choice.
   const automatic = useMutation({
     mutationFn: (feature?: Feature) =>
@@ -522,12 +526,15 @@ export function EnginesPanel() {
       setKeyBusy(false);
     }
   }
+  // A task switched off runs no model, so a tool's row does not name its model.
+  const featuresInUse = features.data && Object.fromEntries(Object.entries(features.data).filter(([, value]) => !value.off));
   const pinnedCount = featureNames.filter(
     (feature) => features.data?.[feature] && !features.data[feature]!.auto,
   ).length;
   // Returning to automatic also undoes efforts the student picked on tasks Pyxis chose the model for.
   const customised =
-    pinnedCount > 0 || featureNames.some((feature) => !!features.data?.[feature]?.effortChoice);
+    pinnedCount > 0 ||
+    featureNames.some((feature) => !!features.data?.[feature]?.effortChoice || !!features.data?.[feature]?.off);
   const toAcknowledge = unacknowledged(readyRows);
   const toAcknowledgeKey = toAcknowledge.map((row) => row.id).join(",");
   useEffect(() => {
@@ -597,7 +604,7 @@ export function EnginesPanel() {
       ? limitText(t, i18n.language, row.limitedUntil!)
       : [
           row.kind === "cli" ? TOOL_PROGRAMS[row.id] : undefined,
-          names.modelsLine(row.id, features.data, row.refusedModels, inUse(row)) || row.version,
+          names.modelsLine(row.id, featuresInUse, row.refusedModels, inUse(row)) || row.version,
         ]
           .filter(Boolean)
           .join(" · ") || row.id;
@@ -919,7 +926,7 @@ export function EnginesPanel() {
               taskTier(feature)
             }
             pinned={pinnedCount}
-            busy={configure.isPending || automatic.isPending || setEffortFor.isPending}
+            busy={configure.isPending || automatic.isPending || setEffortFor.isPending || switchOff.isPending}
             customised={customised}
             visionWarning={visionCapability.data?.warning}
             onModel={(feature, value, picked) => {
@@ -928,6 +935,7 @@ export function EnginesPanel() {
             }}
             onEffort={(feature, picked) => setEffortFor.mutate({ feature, effort: picked })}
             onAutomatic={(feature) => automatic.mutate(feature)}
+            onOff={(feature) => switchOff.mutate(feature)}
           />
           <DebugSwitch />
           <details className="engines-diagnostics">

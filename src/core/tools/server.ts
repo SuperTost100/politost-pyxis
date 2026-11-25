@@ -2,6 +2,8 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { z } from "zod";
+import type { runTurn } from "../engine/funnel";
+import type { UsageScope } from "../engine/usage";
 
 /**
  * The MCP server through which the model that answers a chat calls Pyxis's tools (`registry.ts`). It is Streamable HTTP
@@ -54,6 +56,11 @@ export type ToolTurn = {
    * the notice that names them. A tool with `results` is listed and called only then. Absent, it may not.
    */
   results?(): boolean;
+  /**
+   * What a tool that makes a model call of its own needs from the turn: the turn's stop, the engine runner the turn uses
+   * (tests record it), where the call's tokens count, and the language the chat answers in. Absent, no such tool runs.
+   */
+  call?(): { signal?: AbortSignal; run?: typeof runTurn; usage: UsageScope; language: string };
   /** The tool started, before its arguments are read: the chat shows its working state. Returns the call's handle. */
   started(tool: string): unknown;
   /** The call ended: a result to show in the chat, or nothing when it failed (the model was told why). */
@@ -71,6 +78,8 @@ export type Tool = {
   description: string;
   /** It sends the student's stored results (grades, mastery): offered only to a turn whose `results()` says yes. */
   results?: boolean;
+  /** Whether a running turn may see and call it now. Absent means always; a tool that has it is never listed between turns. */
+  offered?(turn: ToolTurn): boolean;
   input: z.ZodType;
   run(turn: ToolTurn, args: unknown): ToolOutcome | Promise<ToolOutcome>;
 };
@@ -290,11 +299,13 @@ async function dispatch(chat: Chat, message: Rpc): Promise<unknown> {
 /**
  * The tools this chat's token may see and call now. One that sends the student's results needs a running turn whose
  * answering tool may receive them, so between turns, or for a tool the student has not confirmed the notice for, it is
- * not there at all, and the model is told by the prompt that it cannot see the results.
+ * not there at all, and the model is told by the prompt that it cannot see the results. A tool with its own `offered`
+ * (the stronger model, which depends on the engine answering and on Settings) is listed only when a running turn allows it.
  */
 function offered(chat: Chat): readonly Tool[] {
-  const results = chat.armed?.turn.chatId === chat.chatId && chat.armed.turn.results?.() === true;
-  return results ? tools : tools.filter((tool) => !tool.results);
+  const turn = chat.armed?.turn.chatId === chat.chatId ? chat.armed.turn : undefined;
+  const results = turn?.results?.() === true;
+  return tools.filter((tool) => (results || !tool.results) && (!tool.offered || (turn !== undefined && tool.offered(turn))));
 }
 
 const inputSchemas = new WeakMap<Tool, Record<string, unknown>>();

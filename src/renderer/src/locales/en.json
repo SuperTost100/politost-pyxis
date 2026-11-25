@@ -2950,6 +2950,7 @@
       "checking": "Checking the math…",
       "more": "More actions",
       "answerStronger": "Answer again with the strongest model",
+      "engineWithSolver": "{{engine}} with {{model}}",
       "makeCards": "Make flashcards"
     },
     "quiz": {
@@ -3129,7 +3130,8 @@
         "gone": "The quiz is gone: it was deleted from the exam.",
         "unrestorable": "Quiz undone: its exam or the material it was written from is gone, so it can’t be restored."
       },
-      "reading": "Looking at your results…"
+      "reading": "Looking at your results…",
+      "solving": "Asking the stronger model…"
     },
     "chart": {
       "drawing": "Drawing the chart…",
@@ -3285,7 +3287,7 @@
     "effortAuto": "Automatic · {{level}}",
     "effortNone": "Not adjustable",
     "effortFellBack": "This model does not offer {{level}}, so Pyxis uses the automatic level.",
-    "effortAdvice": "Pyxis sets the reasoning effort by task: low for chat and maps, medium for lessons, quizzes, photos and grading, high for building exams. Pick a level to override it for one task. Models without effort settings run as they are.",
+    "effortAdvice": "Pyxis sets the reasoning effort by task: low for chat and maps, medium for lessons, quizzes, photos and grading, high for building exams and for hard exercises. Pick a level to override it for one task. Models without effort settings run as they are.",
     "effortLevel": {
       "none": "None",
       "minimal": "Minimal",
@@ -3378,11 +3380,14 @@
       "cards": "Flashcards",
       "grading": "Grading",
       "map": "Maps",
-      "vision": "Images"
+      "vision": "Images",
+      "solve": "Hard exercises"
     },
     "perFeature": "Model for each kind of work",
     "advanced": "Advanced",
     "automatic": "Automatic",
+    "off": "Off",
+    "solveAdvice": "For hard exercises, the chat can hand a long or difficult exercise to the strong model of the same tool and answer from its solution. With \"Off\" it always answers on its own.",
     "backToAuto": "Reset all to Automatic",
     "installHelp": "Pyxis needs an AI tool to answer. Connect the AI you already pay for above: Pyxis chooses the model.",
     "auto": {
@@ -3548,7 +3553,8 @@
         "map": "maps",
         "lesson": "lessons",
         "grading": "grading",
-        "plan": "the study plan"
+        "plan": "the study plan",
+        "solve": "hard exercises"
       }
     },
     "autoToday": "Automatic · today {{model}}",

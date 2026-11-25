@@ -64,10 +64,12 @@ import {
 import { tooOld } from "./agy-version";
 import { isInstallable, runInstaller } from "./install";
 import {
+  isFeatureOff,
   keepAllowed,
   offLimits,
   rememberOrder,
   rememberReady,
+  setFeatureOff,
   withoutRefusedModels,
   type StoredSelection,
   plannedModels,
@@ -97,6 +99,7 @@ const features = [
   "map",
   "vision",
   "cards",
+  "solve",
 ] as const;
 const providers = new Set<string>(engineProviders);
 
@@ -382,6 +385,8 @@ export async function autoConfigureEngines(
             feature,
           );
       else db.prepare("DELETE FROM feature_engines").run();
+      // A task handed back to Pyxis is on again.
+      if (!scope?.length || scope.includes("solve")) setFeatureOff(db, "solve", false);
     }
     const existing = new Map(
       (
@@ -479,12 +484,13 @@ export type LocalEvent = {
   total?: number;
 };
 
-function readFeatures(db: Database.Database): Record<string, StoredSelection> {
+function readFeatures(db: Database.Database): Record<string, StoredSelection & { off?: boolean }> {
   const rows = db
     .prepare(`SELECT feature, selection_json FROM feature_engines`)
     .all() as StoredRow[];
+  const off = isFeatureOff(db, "solve");
   return Object.fromEntries(
-    rows.map((row) => [row.feature, JSON.parse(row.selection_json)]),
+    rows.map((row) => [row.feature, { ...JSON.parse(row.selection_json), ...(row.feature === "solve" && off ? { off: true } : {}) }]),
   );
 }
 
@@ -1042,9 +1048,18 @@ export function engineHandlers(
         }),
         now,
       );
+      // A model picked for a task that was off switches it on.
+      if (input.feature === "solve") setFeatureOff(db, "solve", false);
       // A chat that talked to the old engine starts over with the new one.
       endConversations();
       return { warning };
+    },
+    /** "Spento" for hard exercises: the chat's model is no longer offered the stronger model, or is again. */
+    setFeatureOff(input: { feature: "solve"; off: boolean }) {
+      setFeatureOff(db, input.feature, input.off);
+      // A live session listed its tools when it started, so it starts over with the list this changes.
+      endConversations();
+      return { ok: true as const };
     },
     /** Sets, or with no `effort` clears, the student's reasoning effort for one task. */
     setEffort(input: { feature: (typeof features)[number]; effort?: string }) {
