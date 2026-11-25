@@ -353,8 +353,24 @@ export type TurnInput = {
   };
 };
 
-/** The name Pyxis's server goes by in a run. The tools reach the model as `mcp__pyxis__…` and the like. */
-export const TOOL_SERVER = "pyxis";
+/**
+ * The name Pyxis's server goes by in a run; the tools reach the model as `mcp__pyxis_tools__…` and the like. Codex refuses
+ * a run whose server name its own config already has, so the name is one a user's config is unlikely to hold. No stored
+ * session depends on it: a resumed session is handed the server again, under this name, on every turn.
+ */
+export const TOOL_SERVER = "pyxis_tools";
+
+/**
+ * The tools that refused Pyxis's server since core started (a `pyxis_tools` server already in the user's Codex config, a
+ * transport without servers). They are not offered it again until the next start, so each question resumes its session
+ * on one run instead of a refused attempt and a new session without tools.
+ */
+const refusedTools = new Set<string>();
+
+/** This tool refused Pyxis's server: it is not offered it again until core restarts. */
+export function markToolsRefused(provider: string): void {
+  refusedTools.add(provider);
+}
 
 /**
  * Whether a run on this provider takes Pyxis's tools: the provider must accept an HTTP MCP server at access `none`
@@ -364,6 +380,7 @@ export const TOOL_SERVER = "pyxis";
  * so the platform is checked here.
  */
 export function toolsAttach(provider: string, platform: NodeJS.Platform = process.platform): boolean {
+  if (refusedTools.has(provider)) return false;
   const capabilities = getFunnel().providers[provider as ProviderId]?.capabilities;
   if (!capabilities?.mcpServersAtNone?.includes("http")) return false;
   return !(provider === "antigravity" && platform === "win32");
@@ -372,7 +389,8 @@ export function toolsAttach(provider: string, platform: NodeJS.Platform = proces
 /**
  * A run that failed because of the tools it was given, before it answered: a server name the user's Codex config already
  * has (`invalid-selection`), a transport that refuses servers (`unsupported`), or a CLI that could not start the server.
- * The turn then runs again without tools, as it would on a tool that takes none.
+ * The turn then runs again without tools, as it would on a tool that takes none, but only when the attempt wrote nothing
+ * and called none of Pyxis's tools: a call may already have saved cards, which a second attempt would make again.
  */
 function toolsRefused(err: unknown): boolean {
   const code = err && typeof err === "object" && "code" in err ? String((err as { code: unknown }).code) : "";
@@ -467,6 +485,8 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         ...(input.system ? { system: input.system } : {}),
       });
       text = "";
+      // A call reached Pyxis's server in this attempt (see `toolsRefused`).
+      let reached = false;
       const following = trackCall(scope?.jobId);
       try {
         const stream = engine.stream({
@@ -488,6 +508,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         for await (const event of stream) {
           log?.event(event);
           following.event(event.type);
+          if (event.type === "tool.start" && event.mcp?.server === TOOL_SERVER) reached = true;
           if (event.type === "tool.start" && event.mcp?.server === TOOL_SERVER && !event.parentId) {
             ours.set(event.id, event.mcp.tool);
             input.tools?.onTool?.({ phase: "start", id: event.id, tool: event.mcp.tool });
@@ -566,9 +587,11 @@ async function turn(input: TurnInput): Promise<EngineResult> {
           sessionId = undefined;
           continue;
         }
-        // The tools were refused before anything was written: the same turn runs again without them.
-        if (servers && !text && !input.signal?.aborted && toolsRefused(err)) {
+        // The tools were refused before anything was written or called: the same turn runs again without them, and this
+        // tool is not offered them again until core restarts.
+        if (servers && !text && !reached && !input.signal?.aborted && toolsRefused(err)) {
           servers = undefined;
+          markToolsRefused(selection.provider);
           continue;
         }
         throw err;
