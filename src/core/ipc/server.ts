@@ -447,6 +447,8 @@ const routes = {
   "chats.attachments": ["chats", "attachments"],
   "chats.attachScan": ["chats", "attachScan"],
   "chats.rate": ["chats", "rate"],
+  "chats.undoTool": ["chats", "undoTool"],
+  "chats.restoreTool": ["chats", "restoreTool"],
   "chats.rename": ["chats", "rename"],
   "chats.delete": ["chats", "remove"],
   "chats.search": ["chats", "search"],
@@ -744,6 +746,7 @@ async function dispatchValidated(
         onFigure: (figure) => emit?.({ type: "figure", ...figure }),
         onPassages: (passages) => emit?.({ type: "passages", passages }),
         onQuestion: (id, chatId) => emit?.({ type: "question", id, chatId }),
+        onTool: (view) => emit?.({ type: "tool", view }),
       });
     case "chats.regenerate":
       return chats?.regenerate({
@@ -752,6 +755,7 @@ async function dispatchValidated(
         onDelta: (text) => emit?.({ type: "text", text }),
         onFigure: (figure) => emit?.({ type: "figure", ...figure }),
         onPassages: (passages) => emit?.({ type: "passages", passages }),
+        onTool: (view) => emit?.({ type: "tool", view }),
       });
     case "sources.books":
       requests["sources.books"].input.parse(input);

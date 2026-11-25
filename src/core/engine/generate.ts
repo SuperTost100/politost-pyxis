@@ -61,6 +61,8 @@ export type GenerateInput = {
   attachmentsFor?: (selection: Omit<Selection, "cwd" | "access">) => GenerateInput["attachments"];
   /** A chat turn: see `TurnInput.conversation`. */
   conversation?: TurnInput["conversation"];
+  /** Pyxis's tools for a chat turn: see `TurnInput.tools`. Not sent with a schema repair. */
+  tools?: TurnInput["tools"];
   /** Use the provider's prompt cache for the system prompt and the conversation so far. */
   cache?: boolean;
   /** What the call's tokens are counted for, on top of the scope it runs in (a job step sets its job). */
@@ -443,6 +445,7 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
           }
         : input.conversation,
     cache: input.cache,
+    ...(input.tools ? { tools: input.tools } : {}),
   });
   if (!input.schema) return result;
   let data = parsed(input.schema, result, input.verbatim);
