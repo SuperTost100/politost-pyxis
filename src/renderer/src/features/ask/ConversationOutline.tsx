@@ -2,13 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { useTranslation } from "react-i18next";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MathText } from "../../components/math/MathText";
-import { plainReading, type OutlineMark } from "./outline";
+import { plainReading, outlineLeft, type OutlineMark } from "./outline";
 import "./ConversationOutline.css";
 
 /**
- * Short marks just outside the answer column, one per question. The part in view has the longer, darker mark. The pointer
- * or the keyboard focus on a mark shows a card with the question and the start of its answer, and a click or Enter
- * jumps there. The marks are one Tab stop: the arrows move between them.
+ * Short marks along the left edge of the chat pane beside the sidebar, one per question. The part in view has the
+ * longer, darker mark. Pointer hover or keyboard focus on a mark shows a card to its right with the question and the
+ * start of its answer, and a click or Enter jumps there. The marks are one Tab stop, and arrow keys move between them.
  */
 export function ConversationOutline({
   marks,
@@ -34,16 +34,21 @@ export function ConversationOutline({
   };
   const [left, setLeft] = useState<number | null>(null);
 
-  // The marks sit just outside the composer's right edge, which is the answer column's.
+  // The marks sit along the left edge of the chat pane, beside the sidebar, when there is room left of the answer column.
   useLayoutEffect(() => {
+    const pane = document.querySelector(".ask-page");
+    const composer = document.querySelector(".ask-dock .px-composer");
     const place = () => {
-      const edge = document.querySelector(".ask-dock .px-composer")?.getBoundingClientRect().right;
-      setLeft(edge === undefined || window.innerWidth - edge < 40 ? null : Math.min(edge + 10, window.innerWidth - 40));
+      const paneLeft = (pane ?? document.querySelector(".ask-page"))?.getBoundingClientRect().left;
+      const columnLeft = (composer ?? document.querySelector(".ask-dock .px-composer"))?.getBoundingClientRect().left;
+      setLeft(outlineLeft(paneLeft, columnLeft));
     };
     place();
     window.addEventListener("resize", place);
     const watch = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(place);
     watch?.observe(document.body);
+    if (pane) watch?.observe(pane);
+    if (composer) watch?.observe(composer);
     return () => {
       window.removeEventListener("resize", place);
       watch?.disconnect();
