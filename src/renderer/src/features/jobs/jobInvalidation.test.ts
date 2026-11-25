@@ -17,7 +17,7 @@ describe("job update invalidation", () => {
       "source-details",
       "series:later",
     ]);
-    expect(keys(staleFamilies({ kind: "quiz-build", state: "running" }))).toEqual(["jobs"]);
+    expect(keys(staleFamilies({ kind: "quiz-build", state: "running" }))).toEqual(["jobs", "tool-result"]);
     expect(keys(staleFamilies({ kind: "cards-build", state: "failed" }))).toEqual([
       "jobs",
       "jobs-finished",
@@ -38,18 +38,26 @@ describe("job update invalidation", () => {
 
   it("tells an open map page about its build from every update, and about its maps when the build ends", () => {
     // The page polls its build only while it runs, so a build resumed or retried elsewhere reaches it through this.
-    expect(keys(staleFamilies({ kind: "map-build", state: "running" }))).toEqual(["jobs", "map-build"]);
+    expect(keys(staleFamilies({ kind: "map-build", state: "running" }))).toEqual(["jobs", "map-build", "tool-result"]);
     expect(keys(staleFamilies({ kind: "map-build", state: "succeeded" }))).toEqual([
       "jobs",
       "map-build",
       "maps",
       "map",
       "maps-all",
+      "tool-result",
       "jobs-finished",
       "plans",
       "plan",
       "series:later",
     ]);
+  });
+
+  it("tells a map or a quiz made in a chat about its job from every update, and about the quiz's grading", () => {
+    for (const kind of ["map-build", "quiz-build", "quiz-grade"])
+      for (const state of ["queued", "running", "failed", "succeeded"] as const)
+        expect(keys(staleFamilies({ kind, state })), `${kind} ${state}`).toContain("tool-result");
+    expect(keys(staleFamilies({ kind: "cards-build", state: "succeeded" }))).not.toContain("tool-result");
   });
 
   it("tells an open part page and the path's parts about a part's job from every update, and the suggestion when it ends", () => {

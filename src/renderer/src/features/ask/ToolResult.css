@@ -6,18 +6,48 @@
   margin: var(--space-4) 0;
 }
 
-/* At work: a quiet line over a grey card shape. */
+/* At work: a quiet line over a grey card shape. A map or a quiz keeps «Ferma» on the line while its job works. */
+.px-toolres-working-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--space-2);
+  min-height: 32px;
+  margin-bottom: var(--space-2);
+}
 .px-toolres-working-line {
   display: block;
-  margin-bottom: var(--space-2);
+  color: var(--ink-subtle);
+}
+/* What the job's model call is doing, and for how long, beside the line. */
+.px-toolres-activity {
   color: var(--ink-subtle);
 }
 .px-toolres-ghost {
-  display: grid;
-  gap: 10px;
+  display: flex;
+  gap: 16px;
   padding: 16px;
   border-radius: var(--radius-md);
   background: var(--surface-raised);
+}
+.px-toolres-ghost-bars {
+  display: grid;
+  flex: 1 1 0;
+  align-content: center;
+  gap: 10px;
+}
+.px-toolres-ghost-preview {
+  display: block;
+  flex: 0 1 200px;
+  min-width: 120px;
+  height: 120px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+/* A map's or a quiz's states are as wide as its card, so each one takes the place of the one before it. */
+.px-toolres.is-wide,
+.px-toolres.is-made {
+  width: min(600px, 100%);
 }
 .px-toolres-ghost-bar {
   display: block;
@@ -35,6 +65,7 @@
 }
 @media (prefers-reduced-motion: no-preference) {
   .px-toolres.is-working .px-toolres-working-line,
+  .px-toolres-ghost-preview,
   .px-toolres-ghost-bar {
     animation: px-toolres-pulse 1.6s ease-in-out infinite;
   }
@@ -97,6 +128,62 @@
 .px-toolres-failed {
   margin: 0;
   color: var(--danger);
+}
+
+/* A map or a quiz made: what it is, where it went and the two actions. A map shows its outline on the left, and the
+   outline goes above the words when the reply is too narrow for both. */
+.px-toolres.is-made {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+.px-toolres.is-made.is-map {
+  padding: 12px 18px 12px 12px;
+}
+.px-toolres-preview {
+  display: grid;
+  flex: 0 1 200px;
+  min-width: 160px;
+  min-height: 130px;
+  place-items: center;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+.px-toolres-preview .px-map-thumb {
+  max-height: 130px;
+}
+.px-toolres-body {
+  display: grid;
+  flex: 1 1 240px;
+  gap: 4px;
+  min-width: 0;
+}
+.px-toolres-heading {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.px-toolres-where {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-toolres-link {
+  color: var(--primary-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+.px-toolres-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.px-toolres-kept {
+  flex: 1 1 14em;
+  align-self: center;
+}
+.px-toolres-detail {
+  color: var(--ink-subtle);
 }
 
 /* Undone: one line in the card's place, with «Ripristina». */

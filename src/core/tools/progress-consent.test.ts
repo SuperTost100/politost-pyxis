@@ -19,7 +19,7 @@ function setup(provider: string) {
   db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Fisica 1', 1)").run();
   db.prepare("INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('mech', 'phys', 'Meccanica', 'ready', 1, 1)").run();
   configureDisclosure(db);
-  setTools(chatToolList(db));
+  setTools(chatToolList(db, false));
   return db;
 }
 

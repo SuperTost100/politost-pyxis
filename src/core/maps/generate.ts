@@ -55,6 +55,11 @@ type Params = {
   built?: Built[];
   /** What the student asked for ("only the theorems, with proofs"), trimmed and never empty. It goes to every part's call. */
   instruction?: string;
+  /**
+   * The map's own title and root, for a map asked for in a chat on one topic of a subject ("Dinamica" under Fisica 1).
+   * Without it the map takes the topic's or subject's name.
+   */
+  title?: string;
 };
 /** What a map is made of. A request without an instruction needs at least eight concepts; one with it may be smaller. */
 function mapShape(minNodes: number) {
@@ -105,8 +110,8 @@ function cleanInstruction(instruction: string | undefined): string | undefined {
 }
 export function prepareMaps(db: Database.Database, input: Input, instruction?: string): Params {
   requireScope(db, input);
-  const params = isTopicScope(input) ? prepareTopicMap(db, input) : prepareSubjectMap(db, input);
   const text = cleanInstruction(instruction);
+  const params = isTopicScope(input) ? prepareTopicMap(db, input) : prepareSubjectMap(db, input, text);
   return text ? { ...params, instruction: text } : params;
 }
 function prepareTopicMap(db: Database.Database, input: Input & { planId: string; topicId: string }): Params {
@@ -186,11 +191,12 @@ function prepareTopicMap(db: Database.Database, input: Input & { planId: string;
  * whole subject gets its map built in one call from passages spread over all its sources (`subjectPassages`). The
  * profile's content language is used, since a subject has no exam that sets one.
  */
-function prepareSubjectMap(db: Database.Database, input: { subjectId: string }): Params {
+function prepareSubjectMap(db: Database.Database, input: { subjectId: string }, instruction?: string): Params {
   const name = db.prepare("SELECT name FROM subjects WHERE id = ?").pluck().get(input.subjectId) as string;
   return {
     input,
-    parts: [{ title: name, passages: subjectPassages(db, input.subjectId) }],
+    // A request in words reads the passages that name them first (`subjectPassages`).
+    parts: [{ title: name, passages: subjectPassages(db, input.subjectId, instruction) }],
     selection: selectionFor(db, "map"),
     language: contentLanguage(db),
     next: 0,
@@ -234,10 +240,12 @@ async function buildPart(
   // A request with an instruction may find nothing for it in this part, so its answer is either a (possibly small) map
   // or an explicit "nothing". The answer sits under `result` because a strict structured-output schema needs an object
   // at its root. A request without one keeps the plain schema: every part must give a map of at least eight concepts.
+  // `kind` comes first in the map's shape: Codex and the OpenAI API decode a strict schema in its key order, and a model
+  // that opens with {"kind": could otherwise only go on as "nothing", so every focused request came back empty there.
   const schema = params.instruction
     ? z.object({
         result: z.discriminatedUnion("kind", [
-          mapShape(2).extend({ kind: z.literal("map") }).superRefine(check),
+          z.object({ kind: z.literal("map"), ...mapShape(2).shape }).superRefine(check),
           z.object({ kind: z.literal("nothing") }),
         ]),
       })
@@ -286,7 +294,7 @@ function scopeTitle(db: Database.Database, input: Input): string {
 }
 /** Joins the parts that gave a map; a part of a focused request that found nothing is left out. */
 function joinParts(db: Database.Database, params: Params, built: Built[]): StoredMap {
-  const title = scopeTitle(db, params.input);
+  const title = params.title ?? scopeTitle(db, params.input);
   const given = built.filter((part): part is Built & { graph: ConceptGraph } => part.graph !== null);
   const passageIds = [...new Set(given.flatMap((part) => part.passageIds))];
   return {
@@ -333,7 +341,7 @@ export function registerMapJobs(
             params.mapId = uuidv7();
             params.next = 0;
           }
-          const title = scopeTitle(db, params.input);
+          const title = params.title ?? scopeTitle(db, params.input);
           while (params.next < params.parts.length) {
             ctx.signal.throwIfAborted();
             const built = await buildPart(
@@ -367,6 +375,20 @@ function aboutScope(db: Database.Database, input: Input) {
     | string
     | undefined;
   return subject ? { topic: subject } : {};
+}
+/**
+ * Starts the build of a map a chat asked for: one topic of a subject, which is both the map's instruction and its title.
+ * It is always a new build, since the chat's result follows this one job; a build of the same words from Mappe is left
+ * alone. Returns the job and the map's id, which the finished build stores.
+ */
+export function startChatMap(
+  db: Database.Database,
+  runner: Runner,
+  subjectId: string,
+  topic: string,
+): { jobId: string; mapId: string } {
+  const params: Params = { ...prepareMaps(db, { subjectId }, topic), title: topic };
+  return { jobId: runner.start("map-build", params), mapId: params.mapId! };
 }
 /**
  * The scope's newest map-build job, as `columns`, or the scope's job `jobId` when one is given. A subject's job has no

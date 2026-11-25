@@ -38,9 +38,30 @@ const labels = {
 
 /** What a chat tool made, in the export's language, where the reply showed its card. */
 function toolLine(view: ToolResultView, language: ChatExportLanguage): string {
+  const it = language === "it";
+  if (view.tool === "create_map") {
+    const map = it
+      ? `la mappa «${view.topic}» in Mappe, sotto ${view.subject}`
+      : `the concept map "${view.topic}" in Maps, under ${view.subject}`;
+    if (view.undone) return it ? `Pyxis ha creato ${map}, poi annullata: non è più in Mappe.` : `Pyxis created ${map}, then undone: it is no longer in Maps.`;
+    if (view.gone) return it ? `Pyxis ha creato ${map}, poi eliminata.` : `Pyxis created ${map}, later deleted.`;
+    if (view.job === "done") return it ? `Pyxis ha creato ${map}.` : `Pyxis created ${map}.`;
+    if (view.job === "working") return it ? `Pyxis sta creando ${map}.` : `Pyxis is building ${map}.`;
+    return it ? `Pyxis non è riuscito a creare ${map}.` : `Pyxis could not build ${map}.`;
+  }
+  if (view.tool === "create_quiz") {
+    const quiz = it
+      ? `un quiz di ${view.count} domand${view.count === 1 ? "a" : "e"} su ${view.topic} nell'esame ${view.exam}`
+      : `a ${view.count}-question quiz on ${view.topic} in the exam ${view.exam}`;
+    if (view.undone) return it ? `Pyxis ha creato ${quiz}, poi annullato: non è più nell'esame.` : `Pyxis created ${quiz}, then undone: it is no longer in the exam.`;
+    if (view.gone) return it ? `Pyxis ha creato ${quiz}, poi eliminato.` : `Pyxis created ${quiz}, later deleted.`;
+    if (view.job === "done") return it ? `Pyxis ha creato ${quiz}.` : `Pyxis created ${quiz}.`;
+    if (view.job === "working") return it ? `Pyxis sta scrivendo ${quiz}.` : `Pyxis is writing ${quiz}.`;
+    return it ? `Pyxis non è riuscito a scrivere ${quiz}.` : `Pyxis could not write ${quiz}.`;
+  }
   const one = view.count === 1;
   const what = view.title ? ` ${view.title}` : "";
-  if (language === "it") {
+  if (it) {
     const made = `Pyxis ha creato ${view.count} flashcard${what} nel mazzo di ${view.deck}`;
     return view.undone === null
       ? `${made}.`

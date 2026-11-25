@@ -449,6 +449,8 @@ const routes = {
   "chats.rate": ["chats", "rate"],
   "chats.undoTool": ["chats", "undoTool"],
   "chats.restoreTool": ["chats", "restoreTool"],
+  "chats.toolView": ["chats", "toolView"],
+  "chats.retryTool": ["chats", "retryTool"],
   "chats.answerQuestion": ["chats", "answerQuestion"],
   "chats.rename": ["chats", "rename"],
   "chats.delete": ["chats", "remove"],

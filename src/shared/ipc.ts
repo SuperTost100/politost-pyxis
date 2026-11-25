@@ -487,11 +487,11 @@ export type AttachmentView = z.infer<typeof AttachmentView>;
 
 /** A file a sent message carried. `sourceId` is the hidden copy of a document; a photo has `sha` and `mime` to show it again. */
 /**
- * What a Pyxis tool did in a chat reply, shown where the model called it (a ```pyxis-tool block names it by `id`). For
- * `create_flashcards`: the cards created, those skipped as already in the deck, the few words the model gave that
- * complete "8 flashcard …", the subject's or exam's name, the first fronts, and after «Annulla» how many it removed.
+ * What a Pyxis tool did in a chat reply, shown where the model called it (a ```pyxis-tool block names it by `id`), by tool.
+ * `create_flashcards`: the cards created, those skipped as already in the deck, the few words the model gave that complete
+ * "8 flashcard …", the subject's or exam's name, the first fronts, and after «Annulla» how many it removed.
  */
-export const toolResultView = z.object({
+const flashcardsResultView = z.object({
   id: z.string(),
   tool: z.literal("create_flashcards"),
   count: z.number().int(),
@@ -502,7 +502,70 @@ export const toolResultView = z.object({
   /** Cards «Annulla» took out of the deck; null while the result stands. */
   undone: z.number().int().nullable(),
 });
+/**
+ * How the background job behind a map or a quiz made from the chat is going: `working` while it waits or runs, `done`,
+ * `failed` with the job's own error code (`error`), `cancelled` when the student stopped it in Attività, `interrupted`
+ * when Pyxis closed while it ran and it could not go on.
+ */
+const toolJobState = z.enum(["working", "done", "failed", "cancelled", "interrupted"]);
+/**
+ * `create_map`: a concept map built in Mappe under the chat's subject, on the topic the model named. While its job works
+ * there is no map yet; once done, `concepts` and `branches` count it and `shape` draws it as the Mappe tiles do.
+ * `undone` is set after «Annulla» (or «Ferma» while it worked): the map is out of Mappe until «Ripristina».
+ */
+const mapResultView = z.object({
+  id: z.string(),
+  tool: z.literal("create_map"),
+  job: toolJobState,
+  error: z.string().nullable(),
+  /** What the job's model call is doing and since when, while it works (`activityOf`); null between calls. */
+  activity: JobActivity.nullable(),
+  undone: z.boolean(),
+  /** False for an undone result «Ripristina» cannot bring back: what it went into was deleted since. */
+  restorable: z.boolean(),
+  /** The map was deleted in Mappe (or with its subject) after it was made: there is nothing to open or undo. */
+  gone: z.boolean(),
+  topic: z.string(),
+  subject: z.string(),
+  subjectId: z.string(),
+  mapId: z.string(),
+  concepts: z.number().int(),
+  branches: z.number().int(),
+  shape: z.array(z.number().int()),
+});
+/**
+ * `create_quiz`: a quiz in the chat's exam, on the topic the model named, written by the quiz's own job and waiting in
+ * the exam's unfinished activities. `kinds` counts its questions by type, `minutes` is the quiz page's estimate.
+ * `handedIn` is set once the student handed it in: its grade is the student's, so it can no longer be undone.
+ */
+const quizResultView = z.object({
+  id: z.string(),
+  tool: z.literal("create_quiz"),
+  job: toolJobState,
+  error: z.string().nullable(),
+  /** What the job's model call is doing and since when, while it works (`activityOf`); null between calls. */
+  activity: JobActivity.nullable(),
+  undone: z.boolean(),
+  /** False for an undone result «Ripristina» cannot bring back: what it went into was deleted since. */
+  restorable: z.boolean(),
+  /** The quiz was deleted from the exam's unfinished activities (or with its exam) after it was made. */
+  gone: z.boolean(),
+  topic: z.string(),
+  exam: z.string(),
+  planId: z.string(),
+  attemptId: z.string(),
+  /** The topic the quiz page opens under: the quiz's own, or the exam's first for a quiz across the exam. */
+  routeTopicId: z.string().nullable(),
+  count: z.number().int(),
+  kinds: z.partialRecord(z.enum(["mcq", "tf", "completion", "matching", "open"]), z.number().int()),
+  minutes: z.number().int(),
+  handedIn: z.boolean(),
+});
+export const toolResultView = z.discriminatedUnion("tool", [flashcardsResultView, mapResultView, quizResultView]);
 export type ToolResultView = z.infer<typeof toolResultView>;
+export type FlashcardsResultView = z.infer<typeof flashcardsResultView>;
+export type MapResultView = z.infer<typeof mapResultView>;
+export type QuizResultView = z.infer<typeof quizResultView>;
 
 const messageFile = z.object({
   id: z.string(),
@@ -3315,12 +3378,25 @@ export const requests = {
     }),
     output: z.object({ ok: z.literal(true) }),
   },
-  /** «Annulla» on a tool's result in a reply: what it created leaves the deck, and can come back with «Ripristina». */
+  /**
+   * «Annulla» on a tool's result in a reply: what it created leaves the deck, Mappe or the exam, and can come back with
+   * «Ripristina». On a map or a quiz still being made it stops the job too («Ferma»), and «Ripristina» starts it again.
+   */
   "chats.undoTool": {
     input: z.object({ chatId: z.string(), resultId: z.string() }),
     output: toolResultView,
   },
   "chats.restoreTool": {
+    input: z.object({ chatId: z.string(), resultId: z.string() }),
+    output: toolResultView,
+  },
+  /** One result as it is now, for a map or a quiz whose job moved on since the reply was read. */
+  "chats.toolView": {
+    input: z.object({ chatId: z.string(), resultId: z.string() }),
+    output: toolResultView.nullable(),
+  },
+  /** «Riprova» or «Riprendi» on a map or a quiz whose job failed or stopped: the job goes on from where it was. */
+  "chats.retryTool": {
     input: z.object({ chatId: z.string(), resultId: z.string() }),
     output: toolResultView,
   },

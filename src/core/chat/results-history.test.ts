@@ -27,7 +27,7 @@ function setup() {
   configureDisclosure(db);
   acknowledgeProviders(["claude"]);
   putSetting(db, "engine-disclosure:codex", true);
-  setTools(chatToolList(db));
+  setTools(chatToolList(db, false));
   return db;
 }
 

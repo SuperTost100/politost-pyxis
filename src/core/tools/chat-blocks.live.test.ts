@@ -78,7 +78,7 @@ function setup(provider: string, model: string, effort: string | undefined, grad
   const calls: Array<{ tool: string; text: string }> = [];
   // Every call and what the model read back, so a chart's numbers can be held against the tool's.
   setTools(
-    chatToolList(db).map(
+    chatToolList(db, false).map(
       (tool): Tool => ({
         ...tool,
         async run(turn, args) {

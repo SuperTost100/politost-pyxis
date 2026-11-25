@@ -45,6 +45,7 @@ import {
   SOURCES_PASSAGE_IDS,
   seedBlocksChat,
   seedFigureChat,
+  seedMadeChat,
   seedOutlineChat,
   seedSentFilesChat,
   seedSourcesChats,
@@ -463,6 +464,13 @@ const routes = [
   ["ask-tool-working", "/ask/look-tool-working"],
   ["ask-tool-done", "/ask/look-tool-done"],
   ["ask-tool-undone", "/ask/look-tool-undone"],
+  // The map and the quiz the chat's tools made: at work after the reply ended, the card, and the line after «Annulla».
+  ["ask-map-working", "/ask/look-map-working"],
+  ["ask-map-done", "/ask/look-map-done"],
+  ["ask-map-undone", "/ask/look-map-undone"],
+  ["ask-quiz-working", "/ask/look-quiz-working"],
+  ["ask-quiz-done", "/ask/look-quiz-done"],
+  ["ask-quiz-undone", "/ask/look-quiz-undone"],
   // The chat's own blocks: a chart of quiz grades with a bar's value on hover, the same as a table, a line chart, and a
   // practice question new, with an option picked, and checked.
   ["ask-chart", "/ask/look-chart"],
@@ -3741,7 +3749,22 @@ async function openState(page: Page, name: string) {
       await expect(page.getByRole("button", { name: both("Annulla", "Undo") })).toBeVisible();
       break;
     case "ask-tool-undone":
+    case "ask-map-undone":
+    case "ask-quiz-undone":
       await expect(page.getByRole("button", { name: both("Ripristina", "Restore") })).toBeVisible();
+      break;
+    case "ask-map-working":
+    case "ask-quiz-working":
+      await expect(page.getByText(name === "ask-map-working" ? both("Creo la mappa…", "Creating the map…") : both("Creo il quiz…", "Creating the quiz…"))).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Ferma", "Stop") })).toBeVisible();
+      break;
+    case "ask-map-done":
+      await expect(page.getByText(/^14 (concetti in 3 rami|concepts in 3 branches)\. /)).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Annulla", "Undo") })).toBeVisible();
+      break;
+    case "ask-quiz-done":
+      await expect(page.getByText(both("Dinamica, 10 domande", "Dinamica, 10 questions"))).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Annulla", "Undo") })).toBeVisible();
       break;
     case "ask-chart": {
       const bar = page.locator(".px-chart-hit").nth(1);
@@ -6123,6 +6146,11 @@ function lookChats(name: string) {
       DELETE FROM source_documents WHERE source_id LIKE 'look-%';
       DELETE FROM sources WHERE id LIKE 'look-%';
       DELETE FROM cards WHERE id LIKE 'look-%' OR subject_id LIKE 'look-%';
+      DELETE FROM jobs WHERE id LIKE 'look-%';
+      DELETE FROM maps WHERE id LIKE 'look-%';
+      DELETE FROM attempts WHERE id LIKE 'look-%';
+      DELETE FROM items WHERE id LIKE 'look-%';
+      DELETE FROM plans WHERE id LIKE 'look-%';
       DELETE FROM subjects WHERE id LIKE 'look-%';`);
     if (name.startsWith("ask-sources") || name === "lesson-part-sources") {
       seedSourcesChats(db);
@@ -6136,6 +6164,10 @@ function lookChats(name: string) {
     }
     if (name === "ask-figure" || name === "ask-viewer") seedFigureChat(db);
     else if (name.startsWith("ask-tool-")) seedToolChat(db, name.slice("ask-tool-".length) as "working" | "done" | "undone");
+    else if (name.startsWith("ask-map-") || name.startsWith("ask-quiz-")) {
+      const [, tool, state] = name.split("-") as [string, "map" | "quiz", "working" | "done" | "undone"];
+      seedMadeChat(db, tool, state);
+    }
     else if (name === "ask-chart" || name === "ask-chart-table") seedBlocksChat(db, "chart");
     else if (name === "ask-chart-line") seedBlocksChat(db, "line");
     else if (name === "ask-question" || name === "ask-question-picked") seedBlocksChat(db, "question");
