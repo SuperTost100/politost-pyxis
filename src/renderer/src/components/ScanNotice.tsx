@@ -8,7 +8,7 @@ import { invoke } from "../lib/ipc";
 import { Notice } from "./Notice";
 import { OcrDataCard } from "./OcrData";
 import { isOcrRefusal } from "./ocrErrors";
-import { hasScanFile } from "./scanFile";
+import { hasScanFile, scanFoundNothing } from "./scanFile";
 import "./OcrData.css";
 
 /** What the scan notice needs to know about a source. */
@@ -24,19 +24,7 @@ export type ScanSource = {
   scanJobId?: string;
 };
 
-/**
- * A scanned PDF whose OCR found no text is marked failed with no sections. It can be read again, so it keeps the scan
- * notice. A failed import names its error, and has nothing to read.
- */
-export function scanFoundNothing(source: Omit<ScanSource, "title"> & { error?: string }): boolean {
-  return (
-    source.status === "failed" &&
-    source.kind === "pdf" &&
-    source.sections === 0 &&
-    hasScanFile(source) &&
-    !source.error
-  );
-}
+export { scanFoundNothing };
 
 /** Whether a source waits for its scanned pages to be read, or is being read now. */
 export const scanPending = (source: Omit<ScanSource, "title"> & { error?: string }) =>

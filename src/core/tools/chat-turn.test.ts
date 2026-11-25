@@ -7,6 +7,10 @@ import { toolBlockIds } from "../../shared/tool-blocks";
 import { chatToolList } from "./registry";
 import { chatTools, setTools, stopToolServer } from "./server";
 import { markToolsRefused } from "../engine/funnel";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tempDir } from "../test-temp";
+import { heldFilesFor } from "../chat/test-attach";
 
 afterEach(async () => {
   await stopToolServer();
@@ -92,6 +96,45 @@ describe("a chat turn with tools", () => {
       "Ecco le flashcard.\n\n[Pyxis tool create_flashcards: created 2 flashcards (sui principi) in the deck of Fisica 1.]\n\nLe trovi nel mazzo.",
     );
     expect(prompt).not.toContain("pyxis-tool");
+  });
+
+  it("makes cards from an attached file: the file leads the prompt, and the reply cites it around the tool's block", async () => {
+    const db = setup();
+    const workspace = tempDir("pyxis-tools-attach-");
+    const path = join(workspace, "principi.md");
+    writeFileSync(path, "# Principi\n\nIl primo principio: un corpo con risultante nulla mantiene il suo stato di moto.");
+    const files = heldFilesFor(db, workspace);
+    const note = await files.attach(path);
+    let prompt = "";
+    const first = await askTurn(db, {
+      text: "Fammi 2 flashcard da questo.",
+      subject: "Fisica 1",
+      attachments: note.ids,
+      held: files.held,
+      workspace,
+      run: async (input): Promise<EngineResult> => {
+        prompt = input.prompt;
+        input.onDelta?.("Dal file [P1]:");
+        input.tools!.onTool?.({ phase: "start", id: "call-1", tool: "create_flashcards" });
+        await callTool(input.tools!, "create_flashcards", { cards });
+        input.tools!.onTool?.({ phase: "end", id: "call-1", tool: "create_flashcards" });
+        input.onDelta?.("Dal file [P1]:Le trovi nel mazzo, come dice il primo principio [P1].");
+        return { text: "Le trovi nel mazzo, come dice il primo principio [P1].", model: "claude-sonnet-5", provider: "claude", inputTokens: 1 };
+      },
+    });
+    // The file the cards are made from leads the prompt, with its passage numbered first, also on a turn with tools.
+    expect(prompt).toContain("<attached>\nFiles attached to this message:\n1. principi.md (document)\n\n[P1] principi.md, Principi\n");
+    expect(prompt.indexOf("</attached>")).toBeLessThan(prompt.indexOf("Question:\nFammi 2 flashcard da questo."));
+    const message = first.message!;
+    const [resultId] = toolBlockIds(message.body);
+    expect(message.body).toBe(
+      `Dal file [P1]:\n\n\`\`\`pyxis-tool\n${resultId}\n\`\`\`\n\nLe trovi nel mazzo, come dice il primo principio [P1].`,
+    );
+    // The citations on both sides of the block point at the file, and the line above the reply says it was used.
+    expect(message.citations.map((cite) => cite.index)).toEqual([1]);
+    expect(readChat(db, first.chatId).at(-1)!.citations[0]).toMatchObject({ attached: true });
+    expect(message.grounding).toBe("sources");
+    expect(db.prepare("SELECT COUNT(*) FROM cards").pluck().get()).toBe(2);
   });
 
   it("shows one result for a request the model split over two calls", async () => {

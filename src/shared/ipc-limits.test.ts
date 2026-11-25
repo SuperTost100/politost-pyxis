@@ -18,6 +18,18 @@ function refusal(run: () => unknown) {
   throw new Error("accepted");
 }
 
+describe("a citation's place", () => {
+  it("keeps the picture number of a passage OCR read from a Word file or deck", () => {
+    const cite = { label: "slide 2", index: 1, passageId: "p", sourceId: "s", sectionPath: "slide 2", locator: { slide: 2, picture: 3 } };
+    const parsed = requests["chats.ask"].output.parse({
+      chatId: "c",
+      covered: true,
+      message: { id: "m", role: "assistant", body: "", modelId: null, provider: null, grounding: "sources", followups: [], citations: [cite] },
+    });
+    expect(parsed.message?.citations[0]?.locator).toEqual({ slide: 2, picture: 3 });
+  });
+});
+
 describe("input length limits", () => {
   it("lets a pasted page of notes through and names the limit when a chapter is pasted", () => {
     const page = "Appunti di fisica. ".repeat(250);

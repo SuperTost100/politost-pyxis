@@ -184,10 +184,10 @@ export function sourceHandlers(
   });
   registerLibrarySort(db, runner, { run: linkOptions.run });
   registerOcrJob(db, workspace, runner, {
-    readPages: (path, pages, signal) =>
-      work<{ count: number; pages: Array<{ page: number; text: string }> }>(
+    readPages: (path, pages, signal, ext) =>
+      work<{ count: number; pages: Array<{ page: number; text: string; section?: string }> }>(
         "extract-worker",
-        { path, ext: ".pdf", tess, mode: "ocr-pdf", pages },
+        { path, ext, tess, mode: ext === ".pdf" ? "ocr-pdf" : "ocr-pictures", pages },
         signal,
       ),
     requireData: () => requireOcrData(),

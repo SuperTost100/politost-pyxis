@@ -153,7 +153,7 @@ export function createHeldFiles(deps: HeldDeps) {
     const base = { id: entry.id, name: entry.name, kind: entry.kind, size: entry.size } as const;
     if (entry.refused) return { ...base, state: "failed", error: entry.refused };
     if (entry.kind === "photo") return { ...base, state: entry.photo?.fitted === undefined ? "reading" : "ready" };
-    const row = db.prepare(`SELECT status FROM sources WHERE id = ?`).get(entry.sourceId) as { status: string } | undefined;
+    const row = db.prepare(`SELECT status, kind FROM sources WHERE id = ?`).get(entry.sourceId) as { status: string; kind: string } | undefined;
     if (!row || row.status === "removed") return { ...base, state: "failed", error: "cancelled" };
     const imported = importJob(entry.sourceId!);
     const scanned = scanJob.get(entry.sourceId) as
@@ -174,7 +174,8 @@ export function createHeldFiles(deps: HeldDeps) {
           };
         return { ...base, state: "reading", phase: "read", progress: imported?.progress ?? 0 };
       case "ocr-queued": {
-        const pages = scanned?.pages ?? undefined;
+        // The pages of a Word file or presentation made of pictures are its pictures, so the chip shows no page count.
+        const pages = row.kind === "pdf" ? (scanned?.pages ?? undefined) : undefined;
         const progress = scanned?.progress ?? 0;
         return {
           ...base,
