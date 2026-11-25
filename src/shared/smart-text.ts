@@ -622,8 +622,11 @@ const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const PASSAGE_REF = String.raw`\[(?:P\d+(?:\s*[,;]\s*P?\d+)*|${UUID}(?:\s*[,;]\s*${UUID})*)\]`;
 /** The [Pn] marks a view links, a group such as [P1, P3] included. */
 export const PASSAGE_MARK = String.raw`\[P\d+(?:\s*[,;]\s*P?\d+)*\]`;
-/** What may come before a run on its line when the space before the run is Markdown's own: indentation, a list marker, a quote. */
-const SYNTAX_LEAD = /^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+|>[ \t]?)*$/;
+/**
+ * What may come before a run on its line when the space before the run is Markdown's own: indentation, a list marker, a
+ * quote, a heading's hashes.
+ */
+const SYNTAX_LEAD = /^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+|>[ \t]?)*(?:#{1,6}[ \t]+)?$/;
 
 /**
  * Replaces each run of neighbouring marks ("[P1], [P2]") with `render(run)`, and touches whitespace only next to a run. The
@@ -646,6 +649,16 @@ export function replaceMarkRuns(
   const run = new RegExp(String.raw`([ \t]*)(${mark}(?:[ \t]*[,;]?[ \t]*${mark})*)([ \t]*)`, "gi");
   return text.replace(run, (all: string, before: string, marks: string, after: string, at: number, whole: string) => {
     if (inRanges(skip, at + before.length)) return all;
+    // A run that reaches a protected place, such as "[P1], [P2](url)" where the second is a link's label, ends before it:
+    // the marks up to it are a run, and the rest stays as written.
+    const cut = [...marks.matchAll(new RegExp(mark, "gi"))].find((found) => inRanges(skip, at + before.length + found.index));
+    if (cut) {
+      const head = marks.slice(0, cut.index).replace(/[\s,;]+$/, "");
+      const between = marks.slice(head.length, cut.index);
+      const lead = whole.slice(whole.lastIndexOf("\n", at - 1) + 1, at) + before;
+      const replaced = render(head, at + before.length);
+      return (SYNTAX_LEAD.test(lead) ? before : "") + replaced + between + marks.slice(cut.index) + after;
+    }
     const replaced = render(marks, at + before.length);
     const lead = whole.slice(whole.lastIndexOf("\n", at - 1) + 1, at) + before;
     // After prose the run takes the spaces before it, and the ones after it when punctuation follows ("Vedi [P1] .").

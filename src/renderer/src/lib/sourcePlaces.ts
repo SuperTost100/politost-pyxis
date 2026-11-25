@@ -60,6 +60,15 @@ function blockTexts(value: unknown, key = ""): string[] {
 export function citedOrder(markdown: string): number[] {
   const found: Array<{ at: number; numbers: number[] }> = [];
   const numbers = (text: string) => [...splitCitationGroups(text).matchAll(/\[P(\d+)\]/g)].map((match) => Number(match[1]));
+  // A block's text is Markdown too: its marks are read as the prose's are, so one in its formula is not a citation.
+  const proseNumbers = (text: string) => {
+    const inText: number[] = [];
+    replaceMarkRuns(text, PASSAGE_MARK, (run) => {
+      inText.push(...numbers(run));
+      return run;
+    });
+    return inText;
+  };
   // Prose, by the rule the view links its marks with: not in code, a formula or a link.
   replaceMarkRuns(markdown, PASSAGE_MARK, (run, at) => {
     found.push({ at, numbers: numbers(run) });
@@ -69,7 +78,7 @@ export function citedOrder(markdown: string): number[] {
     if (node.type !== "code") return;
     const lang = (node as { lang?: string | null }).lang ?? "";
     if (lang.startsWith("pyxis-") && lang !== TOOL_FENCE)
-      found.push({ at: start(node), numbers: blockTexts(parseLooseJson(node.value ?? "")).flatMap(numbers) });
+      found.push({ at: start(node), numbers: blockTexts(parseLooseJson(node.value ?? "")).flatMap(proseNumbers) });
     return false;
   });
   return [...new Set(found.sort((a, b) => a.at - b.at).flatMap((entry) => entry.numbers))];
@@ -140,6 +149,14 @@ export function sourceGroups(places: readonly CitedPlace[], order: readonly numb
     if (group.places.length > 1) unnamed.forEach((place, index) => (place.label = { kind: "passage", n: index + 1 }));
   }
   return [...groups.values()];
+}
+
+/**
+ * The one place of a source that has no page, slide, chapter or section, such as a photo, which has no button of its
+ * own in the list: the source's name stands for it, opens it and shows its passage. Null for any other source.
+ */
+export function nameOpensPlace(group: SourceGroup): ListedPlace | null {
+  return group.places.length === 1 && !group.places[0]!.label ? group.places[0]! : null;
 }
 
 /** What the math checks of a text came to: each claim verified, failed, still running, or with nothing to say. */

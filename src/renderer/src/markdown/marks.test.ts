@@ -62,6 +62,10 @@ describe("rehypeMarks", () => {
     expect(await shape("$$\ny\n$$\n\n[](cite:p1).\n\nFine.")).toEqual(["span.katex-display", "p.px-cite-only", "  a cite:p1", "p"]);
   });
 
+  it("keeps a paragraph whose words are a symbol, such as an infinity, beside its mark", async () => {
+    expect(await shape("∞ [](cite:p1)")).toEqual(["p", "  a cite:p1"]);
+  });
+
   it("leaves a check with no step before it on its own", async () => {
     expect(await shape("[check](mathcheck:0)")).toEqual(["div.px-check-slot", "  a mathcheck:0"]);
   });

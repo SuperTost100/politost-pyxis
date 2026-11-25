@@ -115,7 +115,8 @@ export function flatten(block: FlatNode): { text: string; pieces: FlatPiece[] } 
       text += MARK;
       return;
     }
-    if (hasClass(node, "katex") || hasClass(node, "px-formula-source")) {
+    // A formula, or a picture, is one word whose letters are not ours to split.
+    if (hasClass(node, "katex") || hasClass(node, "px-formula-source") || node.tagName === "IMG") {
       pieces.push({ node, start: text.length, end: text.length + 1, kind: "atom" });
       text += ATOM;
       return;

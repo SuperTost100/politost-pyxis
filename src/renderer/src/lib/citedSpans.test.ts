@@ -75,6 +75,12 @@ describe("flatten", () => {
     expect(coveredRuns(text)[0]).toMatchObject({ start: 0, end: text.length - 1, fallback: false });
   });
 
+  it("reads a picture as one word, so a mark after it covers the picture", () => {
+    const { text } = flatten(block('<img src="a.png" alt="Schema"> <span class="px-cite-mark" data-cite="1"></span>'));
+    expect(text).toBe(`${ATOM} ${MARK}`);
+    expect(hasWords(text)).toBe(true);
+  });
+
   it("leaves out a nested list and a display formula", () => {
     const { document } = parseHTML(
       '<html><body><ul><li>Voce <span class="px-cite-mark"></span><ul><li>sotto</li></ul><span class="katex-display"><span class="katex">x</span></span></li></ul></body></html>',

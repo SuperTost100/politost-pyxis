@@ -32,7 +32,8 @@ import { MenuButton } from "../../components/ItemMenu";
 import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
 import { SourcesRow } from "../../components/SourcesRow";
-import { lessonPlaces } from "../../lib/sourcePlaces";
+import { citedOrder, lessonPlaces } from "../../lib/sourcePlaces";
+import { usePassagePlaces } from "../../lib/passagePlaces";
 import { smartClaims } from "../../lib/mathChecks";
 import { SelectionMenu } from "../../components/SelectionMenu";
 import { SmartText } from "../../components/SmartText";
@@ -43,7 +44,7 @@ import {
   ReaderProgress,
   useOpenNext,
 } from "./Reader";
-import { shownFigures, showsLiveText } from "./lessonLive";
+import { lessonRowText, shownFigures, showsLiveText } from "./lessonLive";
 import { lessonLine, sectionFailedKey } from "./partView";
 import { usePlan } from "../../lib/queries";
 import { returnTo, type BackTarget } from "../../app/usePlace";
@@ -253,6 +254,13 @@ export function LegacyLessonPage({
     [data?.markdown, data?.passageIds, data?.sources],
   );
   const claims = useMemo(() => smartClaims(data?.markdown ?? ""), [data?.markdown]);
+  // A first lesson stopped after its cited words arrived has no saved lesson: its row names the passages of the text kept.
+  const rowText = lessonRowText({ writing, fromLive, saved: Boolean(data) });
+  const liveOrder = useMemo(() => (rowText === "live" ? citedOrder(live) : []), [rowText, live]);
+  const livePlaces = usePassagePlaces(
+    useMemo(() => livePassages.map((passageId) => ({ passageId })), [livePassages]),
+    liveOrder,
+  );
 
   async function save(itemId: string, blockId: string, pick: number) {
     const result = await invoke("study.lessonAnswer", {
@@ -490,8 +498,10 @@ export function LegacyLessonPage({
           {markdown}
         </SmartText>
       </SelectionMenu>
-      {data && !writing && !fromLive ? (
+      {rowText === "saved" ? (
         <SourcesRow places={cited.places} order={cited.order} claims={claims} variant="lesson" />
+      ) : rowText === "live" ? (
+        <SourcesRow places={livePlaces} order={liveOrder} variant="lesson" />
       ) : null}
       </div>
       {writing ? (

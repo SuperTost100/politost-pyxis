@@ -12,7 +12,8 @@ import {
 import { arrowTarget, letterIndex, letterKeysHere, letterQuestion } from "./finalKeys";
 import { Figure } from "./Figure";
 import { InlineMarkdown } from "./InlineMarkdown";
-import { KnownPassages, MarkdownView, type KnownPassage } from "./MarkdownView";
+import { KnownPassages } from "../markdown/knownPassages";
+import { MarkdownView, type KnownPassage } from "./MarkdownView";
 import { QuizOption } from "./QuizOption";
 import "./SmartText.css";
 import { Working } from "./Working";

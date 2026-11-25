@@ -53,6 +53,7 @@ const texts = [
   SOURCES_ANSWER("$$h = 2$$"),
   SOURCES_LESSON,
   "- ![Diagramma](diagram.png)\n- Una voce .\n\n1. Uno ;\n2. Due",
+  "## Il teorema di Fubini\n\nVale sui rettangoli. Claim [P1], [P2](https://example.com).\n\n### Un esempio\n\nSi integra prima in x.",
   "La matrice $A[P1]$ e la serie $$\\sum a[P2]$$ restano formule. Il link [P1](https://esempio.it) e [vedi [P2]](https://x.it) restano link, e ![P3](foto.png) un'immagine.",
 ];
 
@@ -65,6 +66,7 @@ function marked(text: string): string {
     .map((line) => {
       if (/^\s*(```|~~~|\$\$|\|)/.test(line) || /^\s{4,}/.test(line)) return line;
       return line
+        .replace(/^(#{1,6}\s+)(?=\S)/, (lead) => `${lead}${mark()} `)
         .replace(/^(\s*(?:[-*+]|\d+[.)])\s+)(?=\S)/, (lead) => `${lead}${mark()} `)
         .replace(/([a-zàèéìòù])\.(?=\s|$)/g, (_, letter: string) => `${letter} ${mark()}, ${mark()}.`);
     })
@@ -103,6 +105,16 @@ describe("removing citation marks", () => {
     expect(stripPassageRefsOutsideCode("La matrice $A[P1]$ e [P1](https://esempio.it), fine [P2].")).toBe(
       "La matrice $A[P1]$ e [P1](https://esempio.it), fine.",
     );
+  });
+
+  it("keeps a heading a heading when a mark follows its hashes", () => {
+    expect(linkCitations("## [P1] Il teorema", () => true)).toBe("## [](cite:p1) Il teorema");
+    expect(stripPassageRefsOutsideCode("## [P1] Il teorema")).toBe("## Il teorema");
+  });
+
+  it("leaves a link whole when a mark in prose runs into it", () => {
+    expect(linkCitations("Claim [P1], [P2](https://example.com).", () => true)).toBe("Claim[](cite:p1), [P2](https://example.com).");
+    expect(stripPassageRefsOutsideCode("Claim [P1], [P2](https://example.com).")).toBe("Claim, [P2](https://example.com).");
   });
 
   it("keeps the space after a list marker and the indentation of a mark on its own line", () => {

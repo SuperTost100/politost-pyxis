@@ -22,7 +22,7 @@ import { passageQuery } from "../lib/passagePlaces";
 import { useCheckTally } from "../lib/mathChecks";
 import { citedRanges } from "../lib/citedRanges";
 import { renderedText } from "../lib/renderedText";
-import { listedPlaceText, rowText, sourceGroups, sourceName, type CitedPlace, type ListedPlace, type SourceGroup } from "../lib/sourcePlaces";
+import { listedPlaceText, nameOpensPlace, rowText, sourceGroups, sourceName, type CitedPlace, type ListedPlace, type SourceGroup } from "../lib/sourcePlaces";
 import { openSourceViewer } from "./SourceViewer";
 import "./SourcesRow.css";
 
@@ -280,18 +280,22 @@ export function SourcesRow({
                   <button
                     type="button"
                     className="px-sources-name"
-                    // A source with one place opens there; one with several opens at its start.
-                    onClick={() =>
-                      openSourceViewer(
-                        group.sourceId && group.places.length > 1
-                          ? { sourceId: group.sourceId }
-                          : { passageId: group.places[0]!.passageId },
-                      )
-                    }
-                    onPointerEnter={() => tint(host(), group.places.flatMap((place) => place.numbers))}
-                    onPointerLeave={() => tint(null, [])}
-                    onFocus={() => tint(host(), group.places.flatMap((place) => place.numbers))}
-                    onBlur={() => tint(null, [])}
+                    // A source whose one place has no name of its own is that place: its name opens it and shows its
+                    // passage. Any other opens at its start, and tints all it supports.
+                    {...(nameOpensPlace(group)
+                      ? placeProps(nameOpensPlace(group)!, group)
+                      : {
+                          onClick: () =>
+                            openSourceViewer(
+                              group.sourceId && group.places.length > 1
+                                ? { sourceId: group.sourceId }
+                                : { passageId: group.places[0]!.passageId },
+                            ),
+                          onPointerEnter: () => tint(host(), group.places.flatMap((place) => place.numbers)),
+                          onPointerLeave: () => tint(null, []),
+                          onFocus: () => tint(host(), group.places.flatMap((place) => place.numbers)),
+                          onBlur: () => tint(null, []),
+                        })}
                   >
                     {sourceName(t, group)}
                   </button>

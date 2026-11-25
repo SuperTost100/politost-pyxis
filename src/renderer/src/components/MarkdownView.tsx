@@ -4,6 +4,7 @@ import { createContext, isValidElement, memo, useContext, useMemo, type ReactNod
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import { checkQuery, textClaims } from "../lib/mathChecks";
 import { citedPassage, type KnownPassage } from "../markdown/citations";
+import { KnownPassages } from "../markdown/knownPassages";
 import { rehypeMarks } from "../markdown/marks";
 import { rehypePlugins, remarkPlugins } from "../markdown/plugins";
 import { markdownSource } from "../markdown/source";
@@ -36,11 +37,6 @@ type MarkdownScope = {
 };
 const Scope = createContext<MarkdownScope>({ claims: [], canRun: false, drawing: false });
 
-/**
- * The passages a page knows, for the Markdown views inside it that are not given them, such as a worked example in a
- * lesson part. A view with neither shows a text's [Pn] as it is stored: only a page with a sources row hides its marks.
- */
-export const KnownPassages = createContext<KnownPassage | undefined>(undefined);
 
 const components: Components = {
   a: function Link({ href, children: linkChildren, node: _node, ...rest }) {

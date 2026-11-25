@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInstance, type TFunction } from "i18next";
 import { beforeAll, describe, expect, it } from "vitest";
-import { citedOrder, citedPassageIds, lessonPlaces, listedPlaceText, placeText, rowText, sourceGroups, sourceName, type CitedPlace } from "./sourcePlaces";
+import { citedOrder, citedPassageIds, lessonPlaces, listedPlaceText, nameOpensPlace, placeText, rowText, sourceGroups, sourceName, type CitedPlace } from "./sourcePlaces";
 
 const book = { sourceId: "b", title: "Analisi matematica 2" };
 const notes = { sourceId: "n", title: "Appunti · Lezione 14" };
@@ -50,6 +50,11 @@ describe("citedOrder", () => {
 
   it("reads marks as the view links them: not in a formula or a link, and between two prices", () => {
     expect(citedOrder("La matrice $A[P4]$ e [P5](https://x.it), poi [P1]. Costa $5 per voce [P2] e $10.")).toEqual([1, 2]);
+  });
+
+  it("reads a block's Markdown as prose too: a mark in its formula is not a citation", () => {
+    const example = "```pyxis-example\n" + JSON.stringify({ title: "Matrici", body: "La matrice $A[P4]$. Risultato [P2]." }) + "\n```";
+    expect(citedOrder(example)).toEqual([2]);
   });
 
   it("does not read code", () => {
@@ -199,5 +204,15 @@ describe("citedPassageIds", () => {
 
   it("asks for nothing when the text has no mark, so no row means no read", () => {
     expect(citedPassageIds(cited, [])).toEqual([]);
+  });
+});
+
+describe("nameOpensPlace", () => {
+  it("lets a source's name stand for its one place without a name, which has no button of its own", () => {
+    const [book, photo] = sourceGroups(places, [3, 7]);
+    expect(nameOpensPlace(photo!)?.passageId).toBe("p7");
+    expect(nameOpensPlace(book!)).toBeNull();
+    const [, text] = sourceGroups(places, [3, 8, 9]);
+    expect(nameOpensPlace(text!)).toBeNull();
   });
 });

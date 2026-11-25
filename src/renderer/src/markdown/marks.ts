@@ -13,8 +13,11 @@ type HastNode = {
 
 const hrefOf = (node: HastNode) => (node.type === "element" && node.tagName === "a" ? String(node.properties?.["href"] ?? "") : "");
 const blank = (node: HastNode) => node.type === "text" && !(node.value ?? "").trim();
-/** Text with no word in it: spaces, and the punctuation a model leaves after a mark on its own line ("[P1]."). */
-const noWords = (node: HastNode) => node.type === "text" && !/[\p{L}\p{N}]/u.test(node.value ?? "");
+/**
+ * Text with no word in it: spaces, and the punctuation a model leaves after a mark on its own line ("[P1]."). A symbol,
+ * such as an infinity, is an answer and keeps its paragraph.
+ */
+const noWords = (node: HastNode) => node.type === "text" && /^[\s\p{P}]*$/u.test(node.value ?? "");
 
 /**
  * A paragraph whose only content is links whose href starts with `prefix`, and spaces. A paragraph of citation marks may
