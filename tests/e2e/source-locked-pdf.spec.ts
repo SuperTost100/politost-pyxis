@@ -118,7 +118,7 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
     await shoot(page, "source-refresh-menu");
     await clickSettled(page, page.getByRole("menuitem", { name: "Controlla se c'è una nuova versione" }));
     // A lookup failure is not yet named as a link failure (see #125), so either message counts as the refusal.
-    await expect(page.getByRole("alert").getByText(/^Non riesco a leggere (quel link|questo file)\.$/)).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole("alert").getByText(/^Non sono riuscito a leggere (quel link|questo file)\.$/)).toBeVisible({ timeout: 30000 });
     expect(await page.evaluate(() => window.pyxis.invoke("jobs.list", {}))).toEqual([]);
 
     // A click on the cover opens the page in the source panel, with its address and the way to it.

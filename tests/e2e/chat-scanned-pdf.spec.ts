@@ -114,7 +114,7 @@ test("a scan waits for its OCR data and says so on its chip, with the card that 
     await page.getByRole("button", { name: "Aggiungi un file o una formula" }).click();
     await clickSettled(page, page.getByRole("menuitem", { name: "Allega file o immagine" }));
     const chip = page.locator(".ask-attachments li").filter({ hasText: "scansione.pdf" });
-    await expect(chip).toContainText("Per leggere questa scansione Pyxis deve scaricare i dati di lettura.", { timeout: 60000 });
+    await expect(chip).toContainText("Per leggere questa scansione devo scaricare i dati per riconoscere il testo.", { timeout: 60000 });
     await expect(page.locator(".px-ocr")).toBeVisible();
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {

@@ -27,7 +27,7 @@ test("slow core bootstrap beyond 3s still connects the renderer", async () => {
       .toBe(true);
     expect(Date.now() - started).toBeGreaterThan(2500);
     await expect(
-      page.getByText(/Il motore interno non riesce ad avviarsi/),
+      page.getByText(/Il motore interno non è riuscito ad avviarsi/),
     ).toHaveCount(0);
   } finally {
     await app.close();
@@ -48,7 +48,7 @@ test("failed core startup stops retrying and can recover after explicit retry", 
   try {
     const page = await app.firstWindow();
     await expect(
-      page.getByText(/Il motore interno non riesce ad avviarsi/),
+      page.getByText(/Il motore interno non è riuscito ad avviarsi/),
     ).toBeVisible({ timeout: 15000 });
     expect(exits).toBe(5);
     // Verify the bounded restart loop remains stopped: a restart that does not happen has no signal to wait for.
@@ -57,7 +57,7 @@ test("failed core startup stops retrying and can recover after explicit retry", 
     rmSync(dbPath); // Remove only this test's deliberately corrupt synthetic file.
     await page.getByRole("button", { name: "Riprova", exact: true }).click();
     await expect(
-      page.getByText(/Il motore interno non riesce ad avviarsi/),
+      page.getByText(/Il motore interno non è riuscito ad avviarsi/),
     ).toHaveCount(0);
     expect(
       await page.evaluate(() => window.pyxis.invoke("plans.list", {})),
@@ -77,14 +77,14 @@ test("a timed-out key handoff shows recovery and reconnects after retry", async 
   try {
     const page = await app.firstWindow();
     await expect(
-      page.getByText(/Il motore interno non riesce ad avviarsi/),
+      page.getByText(/Il motore interno non è riuscito ad avviarsi/),
     ).toBeVisible({ timeout: 15000 });
     await app.evaluate(() => {
       process.env.PYXIS_E2E_KEYS_DELAY = "0";
     });
     await page.getByRole("button", { name: "Riprova", exact: true }).click();
     await expect(
-      page.getByText(/Il motore interno non riesce ad avviarsi/),
+      page.getByText(/Il motore interno non è riuscito ad avviarsi/),
     ).toHaveCount(0);
     expect(
       await page.evaluate(() => window.pyxis.invoke("plans.list", {})),

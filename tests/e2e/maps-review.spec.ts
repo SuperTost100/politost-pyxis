@@ -128,7 +128,7 @@ test("a failed Chiudi on the build notice says so, and the notice keeps its butt
     const db = new DatabaseSync(dbPath, { timeout: 10000 });
     db.exec("CREATE TRIGGER refuse_dismiss BEFORE UPDATE OF dismissed ON jobs BEGIN SELECT RAISE(ABORT, 'disk full'); END");
     await notice.getByRole("button", { name: "Chiudi" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Non riesco a chiudere l’avviso. Riprova." })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Non sono riuscito a chiudere l’avviso. Riprova." })).toBeVisible();
     await expect(notice).toBeVisible();
     await expect(notice.getByRole("button", { name: "Chiudi" })).toBeEnabled();
     await expect(notice.getByRole("button", { name: "Riprova" })).toBeEnabled();

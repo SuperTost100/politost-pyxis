@@ -168,7 +168,7 @@ test("Ask: recent chats, automatic titles, rename and delete, greeting and the t
     await answerNextMenu(app, "Elimina la chat…");
     await list.getByRole("button", { name: "Azioni per Teorema fondamentale" }).click();
     await clickSettled(page, page.getByRole("button", { name: "Elimina la chat", exact: true }));
-    await expect(page.getByText("Le tue chat compaiono qui.")).toBeVisible();
+    await expect(page.getByText("Qui troverai le tue chat.")).toBeVisible();
     await expect(page).toHaveURL(/#\/ask$/);
   } finally {
     await finish(app, userData);
@@ -187,7 +187,7 @@ test("Ask: All chats shows in the sidebar only when there are more chats than it
     await page.reload();
 
     // No chats: the empty note shows and nothing leads to a list.
-    await expect(page.getByText("Le tue chat compaiono qui.")).toBeVisible();
+    await expect(page.getByText("Qui troverai le tue chat.")).toBeVisible();
     await expect(allChats).toHaveCount(0);
 
     // Two chats, both listed: no link.
@@ -301,13 +301,13 @@ test("Ask: composer stays docked, the newest message is in view and nothing over
       await expect(page.getByRole("button", { name: "Interrompi" })).toHaveCount(0, { timeout: 90000 });
     }
     // With nothing in the Library about the question, the reply is still given, and says it comes from general knowledge.
-    const general = "Non ho trovato niente su questa domanda nella tua Libreria, quindi ti rispondo con quello che so in generale.";
+    const general = "Non ho trovato nulla su questa domanda nella tua Libreria, quindi ti rispondo in base a quello che so.";
     const before = await page.getByText(general).count();
     await box.fill("Una domanda fuori materia");
     await box.press("Enter");
     // Slow hosted runners can take well over 30 s for a recorded reply.
     await expect(page.getByText(general)).toHaveCount(before + 1, { timeout: 90000 });
-    await expect(page.getByText("Il materiale non copre questa domanda.")).toHaveCount(0);
+    await expect(page.getByText("Il tuo materiale non tratta questo argomento.")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Interrompi" })).toHaveCount(0, { timeout: 90000 });
 
     // The saved reply replaces the streamed one off screen, so it is skipped (content-visibility) at its 240px placeholder

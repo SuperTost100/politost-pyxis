@@ -179,7 +179,7 @@ test("OCR data: once setup is done Pyxis downloads the pinned files by itself, r
     ).toMatchObject([{ state: "succeeded" }]);
 
     // A HEIC photo is read with the data straight away, with no question first.
-    await page.getByRole("button", { name: "Aggiungi file" }).click();
+    await page.getByRole("button", { name: "Aggiungi fonti" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await animationsSettled(page);
@@ -287,7 +287,7 @@ test("OCR data: files that are there and cannot be read are said so, nothing is 
         location.hash = "/exams/library";
       });
       await page.reload();
-      await page.getByRole("button", { name: /^(Aggiungi file|Add files)$/ }).click();
+      await page.getByRole("button", { name: /^(Aggiungi fonti|Add sources)$/ }).click();
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible();
       await animationsSettled(page);
@@ -309,7 +309,7 @@ test("OCR data: files that are there and cannot be read are said so, nothing is 
 
     // Try again while the files still cannot be read checks them again and says so, still without a download.
     await clickSettled(page, dialog.getByRole("button", { name: "Riprova" }));
-    await expect(dialog.getByText(/non riesce ancora a leggere i file che ha già/)).toBeVisible({ timeout: 30_000 });
+    await expect(dialog.getByText(/non è ancora riuscito a leggere i file che ha già/)).toBeVisible({ timeout: 30_000 });
     await expect.poll(() => ocrJobs(page), { timeout: 30000 }).toMatchObject([{ state: "failed", error: "ocr-data-unreadable" }]);
     await animationsSettled(page);
     await saveShot(page, "ocr-unreadable/photo-import-card-try-again-still-locked-it-dark-960-large.png");

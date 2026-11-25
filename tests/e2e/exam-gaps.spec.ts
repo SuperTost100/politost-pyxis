@@ -293,14 +293,14 @@ test.describe("the block of open gaps in the exam's side column", () => {
       await page.evaluate((id) => {
         location.hash = `/plans/${id}`;
       }, PLAN);
-      await expect(block(page)).toContainText("Non riesco a caricarlo.");
+      await expect(block(page)).toContainText("Non sono riuscito a caricarlo.");
     } finally {
       db((handle) => handle.exec("ALTER TABLE gaps_away RENAME TO gaps"));
     }
     await saveShot(side(page), "gaps-failed-it.png", { animations: "disabled" });
     await block(page).getByRole("button", { name: "Riprova", exact: true }).click();
     await expect(rows(page)).toHaveCount(2);
-    await expect(block(page)).not.toContainText("Non riesco a caricarlo.");
+    await expect(block(page)).not.toContainText("Non sono riuscito a caricarlo.");
   });
 
   test("going back from a row after the third brings the list back unfolded, with the focus on that row's button", async () => {
