@@ -1,3 +1,4 @@
+import { insideMath } from "./inside-math";
 import { mapOutsideCode } from "./outside-code";
 
 /**
@@ -32,29 +33,36 @@ const DOUBLED_OK = new Set([
 ]);
 // What a model's JSON makes of a line break it wrote as `\n` once the string is read: a backslash and an n.
 const AFTER_N = new Set(BY_LETTER.n);
+// The commands whose name is n and one letter: without the backslash, what is left (e, u, i) can be a variable.
+const ONE_LETTER = new Set(["ne", "nu", "ni"]);
 const CONTROL: Record<string, string> = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v" };
 
+/** Where a row of a display formula begins: after its opening `$$` or `\[`, a `\\` row break or a `\begin{…}` and its arguments. */
+const ROW_START = /(?:\$\$|\\\[|(?<!\\)\\\\|\\begin\{[^{}]*\}(?:\{[^{}]*\})*)$/;
+
 /**
- * True when `index` is inside a `$...$`, `$$...$$`, `\(...\)` or `\[...\]` span that is not closed yet. An escaped dollar
- * sign is not a delimiter.
+ * Whether the n at `at` (a line break, or with `written` a backslash and an n written out), followed by the rest of the
+ * name `name` up to `end`, is a line break inside a formula although `\name` is a LaTeX command too. It can be only when
+ * what is left of the name is one letter that can be a variable: `\ne` leaves e, `\nu` u, `\ni` i. Then:
+ * - `\ne` or `\ni` with nothing on its left in its row of a display formula and an exponent or an index right after it is
+ *   no relation, so it is e or i: `$$` and a line break before `e^{-st}` is `e^{-st}`. With something on its left,
+ *   `A \ne_{p} B` is the relation with an index.
+ * - A line break where a formula laid out on lines has a line end is a line break: right after its opening `$$` or `\[`
+ *   when its closing delimiter starts a line too, right after a `\\` row break, or right after `\begin{…}`.
+ * A backslash and an n written out, as a structured answer that escaped its line breaks twice has them, is a real command
+ * far more often than such a line break, so only the first rule applies to it.
  */
-function insideMath(text: string, index: number): boolean {
-  let open: "$" | "$$" | "\\" | null = null;
-  for (let i = 0; i < index; i += 1) {
-    const char = text[i];
-    if (char === "\\") {
-      const next = text[i + 1];
-      if (open === null && (next === "(" || next === "[")) open = "\\";
-      else if (open === "\\" && (next === ")" || next === "]")) open = null;
-      i += 1;
-    } else if (char === "$") {
-      const mark = text[i + 1] === "$" ? "$$" : "$";
-      if (mark === "$$") i += 1;
-      if (open === null) open = mark;
-      else if (open === mark) open = null;
-    }
-  }
-  return open !== null;
+function lineBreakInFormula(text: string, at: number, end: number, name: string, written: boolean): boolean {
+  if (!ONE_LETTER.has(name)) return false;
+  if (name !== "nu" && /[\^_]/.test(text[end] ?? "") && ROW_START.test(text.slice(0, at).trimEnd())) return true;
+  if (written) return false;
+  const line = text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
+  if (/(?<!\\)\\\\$|\\begin\{[^{}]*\}(?:\{[^{}]*\})*$/.test(line)) return true;
+  const open = /(\$\$|\\\[)[ \t]*$/.exec(line)?.[1];
+  if (!open) return false;
+  const close = text.indexOf(open === "$$" ? "$$" : "\\]", at + 1);
+  // A formula still being written is laid out as it began.
+  return close < 0 || /\n[ \t>]*$/.test(text.slice(at, close));
 }
 
 const PATTERNS = Object.entries(BY_LETTER).map(([letter, rest]) => ({
@@ -83,9 +91,14 @@ function undoubled(text: string): string {
  */
 function literalBreaks(text: string): string {
   if (!text.includes("\\n")) return text;
-  return text.replace(/(?<!\\)\\n([A-Za-z]*)/g, (match, tail: string, offset: number, whole: string) =>
-    AFTER_N.has(`n${tail}`) && (insideMath(whole, offset) || tail.length > 1) ? match : `\n${tail}`,
-  );
+  return text.replace(/(?<!\\)\\n([A-Za-z]*)/g, (match, tail: string, offset: number, whole: string) => {
+    const name = `n${tail}`;
+    // The name first: finding the formula reads the text from its start, which ordinary text must not pay for every line.
+    if (!AFTER_N.has(name)) return `\n${tail}`;
+    const inMath = insideMath(whole, offset);
+    const command = inMath || tail.length > 1;
+    return command && !(inMath && lineBreakInFormula(whole, offset, offset + match.length, name, true)) ? match : `\n${tail}`;
+  });
 }
 
 /**
@@ -105,6 +118,7 @@ export function repairLatexEscapes(text: string, atLineStart = true): string {
       if (letter === "n" && whole[offset - 1] === "\r") return match;
       const guarded = GUARDED.has(name) || letter === "n";
       if (guarded && !inMath) return match;
+      if (letter === "n" && inMath && lineBreakInFormula(whole, offset, offset + name.length, name, false)) return match;
       return `\\${name}`;
     });
   }

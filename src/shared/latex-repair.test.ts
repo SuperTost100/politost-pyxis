@@ -45,6 +45,81 @@ describe("repairLatexEscapes", () => {
   });
 });
 
+describe("a line break before e, u or i that the formula around it shows is real", () => {
+  // From a lesson of dev.13: the display formula opened on its own line, and the line break before `e^{-st}` was drawn as ≠.
+  it("keeps the line break that opens a display formula laid out on lines of its own", () => {
+    for (const text of [
+      "$$\ne^{-st} e^{2t} = e^{(2-s)t}.\n$$",
+      "$$\nu(t) = e^{t}\n$$",
+      "\\[\ne^{x} = 1\n\\]",
+      "Prima\n\n$$\ne = mc^2\n$$\n\nDopo",
+    ]) {
+      expect(repairLatexEscapes(text), JSON.stringify(text)).toBe(text);
+    }
+  });
+
+  it("keeps the line break after a row break or the start of an environment", () => {
+    const text = "$$\\begin{aligned}\nu &= 1 \\\\\ne^{x} &= 2\n\\end{aligned}$$";
+    expect(repairLatexEscapes(text)).toBe(text);
+  });
+
+  it("keeps a line break before e or i with nothing on its left in its row and an exponent or index after it", () => {
+    for (const text of ["$$\ne^{-st} e^{2t} = e^{(2-s)t}.$$", "$$ \ni_{k} = 1$$", "$$a = 1 \\\\ \ne^{x} = 2$$"]) {
+      expect(repairLatexEscapes(text), JSON.stringify(text)).toBe(text);
+    }
+  });
+
+  it("restores ≠ and ∋ with something on their left, with or without an index, and with nothing after them", () => {
+    expect(repairLatexEscapes("$$A \ne_{p} B$$ e $a \ne^{*} b$ e $x \ni_{k} y$")).toBe("$$A \\ne_{p} B$$ e $a \\ne^{*} b$ e $x \\ni_{k} y$");
+    expect(repairLatexEscapes("$$ \ne = 1$$")).toBe("$$ \\ne = 1$$");
+  });
+
+  it("still restores the commands where the text around them needs them", () => {
+    expect(repairLatexEscapes("$$\nu = \\frac{1}{T}$$")).toBe("$$\\nu = \\frac{1}{T}$$");
+    expect(repairLatexEscapes("$$a \ne b$$ e $x\ni y$ e $\ne$")).toBe("$$a \\ne b$$ e $x\\ni y$ e $\\ne$");
+    expect(repairLatexEscapes("$$\nabla f\n$$")).toBe("$$\\nabla f\n$$");
+    expect(repairLatexEscapes("$$\n\nu = 1\n$$")).toBe("$$\n\\nu = 1\n$$");
+  });
+
+  it("reads a line break before more than one letter as the command: that text is never a formula's", () => {
+    expect(repairLatexEscapes("$$\notin$$")).toBe("$$\\notin$$");
+    expect(repairLatexEscapes("$$a \\\\\neq z$$")).toBe("$$a \\\\\\neq z$$");
+  });
+
+  it("leaves a command that was written out, unless it is \\ne or \\ni with nothing on its left and an exponent after it", () => {
+    for (const text of [
+      "$$\\notin$$",
+      "$\\notin$",
+      "$\\ni$",
+      "$$\\ni$$",
+      "$$\\ne 0$$",
+      "$$\\begin{aligned}\na &= b \\\\\n\\neq z\n\\end{aligned}$$",
+      "$$a = b \\\\ \\neq z$$",
+      "$$a &\\neq b$$",
+      "$A \\ne_{p} B$",
+      "$a \\ne^{*} b$",
+      "$x \\ni_{k} y$",
+      "il simbolo $\\ne$",
+      "$$\\nu = 1\n$$",
+    ]) {
+      expect(repairLatexEscapes(text), JSON.stringify(text)).toBe(text);
+    }
+    expect(repairLatexEscapes("$$\\ne^{-st} e^{2t} = e^{(2-s)t}.$$")).toBe("$$\ne^{-st} e^{2t} = e^{(2-s)t}.$$");
+  });
+
+  it("leaves a formula inside Markdown code as written", () => {
+    // A LaTeX listing in a fenced block, with a display formula that opens with a line break before e and a `\nu`.
+    const listing = "Scrivi così:\n\n```latex\n$$\ne^{x} \\nu\n$$\n```\n";
+    expect(repairLatexOutsideCode(listing)).toBe(listing);
+    const lost = "Scrivi così:\n\n```latex\n$$a \neq b\n$$\n```\n";
+    expect(repairLatexOutsideCode(lost)).toBe(lost);
+  });
+
+  it("is the same in a structured answer", () => {
+    expect(repairModelStrings({ body: "Quindi\n$$\ne^{-st} e^{2t}\n$$" })).toEqual({ body: "Quindi\n$$\ne^{-st} e^{2t}\n$$" });
+  });
+});
+
 describe("a backslash written twice", () => {
   // A structured answer is already decoded, so the "\\\\vec" the prompt asks for in JSON stays as two backslashes.
   it("goes back to one before a command inside a formula, so KaTeX does not break the line there", () => {
