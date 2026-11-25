@@ -12,7 +12,7 @@ import {
 import { arrowTarget, letterIndex, letterKeysHere, letterQuestion } from "./finalKeys";
 import { Figure } from "./Figure";
 import { InlineMarkdown } from "./InlineMarkdown";
-import { MarkdownView, type CitationResolver } from "./MarkdownView";
+import { MarkdownView, type KnownPassage } from "./MarkdownView";
 import { QuizOption } from "./QuizOption";
 import "./SmartText.css";
 import { Working } from "./Working";
@@ -55,8 +55,7 @@ export function SmartText({
   answers = {},
   onAnswer,
   streaming = false,
-  onCitationClick,
-  citationResolver,
+  knownPassage,
   figures = {},
   final,
 }: {
@@ -64,9 +63,8 @@ export function SmartText({
   answers?: Record<string, number>;
   onAnswer?: SmartAnswer;
   streaming?: boolean;
-  onCitationClick?: (passageId: number) => void;
-  /** The chip label of each [Pn]; without it the chips read "Pn". */
-  citationResolver?: CitationResolver;
+  /** Which [Pn] marks name one of the lesson's passages; the sources row under the text lists them. */
+  knownPassage?: KnownPassage;
   /** Images of the figure blocks, by `figureKey`. While `streaming`, a figure without one is still being drawn. */
   figures?: Record<string, string>;
   /**
@@ -147,8 +145,7 @@ export function SmartText({
             runnable
             // Only the text at the end can still be growing: a formula in it waits for its closing delimiter.
             drawing={streaming && index === segments.length - 1}
-            onCitationClick={onCitationClick}
-            citationResolver={citationResolver}
+            knownPassage={knownPassage}
           >
             {segment.text}
           </MarkdownView>

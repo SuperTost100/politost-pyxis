@@ -1,26 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
-import { invoke } from "../lib/ipc";
-import {
-  anchoredChecks,
-  fencedChecks,
-  stripCheckFences,
-  type AnchoredCheck,
-  type MathCheck,
-} from "@shared/math-check";
+import { stripCheckFences, type AnchoredCheck, type MathCheck } from "@shared/math-check";
 import { createContext, isValidElement, memo, useContext, useMemo } from "react";
-import { useTranslation } from "react-i18next";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
-import { citedPassage, type CitationResolver } from "../markdown/citations";
+import { checkQuery, textClaims } from "../lib/mathChecks";
+import { citedPassage, type KnownPassage } from "../markdown/citations";
+import { rehypeMarks } from "../markdown/marks";
 import { rehypePlugins, remarkPlugins } from "../markdown/plugins";
 import { markdownSource } from "../markdown/source";
 import { CheckBadge } from "./CheckBadge";
-import { CitationChip } from "./CitationChip";
 import { PythonBlock, RunnablePython } from "./PythonBlock";
 import { Figure } from "./Figure";
 import { darkFigureKey, figureKey, parseFigure } from "@shared/smart-text";
 import "./MarkdownView.css";
 
-export type { CitationResolver };
+export type { KnownPassage };
+
+/** After KaTeX: each check beside its step, and paragraphs of nothing but marks hidden. */
+const viewRehypePlugins = [...rehypePlugins, rehypeMarks];
 
 const urlTransform = (url: string) =>
   /^(?:cite:p|mathcheck:)\d+$/.test(url) || HELD_MATH.test(url) ? url : defaultUrlTransform(url);
@@ -32,8 +28,7 @@ const HELD_MATH = /^pyxis-math:(inline|display):(\d+)$/;
 type MarkdownScope = {
   claims: MathCheck[];
   canRun: boolean;
-  onCitationClick?: (passageId: number) => void;
-  citationResolver?: CitationResolver;
+  knownPassage?: KnownPassage;
   figures?: Record<string, string>;
   drawing: boolean;
 };
@@ -41,7 +36,7 @@ const Scope = createContext<MarkdownScope>({ claims: [], canRun: false, drawing:
 
 const components: Components = {
   a: function Link({ href, children: linkChildren, node: _node, ...rest }) {
-    const { claims, onCitationClick, citationResolver } = useContext(Scope);
+    const { claims, knownPassage } = useContext(Scope);
     const held = href?.match(HELD_MATH);
     if (held) return <FormulaPending display={held[1] === "display"} size={Number(held[2])} />;
     const check = href?.match(/^mathcheck:(\d+)$/);
@@ -49,15 +44,10 @@ const components: Components = {
       const claim = claims[Number(check[1])];
       return claim ? <AsyncCheck claim={claim} /> : null;
     }
-    const id = citedPassage(href, citationResolver);
-    if (id !== null) {
-      return (
-        <CitationChip onClick={() => onCitationClick?.(id)}>
-          {linkChildren}
-        </CitationChip>
-      );
-    }
-    // A cite: link the reply wrote for a passage it was never given: its text, not a chip and not a link.
+    // A citation mark: nothing to read or click in the text, only the place the sources row tints the words before.
+    const id = citedPassage(href, knownPassage);
+    if (id !== null) return <span className="px-cite-mark" data-cite={id} />;
+    // A cite: link the reply wrote for a passage it was never given: its text, not a mark and not a link.
     if (href?.startsWith("cite:")) return <>{linkChildren}</>;
     return (
       <a href={href} {...rest} rel="noreferrer" target="_blank">
@@ -109,8 +99,7 @@ const components: Components = {
 export const MarkdownView = memo(function MarkdownView({
   children,
   variant = "reading",
-  citationResolver,
-  onCitationClick,
+  knownPassage,
   runnable,
   checks,
   figures,
@@ -126,37 +115,34 @@ export const MarkdownView = memo(function MarkdownView({
    */
   drawing?: boolean;
   variant?: "reading" | "body";
-  citationResolver?: CitationResolver;
-  onCitationClick?: (passageId: number) => void;
+  /** Which [Pn] marks name a passage the page knows; a mark for any other is left out. Without it every mark counts. */
+  knownPassage?: KnownPassage;
   /** Python blocks get an editor and a Run button; defaults to on inside tutor messages. */
   runnable?: boolean;
 }) {
   const inherited = useContext(RunnablePython);
   const canRun = runnable ?? inherited;
-  const claims = useMemo(
-    () => anchoredChecks(children, checks ?? fencedChecks(children)),
-    [children, checks],
-  );
+  const claims = useMemo(() => textClaims(children, checks), [children, checks]);
   const source = useMemo(
     () =>
       markdownSource(
         stripCheckFences(children),
-        citationResolver,
+        knownPassage,
         drawing,
         claims.map((claim) => claim.step),
       ),
-    [children, citationResolver, claims, drawing],
+    [children, knownPassage, claims, drawing],
   );
   const scope = useMemo(
-    () => ({ claims, canRun, onCitationClick, citationResolver, figures, drawing }),
-    [claims, canRun, onCitationClick, citationResolver, figures, drawing],
+    () => ({ claims, canRun, knownPassage, figures, drawing }),
+    [claims, canRun, knownPassage, figures, drawing],
   );
   // The same element for the same text, so React skips the parse; the renderers read a changed scope from context.
   const tree = useMemo(
     () => (
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
-        rehypePlugins={rehypePlugins}
+        rehypePlugins={viewRehypePlugins}
         skipHtml
         urlTransform={urlTransform}
         components={components}
@@ -185,26 +171,8 @@ function FormulaPending({ display, size }: { display: boolean; size: number }) {
   );
 }
 
+/** A step's check, run when the step is drawn. While it runs nothing shows: the sources row says the checks are running. */
 function AsyncCheck({ claim }: { claim: MathCheck }) {
-  const { t } = useTranslation();
-  const { kind, expr, claimed, vars } = claim;
-  const input = { kind, expr, claimed, vars };
-  const result = useQuery({
-    queryKey: ["math-check", input],
-    queryFn: () => invoke("tools.check", input),
-    retry: false,
-    staleTime: 60000,
-  });
-  return result.data || result.isError ? (
-    <CheckBadge
-      state={result.data?.state ?? "none"}
-      reason={result.data?.reason}
-      verifiedLabel={t("components.markdown.verified")}
-      failedLabel={t("components.markdown.failed")}
-    />
-  ) : (
-    <span className="meta" role="status">
-      {t("components.markdown.checking")}
-    </span>
-  );
+  const result = useQuery(checkQuery(claim));
+  return result.data || result.isError ? <CheckBadge state={result.data?.state ?? "none"} reason={result.data?.reason} /> : null;
 }

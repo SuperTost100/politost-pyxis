@@ -553,7 +553,7 @@ const LessonOutput = z.object({
   figures: z.record(z.string(), z.string()).optional(),
   /** Saved picks of the lesson's quick checks and recap, by question id. */
   answers: SmartAnswers,
-  /** The sources and places the lesson was given, for its "Sources used" footer. */
+  /** The sources and places of the passages the lesson was given, one place per passage, for its sources row. */
   sources: LessonSources,
   /** The label of each [Pn] chip, by passage order, as Ask labels its citations. */
   citations: z.array(z.string()),

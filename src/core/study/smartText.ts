@@ -209,7 +209,7 @@ export function smartCitations(db: Database.Database, passageIds: string[]): str
   });
 }
 
-/** The sources and places a lesson was given, for its "Sources used" footer: each place opens the source viewer. */
+/** The sources and places of the passages a lesson was given, one place per passage, for the sources row under it. */
 export function smartSources(db: Database.Database, passageIds: string[]) {
   if (!passageIds.length) return [];
   const rows = db
@@ -238,7 +238,6 @@ export function smartSources(db: Database.Database, passageIds: string[]) {
         chapter?: number;
         section?: string;
       }>;
-      seen: Set<string>;
     }
   >();
   for (const id of passageIds) {
@@ -266,15 +265,13 @@ export function smartSources(db: Database.Database, passageIds: string[]) {
       sourceId: row.source_id,
       title: row.title,
       places: [],
-      seen: new Set<string>(),
     };
     sources.set(row.source_id, source);
-    const key = JSON.stringify(place);
-    if (source.seen.has(key)) continue;
-    source.seen.add(key);
+    // Every passage keeps its place, two on one page included: the text cites each by its own number, and the sources
+    // row lists their page once.
     source.places.push({ passageId: row.id, ...place });
   }
-  return [...sources.values()].map(({ seen: _seen, ...source }) => ({
+  return [...sources.values()].map((source) => ({
     ...source,
     places: source.places.sort(
       (a, b) =>

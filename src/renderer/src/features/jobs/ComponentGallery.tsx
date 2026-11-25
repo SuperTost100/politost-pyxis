@@ -6,6 +6,7 @@ import { ChatMessage } from "../../components/ChatMessage";
 import { CheckBadge } from "../../components/CheckBadge";
 import { Chip } from "../../components/Chip";
 import { CitationChip } from "../../components/CitationChip";
+import { SourcesRow } from "../../components/SourcesRow";
 import { UsedSources } from "../ask/UsedSources";
 import { Composer } from "../../components/Composer";
 import { ContextBlock } from "../../components/ContextBlock";
@@ -310,8 +311,20 @@ export function ComponentGallery() {
             t("components.chatSamples.s2"),
           ]}
         >
-          {t("components.chatSamples.tutor")}{" "}
-          <CitationChip>{t("components.chatSamples.cite")}</CitationChip>
+          {t("components.chatSamples.tutor")}
+        </ChatMessage>
+        <ChatMessage
+          sources={
+            <SourcesRow
+              places={[
+                { n: 1, passageId: "gallery-1", sourceId: "gallery-a", title: "Fisica 1", chapter: 4 },
+                { n: 2, passageId: "gallery-2", sourceId: "gallery-b", title: "slide-termo.pdf", slide: 12 },
+              ]}
+              order={[1, 2]}
+            />
+          }
+        >
+          {t("components.chatSamples.tutor")}
         </ChatMessage>
         <ChatMessage lead={<UsedSources grounding="general" citations={[]} />}>
           {t("components.chatSamples.tutor")}
@@ -439,17 +452,16 @@ export function ComponentGallery() {
       </Section>
 
       <Section eyebrow={t("gallery.sections.layout")} title="CheckBadge">
-        <CheckBadge
-          state="verified"
-          verifiedLabel={t("gallery.checkVerified")}
-          failedLabel={t("gallery.checkFailed")}
-        />
-        <CheckBadge
-          state="failed"
-          reason={t("gallery.checkReason")}
-          verifiedLabel={t("gallery.checkVerified")}
-          failedLabel={t("gallery.checkFailed")}
-        />
+        {/* The grey check shows while an answer's sources row is open, which the gallery stands in for. */}
+        <div className="px-markdown" data-checks-shown>
+          <div className="px-checked is-prose">
+            <p>ΔU = Q − L</p>
+            <div className="px-check-slot">
+              <CheckBadge state="verified" />
+            </div>
+          </div>
+          <CheckBadge state="failed" reason="symbolic" />
+        </div>
       </Section>
 
       <Section
@@ -468,14 +480,7 @@ export function ComponentGallery() {
         title="MarkdownView"
         layout="col"
       >
-        <MarkdownView
-          citationResolver={(id) =>
-            id === 1
-              ? t("components.citationSamples.sb")
-              : t("components.citationSamples.pdf")
-          }
-          runnable
-        >
+        <MarkdownView knownPassage={() => true} runnable>
           {t("gallery.markdownSample")}
         </MarkdownView>
       </Section>

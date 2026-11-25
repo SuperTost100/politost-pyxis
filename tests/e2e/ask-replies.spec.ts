@@ -173,9 +173,11 @@ test("Ask: Continue keeps the cut reply's citation chips while it waits for the 
     await page.reload();
 
     const reply = page.locator(".px-msg:not(.px-msg-user)").last();
-    await expect(reply.locator(".px-cite")).toHaveCount(1);
+    // The mark is an anchor with no text, and the stopped answer still names what it cited in the row under it.
+    await expect(reply.locator(".px-cite-mark")).toHaveCount(1);
+    await expect(reply.getByRole("button", { name: "Dispense di analisi, cap. 1", exact: true })).toBeVisible();
     // Every state the page shows is recorded: core sends the passages again only after retrieval, and until then the
-    // saved part must keep its chip rather than flash a bare [P1].
+    // saved part must keep its mark rather than flash a bare [P1].
     await page.evaluate(() => {
       const seen: string[] = [];
       (window as unknown as { seen: string[] }).seen = seen;
@@ -187,7 +189,7 @@ test("Ask: Continue keeps the cut reply's citation chips while it waits for the 
     });
     await page.getByRole("button", { name: "Continua" }).click();
     await expect(page.getByRole("button", { name: "Interrompi", exact: true })).toBeVisible();
-    await expect(reply.locator(".px-cite")).toHaveCount(1);
+    await expect(reply.locator(".px-cite-mark")).toHaveCount(1);
     await expect(page.getByText(CONTINUATION.trim(), { exact: false })).toBeVisible({ timeout: 30000 });
     expect(await page.evaluate(() => (window as unknown as { seen: string[] }).seen)).toEqual([]);
   } finally {

@@ -297,8 +297,7 @@
       "general": "I found nothing on this in your Library, so I'm answering from what I know in general.",
       "generalFiles": "I found nothing on this in the files of this chat, so I'm answering from what I know in general.",
       "generalUnused": "I found something in your sources, but this answer cites none of it, so it comes from what I know in general.",
-      "generalNoSource": "This answer cites no source, so it comes from what I know in general.",
-      "list": "Sources used"
+      "generalNoSource": "This answer cites no source, so it comes from what I know in general."
     },
     "chip": {
       "auto": "Subject: Pyxis picks",
@@ -1462,11 +1461,6 @@
     "recapPrompt": "Answer the recap to complete the lesson, or mark it done now.",
     "doneTitle": "Lesson complete",
     "continue": "Continue",
-    "sources": "Sources used",
-    "page": "p. {{n}}",
-    "slide": "slide {{n}}",
-    "chapter": "ch. {{n}}",
-    "open": "Open",
     "introDone": "Introduction complete",
     "introPrompt": "Answer the questions to complete the introduction, or mark it done now.",
     "introMissing": "This course has no introduction yet.",
@@ -1474,10 +1468,6 @@
     "outline": "In this lesson",
     "minutesLeft_one": "About {{count}} minute left",
     "minutesLeft_other": "About {{count}} minutes left",
-    "fromSources": "From your sources: {{list}}",
-    "sourcesMore_one": "{{first}} and one more",
-    "sourcesMore_other": "{{first}} and {{count}} more",
-    "sourcesAnd": " and ",
     "partsTitle": "Parts of the chapter",
     "partsNote": "Pyxis writes the dashed parts once you reach the one before.",
     "partOf": "Part {{n}} of {{count}}",
@@ -2882,9 +2872,6 @@
     "noticeFix": "Retry",
     "noticeDetails": "ENOENT: missing file",
     "contextExcerpt": "The change in internal energy equals heat absorbed minus work done.",
-    "checkVerified": "Verified",
-    "checkFailed": "Not verified",
-    "checkReason": "The result does not match the expected value",
     "tabs": {
       "path": "Path",
       "topics": "Topics",
@@ -2984,10 +2971,7 @@
       "loadFailed": "This could not be loaded."
     },
     "markdown": {
-      "run": "Run",
-      "verified": "Verified",
-      "failed": "Not verified",
-      "checking": "Checking calculation…"
+      "run": "Run"
     },
     "lesson": {
       "recommended": "Recommended"
@@ -3017,7 +3001,6 @@
     "chatSamples": {
       "user": "What does the first law of thermodynamics say?",
       "tutor": "The change in a system's internal energy equals heat absorbed minus work done: ΔU = Q − W.",
-      "cite": "Physics 1 · ch. 4.2",
       "s1": "Give me an ideal gas example",
       "s2": "I do not follow the work sign"
     },
@@ -4283,5 +4266,29 @@
     },
     "emptyBody": "Your flashcards will appear here, by subject. You write them, or Pyxis makes them from your material.",
     "loadFailed": "The flashcards didn't load."
+  },
+  "sourcesRow": {
+    "sources_one": "1 source",
+    "sources_other": "{{count}} sources",
+    "verified_one": "1 verified result",
+    "verified_other": "{{count}} verified results",
+    "notVerified_one": "1 result not verified",
+    "notVerified_other": "{{count}} results not verified",
+    "someVerified": "{{ok}} of {{count}} results verified",
+    "checking": "Checking the calculations…",
+    "place": {
+      "page": "p. {{n}}",
+      "slide": "slide {{n}}",
+      "chapter": "ch. {{n}}",
+      "passage": "passage {{n}}"
+    },
+    "placeAria": "{{title}}, {{place}}",
+    "list": "Sources",
+    "hint": "Click to open the source at this place",
+    "reading": "Reading the passage…",
+    "checkMark": "Verified: Pyxis redid this calculation and got the same result.",
+    "failed": "Not verified",
+    "failedValue": "The result does not match the expected value.",
+    "failedSolutions": "The solutions do not match the ones Pyxis finds."
   }
 }

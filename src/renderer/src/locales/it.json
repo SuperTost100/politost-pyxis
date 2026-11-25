@@ -297,8 +297,7 @@
       "general": "Non ho trovato niente su questa domanda nella tua Libreria, quindi ti rispondo con quello che so in generale.",
       "generalFiles": "Non ho trovato niente su questa domanda nei file di questa chat, quindi ti rispondo con quello che so in generale.",
       "generalUnused": "Nelle tue fonti ho trovato qualcosa, ma questa risposta non ne cita nessuna, quindi viene da quello che so in generale.",
-      "generalNoSource": "Questa risposta non cita nessuna fonte, quindi viene da quello che so in generale.",
-      "list": "Fonti usate"
+      "generalNoSource": "Questa risposta non cita nessuna fonte, quindi viene da quello che so in generale."
     },
     "chip": {
       "auto": "Materia: sceglie Pyxis",
@@ -1462,11 +1461,6 @@
     "recapPrompt": "Rispondi al ripasso finale per completare la lezione, oppure segnala che hai finito.",
     "doneTitle": "Lezione completata",
     "continue": "Continua",
-    "sources": "Fonti usate",
-    "page": "p. {{n}}",
-    "slide": "slide {{n}}",
-    "chapter": "cap. {{n}}",
-    "open": "Apri",
     "introDone": "Introduzione completata",
     "introPrompt": "Rispondi alle domande per completare l'introduzione, oppure segnala che hai finito.",
     "introMissing": "Questo corso non ha ancora un'introduzione.",
@@ -1474,10 +1468,6 @@
     "outline": "In questa lezione",
     "minutesLeft_one": "Circa {{count}} minuto alla fine",
     "minutesLeft_other": "Circa {{count}} minuti alla fine",
-    "fromSources": "Dalle tue fonti: {{list}}",
-    "sourcesMore_one": "{{first}} e un'altra",
-    "sourcesMore_other": "{{first}} e altre {{count}}",
-    "sourcesAnd": " e ",
     "partsTitle": "Parti del capitolo",
     "partsNote": "Pyxis scrive le parti tratteggiate quando arrivi a quella prima.",
     "partOf": "Parte {{n}} di {{count}}",
@@ -2882,9 +2872,6 @@
     "noticeFix": "Riprova",
     "noticeDetails": "ENOENT: file mancante",
     "contextExcerpt": "La variazione di energia interna è uguale al calore assorbito meno il lavoro compiuto.",
-    "checkVerified": "Verificato",
-    "checkFailed": "Non verificato",
-    "checkReason": "Il risultato non coincide con il valore atteso",
     "tabs": {
       "path": "Percorso",
       "topics": "Argomenti",
@@ -2984,10 +2971,7 @@
       "loadFailed": "Non è stato possibile caricarlo."
     },
     "markdown": {
-      "run": "Esegui",
-      "verified": "Verificato",
-      "failed": "Non verificato",
-      "checking": "Verifico il calcolo…"
+      "run": "Esegui"
     },
     "lesson": {
       "recommended": "Consigliato"
@@ -3017,7 +3001,6 @@
     "chatSamples": {
       "user": "Che cosa afferma il primo principio della termodinamica?",
       "tutor": "La variazione di energia interna di un sistema è uguale al calore assorbito meno il lavoro compiuto: ΔU = Q − L.",
-      "cite": "Fisica 1 · cap. 4.2",
       "s1": "Fammi un esempio con un gas ideale",
       "s2": "Non ho capito il segno del lavoro"
     },
@@ -4283,5 +4266,29 @@
     },
     "emptyBody": "Qui compariranno le tue flashcard, divise per materia. Le scrivi tu, oppure le fa Pyxis dal tuo materiale.",
     "loadFailed": "Non riesco a caricare le flashcard."
+  },
+  "sourcesRow": {
+    "sources_one": "1 fonte",
+    "sources_other": "{{count}} fonti",
+    "verified_one": "1 risultato verificato",
+    "verified_other": "{{count}} risultati verificati",
+    "notVerified_one": "1 risultato non verificato",
+    "notVerified_other": "{{count}} risultati non verificati",
+    "someVerified": "{{ok}} su {{count}} risultati verificati",
+    "checking": "Verifico i calcoli…",
+    "place": {
+      "page": "p. {{n}}",
+      "slide": "slide {{n}}",
+      "chapter": "cap. {{n}}",
+      "passage": "brano {{n}}"
+    },
+    "placeAria": "{{title}}, {{place}}",
+    "list": "Fonti",
+    "hint": "Un clic apre la fonte in questo punto",
+    "reading": "Leggo il brano…",
+    "checkMark": "Verificato: Pyxis ha rifatto questo calcolo e il risultato coincide.",
+    "failed": "Non verificato",
+    "failedValue": "Il risultato non coincide con il valore atteso.",
+    "failedSolutions": "Le soluzioni non coincidono con quelle che trova Pyxis."
   }
 }

@@ -265,11 +265,11 @@ test("The Library lists its linked folders, reads one again, finds one that move
     await animationsSettled(page);
     await saveShot(page, "linked-folders-manage/4-after.png");
 
-    // The answer keeps its citation: it still shows the passage it quotes, and says the file left the Library.
+    // The answer keeps its citation: the row under it still opens the passage it quotes, and says the file left the Library.
     await page.evaluate(() => {
       location.hash = "/ask/c-gauss";
     });
-    const citation = page.locator(".px-msg .px-cite").first();
+    const citation = page.locator(".px-msg .px-sources-row").first();
     await expect(citation).toBeVisible();
     await citation.click();
     const viewer = page.getByRole("complementary", { name: "Legge di Gauss" });

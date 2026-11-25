@@ -10,6 +10,7 @@ import {
   chmodSync,
   copyFileSync,
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -39,7 +40,16 @@ import { radialFixtures, storedGraph } from "../fixtures/maps";
 import type Database from "better-sqlite3";
 import { partMarkdown, seedOutline, type SeedPart } from "../../src/core/study/test-parts";
 import { figureKey } from "../../src/shared/smart-text";
-import { seedFigureChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat, writeBlob } from "./chat-look-seed";
+import {
+  SOURCES_LESSON,
+  SOURCES_PASSAGE_IDS,
+  seedFigureChat,
+  seedOutlineChat,
+  seedSentFilesChat,
+  seedSourcesChats,
+  seedStoppedChat,
+  writeBlob,
+} from "./chat-look-seed";
 import { photoPng } from "./pictures";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
@@ -261,6 +271,8 @@ const routes = [
   ["lesson-part-other", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
   // A part with a plot and a circuit, each on its white card with its caption.
   ["lesson-part-figures", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  // A part that cites seven passages of three sources: its row at the end, open, with a page pointed at.
+  ["lesson-part-sources", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
   ["lesson-part-writing", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=4"],
   ["lesson-part-failed", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=4"],
   ["lesson-part-failed-dismissed", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=4"],
@@ -443,6 +455,14 @@ const routes = [
   ["ask-outline", "/ask/look-outline"],
   ["ask-stopped", "/ask/look-stopped"],
   ["ask-photo-viewer", "/ask/look-files"],
+  // The sources row under an answer: closed, open, a page pointed at with its passage and the sentence it supports
+  // tinted, one passage of one source, an answer from general knowledge with a checked result, and a failed check.
+  ["ask-sources", "/ask/look-sources"],
+  ["ask-sources-open", "/ask/look-sources"],
+  ["ask-sources-passage", "/ask/look-sources"],
+  ["ask-sources-one", "/ask/look-sources-one"],
+  ["ask-sources-none", "/ask/look-sources-none"],
+  ["ask-sources-failed", "/ask/look-sources-failed"],
   // The chat panel and search; the subject chip's menu on a chat with a very long subject, and on a new chat's first page.
   ["ask-panel", "/ask/audit-chat"],
   ["ask-search", "/ask/audit-chat"],
@@ -1423,6 +1443,7 @@ const auditFiguresText = auditFigures.reduce((text, figure) => {
 }, auditPartText);
 
 const PART_STATES = new Set([
+  "lesson-part-sources",
   "lesson-part",
   "lesson-part-answered",
   "lesson-part-other",
@@ -1496,19 +1517,26 @@ function prepareLessonParts(name: string) {
       `INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,model_id,model_source,prompt_template,prompt_version,grounding,created_at)
        VALUES(?,'audit-parts-plan',?,'lesson',?,'fixture','fixture-model','reported','lesson.part','part-1','sources',1)`,
     );
-    const write = (partId: string, topicId: string, markdown: string, figures?: Record<string, string>) => {
+    const write = (
+      partId: string,
+      topicId: string,
+      markdown: string,
+      figures?: Record<string, string>,
+      passageIds: readonly string[] = ["audit-passage"],
+    ) => {
       const itemId = `${partId}-item`;
       item.run(
         itemId,
         topicId,
         JSON.stringify({
-          cacheKey: JSON.stringify({ kind: "lesson", scopeId: partId, promptVersion: "part-1|balanced", passageIds: ["audit-passage"] }),
+          cacheKey: JSON.stringify({ kind: "lesson", scopeId: partId, promptVersion: "part-1|balanced", passageIds }),
           markdown,
-          passageIds: ["audit-passage"],
+          passageIds,
           ...(figures ? { figures } : {}),
         }),
       );
-      db.prepare("INSERT INTO item_passages(item_id,passage_id) VALUES(?,'audit-passage')").run(itemId);
+      for (const passageId of passageIds)
+        db.prepare("INSERT INTO item_passages(item_id,passage_id) VALUES(?,?)").run(itemId, passageId);
       db.prepare("UPDATE lesson_parts SET item_id = ? WHERE id = ?").run(itemId, partId);
     };
     titles.forEach((title, index) => {
@@ -1532,7 +1560,10 @@ function prepareLessonParts(name: string) {
             : null,
         done,
       );
-      if (position === 3 && name === "lesson-part-figures")
+      // The part that ends with its sources row: seven passages of three sources (seedSourcesChats), two checked formulas.
+      if (position === 3 && name === "lesson-part-sources")
+        write("audit-part-3", "audit-parts-topic", SOURCES_LESSON, undefined, SOURCES_PASSAGE_IDS);
+      else if (position === 3 && name === "lesson-part-figures")
         write(
           "audit-part-3",
           "audit-parts-topic",
@@ -3123,6 +3154,45 @@ async function selectText(page: Page, selector: string) {
   ).toBeVisible();
 }
 
+/**
+ * The sources row of a seeded answer or lesson part (`seedSourcesChats`): no mark in the text and no line above it, the row
+ * counting three sources and the checked results; opened for the open states, and with "p. 172" pointed at for the
+ * passage state, whose card quotes the passage while the sentence that rests on it is tinted.
+ */
+async function openSources(page: Page, name: string) {
+  const lesson = name.startsWith("lesson-");
+  const host = lesson ? page.locator(".px-part-text") : page.locator(".px-msg:not(.px-msg-user)").last();
+  const row = host.getByRole("button", { name: /^3 (fonti|sources)/ });
+  await expect(row).toBeVisible();
+  await expect(host.locator(".px-markdown").first()).not.toContainText("[P");
+  await expect(page.locator(".ask-used, .px-reader-kicker")).toHaveCount(0);
+  if (CHECKS_RUN)
+    await expect(row).toContainText(
+      name === "ask-sources-failed" ? /1 su 2 risultati verificati|1 of 2 results verified/ : /2 risultati verificati|2 verified results/,
+      { timeout: 90_000 },
+    );
+  if (name === "ask-sources-failed") {
+    if (CHECKS_RUN) await expect(host.getByText(both("Non verificato", "Not verified"))).toBeVisible();
+    return;
+  }
+  if (name === "ask-sources") {
+    await expect(row).toHaveAttribute("aria-expanded", "false");
+    return;
+  }
+  if ((await row.getAttribute("aria-expanded")) !== "true") await row.click();
+  await expect(host.getByRole("list", { name: both("Fonti", "Sources") })).toBeVisible();
+  if (CHECKS_RUN) await expect(host.locator(".px-check-badge.is-verified").first()).toBeVisible();
+  if (name === "ask-sources-open") return;
+  const place = host.getByRole("button", { name: "Analisi matematica 2, p. 172", exact: true });
+  await atRest(place);
+  await place.hover();
+  await expect(page.getByRole("tooltip")).toContainText("Se D è un rettangolo");
+  // The sentence that ends at the mark of that passage, and nothing else.
+  expect(
+    await page.evaluate(() => [...(CSS.highlights.get("px-cited") ?? [])].map((range) => (range as Range).toString())),
+  ).toEqual([expect.stringMatching(/^Ora il dominio è un rettangolo e la funzione non dipende da .*, quindi l'integrale si separa in due integrali in una variabile$/)]);
+}
+
 async function openState(page: Page, name: string) {
   // A map request that found nothing waits under C'è bisogno di te, in every page's Attività button, until it is
   // dismissed, so only the states that seed one have one, and the others do not inherit it.
@@ -3590,6 +3660,30 @@ async function openState(page: Page, name: string) {
       await expect(page.getByText(both("Interrotta", "Stopped"))).toBeVisible();
       await expect(page.locator(".px-composer-bar").getByRole("button", { name: both("Continua", "Continue") })).toBeVisible();
       break;
+    case "ask-sources":
+    case "ask-sources-open":
+    case "ask-sources-passage":
+    case "ask-sources-failed":
+    case "lesson-part-sources":
+      await openSources(page, name);
+      break;
+    case "ask-sources-one": {
+      const reply = page.locator(".px-msg:not(.px-msg-user)").last();
+      // One passage of one source: the row is the link to it, and nothing opens.
+      await expect(reply.getByRole("button", { name: "Analisi matematica 2, p. 181", exact: true })).toBeVisible();
+      await expect(reply.locator(".px-sources [aria-expanded]")).toHaveCount(0);
+      if (CHECKS_RUN)
+        await expect(reply.getByRole("button", { name: both("1 risultato verificato", "1 verified result") })).toBeVisible({ timeout: 90_000 });
+      break;
+    }
+    case "ask-sources-none": {
+      const reply = page.locator(".px-msg:not(.px-msg-user)").last();
+      // The warning stays above the answer; with no source, the row only counts the checked result.
+      await expect(reply.getByText(/^(Non ho trovato niente su questa domanda nella tua Libreria|I found nothing on this in your Library)/)).toBeVisible();
+      if (CHECKS_RUN)
+        await expect(reply.getByRole("button", { name: both("1 risultato verificato", "1 verified result") })).toBeVisible({ timeout: 90_000 });
+      break;
+    }
     case "ask-subject-menu":
     case "ask-new-subject-menu": {
       const chip = page.getByRole("button", { name: /^(Materia della chat|Chat subject|Materia: sceglie|Subject: Pyxis)/ });
@@ -4422,8 +4516,8 @@ async function openState(page: Page, name: string) {
     }
     case "ask-sent-files":
       await expect(page.locator(".ask-sent-files").getByRole("button", { name: /Lavagna\.png/ })).toBeVisible();
-      // The reply cites the attached file, and says so.
-      await expect(page.getByText(/Ho usato il file che hai allegato|I used the file you attached/)).toBeVisible();
+      // The reply cites the attached file, and the row under it names the file and the page.
+      await expect(page.locator(".px-msg .px-sources-row")).toHaveText("Dispensa di fisica, capitolo 4, p. 3");
       await expect(
         page.locator(".ask-sent-files").getByRole("button", { name: "Dispensa di fisica, capitolo 4.pdf" }),
       ).toBeVisible();
@@ -5847,6 +5941,10 @@ test.afterAll(async () => {
   for (const folder of [...auditFolders, updateFolder, auditEngines]) rmSync(folder, { recursive: true, force: true });
 });
 
+/** Whether the formulas' checks can run here: the pinned Python fixture is in `.tmp/pyodide`. */
+const CHECKS_RUN = existsSync(".tmp/pyodide/pyodide.js");
+const pyodideVersion = () => (JSON.parse(readFileSync("resources/pyodide-manifest.json", "utf8")) as { version: string }).version;
+
 /**
  * The chats of the look of a conversation are in the database only while their own state is walked: each one is a row more
  * in the sidebar, and a few of them end the gallery's focus walk, which is cut at 99 Tab presses.
@@ -5855,9 +5953,22 @@ function lookChats(name: string) {
   const db = new DatabaseSync(join(auditUserData, "workspace", "pyxis.db"), { timeout: 10000 });
   try {
     db.exec(`DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE chat_id LIKE 'look-%');
+      DELETE FROM message_passages WHERE message_id IN (SELECT id FROM messages WHERE chat_id LIKE 'look-%');
+      DELETE FROM item_passages WHERE passage_id LIKE 'look-%';
       DELETE FROM messages WHERE chat_id LIKE 'look-%';
       DELETE FROM chats WHERE id LIKE 'look-%';
+      DELETE FROM passages WHERE source_id LIKE 'look-%';
+      DELETE FROM source_documents WHERE source_id LIKE 'look-%';
       DELETE FROM sources WHERE id LIKE 'look-%';`);
+    if (name.startsWith("ask-sources") || name === "lesson-part-sources") {
+      seedSourcesChats(db);
+      // The checks of the formulas run in the Python pack, which these states find installed when the fixture is there.
+      const pack = join(auditUserData, "workspace/runtimes/pyodide", pyodideVersion());
+      if (CHECKS_RUN && !existsSync(join(pack, "pyodide.js"))) {
+        mkdirSync(pack, { recursive: true });
+        cpSync(".tmp/pyodide", pack, { recursive: true });
+      }
+    }
     if (name === "ask-figure" || name === "ask-viewer") seedFigureChat(db);
     else if (name === "ask-outline") seedOutlineChat(db);
     else if (name === "ask-stopped") seedStoppedChat(db);
@@ -5991,6 +6102,8 @@ async function walk(slice: typeof auditRoutes) {
                 await openState(page, name);
               // Moving focus can clear a text selection, and the menu goes with it.
               if (name.startsWith("selection-")) await openState(page, name);
+              // The keyboard check moves the focus and the page, and a passage's card goes with the pointer that left it.
+              if (name === "ask-sources-passage" || name === "lesson-part-sources") await openState(page, name);
               await page.evaluate(
                 () =>
                   new Promise<void>((resolve) =>

@@ -5,7 +5,7 @@ import {
   repairLatexInProse,
 } from "../../../shared/math-delimiters";
 import { mapFigureBlocks } from "../../../shared/smart-text";
-import { linkCitations, type CitationResolver } from "./citations";
+import { linkCitations, type KnownPassage } from "./citations";
 
 /**
  * A marker after the paragraph of each step: `[check](mathcheck:<index>)` in a paragraph of its own, for the math check of
@@ -45,7 +45,7 @@ function markChecks(body: string, steps: readonly string[]): string {
  */
 export function markdownSource(
   body: string,
-  resolver?: CitationResolver,
+  known?: KnownPassage,
   writing = false,
   checkSteps: readonly string[] = [],
 ): string {
@@ -54,5 +54,5 @@ export function markdownSource(
   const repaired = repairLatexInProse(mapFigureBlocks(body, () => null));
   const held = writing ? holdOpenMath(repaired) : repaired;
   const steps = checkSteps.map(repairLatexInProse);
-  return displayMathLines(normalizeMathDelimiters(linkCitations(markChecks(held, steps), resolver)));
+  return displayMathLines(normalizeMathDelimiters(linkCitations(markChecks(held, steps), known)));
 }

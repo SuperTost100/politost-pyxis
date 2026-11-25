@@ -79,8 +79,8 @@ test("a document is read when it is attached, the question lists it, and it open
     const sent = page.locator(".ask-sent-files");
     await expect(sent.getByRole("button", { name: "appunti.txt" })).toBeVisible();
     await expect(page.locator(".ask-attachments")).toHaveCount(0);
-    // The reply cites the attached file, and the line above it says so instead of claiming general knowledge.
-    await expect(page.getByText("Ho usato il file che hai allegato")).toBeVisible();
+    // The reply cites the attached file: the row under it names the file, and no line claims general knowledge.
+    await expect(page.locator(".px-msg:not(.px-msg-user)").last().locator(".px-sources-row")).toContainText("appunti");
     await expect(page.getByText(/quello che so in generale/)).toHaveCount(0);
     await saveShot(page, "chat-attachments/3-sent-message-lists-its-file.png");
     // It stays after the reply, and after the page is read again from core.
@@ -265,7 +265,7 @@ test("Free up space run before sending leaves the attached files as they were, a
     await box.fill("Riassumi gli appunti");
     await box.press("Enter");
     await expect(page.locator(".ask-sent-files").getByRole("button", { name: "appunti.txt" })).toBeVisible({ timeout: 30000 });
-    await expect(page.getByText("Ho usato il file che hai allegato")).toBeVisible();
+    await expect(page.locator(".px-msg:not(.px-msg-user)").last().locator(".px-sources-row")).toContainText("appunti");
   } finally {
     await app.close();
     removeTestFolder(userData);

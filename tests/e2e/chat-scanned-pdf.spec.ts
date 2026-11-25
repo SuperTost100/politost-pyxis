@@ -82,7 +82,7 @@ test("a scanned PDF is read page by page on its chip, then sent, and the chat ho
     await box.press("Enter");
     await expect(page.locator(".ask-sent-files").getByRole("button", { name: "scansione.pdf" })).toBeVisible();
     await expect(page.getByText("La scansione dice che la forza è massa per accelerazione")).toBeVisible();
-    await expect(page.getByText("Ho usato il file che hai allegato")).toBeVisible();
+    await expect(page.locator(".px-msg:not(.px-msg-user)").last().locator(".px-sources-row")).toContainText("scansione");
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
     await app.close();

@@ -147,3 +147,104 @@ export function seedFollowupsChat(db: DatabaseSync, id = "look-followups") {
     "L'impostazione è giusta: hai messo l'asse lungo il piano.\n\nIl primo passaggio che non torna è la forza di attrito: hai scritto $\\mu mg$. L'attrito è $\\mu$ per la forza normale.\n\nUna domanda sola: su un piano inclinato, quanto vale la forza normale?\n\n<followups>\n- Mostrami la soluzione completa\n- Dammi un indizio\n- Perché non è $\\mu mg$?\n</followups>",
   );
 }
+
+/** The sources the answers below cite: a book with chapters and pages, lecture notes and an exercise sheet. */
+const LOOK_SOURCES = [
+  { id: "look-src-book", title: "Analisi matematica 2" },
+  { id: "look-src-notes", title: "Appunti · Lezione 14" },
+  { id: "look-src-sheet", title: "Esercitazione 7" },
+] as const;
+const LOOK_PASSAGES = [
+  ["look-p-volume", "look-src-book", { chapter: 5 }, "5. Calcolo integrale in più variabili", "Se f è continua e non negativa su un dominio D limitato e misurabile, l'integrale doppio di f su D è il volume del solido compreso tra il grafico di f e il piano xy."],
+  ["look-p-when", "look-src-notes", { page: 6 }, null, "Polari: convengono quando D è un disco, una corona o un settore, oppure quando f dipende solo da x² + y²."],
+  ["look-p-jacobian", "look-src-book", { page: 181 }, null, "Nel passaggio a coordinate polari l'elemento d'area dx dy si trasforma in ρ dρ dθ: il fattore ρ è il determinante jacobiano della trasformazione."],
+  ["look-p-bounds", "look-src-notes", { page: 7 }, null, "Il disco di raggio R diventa il rettangolo [0, R] × [0, 2π] nel piano (ρ, θ). Controllare sempre gli estremi dopo il cambio."],
+  ["look-p-split", "look-src-book", { page: 172 }, null, "Se D è un rettangolo e f(x, y) = g(x) h(y), l'integrale doppio è il prodotto dei due integrali in una variabile."],
+  ["look-p-exercise", "look-src-sheet", { page: 2 }, null, "Esercizio 3. Calcolare il volume del solido compreso tra il piano z = 0 e il paraboloide z = 9 − x² − y²."],
+  ["look-p-cartesian", "look-src-sheet", { page: 3 }, null, "Svolgimento in coordinate cartesiane: si arriva all'integrale di (9 − x²)^{3/2}, che richiede la sostituzione x = 3 sin t."],
+] as const;
+
+const POLAR = "$$V = \\int_0^{2\\pi} d\\theta \\int_0^2 (4 - \\rho^2)\\,\\rho\\,d\\rho = 2\\pi \\left[2\\rho^2 - \\frac{\\rho^4}{4}\\right]_0^2 = 8\\pi$$";
+const MEAN = "$$h = \\frac{V}{\\pi \\cdot 2^2} = \\frac{8\\pi}{4\\pi} = 2$$";
+const MEAN_WRONG = "$$h = \\frac{V}{\\pi \\cdot 2} = \\frac{8\\pi}{2\\pi} = 4$$";
+/** The answer the sources row is drawn on: seven passages of three sources, two formulas Pyxis checks. */
+export const SOURCES_ANSWER = (mean: string) =>
+  [
+    "Il solido sta sopra il disco $D$ di raggio 2 e sotto il paraboloide, quindi il suo volume è l'integrale doppio dell'altezza sulla base [P1].",
+    "$$V = \\iint_D (4 - x^2 - y^2)\\,dx\\,dy$$",
+    "Le coordinate polari convengono quando il dominio è un disco o la funzione dipende solo da $x^2 + y^2$ [P2]: qui valgono tutte e due le cose. Nel passaggio cambiano tre cose:",
+    "- **L'elemento d'area:** $dx\\,dy$ diventa $\\rho\\,d\\rho\\,d\\theta$. Il fattore $\\rho$ è lo jacobiano, ed è la dimenticanza più frequente [P3].\n- **Gli estremi:** il disco diventa il rettangolo $0 \\le \\rho \\le 2$, $0 \\le \\theta \\le 2\\pi$ [P4].\n- **La funzione:** $4 - x^2 - y^2$ diventa $4 - \\rho^2$.",
+    "Ora il dominio è un rettangolo e la funzione non dipende da $\\theta$, quindi l'integrale si separa in due integrali in una variabile [P5]:",
+    POLAR,
+    "Per controllo, l'altezza media del solido è il volume diviso per l'area della base:",
+    mean,
+    "Torna, perché il paraboloide scende da 4 al centro a 0 sul bordo. L'esercizio 3 dell'esercitazione 7 è lo stesso con $z = 9 - x^2 - y^2$ [P6], e lo svolgimento in coordinate cartesiane [P7] mostra quanta fatica risparmi con le polari.",
+  ].join("\n\n");
+const CHECKS = (mean: string, claimed: string) =>
+  `<checks>${JSON.stringify([
+    { kind: "equal", expr: "2*pi*(2*2**2 - 2**4/4)", claimed: "8*pi", step: POLAR },
+    { kind: "equal", expr: "8*pi/(4*pi)", claimed, step: mean },
+  ])}</checks>`;
+const JACOBIAN = "$$\\det J = \\cos\\theta \\cdot \\rho\\cos\\theta + \\rho\\sin\\theta \\cdot \\sin\\theta = \\rho$$";
+const GAUSS = "$$I^2 = \\int_0^{2\\pi} d\\theta \\int_0^{\\infty} e^{-\\rho^2}\\rho\\,d\\rho = 2\\pi \\cdot \\frac{1}{2} = \\pi$$";
+
+/**
+ * Chats for the sources row: `look-sources` (seven passages of three sources and two checked formulas), `look-sources-one`
+ * (one passage of one source and one checked formula), `look-sources-none` (general knowledge and one checked formula) and
+ * `look-sources-failed` (the first chat with a mean height Pyxis finds wrong).
+ */
+export function seedSourcesChats(db: DatabaseSync) {
+  const source = db.prepare("INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES(?,'pdf',?,'ready',1,1,1)");
+  const document = db.prepare("INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES(?,?,1,'{\"kind\":\"pdf\"}',1)");
+  for (const { id, title } of LOOK_SOURCES) {
+    source.run(id, title);
+    document.run(`${id}-doc`, id);
+  }
+  const passage = db.prepare("INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at) VALUES(?,?,?,?,?,?,1)");
+  for (const [id, sourceId, locator, section, text] of LOOK_PASSAGES) passage.run(id, sourceId, `${sourceId}-doc`, text, JSON.stringify(locator), section);
+  const chat = db.prepare("INSERT INTO chats(id,title,subject,created_at,updated_at) VALUES(?,?,'Analisi matematica II',1,2)");
+  const message = db.prepare("INSERT INTO messages(id,chat_id,role,body,grounding,passages_json,created_at) VALUES(?,?,?,?,?,?,?)");
+  const cite = db.prepare("INSERT INTO message_passages(message_id,passage_id,label) VALUES(?,?,?)");
+  const question = "Come calcolo il volume sotto il paraboloide $z = 4 - x^2 - y^2$? Non capisco quando conviene passare alle polari.";
+  for (const [id, mean, claimed] of [
+    ["look-sources", MEAN, "2"],
+    ["look-sources-failed", MEAN_WRONG, "4"],
+  ] as const) {
+    chat.run(id, "Volume sotto il paraboloide");
+    message.run(`${id}-q`, id, "user", question, null, null, 1);
+    message.run(`${id}-a`, id, "assistant", `${SOURCES_ANSWER(mean)}\n${CHECKS(mean, claimed)}`, "sources", null, 2);
+    LOOK_PASSAGES.forEach(([passageId], index) => cite.run(`${id}-a`, passageId, `P${index + 1}`));
+  }
+  chat.run("look-sources-one", "Lo jacobiano delle polari");
+  message.run("look-sources-one-q", "look-sources-one", "user", "E lo jacobiano $\\rho$ da dove esce?", null, null, 1);
+  message.run(
+    "look-sources-one-a",
+    "look-sources-one",
+    "assistant",
+    `È il determinante della matrice delle derivate di $x = \\rho\\cos\\theta$ e $y = \\rho\\sin\\theta$ rispetto a $\\rho$ e $\\theta$ [P1]:\n\n${JACOBIAN}\n\nSi vede anche a occhio: un rettangolino di lati $d\\rho$ e $d\\theta$ diventa un pezzetto di corona di lati $d\\rho$ e $\\rho\\,d\\theta$, che è tanto più grande quanto più sei lontano dall'origine.\n<checks>${JSON.stringify([{ kind: "equal", expr: "cos(t)*r*cos(t) + r*sin(t)*sin(t)", claimed: "r", vars: ["r", "t"], step: JACOBIAN }])}</checks>`,
+    "sources",
+    null,
+    2,
+  );
+  cite.run("look-sources-one-a", "look-p-jacobian", "P1");
+  chat.run("look-sources-none", "Integrale di Gauss");
+  message.run("look-sources-none-q", "look-sources-none", "user", "Quanto vale l'integrale di $e^{-x^2}$ su tutta la retta?", null, null, 1);
+  message.run(
+    "look-sources-none-a",
+    "look-sources-none",
+    "assistant",
+    `Vale $\\sqrt{\\pi}$, e si calcola con le coordinate polari. Se chiami $I$ l'integrale, il suo quadrato è un integrale doppio su tutto il piano:\n\n${GAUSS}\n\nQuindi $I = \\sqrt{\\pi}$, circa 1,772.\n<checks>${JSON.stringify([{ kind: "equal", expr: "2*pi/2", claimed: "pi", step: GAUSS }])}</checks>`,
+    "general",
+    JSON.stringify({ found: false, where: "library" }),
+    2,
+  );
+}
+
+/** The passages of `seedSourcesChats`, in the order a lesson part given them numbers them. */
+export const SOURCES_PASSAGE_IDS = LOOK_PASSAGES.map(([id]) => id);
+/** The same text as a lesson part, its two formulas checked by ```check blocks. */
+const fence = (claim: object) => `\n\n\`\`\`check\n${JSON.stringify(claim)}\n\`\`\``;
+// Replaced by a function, since "$$" in a replacement string stands for one "$".
+export const SOURCES_LESSON = SOURCES_ANSWER(MEAN)
+  .replace(POLAR, () => POLAR + fence({ kind: "equal", expr: "2*pi*(2*2**2 - 2**4/4)", claimed: "8*pi" }))
+  .replace(MEAN, () => MEAN + fence({ kind: "equal", expr: "8*pi/(4*pi)", claimed: "2" }));

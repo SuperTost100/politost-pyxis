@@ -111,13 +111,9 @@ test("Ask: a new chat picks its subject from the Library, says what it used, and
     await expect(chip(page)).toHaveAccessibleName("Materia della chat: Fisica 2, scelta da Pyxis");
     expect(await stored(page)).toMatchObject({ subject: "Fisica 2", subjectBy: "pyxis" });
 
-    // The answer says what it used, and the line opens the list of its passages.
-    const used = lastReply(page).getByRole("button", { name: "Ho usato 1 fonte di Fisica 2" });
-    await expect(used).toHaveAttribute("aria-expanded", "false");
-    await used.click();
-    await expect(used).toHaveAttribute("aria-expanded", "true");
-    const list = lastReply(page).getByRole("list", { name: "Fonti usate" });
-    await expect(list.getByRole("button")).toHaveText([/^1Fisica 2, Mazzoldi · §\d$/]);
+    // The row under the answer names what it used: its one passage, which the row opens. No line above the answer.
+    await expect(lastReply(page).locator(".px-sources").getByRole("button")).toHaveText([/^Fisica 2, Mazzoldi, §\d$/]);
+    await expect(lastReply(page).getByRole("button", { name: /^Ho usato/ })).toHaveCount(0);
     await saveShot(page, "ask-subject/picked.png");
     await expectNoAxeViolations(page);
 
@@ -136,11 +132,11 @@ test("Ask: a new chat picks its subject from the Library, says what it used, and
 
     // Analisi 1 has nothing on the wire: Pyxis looks in the rest of the Library and says so, and keeps the subject.
     await ask(page, "Teorema di Gauss per il filo carico");
+    // The warning stays above the answer, as a line; the row under it names the source in the rest of the Library.
     await expect(
-      lastReply(page).getByRole("button", {
-        name: "Nella materia della chat non c'era niente, quindi ho usato 1 fonte di Fisica 2",
-      }),
+      lastReply(page).getByText("Nella materia della chat non c'era niente, quindi ho usato 1 fonte di Fisica 2", { exact: true }),
     ).toBeVisible();
+    await expect(lastReply(page).locator(".px-sources").getByRole("button")).toHaveText([/^Fisica 2, Mazzoldi, §\d$/]);
     expect(await stored(page)).toMatchObject({ subject: "Analisi 1", subjectBy: "student" });
 
     // The whole Library is a choice too, and it sticks.
@@ -183,7 +179,7 @@ test("Ask: a subject renamed in the Library keeps its chats: the chip says the n
 
     // A new question searches that subject's files: the answer says it used one of them and that nothing was missing.
     await ask(page, "Teorema di Gauss per il filo carico");
-    await expect(lastReply(page).getByRole("button", { name: "Ho usato 1 fonte di Fisica generale" })).toBeVisible();
+    await expect(lastReply(page).locator(".px-sources").getByRole("button")).toHaveText([/^Fisica 2, Mazzoldi, §\d$/]);
     expect((await stored(page)).messages.at(-1)).toMatchObject({ grounding: "sources" });
     await expect(chip(page)).toHaveText("Fisica generale");
   } finally {
@@ -331,7 +327,7 @@ test("Ask: an answer with nothing in the Library says it comes from general know
         "Non ho trovato niente su questa domanda nella tua Libreria, quindi ti rispondo con quello che so in generale.",
       ),
     ).toBeVisible();
-    await expect(lastReply(page).getByRole("button", { name: /^Ho usato/ })).toHaveCount(0);
+    await expect(lastReply(page).locator(".px-sources")).toHaveCount(0);
     await expect(chip(page)).toHaveText("Materia: sceglie Pyxis");
     expect(await stored(page)).toMatchObject({ subject: null, subjectBy: null });
     await saveShot(page, "ask-subject/general.png");

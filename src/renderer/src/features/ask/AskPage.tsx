@@ -1,4 +1,3 @@
-import { openSourceViewer } from "../../components/SourceViewer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Skeleton } from "antd";
 import { RefreshCw } from "lucide-react";
@@ -54,6 +53,9 @@ import { answerPreview, replyPlainText } from "./replyText";
 import { chipState, newChipState, settleNewSubject, subjectToSend, type NewChatSubject } from "./scope";
 import { SubjectChip, type SubjectPick } from "./SubjectChip";
 import { UsedSources } from "./UsedSources";
+import { SourcesRow } from "../../components/SourcesRow";
+import { citedOrder } from "../../lib/sourcePlaces";
+import { textClaims } from "../../lib/mathChecks";
 import { canContinue } from "./continuable";
 import { ConversationOutline } from "./ConversationOutline";
 import { currentMark, jumpRange, outlineMarks, pinnedMark, type OutlineMark } from "./outline";
@@ -122,6 +124,9 @@ const showing = (turn: Turn) =>
 /** Stands in for a turn's chat while none runs. */
 const noChat = { subscribe: () => () => undefined, get: () => "" };
 
+/** Replies that have just been written and not drawn yet: their sources row grows out of the text when they appear. */
+const arrivedReplies = new Set<string>();
+
 /** A chat opens with this many recent messages; older ones join as the student scrolls up to them. */
 const RECENT = 8;
 
@@ -170,28 +175,26 @@ const Reply = memo(function Reply({
   const failure = row.error
     ? describeEngineError(row.error, row.provider ?? undefined)
     : undefined;
-  const citationResolver = useMemo(
+  // The passages the reply cites, as the row under it lists them; a mark for any other is left out of the text.
+  const places = useMemo(
     () =>
-      Object.assign((index: number) => row.citations.find((cite) => cite.index === index)?.label, {
-        // Two plain-text sources can both be labelled "text": a chip stands for a source and a section.
-        group: (index: number) => {
-          const cite = row.citations.find((item) => item.index === index);
-          return cite && `${cite.sourceId}|${cite.label}`;
-        },
-      }),
-    [row.citations],
-  );
-  const onCitationClick = useCallback(
-    (index: number) => {
-      const cite = row.citations.find((item) => item.index === index);
-      if (!cite) return;
-      openSourceViewer({
+      row.citations.map((cite) => ({
+        n: cite.index,
         passageId: cite.passageId,
-        sourceId: cite.sourceId,
-      });
-    },
+        sourceId: cite.sourceId || undefined,
+        title: cite.sourceTitle,
+        page: cite.locator.page,
+        slide: cite.locator.slide,
+        chapter: cite.locator.chapter,
+        section: cite.label,
+      })),
     [row.citations],
   );
+  const knownPassage = useCallback((index: number) => row.citations.some((cite) => cite.index === index), [row.citations]);
+  const order = useMemo(() => citedOrder(row.body), [row.body]);
+  const claims = useMemo(() => textClaims(row.body, row.checks), [row.body, row.checks]);
+  // Only the reply that has just been written grows its row out of the text; the ones already there are drawn as they are.
+  const [arriving] = useState(() => arrivedReplies.delete(row.id));
   const makeCards = useCallback(() => onMakeCards(row), [onMakeCards, row]);
   return (
     <ChatMessage
@@ -199,6 +202,7 @@ const Reply = memo(function Reply({
         engineNames.label(row.provider, row.modelId) || undefined
       }
       lead={<UsedSources grounding={row.grounding} citations={row.citations} searched={row.searched} />}
+      sources={<SourcesRow places={places} order={order} claims={claims} arriving={arriving} />}
       stopped={row.stopped}
       failure={failure?.text}
       failureAction={failure?.action}
@@ -213,12 +217,7 @@ const Reply = memo(function Reply({
       onSuggest={onSuggest}
       onReact={(reaction) => onReact(row.id, reaction)}
     >
-      <MarkdownView
-        checks={row.checks}
-        figures={row.figures}
-        citationResolver={citationResolver}
-        onCitationClick={onCitationClick}
-      >
+      <MarkdownView checks={row.checks} figures={row.figures} knownPassage={knownPassage}>
         {row.body}
       </MarkdownView>
     </ChatMessage>
@@ -244,15 +243,12 @@ function StreamingReply({
   const text = useSyncExternalStore(turn.live.subscribe, turn.live.get);
   const passages = useSyncExternalStore(turn.passages.subscribe, turn.passages.get);
   const figures = useSyncExternalStore(turn.figures.subscribe, turn.figures.get);
-  // Only the passages retrieved for this turn link, with the labels the saved reply will show.
-  const citationResolver = useCallback(
-    (index: number) => passages.find((passage) => passage.index === index)?.label,
-    [passages],
-  );
+  // Only the marks of the passages retrieved for this turn stay as anchors; the row comes with the saved reply.
+  const knownPassage = useCallback((index: number) => passages.some((passage) => passage.index === index), [passages]);
   useEffect(() => onGrow(), [text, onGrow]);
   return text ? (
     <ChatMessage role="tutor" streaming>
-      <MarkdownView drawing figures={figures} citationResolver={citationResolver}>
+      <MarkdownView drawing figures={figures} knownPassage={knownPassage}>
         {text}
       </MarkdownView>
     </ChatMessage>
@@ -625,6 +621,7 @@ export function AskPage() {
       }
       // The files went with the question, so their previews are not needed any more.
       drafts.previews.drop(attached.map((file) => file.id));
+      if (result.message) arrivedReplies.add(result.message.id);
       // Store the new messages in the cache before the placeholder goes, so the reply replaces it without a gap.
       await client
         .fetchQuery({

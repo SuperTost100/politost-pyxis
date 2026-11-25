@@ -233,7 +233,7 @@ describe("Catch-up review of #558, 10: a \\[ … \\] in a quote, and two \\( …
 
 describe("Catch-up review of #556, 3: a citation between two prices", () => {
   it("is a link, though the parser first pairs the prices as a formula", () => {
-    expect(markdownSource("Costs $5 per item [P1] and $10.")).toContain("[P1](cite:p1)");
+    expect(markdownSource("Costs $5 per item [P1] and $10.")).toContain("item[](cite:p1) and");
   });
 });
 

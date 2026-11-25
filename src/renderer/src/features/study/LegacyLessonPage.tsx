@@ -31,7 +31,9 @@ import { ErrorState } from "../../components/ErrorState";
 import { MenuButton } from "../../components/ItemMenu";
 import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
-import { openSourceViewer } from "../../components/SourceViewer";
+import { SourcesRow } from "../../components/SourcesRow";
+import { lessonPlaces } from "../../lib/sourcePlaces";
+import { smartClaims } from "../../lib/mathChecks";
 import { SelectionMenu } from "../../components/SelectionMenu";
 import { SmartText } from "../../components/SmartText";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
@@ -39,7 +41,6 @@ import {
   ReaderEnd,
   ReaderLayout,
   ReaderProgress,
-  SourcesFooter,
   useOpenNext,
 } from "./Reader";
 import { shownFigures, showsLiveText } from "./lessonLive";
@@ -84,7 +85,6 @@ export function LegacyLessonPage({
   /** The lesson's figures as they are drawn, by the key of their block as written (`""` for one left out). */
   const [liveFigures, setLiveFigures] = useState<Record<string, string>>({});
   const [livePassages, setLivePassages] = useState<string[]>([]);
-  const [liveCitations, setLiveCitations] = useState<string[]>([]);
   // Known from the first event, before any text: the lesson is written from the model's own knowledge, not sources.
   const [liveGeneral, setLiveGeneral] = useState(false);
   const [chosen, setChosen] = useState<Wording | undefined>();
@@ -115,7 +115,6 @@ export function LegacyLessonPage({
       setLive("");
       setLiveFigures({});
       setLivePassages([]);
-      setLiveCitations([]);
       setLiveGeneral(false);
       queued.drop();
       const again = regenerate.current;
@@ -134,7 +133,7 @@ export function LegacyLessonPage({
           // A message that was already on its way when this lesson was replaced or left belongs to the lesson that is
           // gone: it must not write over what the new one has just emptied, whose figures can use the same keys.
           if (signal.aborted) return;
-          const data = event as { type?: string; text?: string; passageIds?: string[]; citations?: string[]; key?: string; image?: string | null };
+          const data = event as { type?: string; text?: string; passageIds?: string[]; key?: string; image?: string | null };
           // A figure of the lesson, drawn while the others are: shown in its place at once.
           if (data.type === "figure" && typeof data.key === "string") {
             const { key: at, image } = data;
@@ -144,7 +143,6 @@ export function LegacyLessonPage({
             setLivePassages(data.passageIds);
             setLiveGeneral(data.passageIds.length === 0);
           }
-          if (Array.isArray(data.citations)) setLiveCitations(data.citations);
           if (typeof data.text === "string") setLive(data.text);
         },
       );
@@ -244,10 +242,17 @@ export function LegacyLessonPage({
     (question) => data?.answers[question.id] === undefined,
   );
   const busy = writing || rewriteSection.isPending;
-  // Chips read the section they cite, as in Ask. Kept stable so a render that changes nothing else reuses the parse.
-  // They follow the text on screen: a regenerate that has not streamed yet, or was stopped, still shows the saved lesson.
-  const labels = fromLive ? liveCitations : data?.citations;
-  const citationLabel = useCallback((number: number) => labels?.[number - 1], [labels]);
+  // The marks follow the text on screen: a regenerate that has not streamed yet, or was stopped, still shows the saved
+  // lesson. Kept stable so a render that changes nothing else reuses the parse.
+  const passages = fromLive ? livePassages : data?.passageIds;
+  const passageCount = passages?.length ?? 0;
+  const knownPassage = useCallback((number: number) => number >= 1 && number <= passageCount, [passageCount]);
+  // The passages the lesson cites, for the row at its end.
+  const cited = useMemo(
+    () => lessonPlaces(data?.markdown ?? "", data?.passageIds ?? [], data?.sources ?? []),
+    [data?.markdown, data?.passageIds, data?.sources],
+  );
+  const claims = useMemo(() => smartClaims(data?.markdown ?? ""), [data?.markdown]);
 
   async function save(itemId: string, blockId: string, pick: number) {
     const result = await invoke("study.lessonAnswer", {
@@ -391,20 +396,8 @@ export function LegacyLessonPage({
     />
   );
 
-  // Above the title, what the lesson was written from: its first two sources and how many more.
-  const sourceTitles = (data?.sources ?? []).map((source) => source.title);
-  const sourceLine = sourceTitles.length
-    ? t("lesson.fromSources", {
-        list:
-          sourceTitles.length > 2
-            ? t("lesson.sourcesMore", { first: sourceTitles.slice(0, 2).join(", "), count: sourceTitles.length - 2 })
-            : sourceTitles.join(t("lesson.sourcesAnd")),
-      })
-    : t("lesson.title");
-
   return (
     <ReaderLayout
-      eyebrow={sourceLine}
       title={topic?.title ?? t("lesson.title")}
       back={back}
       barTitle={topic?.title ?? t("lesson.title")}
@@ -483,6 +476,7 @@ export function LegacyLessonPage({
           empty={false}
         />
       ) : null}
+      <div data-cited-host>
       <SelectionMenu planId={planId} topicId={topicId} passageIds={fromLive ? livePassages : data?.passageIds} onAsk={(chatId) => navigate(`/ask/${chatId}`)}>
         <SmartText
           streaming={writing}
@@ -491,17 +485,15 @@ export function LegacyLessonPage({
           onAnswer={
             readOnly ? undefined : writing ? (live ? answer : undefined) : model && data?.itemId ? answer : undefined
           }
-          onCitationClick={(number) => {
-            const passageId = (fromLive ? livePassages : data?.passageIds)?.[
-              number - 1
-            ];
-            if (passageId) openSourceViewer({ passageId });
-          }}
-          citationResolver={citationLabel}
+          knownPassage={knownPassage}
         >
           {markdown}
         </SmartText>
       </SelectionMenu>
+      {data && !writing && !fromLive ? (
+        <SourcesRow places={cited.places} order={cited.order} claims={claims} variant="lesson" />
+      ) : null}
+      </div>
       {writing ? (
         <ReaderProgress
           label={
@@ -530,7 +522,6 @@ export function LegacyLessonPage({
             onDone={() => markDone.mutate("done")}
             onContinue={() => markDone.mutate("continue")}
           />}
-          <SourcesFooter sources={data.sources} />
         </>
       ) : null}
       <ExportButton

@@ -1,15 +1,95 @@
-.px-check-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  font: 600 13px/18px var(--font-sans);
+/* A step with its check beside it (`rehypeMarks`): the check sits at the step's right edge, as a textbook puts a formula's
+   number. The step keeps room for it whether it shows or not, so opening the sources row moves nothing. */
+.px-checked {
+  position: relative;
+}
+.px-markdown .px-checked.is-formula:has(> .px-check-slot .is-verified) > .katex-display {
+  padding-inline: 44px;
+}
+.px-checked.is-prose:has(> .px-check-slot .is-verified) > :first-child {
+  padding-inline-end: 36px;
 }
 
 .px-check-badge.is-verified {
-  color: var(--mastery-text);
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-top: -14px;
+  border-radius: 7px;
+  color: var(--ink-subtle);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--duration-small) ease-out,
+    visibility var(--duration-small),
+    background-color var(--duration-micro) ease-out,
+    color var(--duration-micro) ease-out;
+}
+.px-checked.is-prose .px-check-badge.is-verified {
+  right: 0;
+}
+/* While the answer's sources row is open, or its count of checked results is pointed at. */
+[data-checks-shown] .px-check-badge.is-verified {
+  opacity: 1;
+  visibility: visible;
+}
+.px-check-badge.is-verified:hover,
+.px-check-badge.is-verified:focus-visible {
+  background: var(--surface-raised);
+  color: var(--ok);
+}
+.px-check-badge.is-verified:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 
-.px-check-badge.is-failed {
-  color: var(--danger);
+.px-check-tip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 3;
+  display: none;
+  width: max-content;
+  max-width: min(280px, 60vw);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--bg);
+  font: 500 12.5px/1.4 var(--font-sans);
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+}
+.px-check-badge.is-verified:hover .px-check-tip,
+.px-check-badge.is-verified:focus-visible .px-check-tip {
+  display: block;
 }
 
+/* A failed check stays under its step with the reason: it is a warning. */
+.px-markdown .px-check-badge.is-failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--space-2);
+  margin: calc(-1 * var(--space-2)) 0 var(--space-3);
+  color: var(--ink-muted);
+  font: 400 calc(13.5px * var(--text-scale, 1)) / 1.4 var(--font-sans);
+}
+.px-check-badge.is-failed b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: center;
+  color: var(--warning);
+  font-weight: 650;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .px-check-badge.is-verified {
+    transition: none;
+  }
+}

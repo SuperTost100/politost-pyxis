@@ -8,6 +8,7 @@ import type { RequestOutput } from "@shared/ipc";
 import { EmptyState } from "../../components/EmptyState";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView } from "../../components/MarkdownView";
+import { CitedText } from "../../components/CitedText";
 import { Notice } from "../../components/Notice";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { QUIZ_MAX_QUESTIONS } from "@shared/quiz";
@@ -206,16 +207,7 @@ export function MistakesNotebook() {
         {entry.explanation ? (
           <details className="px-notebook-why">
             <summary className="small">{t("mistakes.why")}</summary>
-            <MarkdownView
-              variant="body"
-              citationResolver={(n) => entry.citations[n - 1]?.label}
-              onCitationClick={(n) => {
-                const cite = entry.citations[n - 1];
-                if (cite) openSourceViewer({ passageId: cite.passageId });
-              }}
-            >
-              {entry.explanation}
-            </MarkdownView>
+            <CitedText citations={entry.citations}>{entry.explanation}</CitedText>
           </details>
         ) : null}
         <div className="px-notebook-foot">

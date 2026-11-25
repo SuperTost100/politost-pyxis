@@ -185,8 +185,8 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
         selection.addRange(range);
       });
     await paragraph.scrollIntoViewIfNeeded();
-    // The sentence ends in a citation chip, which is selected with it.
-    await expect(paragraph.locator(".px-cite")).toHaveCount(1);
+    // The sentence ends in a citation mark, an anchor with no words, which is selected with it.
+    await expect(paragraph.locator(".px-cite-mark")).toHaveCount(1);
     await select();
     const menu = page.getByRole("group", { name: "Chiedi al tutor" });
     await expect(menu).toBeVisible();
@@ -195,7 +195,7 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     await expect(dialog).toBeVisible();
     // The quote draws its formula once.
     await expect(dialog.locator(".px-mc-source .katex")).toHaveCount(1);
-    // The citation chip's own words (the book's title) are not part of what was selected.
+    // The source's name (the book's title) is in the row under the text, not in what was selected.
     await expect(dialog.locator(".px-mc-source")).not.toContainText("Misure e vettori");
     await expect(menu).toHaveCount(0);
     // Moving focus into the dialog makes the browser report the (still selected) text again; the menu stays away.
