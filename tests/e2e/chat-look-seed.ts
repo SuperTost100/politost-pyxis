@@ -669,14 +669,16 @@ export function seedProposalChat(db: DatabaseSync, state: "path" | "exam" | "del
   const from = new Date(year, 0, 22, 12).getTime();
   const to = new Date(year, 0, 15, 12).getTime();
   const data = {
+    request: PROPOSAL_CALLS.path.args,
     proposal: {
       planId: "look-plan",
       exam: "Fisica 1",
-      date: { sessionId: "look-session", from, to, label: "Scritto" },
+      date: { sessionId: "look-session", from, to, label: "Scritto", sessions: [], next: null },
       hours: { from: 6, to: 8 },
       topics: { before, after },
+      already: [],
     },
-    // A fingerprint no data gives: the stale state's path changed since. The decided states never read it.
+    // A digest no resolution gives: the stale state's path changed since. The decided states never resolve it.
     basis: "look-changed-since",
     decision: state === "applied" ? { state: "applied", at: 3, outcome: { date: to, hours: 8, changed: 3 } } : state === "declined" ? { state: "declined", at: 3 } : null,
   };

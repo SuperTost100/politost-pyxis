@@ -24,7 +24,7 @@ import { sourcesQuery, useSubjects } from "../../lib/queries";
 import { ExamSessionsField } from "./ExamSessionsField";
 import { emptyDraft, sessionsFromDrafts, type SessionDraft } from "./examSessions";
 import { WizardSources } from "./WizardSources";
-import { examChosen, type ExamChoice, type WizardSeed } from "./wizardSeed";
+import { availableSeed, examChosen, type ExamChoice, type WizardSeed } from "./wizardSeed";
 import "./PlanWizard.css";
 
 type Style = "read" | "practice" | "decide";
@@ -64,6 +64,18 @@ export function useExamDraft({
   const [title, setTitle] = useState(seed?.title ?? "");
   const [subject, setSubject] = useState(seed?.subject ?? "");
   const [picked, setPicked] = useState<string[]>(seed?.picked ?? []);
+  // The sources a chat's proposal seeded are checked once the Library is read: one removed or failed since leaves the
+  // form, and the step says how many did.
+  const [seedDropped, setSeedDropped] = useState(0);
+  const seedChecked = useRef(!seed?.picked?.length);
+  useEffect(() => {
+    if (seedChecked.current || !sources.data) return;
+    seedChecked.current = true;
+    const { kept, dropped } = availableSeed(seed?.picked ?? [], sources.data);
+    if (!dropped) return;
+    setPicked((current) => current.filter((id) => kept.includes(id) || !seed?.picked?.includes(id)));
+    setSeedDropped(dropped);
+  }, [sources.data]);
   // A free PoliTost book named like the exam's subject or title, which the student does not have, is offered as one more
   // source, ticked. Leaving it out is remembered per book; nothing is downloaded until the exam is created with it ticked.
   const freeBooks = useFreeBooks(offers);
@@ -257,6 +269,7 @@ export function useExamDraft({
     picked,
     pick,
     setPicked,
+    seedDropped,
     offered,
     bookOn,
     setBookOn,
@@ -436,6 +449,11 @@ export function MaterialStep({ draft }: { draft: ExamDraft }) {
   useEffect(() => closeSourceViewer, []);
   return (
     <>
+      {draft.seedDropped ? (
+        <p className="small ink-muted" role="status">
+          {t("wizard.seedDropped", { count: draft.seedDropped })}
+        </p>
+      ) : null}
       <WizardSources
         library={draft.sources.data ?? []}
         picked={draft.picked}

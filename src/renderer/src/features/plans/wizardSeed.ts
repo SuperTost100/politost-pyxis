@@ -51,3 +51,18 @@ export function examFromChoice(examChoice: ExamChoice, date: string, now = new D
 export function seedSessions(seed: WizardSeed): ExamSessionInput[] {
   return sessionsFromDrafts(seed.sessions);
 }
+
+/** The statuses a source cannot be built from, as the exam form refuses them, and a source the student removed. */
+const UNUSABLE = new Set(["failed", "needs-ocr", "cancelled", "interrupted", "removed"]);
+
+/**
+ * The seeded sources the Library still has, usable, and how many of them it no longer does: a proposal from the chat can
+ * name a source that was removed or failed since, which the exam must not be created with.
+ */
+export function availableSeed(
+  picked: readonly string[],
+  library: ReadonlyArray<{ id: string; status: string }>,
+): { kept: string[]; dropped: number } {
+  const kept = picked.filter((id) => library.some((source) => source.id === id && !UNUSABLE.has(source.status)));
+  return { kept, dropped: picked.length - kept.length };
+}

@@ -137,7 +137,8 @@ test("a change to the path waits for Applica: refused, reviewed, applied, after 
     await expect(saved.getByRole("button", { name: "Non cambiare" })).toBeFocused();
     await expect(saved.getByRole("button", { name: "Applica" })).toHaveClass(/px-btn-primary/);
     await expect(page.getByRole("button", { name: "Invia" })).toHaveClass(/px-btn-secondary/);
-    await expect(saved.getByText("venerdì 22 gennaio", { exact: false })).toBeVisible();
+    // The weekday follows the year the test runs in, so only the day and month are checked.
+    await expect(saved.getByText(/22 gennaio/)).toBeVisible();
     await expect(saved.getByText("vale per tutti i tuoi esami")).toBeVisible();
     await expect(saved.locator("li.is-removed")).toHaveText(["FluidiTolto"]);
     await expect(saved.locator("li.is-moved")).toHaveText(["OscillazioniSpostato, era 6°"]);
@@ -154,6 +155,8 @@ test("a change to the path waits for Applica: refused, reviewed, applied, after 
     expect(activeTopics(userData)).toEqual(TOPICS);
     await shots(page, "path-declined");
     await reply.getByRole("button", { name: "Rivedi la proposta" }).click();
+    // Reopened, the card waits again with the focus on its safe choice.
+    await expect(reply.getByRole("button", { name: "Non cambiare" })).toBeFocused();
     await reply.getByRole("button", { name: "Applica" }).click();
     await expect(reply.getByText(/^Percorso aggiornato: esame il 15 gennaio( \d{4})?, 8 ore a settimana, 3 argomenti cambiati\.$/)).toBeVisible();
     await expect(reply.getByRole("button", { name: "Apri il percorso" })).toBeFocused();

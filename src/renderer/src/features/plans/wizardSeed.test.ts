@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyDraft } from "./examSessions";
-import { examChosen, examFromChoice, isWizardSeed } from "./wizardSeed";
+import { availableSeed, examChosen, examFromChoice, isWizardSeed } from "./wizardSeed";
 
 describe("exam from the wizard", () => {
   const now = new Date(2026, 9, 4, 9);
@@ -26,5 +26,18 @@ describe("exam from the wizard", () => {
     expect(isWizardSeed({ ...seed, examChoice: "none" })).toBe(true);
     expect(isWizardSeed({ ...seed, examChoice: "" })).toBe(true);
     expect(isWizardSeed({ ...seed, examChoice: "7" })).toBe(false);
+  });
+});
+
+describe("the sources a chat's proposal seeds", () => {
+  it("keeps the ones the Library still has, usable, and counts the others", () => {
+    const library = [
+      { id: "ok", status: "ready" },
+      { id: "reading", status: "extracting" },
+      { id: "gone", status: "removed" },
+      { id: "broken", status: "failed" },
+    ];
+    expect(availableSeed(["ok", "reading", "gone", "broken", "deleted"], library)).toEqual({ kept: ["ok", "reading"], dropped: 3 });
+    expect(availableSeed([], library)).toEqual({ kept: [], dropped: 0 });
   });
 });

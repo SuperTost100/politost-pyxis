@@ -2202,7 +2202,9 @@
     "waitBody": "You can close this screen: the preparation goes on. You'll find the exam in Exams, and its progress under Background tasks, at the top right.",
     "buildProgress": "{{percent}}% done",
     "topicsFound": "The topics I found",
-    "topicsFoundNote": "Each topic already has its place in the path. You can change names and order later."
+    "topicsFoundNote": "Each topic already has its place in the path. You can change names and order later.",
+    "seedDropped_one": "A source the chat proposed is no longer in the Library, so it is not among the chosen ones.",
+    "seedDropped_other": "{{count}} sources the chat proposed are no longer in the Library, so they are not among the chosen ones."
   },
   "shared": {
     "title": "Open a shared exam",
@@ -3168,7 +3170,10 @@
           "declined": "I changed nothing: the path is as it was.",
           "stale": "The path changed in the meantime, so I applied nothing.",
           "gone": "The exam is gone, so there is nothing to change.",
-          "askMessage": "The path changed: propose it again."
+          "askMessage": "The path changed: propose it again.",
+          "next": "then the next sitting is {{date}}",
+          "nextLabelled": "then the next sitting is {{label}}, {{date}}",
+          "datePast": "The proposed date, {{date}}, has already passed, so I changed nothing."
         },
         "exam": {
           "title": "New exam: {{title}}",
@@ -3192,7 +3197,8 @@
           "declined": "I created nothing.",
           "existing": "You now already have an exam called “{{title}}”.",
           "stale": "The material on {{subject}} changed in the meantime, so I created nothing.",
-          "askMessage": "Propose the {{title}} exam again."
+          "askMessage": "Propose the {{title}} exam again.",
+          "datePast": "The proposed date, {{date}}, has already passed, so I created nothing."
         },
         "delete": {
           "cardsTitle_one": "Delete {{count}} flashcard of {{name}}?",
@@ -3222,16 +3228,18 @@
           "doneCards_other": "{{count}} flashcards of {{name}} deleted.",
           "doneChatCards_one": "{{count}} flashcard deleted.",
           "doneChatCards_other": "{{count}} flashcards deleted.",
-          "doneMap": "Map “{{name}}” deleted.",
-          "doneQuiz": "Quiz deleted from the exam {{place}}.",
+          "doneMap": "Map “{{name}}” deleted. You can undo it here while you keep this chat.",
+          "doneQuiz": "Quiz deleted from the exam {{place}}. You can undo it here while you keep this chat.",
           "undo": "Undo",
           "restoredCards": "Deletion undone: the flashcards are back in the deck.",
           "restoredMap": "Deletion undone: the map is back in Maps.",
           "restoredQuiz": "Deletion undone: the quiz is back in the exam.",
-          "unrestorable": "It can no longer be undone: what it was in is gone.",
+          "unrestorable": "It can no longer be undone from here.",
           "declined": "I deleted nothing.",
           "stale": "Something changed in the meantime, so I deleted nothing.",
-          "askMessage": "Propose the deletion again."
+          "askMessage": "Propose the deletion again.",
+          "restoredCardsSome_one": "Deletion undone: {{count}} flashcard is back in the deck; you had already put back or removed the other {{other}} yourself.",
+          "restoredCardsSome_other": "Deletion undone: {{count}} flashcards are back in the deck; you had already put back or removed the other {{other}} yourself."
         }
       }
     },

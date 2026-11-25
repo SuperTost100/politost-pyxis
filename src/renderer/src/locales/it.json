@@ -2202,7 +2202,9 @@
     "waitBody": "Puoi chiudere questa schermata: la preparazione continua. L'esame lo ritrovi tra gli esami, e l'avanzamento lo segui nelle attività, in alto a destra.",
     "buildProgress": "{{percent}}% fatto",
     "topicsFound": "Gli argomenti che ho trovato",
-    "topicsFoundNote": "Ogni argomento ha già il suo posto nel percorso. Nomi e ordine li cambi dopo."
+    "topicsFoundNote": "Ogni argomento ha già il suo posto nel percorso. Nomi e ordine li cambi dopo.",
+    "seedDropped_one": "Una fonte proposta dalla chat non è più nella Libreria e non è tra quelle scelte.",
+    "seedDropped_other": "{{count}} fonti proposte dalla chat non sono più nella Libreria e non sono tra quelle scelte."
   },
   "shared": {
     "title": "Apri un esame condiviso",
@@ -3168,7 +3170,10 @@
           "declined": "Non ho cambiato niente: il percorso è quello di prima.",
           "stale": "Il percorso è cambiato nel frattempo, quindi non ho applicato niente.",
           "gone": "L'esame non c'è più, quindi non c'è niente da cambiare.",
-          "askMessage": "Il percorso è cambiato: rifammi la proposta."
+          "askMessage": "Il percorso è cambiato: rifammi la proposta.",
+          "next": "poi il prossimo appello è {{date}}",
+          "nextLabelled": "poi il prossimo appello è {{label}}, {{date}}",
+          "datePast": "La data proposta, {{date}}, è già passata, quindi non ho cambiato niente."
         },
         "exam": {
           "title": "Nuovo esame: {{title}}",
@@ -3192,7 +3197,8 @@
           "declined": "Non ho creato niente.",
           "existing": "Ora hai già un esame che si chiama «{{title}}».",
           "stale": "Il materiale di {{subject}} è cambiato nel frattempo, quindi non ho creato niente.",
-          "askMessage": "Rifammi la proposta per l'esame di {{title}}."
+          "askMessage": "Rifammi la proposta per l'esame di {{title}}.",
+          "datePast": "La data proposta, {{date}}, è già passata, quindi non ho creato niente."
         },
         "delete": {
           "cardsTitle_one": "Eliminare {{count}} flashcard di {{name}}?",
@@ -3222,16 +3228,18 @@
           "doneCards_other": "{{count}} flashcard di {{name}} eliminate.",
           "doneChatCards_one": "{{count}} flashcard eliminata.",
           "doneChatCards_other": "{{count}} flashcard eliminate.",
-          "doneMap": "Mappa «{{name}}» eliminata.",
-          "doneQuiz": "Quiz eliminato dall'esame {{place}}.",
+          "doneMap": "Mappa «{{name}}» eliminata. Puoi annullare da qui finché tieni questa chat.",
+          "doneQuiz": "Quiz eliminato dall'esame {{place}}. Puoi annullare da qui finché tieni questa chat.",
           "undo": "Annulla",
           "restoredCards": "Eliminazione annullata: le flashcard sono di nuovo nel mazzo.",
           "restoredMap": "Eliminazione annullata: la mappa è di nuovo in Mappe.",
           "restoredQuiz": "Eliminazione annullata: il quiz è di nuovo nell'esame.",
-          "unrestorable": "Non si può più annullare: quello in cui era non c'è più.",
+          "unrestorable": "Non si può più annullare da qui.",
           "declined": "Non ho eliminato niente.",
           "stale": "È cambiato qualcosa nel frattempo, quindi non ho eliminato niente.",
-          "askMessage": "Rifammi la proposta di eliminazione."
+          "askMessage": "Rifammi la proposta di eliminazione.",
+          "restoredCardsSome_one": "Eliminazione annullata: {{count}} flashcard è di nuovo nel mazzo, le altre {{other}} le avevi già rimesse o tolte tu.",
+          "restoredCardsSome_other": "Eliminazione annullata: {{count}} flashcard sono di nuovo nel mazzo, le altre {{other}} le avevi già rimesse o tolte tu."
         }
       }
     },

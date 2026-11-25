@@ -16,6 +16,7 @@ import "./Proposal.css";
 
 type Action = "apply" | "decline" | "reopen" | "undo";
 
+
 /**
  * A proposal of an "ask first" tool in the reply where the model called it (`propose_*`, core `tools/proposals.ts`):
  * a card that says what would change, with the confirming button as the screen's one primary, or once decided the one
@@ -78,7 +79,11 @@ export function Proposal({
   useEffect(() => {
     if (!moved.current) return;
     moved.current = false;
-    const target = root.current?.querySelector<HTMLButtonElement>("button") ?? root.current;
+    // A card reopened waits again, and its safe choice takes the focus, as when it first arrived.
+    const target =
+      (view.state === "pending" ? root.current?.querySelector<HTMLButtonElement>("button.px-ask-safe") : null) ??
+      root.current?.querySelector<HTMLButtonElement>("button") ??
+      root.current;
     target?.focus();
   }, [view.state]);
 
@@ -228,7 +233,7 @@ function PathCard(props: CardProps<PathProposalView>) {
   if (view.state === "expired") return expired(props, t("components.toolResult.proposal.expired"));
   if (view.state === "applied") {
     const what = [
-      view.date ? own("appliedDate", { date: shortDay(view.date.to) }) : "",
+      view.date ? own("appliedDate", { date: shortDay(view.appliedDate ?? view.date.to) }) : "",
       view.hours ? own("hoursValue", { count: view.hours.to }) : "",
       view.changed ? own("appliedTopics", { count: view.changed }) : "",
     ].filter(Boolean);
@@ -266,7 +271,7 @@ function PathCard(props: CardProps<PathProposalView>) {
     return (
       <Outcome
         icon="circle-alert"
-        text={own("stale")}
+        text={view.datePast && view.date ? own("datePast", { date: day(view.date.to) }) : own("stale")}
         arriving={arriving}
         rootRef={rootRef}
         action={
@@ -305,6 +310,11 @@ function PathCard(props: CardProps<PathProposalView>) {
               <dt>{view.date.label ? own("dateLabelled", { label: view.date.label }) : own("date")}</dt>
               <dd>
                 <Change from={view.date.from === null ? own("noDate") : day(view.date.from)} to={day(view.date.to)} />
+                {view.date.next ? (
+                  <small>
+                    {own(view.date.next.label ? "nextLabelled" : "next", { date: day(view.date.next.date), label: view.date.next.label })}
+                  </small>
+                ) : null}
               </dd>
             </>
           ) : null}
@@ -441,7 +451,7 @@ function ExamCard(props: CardProps<ExamProposalView>) {
     ) : (
       <Outcome
         icon="circle-alert"
-        text={own("stale", { subject: view.subject ?? view.title })}
+        text={view.datePast && view.date !== null ? own("datePast", { date: day(view.date) }) : own("stale", { subject: view.subject ?? view.title })}
         arriving={arriving}
         rootRef={rootRef}
         action={
@@ -541,7 +551,18 @@ function DeleteCard(props: CardProps<DeleteProposalView>) {
       />
     );
   if (view.state === "restored")
-    return <Outcome icon="rotate-ccw" text={own(`restored${kindKey}`)} arriving={arriving} rootRef={rootRef} />;
+    return (
+      <Outcome
+        icon="rotate-ccw"
+        text={
+          view.kind === "flashcards" && view.back !== null && view.back < view.count
+            ? own("restoredCardsSome", { count: view.back, other: view.count - view.back })
+            : own(`restored${kindKey}`)
+        }
+        arriving={arriving}
+        rootRef={rootRef}
+      />
+    );
   if (view.state === "declined")
     return (
       <Outcome
