@@ -34,8 +34,9 @@ function undoAfter16(db: Database.Database) {
   for (const name of added.filter((name) => !before.includes(name))) db.exec(`DROP INDEX ${name}`);
 }
 
-/** Removes what migrations 32 to 37 add, so a test can rewind the version past them. */
+/** Removes what migrations 32 to 38 add, so a test can rewind the version past them. */
 function undoLessonParts(db: Database.Database) {
+  db.exec("DROP INDEX chat_tool_results_message; DROP TABLE chat_tool_results;");
   db.exec(
     "DROP TABLE held_files; ALTER TABLE attachments DROP COLUMN recognised; ALTER TABLE attachments DROP COLUMN source_id; ALTER TABLE attachments DROP COLUMN size; ALTER TABLE attachments DROP COLUMN kind; ALTER TABLE attachments DROP COLUMN name;",
   );
@@ -44,7 +45,7 @@ function undoLessonParts(db: Database.Database) {
   );
 }
 
-/** Removes what migrations 29 to 37 add, so a test can rewind the version past them. */
+/** Removes what migrations 29 to 38 add, so a test can rewind the version past them. */
 function undoSubjectSort(db: Database.Database) {
   undoLessonParts(db);
   db.exec("ALTER TABLE sources DROP COLUMN chosen_kind; DROP INDEX sources_blob_sha; DROP INDEX sources_subject_sort; ALTER TABLE sources DROP COLUMN subject_sort;");

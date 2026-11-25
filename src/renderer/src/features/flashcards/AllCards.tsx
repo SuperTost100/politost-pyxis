@@ -12,11 +12,15 @@ const CardBrowser = lazy(() =>
 
 /**
  * Every flashcard, as a page of the Flashcard section at /flashcards/all. Opened from an exam's page
- * (`?exam=<id>`), it is filtered to that exam and goes back to it.
+ * (`?exam=<id>`), it is filtered to that exam and goes back to it; opened from a chat reply that made cards
+ * (`?made=<result id>`), it lists those cards.
  */
 export function CardsHome() {
   const { t } = useTranslation();
-  const exam = useSearchParams()[0].get("exam") ?? undefined;
+  const [params] = useSearchParams();
+  const exam = params.get("exam") ?? undefined;
+  // «Apri» on the flashcards a chat reply created opens the browser to those cards (`?made=<result id>`).
+  const made = params.get("made") ?? undefined;
   const back = useSubPageBack();
   // The browser draws the head, which holds the page's menu; until it loads, the head shows without its dots.
   return (
@@ -29,7 +33,7 @@ export function CardsHome() {
         </div>
       }
     >
-      <CardBrowser planId={exam} back={back} title={t("exams.allCards")} />
+      <CardBrowser planId={exam} made={made} back={back} title={t("exams.allCards")} />
     </Suspense>
   );
 }

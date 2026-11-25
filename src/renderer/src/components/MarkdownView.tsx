@@ -7,7 +7,7 @@ import {
   type AnchoredCheck,
   type MathCheck,
 } from "@shared/math-check";
-import { createContext, isValidElement, memo, useContext, useMemo } from "react";
+import { createContext, isValidElement, memo, useContext, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import { citedPassage, type CitationResolver } from "../markdown/citations";
@@ -18,6 +18,7 @@ import { CitationChip } from "./CitationChip";
 import { PythonBlock, RunnablePython } from "./PythonBlock";
 import { Figure } from "./Figure";
 import { darkFigureKey, figureKey, parseFigure } from "@shared/smart-text";
+import { TOOL_FENCE } from "@shared/tool-blocks";
 import "./MarkdownView.css";
 
 export type { CitationResolver };
@@ -36,6 +37,7 @@ type MarkdownScope = {
   citationResolver?: CitationResolver;
   figures?: Record<string, string>;
   drawing: boolean;
+  toolBlock?: (line: string) => ReactNode;
 };
 const Scope = createContext<MarkdownScope>({ claims: [], canRun: false, drawing: false });
 
@@ -72,7 +74,7 @@ const components: Components = {
     </div>
   ),
   pre: function Pre({ children: preChildren, node: _node, ...rest }) {
-    const { canRun, figures, drawing } = useContext(Scope);
+    const { canRun, figures, drawing, toolBlock } = useContext(Scope);
     let codeText = "";
     let lang = "";
     const child = Array.isArray(preChildren) ? preChildren[0] : preChildren;
@@ -85,6 +87,8 @@ const components: Components = {
       codeText = String(props.children ?? "").replace(/\n$/, "");
     }
     if (lang === "python" && canRun) return <PythonBlock code={codeText} />;
+    // What a Pyxis tool did, which the page that shows the reply draws; elsewhere nothing.
+    if (lang === TOOL_FENCE) return <>{toolBlock?.(codeText.trim()) ?? null}</>;
     // Figure code is for the sandbox, never shown: the image, a placeholder while it is drawn, or nothing.
     if (lang === "pyxis-figure") {
       const figure = parseFigure(codeText);
@@ -115,6 +119,7 @@ export const MarkdownView = memo(function MarkdownView({
   checks,
   figures,
   drawing = false,
+  toolBlock,
 }: {
   children: string;
   checks?: AnchoredCheck[];
@@ -130,6 +135,8 @@ export const MarkdownView = memo(function MarkdownView({
   onCitationClick?: (passageId: number) => void;
   /** Python blocks get an editor and a Run button; defaults to on inside tutor messages. */
   runnable?: boolean;
+  /** Draws a ```pyxis-tool block from its one line (a tool result's id, or `pending:<tool>`). Without it they show nothing. */
+  toolBlock?: (line: string) => ReactNode;
 }) {
   const inherited = useContext(RunnablePython);
   const canRun = runnable ?? inherited;
@@ -148,8 +155,8 @@ export const MarkdownView = memo(function MarkdownView({
     [children, citationResolver, claims, drawing],
   );
   const scope = useMemo(
-    () => ({ claims, canRun, onCitationClick, citationResolver, figures, drawing }),
-    [claims, canRun, onCitationClick, citationResolver, figures, drawing],
+    () => ({ claims, canRun, onCitationClick, citationResolver, figures, drawing, toolBlock }),
+    [claims, canRun, onCitationClick, citationResolver, figures, drawing, toolBlock],
   );
   // The same element for the same text, so React skips the parse; the renderers read a changed scope from context.
   const tree = useMemo(

@@ -12,6 +12,8 @@ Pyxis writes a lesson as a fixed pipeline (`src/core/study/openLesson.ts`, promp
 
 ## How the model gets study tools
 
+> **Update, November 2026.** The reason MCP was rejected below is gone. cli-funnel 1.0.0 accepts an HTTP MCP server at access `none` on Claude Code, Codex and Antigravity (`capabilities.mcpServersAtNone`), where that server's tools are the only ones the model can call and nothing on the machine is reachable. Chat replies now get Pyxis's tools that way, from a loopback server in core (`src/core/tools/server.ts`), and the first tool creates flashcards. Cursor Agent, the API providers and Ollama still take no server at `none`, so on them the chat answers without tools. The lesson prototype below still uses the text protocol, and the table records what cli-funnel 0.6.1 allowed when it was written.
+
 Pyxis calls every model through cli-funnel 0.6.1 with access `none`. The tools may read only the student's sources in the workspace, and the model must never get the filesystem, a shell or the network. Three ways to give it tools were weighed.
 
 ### What each provider allows

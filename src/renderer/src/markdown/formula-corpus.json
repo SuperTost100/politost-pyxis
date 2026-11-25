@@ -852,6 +852,19 @@
    "dollars": 0,
    "undrawable": 0,
    "text": "Per una massa $m$ collegata a una molla di costante elastica $k$, è $\\omega=\\sqrt{k/m}$."
+  },
+  {
+   "id": "codex-it-lesson-prose-71",
+   "tool": "codex",
+   "model": "gpt-6.1-terra",
+   "lang": "it",
+   "place": "lesson/prose",
+   "inline": false,
+   "formulas": 49,
+   "dollars": 0,
+   "undrawable": 0,
+   "recorded": "2026-11-25",
+   "text": "I numeri complessi estendono i numeri reali introducendo un numero $i$ tale che $i^2=-1$. Questa estensione permette di risolvere equazioni come $z^2=-1$ e di descrivere le operazioni anche in termini geometrici.\n\n## Forma algebrica e piano complesso\n\nUn numero complesso si scrive $z=a+ib$, con $a,b\\in\\mathbb R$. I numeri $a=\\operatorname{Re}z$ e $b=\\operatorname{Im}z$ sono rispettivamente la **parte reale** e la **parte immaginaria**. Due complessi sono uguali se coincidono entrambe le parti.\n\nPossiamo rappresentare $z$ come il punto $(a,b)$ del piano complesso. Il suo **modulo** è la distanza dall’origine, mentre il **coniugato** si ottiene cambiando il segno della parte immaginaria:\n\n$$\n|z|=\\sqrt{a^2+b^2},\\qquad \\bar z=a-ib.\n$$\n\nPoiché $z\\bar z=a^2+b^2=|z|^2$, per $z\\ne0$ il reciproco si calcola così:\n\n$$\n\\frac1z=\\frac{\\bar z}{|z|^2}.\n$$\n\nPer esempio, se $z=3+4i$, allora $|z|=5$ e $1/z=(3-4i)/25$.\n\n## Angoli, prodotti e radici\n\nUn complesso non nullo si può individuare anche tramite il modulo $r=|z|$ e un **argomento** $\\theta$, cioè un angolo che il vettore dal punto origine a $z$ forma con l’asse reale positivo. Gli argomenti dello stesso numero differiscono per multipli interi di $2\\pi$.\n\nLa forma trigonometrica e la formula di Eulero danno\n\n$$\nz=r(\\cos\\theta+i\\sin\\theta)=re^{i\\theta}.\n$$\n\nIn particolare, ponendo $\\theta=\\pi$ nella formula di Eulero si ottiene $e^{i\\pi}+1=0$. La forma esponenziale rende semplice moltiplicare: i moduli si moltiplicano e gli argomenti si sommano,\n\n$$\nr_1e^{i\\theta_1}r_2e^{i\\theta_2}\n=r_1r_2e^{i(\\theta_1+\\theta_2)}.\n$$\n\nGeometricamente, moltiplicare per un complesso non nullo significa quindi cambiare scala e ruotare. Ripetendo il prodotto si ottiene la formula di De Moivre, per $n$ intero:\n\n$$\nz^n=r^ne^{in\\theta}.\n$$\n\nPer trovare le radici $n$-esime di $w=\\rho e^{i\\varphi}\\ne0$, con $n$ intero positivo, bisogna tenere conto di tutti gli argomenti $\\varphi+2k\\pi$. Le $n$ radici distinte sono\n\n$$\nz_k=\\rho^{1/n}e^{i(\\varphi+2k\\pi)/n},\n\\qquad k=0,\\ldots,n-1.\n$$\n\nHanno lo stesso modulo e argomenti separati da $2\\pi/n$: sono dunque i vertici di un poligono regolare. In particolare, le radici dell’unità soddisfano $z^n=1$ e, per $n\\ge2$, la loro somma è zero.\n\n## Esponenziale e logaritmo complessi\n\nPer un esponente qualsiasi $z=x+iy$, la definizione dell’esponenziale complesso estende la formula di Eulero:\n\n$$\ne^z=e^x(\\cos y+i\\sin y).\n$$\n\nIl suo modulo è $e^x$, sempre positivo; quindi $e^z$ non si annulla mai. Inoltre, seno e coseno hanno periodo $2\\pi$, perciò $e^{z+2\\pi i}=e^z$.\n\nQuesta periodicità spiega perché il logaritmo complesso non nullo ha infiniti valori. Se $z\\ne0$ ha argomento $\\theta$, le soluzioni di $e^u=z$ sono\n\n$$\nu=\\ln|z|+i(\\theta+2k\\pi),\\qquad k\\in\\mathbb Z.\n$$\n\nSi può scegliere un solo valore prendendo l’**argomento principale** nell’intervallo $-\\pi<\\theta\\le\\pi$. Per esempio, il logaritmo principale di $-1$ è $i\\pi$, mentre l’insieme di tutti i suoi logaritmi è $\\{i(\\pi+2k\\pi):k\\in\\mathbb Z\\}$."
   }
  ]
 }

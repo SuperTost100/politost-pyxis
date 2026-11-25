@@ -41,10 +41,13 @@ type Card = BrowsedCard;
  */
 export function CardBrowser({
   planId: initialPlanId = "",
+  made: initialMade,
   back,
   title,
 }: {
   planId?: string;
+  /** The result of a chat tool whose cards the browser opens to, from «Apri» in the reply that made them. */
+  made?: string;
   back?: ReactNode;
   title: string;
 }) {
@@ -55,6 +58,7 @@ export function CardBrowser({
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
   const [planId, setPlanId] = useState(initialPlanId);
+  const [made, setMade] = useState(initialMade);
   const [topicId, setTopicId] = useState("");
   const [status, setStatus] = useState<Status>("all");
   /** The subjects the student has opened past their first eight, by `subjectKey`. */
@@ -106,7 +110,7 @@ export function CardBrowser({
 
   const open = useMemo(() => new Set(expanded), [expanded]);
   const list = useQuery({
-    queryKey: ["card-browse", query, planId, topicId, status, expandRequest(expanded)],
+    queryKey: ["card-browse", query, planId, topicId, status, expandRequest(expanded), made],
     queryFn: () =>
       invoke("study.browse", {
         query: query.trim() || undefined,
@@ -117,11 +121,12 @@ export function CardBrowser({
         expand: expandRequest(expanded),
         // The card being edited stays in the answer wherever a change in the list ranks it.
         keep: editingNow.current ? [editingNow.current.card.id] : undefined,
+        made,
       }),
     placeholderData: keepPreviousData,
   });
   const data = list.data;
-  const filtered = Boolean(query.trim() || planId || topicId || status !== "all");
+  const filtered = Boolean(query.trim() || planId || topicId || status !== "all" || made);
   // No flashcard at all, and nothing filtering: the page is empty, not a search with no result. A removed card is still a
   // card: its exam, or the cards with no exam, keep the page and its "Rimosse" filter.
   const emptyPage = Boolean(data && data.total === 0 && !filtered && data.plans.length === 0 && !data.examless);
@@ -429,6 +434,7 @@ export function CardBrowser({
       setPlanId("");
       setTopicId("");
       setStatus("all");
+      setMade(undefined);
     });
   }
   const filter =
@@ -638,6 +644,14 @@ export function CardBrowser({
             }
           />
           {actionFailed ? <Notice tone="danger">{t("cards.actionFailed")}</Notice> : null}
+          {made ? (
+            <Notice
+              tone="info"
+              action={{ label: t("cardBrowser.madeAll"), onClick: () => void startOver(() => setMade(undefined)) }}
+            >
+              {t("cardBrowser.made")}
+            </Notice>
+          ) : null}
 
           {!data ? (
             <ul className="px-ct-grid" aria-hidden>
