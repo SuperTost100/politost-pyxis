@@ -207,7 +207,7 @@ test("Strumenti AI: work goes on with the next tool when the first is out of req
     );
     // ChatGPT and Claude run the chat on the balanced model: the line under the list says so for both, and the row has no
     // line of its own about it.
-    await expect(page.locator(".engines-roles-note")).toContainText("equilibrato per chat, lezioni e correzione");
+    await expect(page.locator(".engines-roles-note")).toContainText("equilibrato per la chat, le lezioni e la correzione");
     await expect(chatgpt).not.toContainText("Qui «Chat»");
     await expect(page.locator('.engines-tool[data-tool="claude"] .engines-tool-state')).toHaveText("Collegato");
     await saveShot(page, "tools/limit-it.png", { fullPage: true });

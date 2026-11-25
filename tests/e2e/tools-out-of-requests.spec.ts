@@ -133,7 +133,7 @@ test("Attività: a job whose tool ran out of requests asks, and each choice does
     const running = list.getByRole("region", { name: "In corso" });
     const waiting = running.locator(".px-jobs-waiting");
     await expect(waiting.locator(".px-jobs-sub")).toHaveText(
-      "Riparto da sola quando tornano le richieste di ChatGPT, domani alle 06:00",
+      "Riparte da sola quando tornano le richieste di ChatGPT, domani alle 06:00",
     );
     expect((await jobState(page, second))?.state).toBe("failed");
     await saveShot(page, "tools/waiting-it.png", { fullPage: true });
@@ -278,10 +278,10 @@ test("Attività: a wait follows its tool's limit, and a Chiudi at the row's righ
     expect(box!.x + box!.width).toBeGreaterThan(edge!.x + edge!.width - 24);
     await row.getByRole("button", { name: /^Aspetta domani/ }).click();
     const waiting = list.locator(".px-jobs-waiting .px-jobs-sub");
-    await expect(waiting).toHaveText("Riparto da sola quando tornano le richieste di ChatGPT, domani alle 06:00");
+    await expect(waiting).toHaveText("Riparte da sola quando tornano le richieste di ChatGPT, domani alle 06:00");
     // ChatGPT turns a call away again, with no time this time: its limit is now Pyxis's half hour, and the wait follows.
     await page.evaluate(() => window.pyxis.invoke("engines.test", { provider: "codex" }).catch(() => undefined));
-    await expect(waiting).toHaveText(/^Riparto da sola quando tornano le richieste di ChatGPT, (domani )?alle \d\d:\d\d$/);
+    await expect(waiting).toHaveText(/^Riparte da sola quando tornano le richieste di ChatGPT, (domani )?alle \d\d:\d\d$/);
     // The whole deadline moved, from tomorrow at 06:00 to about half an hour from now. The clock time alone could be
     // the same: at half past five the new half hour ends at 06:00.
     await expect

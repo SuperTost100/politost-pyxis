@@ -75,7 +75,7 @@ test("Free books: setup no longer offers them, the Library puts a book in, a new
     await button(page, "Continua").click();
     await button(page, /^(Lo faccio dopo|Continua)$/).click();
     await expect(
-      page.getByRole("heading", { name: "Come tieni il materiale per studiare?" }),
+      page.getByRole("heading", { name: "Dove tieni il materiale di studio?" }),
     ).toBeVisible();
     // The free-book catalog left setup: the material step links folders only.
     await expect(button(page, "Libri PoliTost gratuiti")).toHaveCount(0);
@@ -211,7 +211,7 @@ test("Free books: a catalog that could not be read is read again when the connec
     });
     await openBooksFromMenu(page);
     const dialog = page.getByRole("dialog", { name: "Libri PoliTost gratuiti" });
-    await expect(dialog.getByText("Non riesco a raggiungere books.politost.it")).toBeVisible({ timeout: 30000 });
+    await expect(dialog.getByText("Non sono riuscito a raggiungere books.politost.it")).toBeVisible({ timeout: 30000 });
     await expect(dialog.getByText("Fisica di prova")).toHaveCount(0);
     // The connection is back: the window says it lost the network and then that it has it again, and the list comes back
     // where the student is.
@@ -219,7 +219,7 @@ test("Free books: a catalog that could not be read is read again when the connec
     await page.evaluate(() => window.dispatchEvent(new Event("offline")));
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
     await expect(dialog.getByText("Fisica di prova")).toBeVisible({ timeout: 30000 });
-    await expect(dialog.getByText("Non riesco a raggiungere books.politost.it")).toHaveCount(0);
+    await expect(dialog.getByText("Non sono riuscito a raggiungere books.politost.it")).toHaveCount(0);
   } finally {
     await app.close();
     removeTestFolder(userData);

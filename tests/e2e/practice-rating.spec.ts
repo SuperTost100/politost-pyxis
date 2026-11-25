@@ -187,7 +187,7 @@ test("practice: rate two exercises, change one, finish, and mastery moves by two
 
     // Finish: both exercises count once, each with weight 0.5. A third observation for the changed one would give 0.222.
     await page
-      .getByRole("button", { name: both("Segna come fatto", "Mark as done") })
+      .getByRole("button", { name: both("Segna come completata", "Mark as done") })
       .click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
     expect(await mastery()).toBeCloseTo(1 / 4, 3);

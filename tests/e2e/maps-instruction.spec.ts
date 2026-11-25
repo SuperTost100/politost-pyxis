@@ -113,7 +113,7 @@ test("the Nuova mappa dialog says when the topics of a subject did not load, and
     await choose(dialog, "Materia", "Analisi 1");
     // It says the topics are missing, with a way to try again, and does not take the subject for one without topics.
     const failed = dialog.getByRole("alert");
-    await expect(failed).toContainText("Non riesco a caricare gli argomenti di Analisi 1");
+    await expect(failed).toContainText("Non sono riuscito a caricare gli argomenti di Analisi 1");
     await expect(dialog.getByRole("button", { name: "Crea la mappa" })).toBeDisabled();
     await expectNoAxeViolations(page);
     await saveShot(page, "maps-instruction/new-map-topics-failed.png");
@@ -254,7 +254,7 @@ test("a request that matches nothing builds no map, says so next to the request,
     await expect(empty).toContainText(`«${words}»`);
     await expect(page.getByLabel("Come la vuoi?")).toHaveValue(words);
     await expect(page.locator(".react-flow__node")).toHaveCount(0);
-    await expect(page.getByText("Non riesco a creare la mappa")).toHaveCount(0);
+    await expect(page.getByText("Non sono riuscito a creare la mappa")).toHaveCount(0);
     // No empty map is stored, and the build says why it ended.
     expect(await listOf(page)).toEqual([]);
     expect(await page.evaluate(() => window.pyxis.invoke("maps.build", { topicId: "t-limits" }))).toMatchObject({
@@ -313,7 +313,7 @@ test("asking again for a request that failed follows that build, while a newer r
   try {
     const { ask } = dialogs(page);
     await ask(a);
-    await expect(page.getByText("Non riesco a creare la mappa. Riprova.")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText("Non sono riuscito a creare la mappa. Riprova.")).toBeVisible({ timeout: 60_000 });
     await ask(b);
     await expect(conceptOf(page, "B")).toBeVisible({ timeout: 60_000 });
     expect((await listOf(page)).map((map) => map.instruction)).toEqual([b]);
@@ -617,7 +617,7 @@ test("a request that cannot be sent again keeps the student's edited words, and 
     breakRead(true);
     await field.fill(second);
     await page.getByRole("button", { name: "Crea la mappa" }).click();
-    await expect(page.getByText("Non riesco a creare la mappa. Riprova.")).toBeVisible();
+    await expect(page.getByText("Non sono riuscito a creare la mappa. Riprova.")).toBeVisible();
     await expect(field).toHaveValue(second);
     await expect(page.getByRole("button", { name: "Crea la mappa" })).toBeEnabled();
 

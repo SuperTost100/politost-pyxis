@@ -328,7 +328,7 @@ test("Ask: an answer with nothing in the Library says it comes from general know
     await ask(page, "Ricetta della carbonara");
     await expect(
       lastReply(page).getByText(
-        "Non ho trovato niente su questa domanda nella tua Libreria, quindi ti rispondo con quello che so in generale.",
+        "Non ho trovato nulla su questa domanda nella tua Libreria, quindi ti rispondo in base a quello che so.",
       ),
     ).toBeVisible();
     await expect(lastReply(page).getByRole("button", { name: /^Ho usato/ })).toHaveCount(0);
@@ -407,7 +407,7 @@ test("Ask: an answer that cites no source says so when passages were found, and 
     await expect(
       lastReply(page).getByText("Nelle tue fonti ho trovato qualcosa, ma questa risposta non ne cita nessuna, quindi viene da quello che so in generale."),
     ).toBeVisible();
-    await expect(page.getByText("Non ho trovato niente su questa domanda")).toHaveCount(0);
+    await expect(page.getByText("Non ho trovato nulla su questa domanda")).toHaveCount(0);
     await saveShot(page, "ask-subject/general-unused.png");
     await expectNoAxeViolations(page);
     // The saved reply says the same after a reload.

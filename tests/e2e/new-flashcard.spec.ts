@@ -72,7 +72,7 @@ test("a flashcard written by hand from the empty Flashcard page, with no exam, l
     await toFlashcards(page);
 
     // The empty page says where flashcards come from now, and its one button writes the first.
-    await expect(page.getByText(/^Qui compariranno le tue flashcard, divise per materia/)).toBeVisible();
+    await expect(page.getByText(/^Qui troverai le tue flashcard, divise per materia/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Apri le mappe" })).toHaveCount(0);
     const newButton = page.getByRole("button", { name: "Nuova flashcard", exact: true });
     await expect(newButton).toHaveClass(/px-btn-primary/);

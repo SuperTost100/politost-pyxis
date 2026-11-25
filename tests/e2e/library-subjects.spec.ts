@@ -60,7 +60,7 @@ async function start(env: Record<string, string | undefined>) {
 /** Adds files through the Library's file picker and closes the result. */
 async function addFiles(app: ElectronApplication, page: Page, paths: string[]) {
   await answerPicker(app, paths);
-  await page.getByRole("button", { name: "Aggiungi file", exact: true }).click();
+  await page.getByRole("button", { name: "Aggiungi fonti", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
   if (paths.length > 1) {
@@ -92,7 +92,7 @@ test("Files added from the Library go on the shelf of a subject the student has,
     // chat's subject below needs the open sidebar, so the page gets that width whatever the window is.
     await page.setViewportSize({ width: 1280, height: 800 });
     // Before any file, the Library says what goes in it.
-    await expect(page.getByText(/^Qui compariranno i tuoi file/)).toBeVisible();
+    await expect(page.getByText(/^Qui troverai i tuoi file/)).toBeVisible();
     await addFiles(app, page, [files.limits, files.notes]);
     // One lands in Analisi 1; the other in a subject made for it, whose card says it is new.
     await expect(cover(page, "Analisi 1", "Esercizi sui limiti")).toBeVisible({ timeout: 60000 });
@@ -275,7 +275,7 @@ async function withFailingSort(
   const { app, page, userData, files } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined, PYXIS_E2E_SORT_FAILS: "1" });
   try {
     const open = async (tab?: string) => {
-      await page.getByRole("button", { name: "Aggiungi file", exact: true }).click();
+      await page.getByRole("button", { name: "Aggiungi fonti", exact: true }).click();
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible();
       await animationsSettled(page);
@@ -1357,7 +1357,7 @@ test("With subjects and no files the Library shows the subjects with the add-a-f
   const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
   try {
     await page.setViewportSize({ width: 1280, height: 900 });
-    const empty = page.getByText(/^Qui compariranno i tuoi file/);
+    const empty = page.getByText(/^Qui troverai i tuoi file/);
     await expect(empty).toBeVisible();
     // The student can see both subjects, and act on them.
     for (const name of ["Analisi 1", "Fisica 2"]) await expect(shelf(page, name)).toContainText("nessun file");
@@ -1365,7 +1365,7 @@ test("With subjects and no files the Library shows the subjects with the add-a-f
     for (const name of ["Analisi 1", "Fisica 2"]) {
       await expect(shelf(page, name).locator(".px-shelf-subject-none")).toHaveText("Ancora niente.");
     }
-    await expect(page.getByRole("button", { name: "Aggiungi file", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Aggiungi fonti", exact: true })).toBeVisible();
     const subjectDots = shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" });
     await subjectDots.click();
     await expect(page.getByRole("menuitem", { name: "Nuova mappa di questa materia" })).toBeVisible();
