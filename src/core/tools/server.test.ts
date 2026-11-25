@@ -126,7 +126,10 @@ describe("tool server", () => {
   it("refuses a request without the token, with a wrong one and after the token is revoked", async () => {
     const { url, token } = await chatTools("chat-a");
     expect((await send(url, { body: rpc("tools/list") })).status).toBe(401);
-    expect((await send(url, { headers: auth(`${token.slice(0, -1)}A`), body: rpc("tools/list") })).status).toBe(401);
+    // The last character changed to one it is not, so the token is wrong whatever it ended with.
+    const wrong = `${token.slice(0, -1)}${token.endsWith("A") ? "B" : "A"}`;
+    expect(wrong).not.toBe(token);
+    expect((await send(url, { headers: auth(wrong), body: rpc("tools/list") })).status).toBe(401);
     expect((await send(url, { headers: { authorization: token }, body: rpc("tools/list") })).status).toBe(401);
     expect((await send(url, { headers: { authorization: `Basic ${token}` }, body: rpc("tools/list") })).status).toBe(401);
     // agy sends no Authorization on its GET stream request: refused like any other.

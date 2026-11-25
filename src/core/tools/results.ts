@@ -49,14 +49,21 @@ export function addFlashcards(
   id: string,
   more: { cardIds: string[]; duplicates: number; fronts: string[] },
 ): void {
-  const { data } = flashcardsRow(db, chatId, id);
+  const { data, undone } = flashcardsRow(db, chatId, id);
   const next: FlashcardsData = {
     ...data,
     cardIds: [...data.cardIds, ...more.cardIds],
     duplicates: data.duplicates + more.duplicates,
     fronts: [...data.fronts, ...more.fronts].slice(0, LISTED),
   };
-  db.prepare(`UPDATE chat_tool_results SET data_json = ? WHERE id = ?`).run(JSON.stringify(next), id);
+  // The student undid the result while the answer was still running: the later cards leave the deck with the others, and
+  // the undo record holds them, so «Ripristina» brings back all of them.
+  const removed = undone ? [...undone, ...removeCards(db, more.cardIds)] : null;
+  db.prepare(`UPDATE chat_tool_results SET data_json = ?, undone_json = COALESCE(?, undone_json) WHERE id = ?`).run(
+    JSON.stringify(next),
+    removed ? JSON.stringify(removed) : null,
+    id,
+  );
 }
 
 type Row = { id: string; tool: string; data_json: string; undone_json: string | null };

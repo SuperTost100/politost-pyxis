@@ -1375,6 +1375,8 @@ async function answer(
     },
   };
   let disarm = () => undefined as void;
+  /** Every engine this turn ran on or planned to: the selection, and each one a fallback moved to. */
+  const tried = new Set<string>([selection.provider]);
   // A stored session that began without Pyxis's tools is not resumed when the tools would attach now: a new session starts
   // with the whole conversation. Checked on agy 1.5.17 with gemini-3.8-flash: such a session never used the tools (the
   // server was listed, and the model said it had no such tool and wrote the cards as text). Codex took them in four runs of
@@ -1475,7 +1477,10 @@ async function answer(
       },
       cache: true,
       usage: { chatId, messageId, kind: "chat" },
-      onEngine: (engine) => (answering = engine),
+      onEngine: (engine) => {
+        answering = engine;
+        tried.add(engine.provider);
+      },
       onDelta: (text) => {
         requireTutorAvailable(db);
         raw = text;
@@ -1543,15 +1548,18 @@ async function answer(
     throw err;
   } finally {
     disarm();
-    // Antigravity keeps the server's headers, the token included, in its conversation store on disk. A turn it answered
-    // ends that token, and the chat's next turn gets a new one; agy keeps no process between questions, so nothing is
-    // restarted for it. Claude Code and Codex write no token to disk (checked in their session files).
-    if ((result?.provider ?? answering.provider) === "antigravity") revokeChatTools(chatId);
+    // Antigravity keeps the server's headers, the token included, in its conversation store on disk. A turn that tried it
+    // (planned on it, moved to it, or answered by it, even when another tool answered after it failed) ends that token,
+    // and the chat's next turn gets a new one. agy keeps no process between questions, so nothing is restarted for it.
+    // Claude Code and Codex write no token to disk (checked in their session files).
+    if (tried.has("antigravity") || result?.provider === "antigravity") revokeChatTools(chatId);
   }
   // The reply with each finished tool call in its place. With tools the streamed text is the whole reply, since a CLI's
   // final text can be only what it wrote after the last call; text the model wrote as a tool block never counts as one.
+  // A reply that made something keeps it even when the model also answered NOT_COVERED: the student asked, the cards are in
+  // the deck, and the reply is where they can be undone. Only the sentinel's own lines go.
   const replyText = marks.some((mark) => mark.resultId)
-    ? withTools(raw.trim() ? raw : result.text, false)
+    ? withTools(raw.trim() ? raw : result.text, false).replace(/^[ \t]*NOT_COVERED[ \t]*(?:\n|$)/gm, "")
     : spliceToolBlocks(result.text, []);
   // The prompts no longer ask for it, but a model or an older prompt can still answer NOT_COVERED: nothing is stored.
   if (!resume && replyText.trim().startsWith("NOT_COVERED")) {

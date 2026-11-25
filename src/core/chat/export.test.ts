@@ -275,4 +275,13 @@ describe("exportChat", () => {
     expect(reply("it")).toContain("*Pyxis ha creato 8 flashcard sui tre principi nel mazzo di Fisica 1, poi annullate: non sono più nel mazzo.*");
     expect(reply("en")).toContain("*Pyxis created 8 flashcards sui tre principi in the Fisica 1 deck, then undone: they are no longer in the deck.*");
   });
+
+  it("leaves a fence in the tool's language as it is in the student's own message", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c', 'Codice', 1, 1);
+      INSERT INTO messages (id, chat_id, role, body, created_at) VALUES ('u', 'c', 'user', 'Che cosa fa questo?' || char(10) || char(10) || '\`\`\`pyxis-tool' || char(10) || 'pending:create_flashcards' || char(10) || '\`\`\`', 1);
+    `);
+    expect(exportChat(db, "c", "it").markdown).toContain("```pyxis-tool\npending:create_flashcards\n```");
+  });
 });

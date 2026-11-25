@@ -185,13 +185,15 @@ export function exportChat(
         });
       return {
         role: message.role,
-        // A tool's card becomes one line on what it made, which the reply's own text never says in full.
+        // In a reply, a tool's card becomes one line on what it made. A student's own message stays as typed.
         text: visibleText(
           message.role,
-          mapToolBlocks(message.body, (id) => {
-            const view = message.tools?.[id];
-            return view ? `*${toolLine(view, language)}*` : "";
-          }),
+          message.role === "assistant"
+            ? mapToolBlocks(message.body, (id) => {
+                const view = message.tools?.[id];
+                return view ? `*${toolLine(view, language)}*` : "";
+              })
+            : message.body,
         ),
         stopped: message.stopped,
         photos: photos.get(message.id) ?? 0,

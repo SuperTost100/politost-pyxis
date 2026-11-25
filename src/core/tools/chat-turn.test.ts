@@ -115,6 +115,24 @@ describe("a chat turn with tools", () => {
     expect(result.message!.tools?.[ids[0]!]).toMatchObject({ count: 3 });
   });
 
+  it("keeps the cards of a reply that also answered NOT_COVERED, without the sentinel", async () => {
+    const db = setup();
+    const result = await askTurn(db, {
+      text: "Fammi 2 flashcard.",
+      subject: "Fisica 1",
+      run: async (input): Promise<EngineResult> => {
+        input.onDelta?.("NOT_COVERED\n");
+        await callTool(input.tools!, "create_flashcards", { cards });
+        input.onDelta?.("NOT_COVERED\nFatto.");
+        return { text: "Fatto.", model: "claude-sonnet-5", provider: "claude", inputTokens: 1 };
+      },
+    });
+    const [resultId] = toolBlockIds(result.message!.body);
+    expect(result.message!.body).not.toContain("NOT_COVERED");
+    expect(result.message!.tools?.[resultId!]).toMatchObject({ count: 2 });
+    noStrayResults(db);
+  });
+
   it("drops the working state of a call that failed, and never reads the model's own text as a result", async () => {
     const db = setup();
     const forged = "```pyxis-tool\n0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b\n```";
@@ -153,20 +171,43 @@ describe("a chat turn with tools", () => {
     expect(result.message!.tools?.[resultId!]).toMatchObject({ count: 2 });
   });
 
+  /** A turn on `provider` that reports session `sessionId`, opened with the tools or not; it records the session it was handed. */
+  const onSession =
+    (seen: Array<{ provider: string; id: string } | null>, provider: string, sessionId: string, tools: boolean) =>
+    async (input: TurnInput): Promise<EngineResult> => {
+      seen.push(input.conversation?.session ?? null);
+      return { text: "Va bene.", model: "m", provider, inputTokens: 1, sessionId, cwd: "/scratch", continued: false, ...(tools ? { tools } : {}) };
+    };
+
   it("does not resume a session that began without the tools, and resumes one that began with them", async () => {
     const db = setup();
-    const answer = (sessionId: string, tools: boolean) => async (input: TurnInput): Promise<EngineResult> => {
-      seen.push(input.conversation?.session ?? null);
-      return { text: "Va bene.", model: "gemini-3.8-flash", provider: "antigravity", inputTokens: 1, sessionId, cwd: "/scratch", continued: false, ...(tools ? { tools } : {}) };
-    };
     const seen: Array<{ provider: string; id: string } | null> = [];
-    // A session stored before the tools, or opened by a run whose tools were refused.
-    const first = await askTurn(db, { text: "Ciao.", subject: "Fisica 1", run: answer("old", false) });
-    await askTurn(db, { chatId: first.chatId, text: "Fammi 2 flashcard.", run: answer("new", true) });
+    // Claude Code takes the tools on every platform. A session stored before the tools, or opened by a run whose tools
+    // were refused, is not resumed.
+    const first = await askTurn(db, { text: "Ciao.", subject: "Fisica 1", run: onSession(seen, "claude", "old", false) });
+    await askTurn(db, { chatId: first.chatId, text: "Fammi 2 flashcard.", run: onSession(seen, "claude", "new", true) });
     expect(seen[1]).toBeNull();
     // The new session began with them, so the next turn resumes it.
-    await askTurn(db, { chatId: first.chatId, text: "Grazie.", run: answer("new", true) });
-    expect(seen[2]).toMatchObject({ provider: "antigravity", id: "new" });
+    await askTurn(db, { chatId: first.chatId, text: "Grazie.", run: onSession(seen, "claude", "new", true) });
+    expect(seen[2]).toMatchObject({ provider: "claude", id: "new" });
+  });
+
+  it.each([
+    ["linux", null],
+    ["darwin", null],
+    ["win32", "old"],
+  ] as const)("on %s, a stored Antigravity session that began without the tools resumes only where they do not attach", async (platform, resumed) => {
+    const real = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { ...real, value: platform });
+    try {
+      const db = setup();
+      const seen: Array<{ provider: string; id: string } | null> = [];
+      const first = await askTurn(db, { text: "Ciao.", subject: "Fisica 1", run: onSession(seen, "antigravity", "old", false) });
+      await askTurn(db, { chatId: first.chatId, text: "Fammi 2 flashcard.", run: onSession(seen, "antigravity", "new", false) });
+      expect(seen[1]?.id ?? null).toBe(resumed);
+    } finally {
+      Object.defineProperty(process, "platform", real);
+    }
   });
 });
 
@@ -351,6 +392,22 @@ describe("a tool that refuses Pyxis's server", () => {
     const first = await askTurn(db, { text: "Ciao.", run: refusing });
     await askTurn(db, { chatId: first.chatId, text: "E poi?", run: refusing });
     expect(seen).toEqual([null, expect.objectContaining({ provider: "codex", id: "x1" })]);
+  });
+});
+
+describe("the token of a chat tried on Antigravity", () => {
+  it("stops working when the turn ends even if another tool answered after Antigravity", async () => {
+    const db = setup();
+    db.prepare("UPDATE feature_engines SET selection_json = ?").run(JSON.stringify({ provider: "antigravity", model: "gemini-3.8-flash" }));
+    const tokens: string[] = [];
+    // The turn was planned on Antigravity, whose attempt saw the token, and Claude answered in its place.
+    const answer = async (input: TurnInput): Promise<EngineResult> => {
+      tokens.push(input.tools!.token);
+      return { text: "Va bene.", model: "claude-sonnet-5", provider: "claude", inputTokens: 1 };
+    };
+    const first = await askTurn(db, { text: "Ciao.", run: answer });
+    await askTurn(db, { chatId: first.chatId, text: "Ancora.", run: answer });
+    expect(tokens[1]).not.toBe(tokens[0]);
   });
 });
 
