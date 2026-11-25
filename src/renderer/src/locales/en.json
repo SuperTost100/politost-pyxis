@@ -3100,7 +3100,50 @@
       "undone_one": "{{count}} flashcard undone: it’s no longer in the deck.",
       "undone_other": "{{count}} flashcards undone: they’re no longer in the deck.",
       "restore": "Restore",
-      "failed": "That didn’t work. Try again."
+      "failed": "That didn’t work. Try again.",
+      "workingMap": "Creating the map…",
+      "workingQuiz": "Creating the quiz…",
+      "stop": "Stop",
+      "retry": "Try again",
+      "resume": "Resume",
+      "map": {
+        "title": "Map created",
+        "concepts_one": "{{count}} concept",
+        "concepts_other": "{{count}} concepts",
+        "branches_one": "in {{count}} branch",
+        "branches_other": "in {{count}} branches",
+        "where": "It’s in <place>Maps</place>, under {{subject}}.",
+        "undone": "Map undone: it’s no longer in Maps.",
+        "failed": "The map wasn’t created.",
+        "stopped": "The map stopped before it was finished.",
+        "gone": "The map is gone: it was deleted from Maps."
+      },
+      "quiz": {
+        "title": "Quiz created",
+        "line_one": "{{topic}}, {{count}} question",
+        "line_other": "{{topic}}, {{count}} questions",
+        "kind": {
+          "mcq_one": "{{count}} multiple choice",
+          "mcq_other": "{{count}} multiple choice",
+          "tf_one": "{{count}} true or false",
+          "tf_other": "{{count}} true or false",
+          "completion_one": "{{count}} fill-in",
+          "completion_other": "{{count}} fill-in",
+          "matching_one": "{{count}} matching",
+          "matching_other": "{{count}} matching",
+          "open_one": "{{count}} open",
+          "open_other": "{{count}} open"
+        },
+        "minutes_one": "about {{count}} minute",
+        "minutes_other": "about {{count}} minutes",
+        "where": "It’s in the exam <place>{{exam}}</place>, under To finish.",
+        "whereHandedIn": "It’s in the exam <place>{{exam}}</place>.",
+        "handedIn": "You handed it in, so its grade stays and it can’t be undone.",
+        "undone": "Quiz undone: it’s no longer in the exam.",
+        "failed": "The quiz wasn’t created.",
+        "stopped": "The quiz stopped before it was finished.",
+        "gone": "The quiz is gone: it was deleted from the exam."
+      }
     }
   },
   "math": {

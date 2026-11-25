@@ -3,11 +3,14 @@ import { uuidv7 } from "../../shared/ids";
 import { removeCards, restoreCards } from "../study/cards";
 import type { ToolResultView } from "../../shared/ipc";
 import { mapToolBlocks, TOOL_FENCE, toolBlockIds } from "../../shared/tool-blocks";
+import { dropMap, mapView, restoreMap, retryMap, undoMap, type MapData, type MapUndone } from "./map";
+import { dropQuiz, quizView, restoreQuiz, retryQuiz, undoQuiz, type QuizData, type QuizUndone } from "./quiz";
 
 /**
  * What a chat tool did, stored with the reply that called it (`chat_tool_results`) and shown there as a ```pyxis-tool
  * block whose body is the row's id. The row outlives the turn: the chat shows it again when reopened, and «Annulla» and
- * «Ripristina» act on it later.
+ * «Ripristina» act on it later. Flashcards are kept here; maps and quizzes in `map.ts` and `quiz.ts`, whose results also
+ * follow the job that makes them (`jobs.ts`).
  */
 
 /** A flashcard result: the cards it created, in order, where they went, and the first fronts the chat lists. */
@@ -68,10 +71,12 @@ export function addFlashcards(
 
 type Row = { id: string; tool: string; data_json: string; undone_json: string | null };
 
-function view(row: Row): ToolResultView | null {
+function view(db: Database.Database, row: Row): ToolResultView | null {
+  const undone = row.undone_json ? (JSON.parse(row.undone_json) as unknown) : null;
+  if (row.tool === "create_map") return mapView(db, row.id, JSON.parse(row.data_json) as MapData, undone as MapUndone | null);
+  if (row.tool === "create_quiz") return quizView(db, row.id, JSON.parse(row.data_json) as QuizData, undone as QuizUndone | null);
   if (row.tool !== "create_flashcards") return null;
   const data = JSON.parse(row.data_json) as FlashcardsData;
-  const undone = row.undone_json ? (JSON.parse(row.undone_json) as string[]) : null;
   return {
     id: row.id,
     tool: "create_flashcards",
@@ -80,7 +85,7 @@ function view(row: Row): ToolResultView | null {
     title: data.title,
     deck: data.deck,
     fronts: data.fronts,
-    undone: undone ? undone.length : null,
+    undone: undone ? (undone as string[]).length : null,
   };
 }
 
@@ -94,7 +99,7 @@ export function toolViews(db: Database.Database, chatId: string, ids: readonly s
     )
     .all(chatId, JSON.stringify(ids)) as Row[];
   return Object.fromEntries(rows.flatMap((row) => {
-    const shown = view(row);
+    const shown = view(db, row);
     return shown ? [[row.id, shown]] : [];
   }));
 }
@@ -112,11 +117,17 @@ export function linkToolResults(db: Database.Database, chatId: string, messageId
   ).run(messageId, chatId, JSON.stringify(ids));
 }
 
-function flashcardsRow(db: Database.Database, chatId: string, id: string): { data: FlashcardsData; undone: string[] | null } {
+function resultRow(db: Database.Database, chatId: string, id: string): Row {
   const row = db
-    .prepare(`SELECT tool, data_json, undone_json FROM chat_tool_results WHERE id = ? AND chat_id = ?`)
-    .get(id, chatId) as { tool: string; data_json: string; undone_json: string | null } | undefined;
-  if (!row || row.tool !== "create_flashcards") throw new Error("tool-result-missing");
+    .prepare(`SELECT id, tool, data_json, undone_json FROM chat_tool_results WHERE id = ? AND chat_id = ?`)
+    .get(id, chatId) as Row | undefined;
+  if (!row) throw new Error("tool-result-missing");
+  return row;
+}
+
+function flashcardsRow(db: Database.Database, chatId: string, id: string): { data: FlashcardsData; undone: string[] | null } {
+  const row = resultRow(db, chatId, id);
+  if (row.tool !== "create_flashcards") throw new Error("tool-result-missing");
   return {
     data: JSON.parse(row.data_json) as FlashcardsData,
     undone: row.undone_json ? (JSON.parse(row.undone_json) as string[]) : null,
@@ -124,45 +135,74 @@ function flashcardsRow(db: Database.Database, chatId: string, id: string): { dat
 }
 
 /**
- * «Annulla»: the result's cards leave the deck, reviewed or not, by the cards' own soft delete. A second undo changes
- * nothing. The cards the undo removed are kept, so «Ripristina» brings back exactly those.
+ * «Annulla»: what the result made leaves the app, and the record of what left is kept, so «Ripristina» brings back
+ * exactly that. Cards leave the deck by their own soft delete, reviewed or not. A map leaves Mappe and a quiz leaves the
+ * exam (`undoMap`, `undoQuiz`), and one still being made stops. A second undo changes nothing.
  */
 export function undoToolResult(db: Database.Database, chatId: string, id: string): ToolResultView {
   return db.transaction(() => {
-    const { data, undone } = flashcardsRow(db, chatId, id);
-    if (!undone) {
-      const removed = removeCards(db, data.cardIds);
-      db.prepare(`UPDATE chat_tool_results SET undone_json = ? WHERE id = ?`).run(JSON.stringify(removed), id);
+    const row = resultRow(db, chatId, id);
+    if (row.undone_json === null) {
+      const data = JSON.parse(row.data_json) as unknown;
+      const undone =
+        row.tool === "create_map"
+          ? undoMap(db, data as MapData)
+          : row.tool === "create_quiz"
+            ? undoQuiz(db, data as QuizData)
+            : removeCards(db, (data as FlashcardsData).cardIds);
+      db.prepare(`UPDATE chat_tool_results SET undone_json = ? WHERE id = ?`).run(JSON.stringify(undone), id);
     }
     return toolView(db, chatId, id)!;
   })();
 }
 
-/** «Ripristina»: the cards the undo removed come back with their reviews. */
+/** «Ripristina»: what the undo took away comes back, the cards with their reviews, a map or a quiz as it was. */
 export function restoreToolResult(db: Database.Database, chatId: string, id: string): ToolResultView {
   return db.transaction(() => {
-    const { undone } = flashcardsRow(db, chatId, id);
-    if (undone) {
-      restoreCards(db, undone);
+    const row = resultRow(db, chatId, id);
+    if (row.undone_json !== null) {
+      const data = JSON.parse(row.data_json) as unknown;
+      const undone = JSON.parse(row.undone_json) as unknown;
+      if (row.tool === "create_map") restoreMap(db, data as MapData, undone as MapUndone);
+      else if (row.tool === "create_quiz") restoreQuiz(db, data as QuizData, undone as QuizUndone);
+      else restoreCards(db, undone as string[]);
       db.prepare(`UPDATE chat_tool_results SET undone_json = NULL WHERE id = ?`).run(id);
     }
     return toolView(db, chatId, id)!;
   })();
 }
 
+/** «Riprova» or «Riprendi» on a map or a quiz whose job failed or stopped: the job goes on from where it was. */
+export function retryToolResult(db: Database.Database, chatId: string, id: string): ToolResultView {
+  return db.transaction(() => {
+    const row = resultRow(db, chatId, id);
+    if (row.undone_json !== null) throw new Error("tool-result-undone");
+    if (row.tool === "create_map") retryMap(db, JSON.parse(row.data_json) as MapData);
+    else if (row.tool === "create_quiz") retryQuiz(db, JSON.parse(row.data_json) as QuizData);
+    else throw new Error("tool-result-missing");
+    return toolView(db, chatId, id)!;
+  })();
+}
+
 /**
  * A reply that is answered again takes what its tools did with it: each of `ids` that still stands is undone as «Annulla»
- * does it, before the new answer runs, so the new answer's cards are not taken for duplicates of the old ones. Returns
- * the ids it undid, which `restoreToolResults` puts back if the old reply stays after all.
+ * does it, before the new answer runs, so the new answer's cards are not taken for duplicates of the old ones, and a map
+ * or a quiz still being made stops. A quiz the student handed in stays. Returns the ids it undid, which
+ * `restoreToolResults` puts back if the old reply stays after all.
  */
 export function takeBackToolResults(db: Database.Database, chatId: string, ids: readonly string[]): string[] {
   return ids.filter((id) => {
-    const row = db.prepare(`SELECT undone_json FROM chat_tool_results WHERE id = ? AND chat_id = ?`).get(id, chatId) as
-      | { undone_json: string | null }
+    const row = db.prepare(`SELECT tool, data_json, undone_json FROM chat_tool_results WHERE id = ? AND chat_id = ?`).get(id, chatId) as
+      | { tool: string; data_json: string; undone_json: string | null }
       | undefined;
     if (!row || row.undone_json !== null) return false;
-    undoToolResult(db, chatId, id);
-    return true;
+    try {
+      undoToolResult(db, chatId, id);
+      return true;
+    } catch (err) {
+      if (err instanceof Error && err.message === "tool-handed-in") return false;
+      throw err;
+    }
   });
 }
 
@@ -173,20 +213,24 @@ export function restoreToolResults(db: Database.Database, chatId: string, ids: r
 
 /**
  * The results of the chat that no reply shows: a reply that was answered again, stopped or failed was discarded with them.
- * Their cards leave the deck as «Annulla» takes them, reviews kept, and the rows go, so none points at a message that is
- * gone. `keep` are rows to leave alone.
+ * Their cards leave the deck as «Annulla» takes them, reviews kept. Their maps and quizzes go for good, with the jobs
+ * that made them, except a quiz the student handed in; one already undone is purged with its row, since only the row
+ * could bring it back. The rows go, so none points at a message that is gone. `keep` are rows to leave alone.
  */
 export function dropStrayToolResults(db: Database.Database, chatId: string, keep: readonly string[] = []): void {
   db.transaction(() => {
     const stray = db
       .prepare(
-        `SELECT id, data_json, undone_json FROM chat_tool_results r
+        `SELECT id, tool, data_json, undone_json FROM chat_tool_results r
          WHERE r.chat_id = ? AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.id = r.message_id AND m.chat_id = r.chat_id)`,
       )
-      .all(chatId) as Array<{ id: string; data_json: string; undone_json: string | null }>;
+      .all(chatId) as Row[];
     for (const row of stray) {
       if (keep.includes(row.id)) continue;
-      if (row.undone_json === null) removeCards(db, (JSON.parse(row.data_json) as FlashcardsData).cardIds);
+      const data = JSON.parse(row.data_json) as unknown;
+      if (row.tool === "create_map") dropMap(db, data as MapData, row.undone_json !== null);
+      else if (row.tool === "create_quiz") dropQuiz(db, data as QuizData, row.undone_json !== null);
+      else if (row.undone_json === null) removeCards(db, (data as FlashcardsData).cardIds);
       db.prepare(`DELETE FROM chat_tool_results WHERE id = ?`).run(row.id);
     }
   })();
@@ -222,6 +266,23 @@ export function describeToolBlocks(
 
 /** How the conversation handed to a model tells what a tool did: what the model would have read as the tool's result. */
 export function toolNote(view: ToolResultView): string {
+  if (view.tool === "create_map") {
+    const what = `the concept map "${view.topic}" in Mappe, under ${view.subject}`;
+    if (view.undone) return `[Pyxis tool create_map: started ${what}; the student then undid it, so it is not in Mappe.]`;
+    if (view.gone) return `[Pyxis tool create_map: created ${what}; the student later deleted it.]`;
+    if (view.job === "done") return `[Pyxis tool create_map: created ${what}, with ${view.concepts} concepts in ${view.branches} branches.]`;
+    if (view.job === "working") return `[Pyxis tool create_map: building ${what}; it is not finished yet.]`;
+    return `[Pyxis tool create_map: started ${what}, but the build stopped before the map was made.]`;
+  }
+  if (view.tool === "create_quiz") {
+    const what = `a quiz on "${view.topic}" in the exam ${view.exam}`;
+    if (view.undone) return `[Pyxis tool create_quiz: started ${what}; the student then undid it, so it is not in the exam.]`;
+    if (view.gone) return `[Pyxis tool create_quiz: created ${what}; the student later deleted it.]`;
+    if (view.handedIn) return `[Pyxis tool create_quiz: created ${what}, with ${view.count} questions; the student has handed it in.]`;
+    if (view.job === "done") return `[Pyxis tool create_quiz: created ${what}, with ${view.count} questions, for the student to take.]`;
+    if (view.job === "working") return `[Pyxis tool create_quiz: writing ${what}; it is not finished yet.]`;
+    return `[Pyxis tool create_quiz: started ${what}, but its writing stopped before it was finished.]`;
+  }
   const what = `${view.count} flashcard${view.count === 1 ? "" : "s"}${view.title ? ` (${view.title})` : ""}`;
   return view.undone !== null
     ? `[Pyxis tool create_flashcards: created ${what}; the student then undid them, so they are no longer in the deck.]`

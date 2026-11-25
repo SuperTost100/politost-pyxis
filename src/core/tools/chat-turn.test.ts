@@ -18,7 +18,7 @@ function setup() {
     JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }),
   );
   db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Fisica 1', 1)").run();
-  setTools(chatToolList(db));
+  setTools(chatToolList(db, false));
   return db;
 }
 

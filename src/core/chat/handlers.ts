@@ -14,7 +14,8 @@ import { chatUsage } from "../engine/usage";
 import { removeBlobLeftovers } from "../share/usage";
 import { sessionsOpened } from "./sessions";
 import { chatToolList } from "../tools/registry";
-import { restoreToolResult, undoToolResult } from "../tools/results";
+import { restoreToolResult, retryToolResult, toolView, undoToolResult } from "../tools/results";
+import { resumeToolJobs, setToolRunner } from "../tools/jobs";
 import { revokeChatTools, setTools } from "../tools/server";
 import type { ToolResultView } from "../../shared/ipc";
 import type { FigureEvent } from "../math/figures";
@@ -117,8 +118,10 @@ export function chatHandlers(
       })
     : null;
   setHeldFiles(held);
-  // The tools the model answering a chat may call (src/core/tools).
-  setTools(chatToolList(db));
+  // The tools the model answering a chat may call (src/core/tools). A map or a quiz a restart cut off goes on.
+  setToolRunner(files?.runner);
+  setTools(chatToolList(db, files !== undefined));
+  resumeToolJobs(db);
   // Files attached before the last quit and never sent have nothing left to send them.
   held?.sweep();
   // A chat opened and never sent has nothing to come back to either.
@@ -210,6 +213,12 @@ export function chatHandlers(
     },
     restoreTool(input: { chatId: string; resultId: string }) {
       return restoreToolResult(db, input.chatId, input.resultId);
+    },
+    toolView(input: { chatId: string; resultId: string }) {
+      return toolView(db, input.chatId, input.resultId);
+    },
+    retryTool(input: { chatId: string; resultId: string }) {
+      return retryToolResult(db, input.chatId, input.resultId);
     },
     rate(input: { messageId: string; reaction: "up" | "down" }) {
       return { reaction: rateMessage(db, input.messageId, input.reaction) };

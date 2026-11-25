@@ -209,3 +209,123 @@ export function seedToolChat(db: DatabaseSync, state: "working" | "done" | "undo
     "reported",
   );
 }
+
+/** The map a chat's map tool made in the fixture chats: «Dinamica», 14 concepts in 3 branches. */
+function lookMap() {
+  const branches: Array<[string, string[]]> = [
+    ["Forze", ["Peso", "Reazione normale", "Tensione", "Forza elastica"]],
+    ["Tre principi", ["Inerzia", "F = ma", "Azione e reazione"]],
+    ["Attrito", ["Statico", "Dinamico", "Coefficiente"]],
+  ];
+  const nodes = [{ id: "root", label: "Dinamica", parent: null as string | null, x: 0, y: 0, pinned: false, sources: [] as string[] }];
+  branches.forEach(([branch, leaves], b) => {
+    nodes.push({ id: `b${b}`, label: branch, parent: "root", x: 0, y: 0, pinned: false, sources: [] });
+    leaves.forEach((leaf, l) => nodes.push({ id: `b${b}l${l}`, label: leaf, parent: `b${b}`, x: 0, y: 0, pinned: false, sources: [] }));
+  });
+  const edges = nodes.filter((node) => node.parent).map((node) => ({ from: node.parent!, to: node.id }));
+  return { id: "look-map", title: "Dinamica", passageIds: [], grounding: "general", instruction: "Dinamica", graph: { layout: "tree", undo: null, nodes, edges } };
+}
+
+/** Ten questions of the fixture quiz: seven multiple choice and three open, as the mockup's card counts them. */
+function lookQuizBody(complete: boolean) {
+  const questions = Array.from({ length: complete ? 10 : 4 }, (_, i) =>
+    i < 7
+      ? { id: `look-q${i}`, stem: `Domanda ${i + 1} sulla dinamica`, options: ["A", "B", "C", "D"], explanation: "Perché.", answer: { kind: "mcq", picked: -1, correct: 0 } }
+      : { id: `look-q${i}`, stem: `Spiega il punto ${i + 1}`, explanation: "Perché.", answer: { kind: "open", answer: "", reference: "Così.", rubric: ["Uno", "Due"] } },
+  );
+  return { config: { count: 10, types: ["mcq", "open"], scope: "topic", feedback: true }, complete, questions };
+}
+
+/**
+ * A chat whose answer made a map or a quiz with the chat's tools, in one of three states: at work (its job running),
+ * the card of what it made, and the line after «Annulla». The job rows are written while the app runs, so the runner
+ * never picks a running one up.
+ */
+export function seedMadeChat(db: DatabaseSync, tool: "map" | "quiz", state: "working" | "done" | "undone") {
+  const id = `look-${tool}-${state}`;
+  if (!db.prepare("SELECT 1 FROM subjects WHERE id = 'look-phys'").get())
+    db.prepare("INSERT INTO subjects(id,name,created_at) VALUES('look-phys','Fisica 1',1)").run();
+  const map = tool === "map";
+  if (!map) {
+    db.prepare("INSERT INTO plans(id,subject_id,title,status,created_at,updated_at) VALUES('look-plan','look-phys','Fisica 1','ready',1,1)").run();
+    db.prepare("INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('look-topic','look-plan','Dinamica',0,1)").run();
+  }
+  db.prepare("INSERT INTO chats(id,title,subject,scope_json,created_at,updated_at) VALUES(?,?,?,?,1,2)").run(
+    id,
+    map ? "Mappa di Dinamica" : "Quiz sulla dinamica",
+    "Fisica 1",
+    JSON.stringify({ planId: map ? null : "look-plan", ids: [], subjectBy: "student" }),
+  );
+  db.prepare("INSERT INTO messages(id,chat_id,role,body,created_at) VALUES(?,?,?,?,1)").run(
+    `${id}-q`,
+    id,
+    "user",
+    map ? "Mi fai una mappa della dinamica dai miei appunti?" : "Preparami un quiz sulla dinamica, voglio vedere se sono pronta.",
+  );
+  const jobId = `${id}-job`;
+  const jobState = state === "working" ? "running" : "succeeded";
+  const attemptId = `${id}-attempt`;
+  const itemId = `${id}-item`;
+  db.prepare("INSERT INTO jobs(id,kind,params_json,state,progress,dismissed,created_at,updated_at) VALUES(?,?,?,?,0,?,1,1)").run(
+    jobId,
+    map ? "map-build" : "quiz-build",
+    JSON.stringify(map ? { input: { subjectId: "look-phys" }, parts: [], next: 0 } : { input: { planId: "look-plan", topicId: "look-topic" }, attemptId }),
+    jobState,
+    state === "undone" ? 1 : 0,
+  );
+  const stored = lookMap();
+  if (map && state === "done")
+    db.prepare(
+      "INSERT INTO maps(id,subject_id,plan_id,topic_id,graph_json,grounding,created_at) VALUES('look-map-row','look-phys',NULL,NULL,?,'general',1)",
+    ).run(JSON.stringify({ version: 1, maps: [stored] }));
+  const item = { id: itemId, plan_id: "look-plan", topic_id: "look-topic", kind: "quiz", body_json: JSON.stringify(lookQuizBody(state !== "working")), created_at: 1 };
+  const attempt = { id: attemptId, plan_id: "look-plan", item_id: itemId, started_at: 1, submitted_at: null };
+  if (!map && state !== "undone") {
+    db.prepare("INSERT INTO items(id,plan_id,topic_id,kind,body_json,created_at) VALUES(?,?,?,?,?,?)").run(
+      item.id, item.plan_id, item.topic_id, item.kind, item.body_json, item.created_at,
+    );
+    db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES(?,?,?,1)").run(attemptId, "look-plan", itemId);
+  }
+  const resultId = `0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4b${map ? "1" : "2"}${state === "working" ? "0" : state === "done" ? "1" : "2"}`;
+  db.prepare("INSERT INTO chat_tool_results(id,chat_id,message_id,tool,data_json,undone_json,created_at) VALUES(?,?,?,?,?,?,2)").run(
+    resultId,
+    id,
+    `${id}-a`,
+    map ? "create_map" : "create_quiz",
+    JSON.stringify(
+      map
+        ? { jobId, subjectId: "look-phys", subject: "Fisica 1", topic: "Dinamica", mapId: stored.id }
+        : { planId: "look-plan", exam: "Fisica 1", topic: "Dinamica", topicId: "look-topic", attemptId, itemId, count: 10 },
+    ),
+    state !== "undone"
+      ? null
+      : JSON.stringify(
+          map
+            ? { map: stored, stopped: false, dismissed: 0 }
+            : {
+                rows: { items: [item], item_passages: [], attempts: [attempt], attempt_answers: [], gap_answers: [], tool_sessions: [] },
+                events: [],
+                jobs: [{ id: jobId, dismissed: 0 }],
+                stopped: null,
+              },
+        ),
+  );
+  const [before, after] = map
+    ? [
+        "Ho raccolto dagli appunti i concetti della dinamica e come si legano tra loro.",
+        "Il ramo sull'attrito è il più povero: negli appunti c'è solo quello dinamico. Se vuoi lo completo dal libro.",
+      ]
+    : [
+        "Ti ho preparato un quiz su tutta la dinamica, con più domande sull'attrito, dove hai sbagliato l'ultima volta.",
+        "Quando lo consegni, il voto entra nel percorso come gli altri quiz.",
+      ];
+  db.prepare("INSERT INTO messages(id,chat_id,role,body,engine_provider,model_id,model_source,created_at) VALUES(?,?,?,?,?,?,?,2)").run(
+    `${id}-a`,
+    id,
+    "assistant",
+    `${before}\n\n\`\`\`pyxis-tool\n${resultId}\n\`\`\`\n\n${after}`,
+    "claude",
+    "claude-sonnet-5-5",
+    "reported",
+  );
+}

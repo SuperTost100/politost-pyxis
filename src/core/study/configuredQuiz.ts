@@ -12,6 +12,7 @@ import {
 } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
 import { requireTopic } from "./openLesson";
+import { foldText } from "../../shared/fold-text";
 import { flaggedIds } from "./flags";
 import { topicExercises } from "./exercises";
 import {
@@ -107,6 +108,11 @@ export type QuizInput = {
   types?: Array<(typeof quizKinds)[number]>;
   /** A gap drill (LES-03) is five questions; a quiz a student configures has QUIZ_MAX_QUESTIONS. */
   drill?: boolean;
+  /**
+   * What the quiz is about in the student's words, for a quiz asked for in a chat ("l'attrito"). Every question is on it,
+   * and a quiz across the exam reads the passages that mention it first.
+   */
+  focus?: string;
 };
 export type QuizSnapshot = {
   config: z.infer<typeof quizConfig>;
@@ -122,6 +128,8 @@ export type QuizSnapshot = {
   interests?: string;
   /** Stems the student marked wrong; the model must not ask them again. */
   rejected?: string[];
+  /** What every question is about, in the student's words (`QuizInput.focus`). */
+  focus?: string;
   provenance?: { provider: string; model: string };
 };
 
@@ -181,6 +189,13 @@ export function prepareQuiz(
   // A page quiz without that page's text would silently turn into general knowledge.
   if (config.scope === "page" && !allPassages.length)
     throw new Error("page-empty");
+  const focus = input.focus?.trim() || undefined;
+  // A quiz across the exam on one subject matter reads the passages that name it, when some do, rather than a sample of
+  // the whole exam that may hold none of them.
+  if (focus && config.scope === "plan") {
+    const named = mentioning(allPassages, focus);
+    if (named.length) allPassages.splice(0, allPassages.length, ...named);
+  }
   const count = Math.min(80, allPassages.length);
   const passages = Array.from(
     { length: count },
@@ -216,7 +231,26 @@ export function prepareQuiz(
       input.planId,
       config.scope === "topic" ? input.topicId : undefined,
     ),
+    ...(focus ? { focus } : {}),
   };
+}
+
+/**
+ * The passages whose text holds a word of `focus` of four letters or more, ignoring case and accents, most words first.
+ * shortcut: plain word matching, no stemming or embeddings, so "attriti" misses "attrito"; the search index would do
+ * better once a quiz from the chat needs it.
+ */
+function mentioning<T extends { text: string }>(passages: T[], focus: string): T[] {
+  const words = [...new Set(foldText(focus).split(/[^\p{L}\p{N}]+/u).filter((word) => word.length >= 4))];
+  if (!words.length) return [];
+  return passages
+    .map((passage, index) => {
+      const text = foldText(passage.text);
+      return { passage, index, hits: words.filter((word) => text.includes(word)).length };
+    })
+    .filter((entry) => entry.hits > 0)
+    .sort((a, b) => b.hits - a.hits || a.index - b.index)
+    .map((entry) => entry.passage);
 }
 
 /** Stems of questions the student marked wrong in this plan (or one topic of it), newest first. */
@@ -390,6 +424,7 @@ export async function generateQuiz(
         ...(snapshot.rejected?.length
           ? { rejectedQuestions: snapshot.rejected }
           : {}),
+        ...(snapshot.focus ? { focus: snapshot.focus } : {}),
       }),
     });
     snapshot.provenance = { provider: result.provider, model: result.model };

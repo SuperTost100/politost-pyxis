@@ -39,7 +39,7 @@ import { radialFixtures, storedGraph } from "../fixtures/maps";
 import type Database from "better-sqlite3";
 import { partMarkdown, seedOutline, type SeedPart } from "../../src/core/study/test-parts";
 import { figureKey } from "../../src/shared/smart-text";
-import { seedFigureChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat, seedToolChat, writeBlob } from "./chat-look-seed";
+import { seedFigureChat, seedMadeChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat, seedToolChat, writeBlob } from "./chat-look-seed";
 import { photoPng } from "./pictures";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
@@ -446,6 +446,13 @@ const routes = [
   ["ask-tool-working", "/ask/look-tool-working"],
   ["ask-tool-done", "/ask/look-tool-done"],
   ["ask-tool-undone", "/ask/look-tool-undone"],
+  // The map and the quiz the chat's tools made: at work after the reply ended, the card, and the line after «Annulla».
+  ["ask-map-working", "/ask/look-map-working"],
+  ["ask-map-done", "/ask/look-map-done"],
+  ["ask-map-undone", "/ask/look-map-undone"],
+  ["ask-quiz-working", "/ask/look-quiz-working"],
+  ["ask-quiz-done", "/ask/look-quiz-done"],
+  ["ask-quiz-undone", "/ask/look-quiz-undone"],
   ["ask-photo-viewer", "/ask/look-files"],
   // The chat panel and search; the subject chip's menu on a chat with a very long subject, and on a new chat's first page.
   ["ask-panel", "/ask/audit-chat"],
@@ -3605,7 +3612,22 @@ async function openState(page: Page, name: string) {
       await expect(page.getByRole("button", { name: both("Annulla", "Undo") })).toBeVisible();
       break;
     case "ask-tool-undone":
+    case "ask-map-undone":
+    case "ask-quiz-undone":
       await expect(page.getByRole("button", { name: both("Ripristina", "Restore") })).toBeVisible();
+      break;
+    case "ask-map-working":
+    case "ask-quiz-working":
+      await expect(page.getByText(name === "ask-map-working" ? both("Creo la mappa…", "Creating the map…") : both("Creo il quiz…", "Creating the quiz…"))).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Ferma", "Stop") })).toBeVisible();
+      break;
+    case "ask-map-done":
+      await expect(page.getByText(/^14 (concetti in 3 rami|concepts in 3 branches)\. /)).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Annulla", "Undo") })).toBeVisible();
+      break;
+    case "ask-quiz-done":
+      await expect(page.getByText(both("Dinamica, 10 domande", "Dinamica, 10 questions"))).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Annulla", "Undo") })).toBeVisible();
       break;
     case "ask-stopped":
       await expect(page.getByText(both("Interrotta", "Stopped"))).toBeVisible();
@@ -5880,9 +5902,18 @@ function lookChats(name: string) {
       DELETE FROM chats WHERE id LIKE 'look-%';
       DELETE FROM sources WHERE id LIKE 'look-%';
       DELETE FROM cards WHERE id LIKE 'look-%';
+      DELETE FROM jobs WHERE id LIKE 'look-%';
+      DELETE FROM maps WHERE id LIKE 'look-%';
+      DELETE FROM attempts WHERE id LIKE 'look-%';
+      DELETE FROM items WHERE id LIKE 'look-%';
+      DELETE FROM plans WHERE id LIKE 'look-%';
       DELETE FROM subjects WHERE id LIKE 'look-%';`);
     if (name === "ask-figure" || name === "ask-viewer") seedFigureChat(db);
     else if (name.startsWith("ask-tool-")) seedToolChat(db, name.slice("ask-tool-".length) as "working" | "done" | "undone");
+    else if (name.startsWith("ask-map-") || name.startsWith("ask-quiz-")) {
+      const [, tool, state] = name.split("-") as [string, "map" | "quiz", "working" | "done" | "undone"];
+      seedMadeChat(db, tool, state);
+    }
     else if (name === "ask-outline") seedOutlineChat(db);
     else if (name === "ask-stopped") seedStoppedChat(db);
     else if (name === "ask-photo-viewer") seedSentFilesChat(db, auditUserData);

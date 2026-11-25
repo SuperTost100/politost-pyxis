@@ -3100,7 +3100,50 @@
       "undone_one": "{{count}} flashcard annullata: non è più nel mazzo.",
       "undone_other": "{{count}} flashcard annullate: non sono più nel mazzo.",
       "restore": "Ripristina",
-      "failed": "Non ha funzionato. Riprova."
+      "failed": "Non ha funzionato. Riprova.",
+      "workingMap": "Creo la mappa…",
+      "workingQuiz": "Creo il quiz…",
+      "stop": "Ferma",
+      "retry": "Riprova",
+      "resume": "Riprendi",
+      "map": {
+        "title": "Mappa creata",
+        "concepts_one": "{{count}} concetto",
+        "concepts_other": "{{count}} concetti",
+        "branches_one": "in {{count}} ramo",
+        "branches_other": "in {{count}} rami",
+        "where": "È in <place>Mappe</place>, sotto {{subject}}.",
+        "undone": "Mappa annullata: non è più in Mappe.",
+        "failed": "La mappa non è stata creata.",
+        "stopped": "La creazione della mappa si è fermata.",
+        "gone": "La mappa non c’è più: è stata eliminata da Mappe."
+      },
+      "quiz": {
+        "title": "Quiz creato",
+        "line_one": "{{topic}}, {{count}} domanda",
+        "line_other": "{{topic}}, {{count}} domande",
+        "kind": {
+          "mcq_one": "{{count}} a scelta multipla",
+          "mcq_other": "{{count}} a scelta multipla",
+          "tf_one": "{{count}} vero o falso",
+          "tf_other": "{{count}} vero o falso",
+          "completion_one": "{{count}} da completare",
+          "completion_other": "{{count}} da completare",
+          "matching_one": "{{count}} da abbinare",
+          "matching_other": "{{count}} da abbinare",
+          "open_one": "{{count}} aperta",
+          "open_other": "{{count}} aperte"
+        },
+        "minutes_one": "circa {{count}} minuto",
+        "minutes_other": "circa {{count}} minuti",
+        "where": "È nell’esame <place>{{exam}}</place>, tra le cose da finire.",
+        "whereHandedIn": "È nell’esame <place>{{exam}}</place>.",
+        "handedIn": "L’hai consegnato, quindi il voto resta e non si può annullare.",
+        "undone": "Quiz annullato: non è più nell’esame.",
+        "failed": "Il quiz non è stato creato.",
+        "stopped": "La scrittura del quiz si è fermata.",
+        "gone": "Il quiz non c’è più: è stato eliminato dall’esame."
+      }
     }
   },
   "math": {

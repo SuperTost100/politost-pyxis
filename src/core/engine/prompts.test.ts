@@ -39,16 +39,18 @@ describe("prompt templates", () => {
       expect(loadTemplate(id).body, id).toContain(
         "The student reads the explanation after a wrong pick too, so never call any option but the answer correct",
       );
-    expect(loadTemplate("quiz.batch").version).toBe("quiz-5");
+    expect(loadTemplate("quiz.batch").version).toBe("quiz-6");
     // The chat has one template, chat.tutor, the same for the whole chat: it explains, solves, guides and checks as the
     // message asks, with the maths checks and the figure instruction in every answer. The language and the kinds that can
     // be drawn come in the context block of each message. The lesson templates take the figure instruction from the
     // partial too and keep their versions: a part's cache key holds the version of lesson.part, so a new one would mark
     // every written part as older.
-    expect(loadTemplate("chat.tutor").version).toBe("4");
-    // The flashcard tool is named in a fixed paragraph, the same whether or not a turn has the tool, so the system prompt
-    // stays the same for the whole chat; the tool's own description lives in its server (src/core/tools/flashcards.ts).
-    expect(loadTemplate("chat.tutor").body).toContain("Pyxis may give you a tool, create_flashcards,");
+    expect(loadTemplate("chat.tutor").version).toBe("5");
+    // The chat's tools are named in a fixed paragraph, the same whether or not a turn has them, so the system prompt stays
+    // the same for the whole chat; each tool's own description lives in its server (src/core/tools). Version 5 adds the
+    // map and the quiz, and a concept map asked for is made with its tool rather than drawn as a figure.
+    expect(loadTemplate("chat.tutor").body).toContain("(create_flashcards), a concept map to Mappe (create_map) or a quiz to the exam (create_quiz)");
+    expect(loadTemplate("chat.tutor").body).toContain("a concept map the student asks for is made with create_map");
     expect(loadTemplate("lesson.part").version).toBe("part-1");
     for (const id of ["lesson.write", "lesson.part", "chat.tutor"] as const) {
       // The instruction is the partial on a line of its own, so its tagged lines can be left out one by one.

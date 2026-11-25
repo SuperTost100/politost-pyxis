@@ -23,6 +23,9 @@ export function staleFamilies(job: Pick<JobView, "kind" | "state">): StaleFamily
   // shows there at once, and the finished map appears without a reload.
   if (job.kind === "map-build") keys.push("map-build");
   if (job.kind === "map-build" && finished.has(job.state)) keys.push("maps", "map", "maps-all");
+  // A map or a quiz made from a chat shows its job's state in the reply (`ToolResult`): at work, done, failed or stopped,
+  // and handed in once its grading starts.
+  if (job.kind === "map-build" || job.kind === "quiz-build" || job.kind === "quiz-grade") keys.push("tool-result");
   // An open part page and the path's parts read a part's state from these, so the part shows once it is written. A
   // written part changes the suggestion's Continua too.
   if (job.kind === "lesson-part") keys.push("part", "parts");

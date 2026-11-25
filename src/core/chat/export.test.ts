@@ -276,6 +276,35 @@ describe("exportChat", () => {
     expect(reply("en")).toContain("*Pyxis created 8 flashcards sui tre principi in the Fisica 1 deck, then undone: they are no longer in the deck.*");
   });
 
+  it("writes a line for a map and a quiz made in the chat, as they stand when exported", () => {
+    const db = openDatabase(":memory:");
+    const mapId = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a51";
+    const quizId = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a52";
+    const blocks = [mapId, quizId].map((id) => "```pyxis-tool\n" + id + "\n```").join("\n\n");
+    db.exec(`
+      INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Fisica 1', 1);
+      INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('mech', 'phys', 'Meccanica', 'ready', 1, 1);
+      INSERT INTO chats (id, title, created_at, updated_at) VALUES ('c', 'Dinamica', 1, 1);
+      INSERT INTO messages (id, chat_id, role, body, created_at) VALUES ('u', 'c', 'user', 'Mappa e quiz.', 1);
+      INSERT INTO messages (id, chat_id, role, body, created_at) VALUES ('r', 'c', 'assistant', '${blocks.replace(/\n/g, "' || char(10) || '")}', 2);
+      INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at) VALUES ('j', 'map-build', '{}', 'running', 0, 1, 1);
+      INSERT INTO chat_tool_results (id, chat_id, message_id, tool, data_json, created_at) VALUES
+        ('${mapId}', 'c', 'r', 'create_map', '{"jobId":"j","subjectId":"phys","subject":"Fisica 1","topic":"Dinamica","mapId":"m"}', 2),
+        ('${quizId}', 'c', 'r', 'create_quiz', '{"planId":"mech","exam":"Meccanica","topic":"Attrito","topicId":null,"attemptId":"a","itemId":"i","count":10}', 2);
+    `);
+    const reply = (language: "en" | "it") => exportChat(db, "c", language).markdown.split("## Pyxis\n\n")[1]!.trim();
+    // The map is still being built; the quiz's rows are gone, as after a delete in the exam.
+    expect(reply("it")).toBe(
+      "*Pyxis sta creando la mappa «Dinamica» in Mappe, sotto Fisica 1.*\n\n*Pyxis ha creato un quiz di 10 domande su Attrito nell'esame Meccanica, poi eliminato.*",
+    );
+    expect(reply("en")).toBe(
+      '*Pyxis is building the concept map "Dinamica" in Maps, under Fisica 1.*\n\n*Pyxis created a 10-question quiz on Attrito in the exam Meccanica, later deleted.*',
+    );
+    db.prepare("UPDATE chat_tool_results SET undone_json = ? WHERE id = ?").run(JSON.stringify({ map: null, stopped: true, dismissed: null }), mapId);
+    expect(reply("it")).toContain("*Pyxis ha creato la mappa «Dinamica» in Mappe, sotto Fisica 1, poi annullata: non è più in Mappe.*");
+    db.close();
+  });
+
   it("leaves a fence in the tool's language as it is in the student's own message", () => {
     const db = openDatabase(":memory:");
     db.exec(`

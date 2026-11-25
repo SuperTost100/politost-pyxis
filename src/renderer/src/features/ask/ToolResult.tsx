@@ -1,19 +1,30 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
-import type { ToolResultView } from "@shared/ipc";
+import type { FlashcardsResultView, MapResultView, QuizResultView, ToolResultView } from "@shared/ipc";
 import { Button } from "../../components/Button";
 import { Icon } from "../../components/Icon";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { invoke } from "../../lib/ipc";
+import { useEngineError } from "../../lib/engineError";
+import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
+import { MapThumb } from "../maps/MapThumb";
+import { mapPath } from "../maps/mapPath";
+import "../maps/MapThumb.css";
 import "./ToolResult.css";
+
+type Request = "chats.undoTool" | "chats.restoreTool" | "chats.retryTool";
 
 /**
  * What a Pyxis tool did, in the reply where the model called it. `line` is the body of the reply's ```pyxis-tool block:
  * `pending:<tool>` while the tool runs, else the result's id, which `view` describes. A result the reply does not carry
  * shows nothing. A state reached while the card is on screen grows out of the one before it: the working shape becomes
  * the card, and «Annulla» folds the card into its one line.
+ *
+ * A map or a quiz is made by a background job after the tool call returned, so its card reads the result again whenever
+ * that job moves (`chats.toolView`, refreshed by `staleFamilies`), and stays at work until the job ends, after the reply
+ * has ended and after a restart too.
  */
 export function ToolResult({
   chatId,
@@ -27,70 +38,56 @@ export function ToolResult({
   /** Hears the result's new state after «Annulla» or «Ripristina», for a reply still being written. */
   onView?: (view: ToolResultView) => void;
 }) {
+  const client = useQueryClient();
   const pending = line.startsWith("pending:");
   // The state the card was first drawn in: a later one is a change the student sees happen, so it animates.
   const [state, setState] = useState<ToolResultView | undefined>(view);
   useEffect(() => setState(view), [view]);
+  const followsJob = !pending && !!chatId && (view?.tool === "create_map" || view?.tool === "create_quiz");
+  const key = ["tool-result", chatId, line];
+  const live = useQuery({
+    queryKey: key,
+    queryFn: () => invoke("chats.toolView", { chatId, resultId: line }),
+    enabled: followsJob,
+  });
+  const shown = followsJob && live.data ? live.data : state;
   const first = useRef(pending ? "pending" : stateKey(view));
-  if (pending) return <Working />;
-  if (!state) return null;
-  const arriving = first.current !== stateKey(state);
-  return (
-    <Flashcards
-      chatId={chatId}
-      view={state}
-      arriving={arriving}
-      onChange={(next) => {
-        setState(next);
-        onView?.(next);
-      }}
-    />
-  );
+  if (pending) return <Working tool={line.slice("pending:".length)} />;
+  if (!shown) return null;
+  const arriving = first.current !== stateKey(shown);
+  const onChange = (next: ToolResultView) => {
+    setState(next);
+    if (followsJob) client.setQueryData(key, next);
+    onView?.(next);
+  };
+  if (shown.tool === "create_flashcards")
+    return <Flashcards chatId={chatId} view={shown} arriving={arriving} onChange={onChange} />;
+  return <Made chatId={chatId} view={shown} arriving={arriving} onChange={onChange} />;
 }
 
-const stateKey = (view: ToolResultView | undefined) => (view ? (view.undone === null ? "done" : "undone") : "none");
-
-/** The tool at work: one quiet line and a grey shape where the card will be. */
-function Working() {
-  const { t } = useTranslation();
-  return (
-    <div className="px-toolres is-working" role="status">
-      <span className="small px-toolres-working-line">{t("components.toolResult.working")}</span>
-      <div className="px-toolres-ghost" aria-hidden>
-        <i className="px-toolres-ghost-bar is-title" />
-        <i className="px-toolres-ghost-bar" />
-        <i className="px-toolres-ghost-bar is-short" />
-      </div>
-    </div>
-  );
+function stateKey(view: ToolResultView | undefined): string {
+  if (!view) return "none";
+  if (view.tool === "create_flashcards") return view.undone === null ? "done" : "undone";
+  return view.undone ? "undone" : view.gone ? "gone" : view.job;
 }
 
-function Flashcards({
-  chatId,
-  view,
-  arriving,
-  onChange,
-}: {
-  chatId: string;
-  view: ToolResultView;
-  arriving: boolean;
-  onChange: (view: ToolResultView) => void;
-}) {
+/** «Annulla», «Ripristina» or «Riprova» on a result, with the keyboard kept in the card and the lists it changed refreshed. */
+function useResultAction(chatId: string, view: ToolResultView, onChange: (view: ToolResultView) => void) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   // After «Annulla» the focus goes to «Ripristina», and back to «Annulla» after it, so the keyboard stays in the card.
   const after = useRef<HTMLDivElement>(null);
   const moved = useRef(false);
+  const shape = stateKey(view);
   useEffect(() => {
     if (!moved.current) return;
     moved.current = false;
     after.current?.querySelector<HTMLButtonElement>("button.px-toolres-act")?.focus();
-  }, [view.undone]);
+  }, [shape]);
 
-  async function act(request: "chats.undoTool" | "chats.restoreTool") {
+  async function act(request: Request) {
     if (!chatId || busy) return;
     setBusy(true);
     setFailed(false);
@@ -98,9 +95,15 @@ function Flashcards({
       const next = await invoke(request, { chatId, resultId: view.id });
       moved.current = true;
       onChange(next);
-      // The chat as read and the card browser show the change too.
+      // The chat as read shows the change, and so does every page that lists what the tool made.
       void client.invalidateQueries({ queryKey: ["chat", chatId] });
-      void client.invalidateQueries({ queryKey: ["card-browse"] });
+      const families =
+        view.tool === "create_flashcards"
+          ? ["card-browse"]
+          : view.tool === "create_map"
+            ? ["maps-all", "maps", "map", "map-build", "jobs", "jobs-finished"]
+            : ["unfinished", "plans", "plan", "quiz-session", "jobs", "jobs-finished"];
+      for (const family of families) void client.invalidateQueries({ queryKey: [family] });
     } catch {
       setFailed(true);
     } finally {
@@ -113,18 +116,98 @@ function Flashcards({
       {t("components.toolResult.failed")}
     </p>
   ) : null;
+  return { act, busy, failure, after };
+}
+
+/** The tool at work: one quiet line and a grey shape where the card will be. A map or a quiz can be stopped there. */
+function Working({ tool, onStop, busy, failure }: { tool: string; onStop?: () => void; busy?: boolean; failure?: ReactNode }) {
+  const { t } = useTranslation();
+  const map = tool === "create_map";
+  const wide = map || tool === "create_quiz";
+  return (
+    <div className={`px-toolres is-working${wide ? " is-wide" : ""}`}>
+      <div className="px-toolres-working-head">
+        <span className="small px-toolres-working-line" role="status">
+          {t(map ? "components.toolResult.workingMap" : tool === "create_quiz" ? "components.toolResult.workingQuiz" : "components.toolResult.working")}
+        </span>
+        {onStop ? (
+          <Button variant="ghost" size="sm" icon="square" disabled={busy} onClick={onStop} className="px-toolres-act">
+            {t("components.toolResult.stop")}
+          </Button>
+        ) : null}
+      </div>
+      <div className="px-toolres-ghost" aria-hidden>
+        {map ? <i className="px-toolres-ghost-preview" /> : null}
+        <div className="px-toolres-ghost-bars">
+          <i className="px-toolres-ghost-bar is-title" />
+          <i className="px-toolres-ghost-bar" />
+          <i className="px-toolres-ghost-bar is-short" />
+        </div>
+      </div>
+      {failure}
+    </div>
+  );
+}
+
+/** One line in the card's place: undone, failed, stopped or gone, with the one action that fits. */
+function Line({
+  text,
+  detail,
+  action,
+  arriving,
+  failure,
+  lineRef,
+  wide = false,
+}: {
+  /** A map's or a quiz's line, as wide as its card. */
+  wide?: boolean;
+  text: string;
+  detail?: ReactNode;
+  action?: ReactNode;
+  arriving: boolean;
+  failure?: ReactNode;
+  lineRef?: Ref<HTMLDivElement>;
+}) {
+  return (
+    <div ref={lineRef} className={`px-toolres is-undone${wide ? " is-wide" : ""}${arriving ? " is-arriving" : ""}`}>
+      <p className="small px-toolres-undone-line" role="status">
+        {text}
+        {detail ? <span className="px-toolres-detail"> {detail}</span> : null}
+      </p>
+      {action}
+      {failure}
+    </div>
+  );
+}
+
+function Flashcards({
+  chatId,
+  view,
+  arriving,
+  onChange,
+}: {
+  chatId: string;
+  view: FlashcardsResultView;
+  arriving: boolean;
+  onChange: (view: ToolResultView) => void;
+}) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { act, busy, failure, after } = useResultAction(chatId, view, onChange);
 
   if (view.undone !== null)
     return (
-      <div ref={after} className={arriving ? "px-toolres is-undone is-arriving" : "px-toolres is-undone"}>
-        <p className="small px-toolres-undone-line" role="status">
-          {t("components.toolResult.undone", { count: view.undone })}
-        </p>
-        <Button variant="ghost" size="sm" icon="rotate-ccw" disabled={busy || !chatId} onClick={() => void act("chats.restoreTool")} className="px-toolres-act">
-          {t("components.toolResult.restore")}
-        </Button>
-        {failure}
-      </div>
+      <Line
+        lineRef={after}
+        arriving={arriving}
+        text={t("components.toolResult.undone", { count: view.undone })}
+        action={
+          <Button variant="ghost" size="sm" icon="rotate-ccw" disabled={busy || !chatId} onClick={() => void act("chats.restoreTool")} className="px-toolres-act">
+            {t("components.toolResult.restore")}
+          </Button>
+        }
+        failure={failure}
+      />
     );
 
   const more = view.count - view.fronts.length;
@@ -163,6 +246,149 @@ function Flashcards({
         </Button>
       </div>
       {failure}
+    </section>
+  );
+}
+
+/** A map or a quiz made by a background job: at work, done, failed or stopped, undone, or deleted since. */
+function Made({
+  chatId,
+  view,
+  arriving,
+  onChange,
+}: {
+  chatId: string;
+  view: MapResultView | QuizResultView;
+  arriving: boolean;
+  onChange: (view: ToolResultView) => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
+  const describeEngineError = useEngineError(navigate);
+  const { act, busy, failure, after } = useResultAction(chatId, view, onChange);
+  const map = view.tool === "create_map";
+  const own = (key: string) => `components.toolResult.${map ? "map" : "quiz"}.${key}`;
+  const button = (label: string, request: Request, icon?: "rotate-ccw" | "refresh-cw") => (
+    <Button variant="ghost" size="sm" icon={icon} disabled={busy || !chatId} onClick={() => void act(request)} className="px-toolres-act">
+      {label}
+    </Button>
+  );
+
+  if (view.undone)
+    return (
+      <Line
+        wide
+        lineRef={after}
+        arriving={arriving}
+        text={t(own("undone"))}
+        action={button(t("components.toolResult.restore"), "chats.restoreTool", "rotate-ccw")}
+        failure={failure}
+      />
+    );
+  if (view.gone) return <Line wide arriving={arriving} text={t(own("gone"))} />;
+  if (view.job === "working")
+    return <Working tool={view.tool} onStop={() => void act("chats.undoTool")} busy={busy} failure={failure} />;
+  if (view.job === "failed") {
+    const reason = view.error ? describeEngineError(jobErrorKey(view.error), jobErrorEngine(view.error)).text : t("jobs.failedGeneral");
+    // A map whose words found nothing in the material reads nothing new on a retry: the student asks again in other words.
+    const retry = view.error !== "map-nothing-matched";
+    return (
+      <Line
+        wide
+        lineRef={after}
+        arriving={arriving}
+        text={t(own("failed"))}
+        detail={reason}
+        action={retry ? button(t("components.toolResult.retry"), "chats.retryTool", "refresh-cw") : undefined}
+        failure={failure}
+      />
+    );
+  }
+  if (view.job === "cancelled" || view.job === "interrupted")
+    return (
+      <Line
+        wide
+        lineRef={after}
+        arriving={arriving}
+        text={t(own("stopped"))}
+        detail={t(view.job === "interrupted" ? "jobs.problem.interrupted_one" : "jobs.problem.cancelled_one")}
+        action={button(t("components.toolResult.resume"), "chats.retryTool")}
+        failure={failure}
+      />
+    );
+
+  const className = `px-toolres is-done is-made${map ? " is-map" : ""}${arriving ? " is-arriving" : ""}`;
+  const open = () =>
+    navigate(
+      view.tool === "create_map"
+        ? mapPath({ subjectId: view.subjectId, id: view.mapId })
+        : `/plans/${view.planId}/quiz/${view.routeTopicId ?? ""}?attempt=${encodeURIComponent(view.attemptId)}`,
+    );
+  const link = (to: string) => (
+    <a
+      href={`#${to}`}
+      className="px-toolres-link"
+      onClick={(event) => {
+        event.preventDefault();
+        navigate(to);
+      }}
+    />
+  );
+  let heading: string;
+  let details: ReactNode;
+  if (view.tool === "create_map") {
+    heading = view.topic;
+    details = (
+      <>
+        {`${t("components.toolResult.map.concepts", { count: view.concepts })} ${t("components.toolResult.map.branches", { count: view.branches })}. `}
+        <Trans i18nKey="components.toolResult.map.where" values={{ subject: view.subject }} components={{ place: link("/maps") }} />
+      </>
+    );
+  } else {
+    const kinds = (["mcq", "tf", "completion", "matching", "open"] as const).flatMap((kind) =>
+      view.kinds[kind] ? [t(`components.toolResult.quiz.kind.${kind}`, { count: view.kinds[kind] })] : [],
+    );
+    const list = new Intl.ListFormat(i18n.language, { type: "conjunction" }).format(kinds);
+    heading = t("components.toolResult.quiz.line", { topic: view.topic, count: view.count });
+    details = (
+      <>
+        {kinds.length ? `${list}, ${t("components.toolResult.quiz.minutes", { count: view.minutes })}. ` : null}
+        <Trans
+          i18nKey={view.handedIn ? "components.toolResult.quiz.whereHandedIn" : "components.toolResult.quiz.where"}
+          values={{ exam: view.exam }}
+          components={{ place: link(`/plans/${view.planId}`) }}
+        />
+      </>
+    );
+  }
+  return (
+    <section ref={after} className={className} aria-label={t(own("title"))}>
+      {view.tool === "create_map" ? (
+        <div className="px-toolres-preview" aria-hidden>
+          <MapThumb shape={view.shape} />
+        </div>
+      ) : null}
+      <div className="px-toolres-body">
+        <p className="label px-toolres-title">
+          <Icon name={map ? "network" : "list-checks"} size={16} />
+          {t(own("title"))}
+        </p>
+        <p className="title-2 px-toolres-heading">{heading}</p>
+        <p className="small px-toolres-where">{details}</p>
+        <div className="px-toolres-actions">
+          <Button variant="secondary" size="sm" onClick={open}>
+            {t("components.toolResult.open")}
+          </Button>
+          {view.tool === "create_quiz" && view.handedIn ? (
+            <p className="small px-toolres-more px-toolres-kept">{t("components.toolResult.quiz.handedIn")}</p>
+          ) : (
+            <Button variant="ghost" size="sm" icon="undo-2" disabled={busy || !chatId} onClick={() => void act("chats.undoTool")} className="px-toolres-act">
+              {t("components.toolResult.undo")}
+            </Button>
+          )}
+        </div>
+        {failure}
+      </div>
     </section>
   );
 }

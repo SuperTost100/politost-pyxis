@@ -50,7 +50,7 @@ function setup(provider: string, model: string, effort?: string) {
   const { sourceId } = importSmartbook(db, book);
   db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Fisica 1', 1)").run();
   db.prepare("UPDATE sources SET subject_id = 'phys' WHERE id = ?").run(sourceId);
-  setTools(chatToolList(db));
+  setTools(chatToolList(db, false));
   return db;
 }
 

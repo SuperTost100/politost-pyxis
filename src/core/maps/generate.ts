@@ -55,6 +55,11 @@ type Params = {
   built?: Built[];
   /** What the student asked for ("only the theorems, with proofs"), trimmed and never empty. It goes to every part's call. */
   instruction?: string;
+  /**
+   * The map's own title and root, for a map asked for in a chat on one topic of a subject ("Dinamica" under Fisica 1).
+   * Without it the map takes the topic's or subject's name.
+   */
+  title?: string;
 };
 /** What a map is made of. A request without an instruction needs at least eight concepts; one with it may be smaller. */
 function mapShape(minNodes: number) {
@@ -286,7 +291,7 @@ function scopeTitle(db: Database.Database, input: Input): string {
 }
 /** Joins the parts that gave a map; a part of a focused request that found nothing is left out. */
 function joinParts(db: Database.Database, params: Params, built: Built[]): StoredMap {
-  const title = scopeTitle(db, params.input);
+  const title = params.title ?? scopeTitle(db, params.input);
   const given = built.filter((part): part is Built & { graph: ConceptGraph } => part.graph !== null);
   const passageIds = [...new Set(given.flatMap((part) => part.passageIds))];
   return {
@@ -333,7 +338,7 @@ export function registerMapJobs(
             params.mapId = uuidv7();
             params.next = 0;
           }
-          const title = scopeTitle(db, params.input);
+          const title = params.title ?? scopeTitle(db, params.input);
           while (params.next < params.parts.length) {
             ctx.signal.throwIfAborted();
             const built = await buildPart(
@@ -367,6 +372,20 @@ function aboutScope(db: Database.Database, input: Input) {
     | string
     | undefined;
   return subject ? { topic: subject } : {};
+}
+/**
+ * Starts the build of a map a chat asked for: one topic of a subject, which is both the map's instruction and its title.
+ * It is always a new build, since the chat's result follows this one job; a build of the same words from Mappe is left
+ * alone. Returns the job and the map's id, which the finished build stores.
+ */
+export function startChatMap(
+  db: Database.Database,
+  runner: Runner,
+  subjectId: string,
+  topic: string,
+): { jobId: string; mapId: string } {
+  const params: Params = { ...prepareMaps(db, { subjectId }, topic), title: topic };
+  return { jobId: runner.start("map-build", params), mapId: params.mapId! };
 }
 /**
  * The scope's newest map-build job, as `columns`, or the scope's job `jobId` when one is given. A subject's job has no
