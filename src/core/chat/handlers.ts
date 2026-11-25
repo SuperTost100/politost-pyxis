@@ -24,7 +24,8 @@ import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, chatSub
  * Recorded reply for tests. With a delay it waits, then streams the words, so the thinking and streaming states can be
  * seen. A line `@@tool <name> <json arguments>` calls that Pyxis tool through the turn's own server, as a CLI would, with
  * the text before it streamed first and the text after it streamed once the tool answered. An `_hold` path in the
- * arguments keeps the call at work until the test creates that file.
+ * arguments keeps the call at work until the test creates that file, and a `_when` path makes the call only while that
+ * file exists, so one recorded reply serves tests with the call and without it.
  */
 function recordedReply(text: string, delayMs: number) {
   return async (input: { signal?: AbortSignal; onDelta?: (text: string) => void; tools?: TurnInput["tools"] }) => {
@@ -53,7 +54,11 @@ function recordedReply(text: string, delayMs: number) {
       shown += piece;
       const tool = parts[at + 1];
       if (!tool || !input.tools) continue;
-      const { _hold: hold, ...args } = JSON.parse(parts[at + 2] ?? "{}") as { _hold?: string } & Record<string, unknown>;
+      const { _hold: hold, _when: when, ...args } = JSON.parse(parts[at + 2] ?? "{}") as {
+        _hold?: string;
+        _when?: string;
+      } & Record<string, unknown>;
+      if (when && !existsSync(when)) continue;
       const id = `recorded-${(calls += 1)}`;
       // The text before the call has streamed when the call starts, as it has on a CLI.
       input.onDelta?.(shown);
