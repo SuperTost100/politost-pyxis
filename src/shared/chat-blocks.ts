@@ -30,7 +30,8 @@ const plain = (max: number) =>
     .string()
     .max(max * 4)
     .transform((text) =>
-      text
+      // A passage mark has nothing to link to in a chart, so it is left out, as from a figure's caption.
+      stripPassageRefs(text)
         .replace(/[\u0000-\u001f\u007f]+/g, " ")
         .replace(/\s+/g, " ")
         .trim()
@@ -133,6 +134,9 @@ function loosePoints(raw: unknown): unknown {
   });
 }
 
+/** The keys a series may hold its points under. */
+const SERIES_POINT_KEYS = ["points", "data", "values"];
+
 /** The chart in a ```pyxis-chart body, or null when it is not one. */
 export function parseChart(body: string): ChartData | null {
   if (body.length > BODY_MAX) return null;
@@ -141,7 +145,8 @@ export function parseChart(body: string): ChartData | null {
   const kind = text(first(value, "kind", "type"))?.toLowerCase();
   const rawSeries = first(value, "series", "data");
   // One series written as its list of points.
-  const series = Array.isArray(rawSeries) && rawSeries.every((item) => record(item) && !("points" in (item as Loose)))
+  // A series holds its points under any of the keys read below; an item with none of them is a point itself.
+  const series = Array.isArray(rawSeries) && rawSeries.every((item) => record(item) && !SERIES_POINT_KEYS.some((key) => key in (item as Loose)))
     ? [{ name: text(first(value, "y", "name")) ?? "", points: rawSeries }]
     : rawSeries;
   const reference = record(first(value, "reference", "ref", "threshold"));
@@ -157,7 +162,7 @@ export function parseChart(body: string): ChartData | null {
     series: Array.isArray(series)
       ? series.map((item) => {
           const one = record(item);
-          return one ? { name: text(first(one, "name", "label")) ?? "", points: loosePoints(first(one, "points", "data", "values")) } : item;
+          return one ? { name: text(first(one, "name", "label")) ?? "", points: loosePoints(first(one, ...SERIES_POINT_KEYS)) } : item;
         })
       : series,
     reference: reference
@@ -315,12 +320,15 @@ export type ChatBlockLabels = {
 const cell = (value: string) => value.replace(/\|/g, "\\|");
 
 /**
- * A number with the decimals it needs: two at most from 1 up, and below 1 enough to keep three significant digits, so
- * 0.0001 and 0.00034 stay apart instead of both reading 0.
+ * A number with the decimals it needs: two at most from 1 up, below 1 enough to keep three significant digits, so 0.0001
+ * and 0.00034 stay apart instead of both reading 0, and below one millionth in scientific notation.
  */
 export function formatChartNumber(value: number, locale: string): string {
   const size = Math.abs(value);
-  const decimals = size === 0 || size >= 1 ? 2 : Math.min(12, Math.ceil(-Math.log10(size)) + 2);
+  // Far below one, fixed decimals would round a charge of 1.6e-19 C to 0: such a value is written as 1.6E-19.
+  if (size !== 0 && size < 1e-6)
+    return new Intl.NumberFormat(locale, { notation: "scientific", maximumSignificantDigits: 3 }).format(value);
+  const decimals = size === 0 || size >= 1 ? 2 : Math.ceil(-Math.log10(size)) + 2;
   return new Intl.NumberFormat(locale, { maximumFractionDigits: decimals }).format(value);
 }
 
@@ -350,7 +358,10 @@ export function chartText(chart: ChartData, labels: ChatBlockLabels, locale: str
     `| ${head.map(() => "---").join(" | ")} |`,
     ...rows.map((row) => `| ${row.map(cell).join(" | ")} |`),
     ...(chart.reference
-      ? ["", `${labels.reference}: ${chart.reference.label || formatChartValue(chart.reference.value, chart.unit, locale)}`]
+      ? [
+          "",
+          `${labels.reference}: ${formatChartValue(chart.reference.value, chart.unit, locale)}${chart.reference.label ? `, ${chart.reference.label}` : ""}`,
+        ]
       : []),
   ].join("\n");
 }

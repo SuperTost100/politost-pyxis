@@ -342,3 +342,86 @@ test("a chat with a chart exports its data as a table in Markdown and prints the
     removeTestFolder(userData);
   }
 });
+
+test("two replies with the same question keep their own picks: checking one leaves Invia quiet while the other waits", async () => {
+  test.setTimeout(120000);
+  const { userData, app, page } = await start({});
+  try {
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    try {
+      const block = "```pyxis-question\n" + JSON.stringify(PRACTICE_QUESTION) + "\n```";
+      const message = db.prepare("INSERT INTO messages(id,chat_id,role,body,engine_provider,model_id,model_source,created_at) VALUES(?,?,?,?,?,?,?,?)");
+      message.run("twin-q1", "blocks-chat", "user", "Mettimi alla prova.", null, null, null, 3);
+      message.run("twin-a1", "blocks-chat", "assistant", `Eccone una.\n\n${block}`, "claude", "claude-sonnet-5-5", "reported", 4);
+      message.run("twin-q2", "blocks-chat", "user", "Rifammela.", null, null, null, 5);
+      message.run("twin-a2", "blocks-chat", "assistant", `Eccola di nuovo.\n\n${block}`, "claude", "claude-sonnet-5-5", "reported", 6);
+    } finally {
+      db.close();
+    }
+    await openChat(page);
+    const groups = page.getByRole("radiogroup", { name: "Risposte" });
+    await expect(groups).toHaveCount(2);
+    const send = page.getByRole("button", { name: "Invia", exact: true });
+    for (const index of [0, 1]) await groups.nth(index).getByRole("radio").first().click();
+    await expect(send).not.toHaveClass(/ant-btn-primary/);
+    await page.getByRole("button", { name: "Controlla" }).first().click();
+    await expect(page.getByText("Quella giusta")).toHaveCount(1);
+    // The other reply's pick still waits for «Controlla», so Invia stays quiet.
+    await expect(send).not.toHaveClass(/ant-btn-primary/);
+    await page.getByRole("button", { name: "Controlla" }).click();
+    await expect(page.getByText("Quella giusta")).toHaveCount(2);
+    await expect(send).toHaveClass(/ant-btn-primary/);
+  } finally {
+    await app.close().catch(() => undefined);
+    removeTestFolder(userData);
+  }
+});
+
+test("a reply with a chart, a question and citations keeps its sources row under it, and no mark shows in the blocks", async () => {
+  test.setTimeout(120000);
+  const { userData, app, page } = await start({});
+  try {
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    try {
+      db.exec(`INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('blk-src','pdf','Fisica, Mazzoldi','ready',1,1,1);
+        INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('blk-doc','blk-src',1,'{"kind":"pdf"}',1);
+        INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at)
+          VALUES('blk-p1','blk-src','blk-doc','La sufficienza è 18 su 30.','{"page":12}',NULL,1);`);
+      const chart = { ...GRADES_CHART, title: "I tuoi voti nei quiz di Fisica 1 [P1]", subtitle: "In trentesimi [P1]" };
+      const question = { ...PRACTICE_QUESTION, question: `${PRACTICE_QUESTION.question} [P1]` };
+      const body = [
+        "La sufficienza è 18 [P1].",
+        "```pyxis-chart\n" + JSON.stringify(chart) + "\n```",
+        "```pyxis-question\n" + JSON.stringify(question) + "\n```",
+      ].join("\n\n");
+      const message = db.prepare("INSERT INTO messages(id,chat_id,role,body,engine_provider,model_id,model_source,grounding,created_at) VALUES(?,?,?,?,?,?,?,?,?)");
+      message.run("cite-q", "blocks-chat", "user", "Come vado?", null, null, null, null, 3);
+      message.run("cite-a", "blocks-chat", "assistant", body, "claude", "claude-sonnet-5-5", "reported", "sources", 4);
+      db.prepare("INSERT INTO message_passages(message_id,passage_id,label) VALUES('cite-a','blk-p1','P1')").run();
+    } finally {
+      db.close();
+    }
+    await openChat(page);
+    const reply = page.locator(".px-msg:not(.px-msg-user)").last();
+    await expect(reply.locator("figure.px-chart")).toBeVisible();
+    await expect(reply.getByRole("radiogroup", { name: "Risposte" })).toBeVisible();
+    // One source is named by the row itself.
+    const row = reply.getByRole("button", { name: "Fisica, Mazzoldi, p. 12" });
+    await expect(row).toBeVisible();
+    // The row comes after the blocks, under the whole answer.
+    const [chartBox, questionBox, rowBox] = await Promise.all([
+      reply.locator("figure.px-chart").boundingBox(),
+      reply.locator(".px-qb").boundingBox(),
+      row.boundingBox(),
+    ]);
+    expect(rowBox!.y).toBeGreaterThan(chartBox!.y + chartBox!.height);
+    expect(rowBox!.y).toBeGreaterThan(questionBox!.y + questionBox!.height);
+    // As in a figure's caption, a mark inside a block the app draws is left out; in the text it is an empty anchor.
+    await expect(reply).not.toContainText("[P1]");
+    await expect(reply.locator(".px-chart-title")).toHaveText("I tuoi voti nei quiz di Fisica 1");
+    await shots(page, "blocks-with-sources");
+  } finally {
+    await app.close().catch(() => undefined);
+    removeTestFolder(userData);
+  }
+});

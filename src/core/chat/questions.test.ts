@@ -120,7 +120,7 @@ describe("practice questions in a chat reply", () => {
     expect(file).toContain("| Argomento | Voto |");
     expect(file).toContain("| Cinematica | 26/30 |");
     expect(file).toContain("| Termodinamica | non ancora fatto |");
-    expect(file).toContain("Linea di riferimento: sufficienza, 18");
+    expect(file).toContain("Linea di riferimento: 18/30, sufficienza, 18");
     expect(file).not.toContain("pyxis-chart");
     expect(exportChat(db, "chat", "it", "drawn").markdown).toContain("```pyxis-chart");
   });

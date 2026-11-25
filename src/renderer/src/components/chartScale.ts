@@ -34,6 +34,9 @@ export function chartDomain(chart: ChartData): { lo: number; hi: number; ticks: 
 /** A tick's label with the decimals its step needs, so ticks 0.0001 apart never read the same. */
 export function chartTick(tick: number, ticks: readonly number[], locale: string): string {
   const step = ticks.length > 1 ? Math.abs(ticks[1]! - ticks[0]!) : Math.abs(tick) || 1;
+  // Far below one, fixed decimals cannot tell neighbouring ticks apart: they are written as 1E-13, 1,5E-13.
+  if (step < 1e-6)
+    return new Intl.NumberFormat(locale, { notation: "scientific", maximumSignificantDigits: 3 }).format(tick);
   // As many decimals as the step itself has: 0.25 needs two, 2.5 one, 10 none.
   const decimals = (step.toFixed(12).replace(/0+$/, "").split(".")[1] ?? "").length;
   return new Intl.NumberFormat(locale, { minimumFractionDigits: 0, maximumFractionDigits: decimals }).format(tick);

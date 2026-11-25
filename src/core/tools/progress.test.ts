@@ -157,3 +157,31 @@ describe("read_progress, the chat's own exam", () => {
     expect(readProgress(db, { planId: "mech", subject: null })!.exams[0]!.goal).toBe(22.5);
   });
 });
+
+describe("read_progress, windows it says it took", () => {
+  it("lists at most the latest 40 quizzes of an exam and says how many there are", () => {
+    const db = fixture();
+    const item = db.prepare("INSERT INTO items (id, plan_id, topic_id, kind, body_json, created_at) VALUES (?, 'mech', 'kin', 'quiz', '{}', ?)");
+    const attempt = db.prepare("INSERT INTO attempts (id, plan_id, item_id, started_at, submitted_at) VALUES (?, 'mech', ?, ?, ?)");
+    const answers = db.prepare(`INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES (?, ?, '{"score":0.7}', ?)`);
+    for (let i = 0; i < 36; i++) {
+      const at = new Date(2026, 9, 1 + (i % 28), 12).getTime() - i;
+      item.run(`x${i}`, at);
+      attempt.run(`xa${i}`, `x${i}`, at - 1, at);
+      answers.run(`xaa${i}`, `xa${i}`, at);
+    }
+    const [exam] = readProgress(db, { planId: "mech", subject: null })!.exams;
+    expect(exam!.quizzesDone).toBe(41);
+    expect(exam!.quizzes).toHaveLength(40);
+    expect(exam!.quizzesListed).toBe("the latest 40 of 41, newest first");
+    // The newest is kept, the oldest left out.
+    expect(exam!.quizzes[0]!.date).toBe("2026-11-21");
+  });
+
+  it("reads every active exam of a subject, however many", () => {
+    const db = fixture();
+    for (let i = 0; i < 7; i++)
+      db.prepare("INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES (?, 'phys', ?, 'ready', 1, ?)").run(`p${i}`, `Esame ${i}`, i);
+    expect(readProgress(db, { planId: null, subject: "Fisica 1" })!.exams).toHaveLength(8);
+  });
+});

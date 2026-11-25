@@ -176,7 +176,8 @@ const Reply = memo(function Reply({
   onReact: (messageId: string, reaction: "up" | "down") => void;
   onMakeCards: (row: ChatRow) => void;
   onAnswer: (messageId: string, questionId: string, pick: number) => Promise<number>;
-  onPicking: (questionId: string, picking: boolean) => void;
+  /** A pick waits for «Controlla» (true) or no longer (false), by the reply and the question it is in. */
+  onPicking: (pick: string, picking: boolean) => void;
 }) {
   const describeEngineError = useEngineError();
   const engineNames = useEngineNames();
@@ -217,7 +218,8 @@ const Reply = memo(function Reply({
       // Only the chat's latest question offers one more: the request says "on the same topic", which an older card's
       // topic may no longer be.
       anotherFor: last ? [...chatQuestions(row.body).keys()].at(-1) : undefined,
-      onPicking,
+      // Two replies can hold the same question, so a pick waiting for «Controlla» is known by its reply too.
+      onPicking: (questionId, picking) => onPicking(`${row.id}\n${questionId}`, picking),
     }),
     [row.answers, row.id, row.body, last, onAnswer, busy, onSuggest, t, onPicking],
   );
@@ -916,14 +918,15 @@ export function AskPage() {
     );
     return kept;
   });
-  // The practice questions with an option picked and not checked: while there is one, Invia is quiet.
+  // The practice questions with an option picked and not checked, by reply and question: while there is one, Invia is
+  // quiet.
   const [picking, setPicking] = useState<ReadonlySet<string>>(() => new Set());
-  const pickingChanged = useStable((questionId: string, on: boolean) =>
+  const pickingChanged = useStable((pick: string, on: boolean) =>
     setPicking((current) => {
-      if (current.has(questionId) === on) return current;
+      if (current.has(pick) === on) return current;
       const next = new Set(current);
-      if (on) next.add(questionId);
-      else next.delete(questionId);
+      if (on) next.add(pick);
+      else next.delete(pick);
       return next;
     }),
   );

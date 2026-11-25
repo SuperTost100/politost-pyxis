@@ -64,3 +64,14 @@ describe("chart bounds from the block", () => {
     expect(new Set(small.ticks.map((tick) => chartTick(tick, small.ticks, "en"))).size).toBe(small.ticks.length);
   });
 });
+
+describe("ticks far below one", () => {
+  it("tells neighbouring ticks apart in scientific notation", () => {
+    const tiny = chartDomain(chart({ kind: "line", series: [{ name: "x", points: [{ label: "a", value: 1e-13 }, { label: "b", value: 4e-13 }] }] }));
+    const labels = tiny.ticks.map((tick) => chartTick(tick, tiny.ticks, "en"));
+    for (let i = 1; i < labels.length; i++) expect(labels[i], labels.join(" ")).not.toBe(labels[i - 1]);
+    // Ordinary ticks keep their look.
+    const grades = chartDomain(chart({ min: 0, max: 30, series: [{ name: "x", points: [{ label: "a", value: 26 }] }] }));
+    expect(grades.ticks.map((tick) => chartTick(tick, grades.ticks, "it"))).toEqual(["0", "10", "20", "30"]);
+  });
+});

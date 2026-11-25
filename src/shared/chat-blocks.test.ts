@@ -112,7 +112,7 @@ describe("chart blocks", () => {
         "| Dinamica | 21/30 (quiz del 19 novembre) |",
         "| Termodinamica | non ancora fatto |",
         "",
-        "Linea di riferimento: sufficienza, 18",
+        "Linea di riferimento: 18/30, sufficienza, 18",
         "",
         "Fine.",
       ].join("\n"),
@@ -287,5 +287,46 @@ describe("review fixes", () => {
     expect(text).toContain("| a | 0.0001 s |");
     expect(text).toContain("| b | 0.00034 s |");
     expect(text).toContain("| c | 1,250.5 s |");
+  });
+});
+
+describe("CodeRabbit fixes", () => {
+  const fence = (value: unknown) => `\`\`\`pyxis-chart\n${JSON.stringify(value)}\n\`\`\``;
+
+  it("reads a series written with data or values in place of points", () => {
+    for (const key of ["data", "values"]) {
+      const parsed = parseChart(chart({ title: "Voti", kind: "bar", series: [{ name: "Voto", [key]: [{ label: "a", value: 26 }] }] }));
+      expect(parsed?.series[0]).toEqual({ name: "Voto", points: [{ label: "a", value: 26 }] });
+    }
+  });
+
+  it("writes values far below one in scientific notation, and ordinary values as before", () => {
+    const parsed = parseChart(
+      chart({ title: "Cariche", kind: "bar", unit: "C", series: [{ name: "q", points: [{ label: "e", value: 1.6e-19 }, { label: "2e", value: 3.2e-19 }, { label: "n", value: 26 }] }] }),
+    )!;
+    const text = chatBlocksAsText(fence(parsed), CHAT_BLOCK_TEXT.en, "en");
+    expect(text).toContain("| e | 1.6E-19 C |");
+    expect(text).toContain("| 2e | 3.2E-19 C |");
+    expect(text).toContain("| n | 26 C |");
+  });
+
+  it("writes the reference line's value beside its label", () => {
+    const parsed = parseChart(chart({ ...GRADES, reference: { value: 18, label: "Sufficienza" } }))!;
+    expect(chatBlocksAsText(fence(parsed), CHAT_BLOCK_TEXT.it, "it")).toContain("Linea di riferimento: 18/30, Sufficienza");
+    const bare = parseChart(chart({ ...GRADES, reference: { value: 18, label: "" } }))!;
+    expect(chatBlocksAsText(fence(bare), CHAT_BLOCK_TEXT.it, "it")).toMatch(/Linea di riferimento: 18\/30$/);
+  });
+
+  it("leaves passage marks out of a chart's texts, as from figure captions", () => {
+    const parsed = parseChart(
+      chart({ ...GRADES, title: "Voti [P1]", subtitle: "Dal libro [P2; P3]", series: [{ name: "Voto [P1]", points: [{ label: "Cinematica [P4]", value: 26, note: "quiz [P1]" }] }] }),
+    )!;
+    expect([parsed.title, parsed.subtitle, parsed.series[0]!.name, parsed.series[0]!.points[0]!.label, parsed.series[0]!.points[0]!.note]).toEqual([
+      "Voti",
+      "Dal libro",
+      "Voto",
+      "Cinematica",
+      "quiz",
+    ]);
   });
 });
