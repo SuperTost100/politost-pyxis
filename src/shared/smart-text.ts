@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { seededRandom, shuffleChoices } from "./choices";
 import { figureKind, type FigureKind } from "./figure-kinds";
-import { escapeIsText } from "./latex-repair";
+import { escapeReader } from "./latex-repair";
 import { mapOutsideCode } from "./math-delimiters";
 import { indentWidth, inListItem } from "./markdown-tree";
 
@@ -167,31 +167,40 @@ function decodedKey(written: string): string {
 }
 
 /**
- * The string whose escape at `at` of `text` is being repaired, as JSON will read it: `before` is the part already
- * repaired, the rest is read up to the closing quote with every `\n` and `\t` as a line break and a tab. `at` is where
- * the escape is in the result.
+ * The JSON string that starts at `from` of `text`, read up to its closing quote with every `\n` and `\t` escape as a
+ * line break and a tab, and where each of those escapes lands in it. The other escapes that may be LaTeX stay a backslash
+ * and their letter. Only the text around an escape is read from it, so a string read once serves all its escapes.
  */
-function readString(text: string, at: number, before: string): { text: string; at: number } {
-  let decoded = before;
-  try {
-    decoded = JSON.parse(`"${before}"`) as string;
-  } catch {
-    // A part that is not valid JSON yet is read as written; it only gives the context.
+function readString(text: string, from: number): { text: string; at: Map<number, number> } {
+  let read = "";
+  const at = new Map<number, number>();
+  for (let i = from; i < text.length && text[i] !== '"'; i++) {
+    const char = text[i]!;
+    const next = text[i + 1] ?? "";
+    if (char === "\\" && (next === "n" || next === "t")) {
+      at.set(i, read.length);
+      read += next === "n" ? "\n" : "\t";
+      i++;
+    } else if (char === "\\" && next === "u" && /^[0-9a-fA-F]{4}/.test(text.slice(i + 2, i + 6))) {
+      read += String.fromCharCode(parseInt(text.slice(i + 2, i + 6), 16));
+      i += 5;
+    } else if (char === "\\" && next) {
+      read += next === "\\" || next === '"' || next === "/" ? next : char + next;
+      i++;
+    } else if (char !== "\r") read += char;
   }
-  let end = at;
-  while (end < text.length && text[end] !== '"') end += text[end] === "\\" ? 2 : 1;
-  const rest = text.slice(at, end).replace(/\\(["\\/nt])/g, (_, char: string) => (char === "n" ? "\n" : char === "t" ? "\t" : char));
-  return { text: decoded + rest, at: decoded.length };
+  return { text: read, at };
 }
 
 /**
  * Makes model JSON parseable without changing what it meant: a single backslash before a LaTeX command is doubled
  * (JSON would read \frac as a form feed and \alpha as an error), and raw line breaks inside strings become \n.
  * `\n` and `\t` before a command name are the two ambiguous ones: a line break before "u" or a tab before "imes" may be
- * one, or `\nu` and `\times`. In a value they are the command unless the string around them says otherwise
- * (`escapeIsText`): in code, as indentation, or where a formula has a line end or a relation has no left side.
+ * one, or `\nu` and `\times`. With `byContext`, in a value they are the command unless the string around them says
+ * otherwise (`escapeReader`): in code, as indentation, or where a formula has a line end or `\ne` has no left side.
+ * Without it they are read as every build up to 0.5.0-dev.13 read them, which is what block ids are made from.
  */
-function repairJsonText(text: string, verbatim: readonly string[] = []): string {
+function repairJsonText(text: string, verbatim: readonly string[] = [], byContext = true): string {
   let out = "";
   let inString = false;
   // The key whose value is being read, and where in `out` the string being read starts, to tell a key from a value when it ends.
@@ -199,15 +208,33 @@ function repairJsonText(text: string, verbatim: readonly string[] = []): string 
   let valueOf: string | null = null;
   let stringAt = 0;
   let valueString = false;
+  // Whether the string being read is a value, for reading its escapes by context: a string after a colon, and every string
+  // of an array, the ones after the first included. `valueString` keeps its narrower meaning for keys and verbatim values.
+  const containers: string[] = [];
+  let afterColon = false;
+  let isValue = false;
+  // The string being read as JSON will read it, and the reader of its escapes, made on its first ambiguous escape.
+  let stringFrom = 0;
+  let context: { read: ReturnType<typeof readString>; isText: ReturnType<typeof escapeReader> } | null = null;
   for (let i = 0; i < text.length; i++) {
     const char = text[i]!;
     if (!inString) {
       if (char === '"') {
         inString = true;
         valueString = valueOf !== null;
+        isValue = containers.at(-1) === "[" || afterColon;
         stringAt = out.length + 1;
-      } else if (char === ":") valueOf = key;
-      else if (char === "," || char === "{" || char === "}") valueOf = null;
+        stringFrom = i + 1;
+        context = null;
+      } else if (char === ":") {
+        valueOf = key;
+        afterColon = true;
+      } else if (char === "," || char === "{" || char === "}") {
+        valueOf = null;
+        afterColon = false;
+      }
+      if (char === "{" || char === "[") containers.push(char);
+      else if (char === "}" || char === "]") containers.pop();
       out += char;
       continue;
     }
@@ -248,9 +275,13 @@ function repairJsonText(text: string, verbatim: readonly string[] = []): string 
       out += char;
     } else if (next === "n" || next === "t") {
       let command = next === "n" ? latexAfterN.has(word) : word.length > 1;
-      if (command && valueString) {
-        const read = readString(text, i, out.slice(stringAt));
-        command = !escapeIsText(read.text, read.at, word);
+      if (command && byContext && isValue) {
+        if (!context) {
+          const read = readString(text, stringFrom);
+          context = { read, isText: escapeReader(read.text) };
+        }
+        const at = context.read.at.get(i);
+        command = at === undefined || !context.isText(at, word);
       }
       out += command ? "\\\\" : "\\";
     } else if ("bfr".includes(next) && next !== "" && word.length > 1) {
@@ -268,14 +299,14 @@ function repairJsonText(text: string, verbatim: readonly string[] = []): string 
  * The JSON value a model's text holds, or undefined. The strings under the top-level keys named in `verbatim` are read
  * as JSON says, since they are code and not prose: a tab before `plt` stays a tab and is not repaired into a LaTeX `\tplt`.
  */
-export function parseLooseJson(body: string, verbatim: readonly string[] = []): unknown {
+export function parseLooseJson(body: string, verbatim: readonly string[] = [], byContext = true): unknown {
   const trimmed = body.trim();
   const start = trimmed.search(/[[{]/);
   const end = Math.max(trimmed.lastIndexOf("}"), trimmed.lastIndexOf("]"));
   const candidates = [trimmed];
   if (start >= 0 && end > start) candidates.push(trimmed.slice(start, end + 1));
   for (const candidate of candidates) {
-    const repaired = repairJsonText(candidate, verbatim);
+    const repaired = repairJsonText(candidate, verbatim, byContext);
     for (const text of [repaired, repaired.replace(/,\s*([}\]])/g, "$1")]) {
       try {
         return JSON.parse(text);
@@ -460,8 +491,9 @@ export function mapFigureBlocks(
 function repairBlock(
   kind: SmartBlockKind,
   body: string,
+  byContext = true,
 ): BlockData | null {
-  const raw = parseLooseJson(body, kind === "figure" ? FIGURE_CODE_KEYS : []);
+  const raw = parseLooseJson(body, kind === "figure" ? FIGURE_CODE_KEYS : [], byContext);
   const value = record(raw);
   if (kind === "check") {
     const data = repairCheck(raw);
@@ -580,7 +612,12 @@ export function parseSmartText(
     }
     const repaired = kind ? repairBlock(kind, body) : null;
     if (!repaired) continue;
-    const base = `${kind}-${hash(JSON.stringify(repaired))}`;
+    // The id, and with it the order of a question's options, is made from the block as 0.5.0-dev.13 read it, before its
+    // escapes were read by context: an answer saved under that id keeps its question, in the order the student saw. That
+    // reading must not change, or saved answers lose their questions; a body without `\n` or `\t` before a letter reads the
+    // same both ways.
+    const keyed = /\\[nt][A-Za-z]/.test(body) ? (repairBlock(kind!, body, false) ?? repaired) : repaired;
+    const base = `${kind}-${hash(JSON.stringify(keyed))}`;
     const count = (seen.get(base) ?? 0) + 1;
     seen.set(base, count);
     const id = count > 1 ? `${base}-${count}` : base;

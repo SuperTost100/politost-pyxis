@@ -106,6 +106,23 @@ describe("smart text", () => {
     expect(read(String.raw`{"body": "Elenco:\n\tPrimo punto"}`)).toBe("Elenco:\n\tPrimo punto");
   });
 
+  it("keeps the id and the option order a block had in 0.5.0-dev.13, whose reading of an escape this build changed", () => {
+    // The ids and orders here are the ones dev.13 gave these blocks, so answers saved under them stay with their questions.
+    const check = String.raw`{"question": "Quale funzione risolve l'equazione?", "options": ["$u(t)=e^t$", "$u(t)=e^{-t}$", "$u(t)=t$"], "answer": 0, "explanation": "Sostituendo:\n$$\nu(t)=e^t\n$$\nche soddisfa $u'=u$."}`;
+    const [checkSegment] = parseSmartText(`\`\`\`pyxis-check\n${check}\n\`\`\``);
+    if (checkSegment?.type !== "block" || checkSegment.block.kind !== "check") throw new Error("not a check");
+    expect(checkSegment.block.id).toBe("check-2e493wqykq");
+    expect(checkSegment.block.order).toEqual([1, 0, 2]);
+    // What is shown is the new reading: the formula opens with a line break, not with \nu.
+    expect(checkSegment.block.explanation).toBe("Sostituendo:\n$$\nu(t)=e^t\n$$\nche soddisfa $u'=u$.");
+    const steps = String.raw`{"prompt": "Risolvi.", "steps": ["Primo:\n$$\nu(t)=e^t\n$$", "Secondo:\n$$\nu(t)=e^t\n$$"], "answer": "$u(t)=e^t$"}`;
+    const [trySegment] = parseSmartText(`\`\`\`pyxis-try\n${steps}\n\`\`\``);
+    if (trySegment?.type !== "block" || trySegment.block.kind !== "try") throw new Error("not a try");
+    expect(trySegment.block.id).toBe("try-280okot5c8f");
+    // Every string of an array is a value, the later ones too.
+    expect(trySegment.block.steps).toEqual(["Primo:\n$$\nu(t)=e^t\n$$", "Secondo:\n$$\nu(t)=e^t\n$$"]);
+  });
+
   it("drops invalid and unknown blocks instead of showing raw JSON", () => {
     const segments = parseSmartText(
       [

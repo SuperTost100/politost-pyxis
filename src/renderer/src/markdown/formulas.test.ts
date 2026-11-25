@@ -57,7 +57,7 @@ describe("the corpus and the line breaks before a formula", () => {
     const html = render(entry.text, entry.inline);
     const display = [...html.matchAll(/<span class="katex-display">[\s\S]*?<annotation encoding="application\/x-tex">([^<]*)<\/annotation>/g)].map((m) => m[1]!);
     const all = [...html.matchAll(/<annotation encoding="application\/x-tex">([^<]*)<\/annotation>/g)].map((m) => m[1]!);
-    expect(display.filter((latex) => /^\s*\\(?:ne|neq|ni|notin)(?![A-Za-z])/.test(latex))).toEqual([]);
+    expect(display.filter((latex) => /^\s*\\(?:ne|ni)(?![A-Za-z])/.test(latex))).toEqual([]);
     expect(all.filter((latex) => /\\(?:ne|neq|ni|notin)(?![A-Za-z])\s*[\^_]/.test(latex))).toEqual([]);
   });
 });
