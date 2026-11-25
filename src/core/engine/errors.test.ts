@@ -49,6 +49,19 @@ describe("translateEngineError", () => {
     ).toBe("not-logged-in");
   });
 
+  it("surfaces a usage limit that carries no code as the usage-limit message", () => {
+    // Codex 0.166 over cli-funnel 1.0.0: an `error` event with no code after its `limit` event.
+    const detail =
+      "You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or try again at 1:41 PM.";
+    const err = Object.assign(new Error(detail), { limit: { kind: "quota", detail } });
+    expect(engineIpcError(err, "codex")).toMatchObject({
+      code: "quota",
+      messageKey: "engines.errors.quota",
+      params: { provider: "codex" },
+      detail,
+    });
+  });
+
   it("says which engine failed, so the screen can name it and offer its sign-in", () => {
     const err = Object.assign(new Error("status 401 Unauthorized"), {
       code: "cli-failed",

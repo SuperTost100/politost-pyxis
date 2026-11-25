@@ -5,6 +5,7 @@ import { parseSmartbook } from "./smartbook";
 import { heicToPng, isHeicExt } from "./heic";
 import { hashFiles, sha256 } from "./quality";
 import { ocrPdfPages } from "./pdf-ocr";
+import { ocrScanPictures } from "./picture-ocr";
 import { imageVariance, recognizeImage } from "./recognize";
 import { normalizeForVision } from "./vision-image";
 import { isImageExt, maxSourceBytes } from "../../shared/source-types";
@@ -14,8 +15,8 @@ type Input = {
   ext: string;
   tess: string;
   /** `extract` is a document read for a chat attachment: the same extractors as an import, behind the decode gate. */
-  mode?: "quality" | "pixels" | "vision" | "hash" | "ocr" | "extract" | "ocr-pdf";
-  /** `ocr-pdf` mode: the pages of the PDF at `path` to draw and read. */
+  mode?: "quality" | "pixels" | "vision" | "hash" | "ocr" | "extract" | "ocr-pdf" | "ocr-pictures";
+  /** `ocr-pdf` mode: the pages of the PDF at `path` to draw and read. `ocr-pictures`: the pictures of the .docx or .pptx. */
   pages?: number[];
   /** Files to hash in `hash` mode. */
   paths?: string[];
@@ -45,6 +46,9 @@ try {
     if (input.mode === "ocr-pdf") {
       // A scanned book, a batch of pages at a time, for the `source-ocr` job.
       parentPort?.postMessage({ value: await ocrPdfPages(bytes, input.pages ?? [], input.tess, input.scratch) });
+    } else if (input.mode === "ocr-pictures") {
+      // A Word file or presentation made of pictures, a batch of them at a time, for the same job.
+      parentPort?.postMessage({ value: await ocrScanPictures(bytes, input.ext, input.pages ?? [], input.tess, input.scratch) });
     } else if (input.mode === "ocr") {
       // Local OCR for chat and the direct image import: the one recognizer, turned upright inside it, off the core thread.
       const pixels = !input.bytes && isHeicExt(input.ext) ? (await heicToPng(bytes)).png : bytes;

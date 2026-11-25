@@ -191,7 +191,7 @@ function orient(
 }
 
 /** The caller has run `assertDecodable`, so the header is readable and the pixel count is bounded. */
-function decode(
+export function decode(
   bytes: Uint8Array,
   mime: VisionMime,
   jpegMemoryMb = JPEG_MEMORY_MB,

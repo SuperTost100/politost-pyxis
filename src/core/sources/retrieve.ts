@@ -6,6 +6,8 @@ export type PassageLocator = {
   paragraph?: string;
   page?: number;
   slide?: number;
+  /** A picture of a Word file or deck read by OCR: its number among the file's pictures. */
+  picture?: number;
 };
 
 export type PassageHit = {
@@ -57,6 +59,8 @@ export async function retrieveWithModel(
     limit?: number;
     embed?: Embedder | null;
     signal?: AbortSignal;
+    /** The vector distance a hit must be within to count as relevant, VECTOR_COVERED_MAX_DISTANCE by default. */
+    nearDistance?: number;
   },
 ) {
   return retrieve(db, query, {
@@ -165,6 +169,17 @@ export function contentWords(query: string): string[] {
   return (kept.length > 0 ? kept : words).slice(0, 8);
 }
 
+/**
+ * The words of a query that name a topic: its content words without the stop words and the words in `skip`. Unlike
+ * `contentWords` it has no fallback, so a query made only of such words has none.
+ */
+export function topicWords(query: string, skip: ReadonlySet<string>): string[] {
+  return (query.match(/\p{L}[\p{L}\p{N}]*/gu) ?? []).filter((word) => {
+    const lower = word.toLocaleLowerCase("it");
+    return word.length >= 3 && !STOP.has(lower) && !skip.has(lower);
+  });
+}
+
 export function hitOf(row: PassageRow): PassageHit {
   return {
     id: row.id,
@@ -230,6 +245,7 @@ function vectorHits(
   query: string,
   sourceIds?: string[],
   withLibrary = false,
+  nearDistance = VECTOR_COVERED_MAX_DISTANCE,
 ): { ids: string[]; near: string[]; bestDistance: number | null } {
   const vector = embed(`query: ${query}`);
   const bytes = Buffer.from(
@@ -260,7 +276,7 @@ function vectorHits(
     .filter((row) => row.distance <= VECTOR_MAX_DISTANCE)
     .map((row) => row.id);
   const near = rows
-    .filter((row) => row.distance <= VECTOR_COVERED_MAX_DISTANCE)
+    .filter((row) => row.distance <= nearDistance)
     .map((row) => row.id);
   return { ids, near, bestDistance: rows[0]?.distance ?? null };
 }
@@ -272,7 +288,7 @@ function vectorHits(
 export function retrieve(
   db: Database.Database,
   query: string,
-  options?: { sourceIds?: string[]; withLibrary?: boolean; limit?: number; embed?: Embedder | null },
+  options?: { sourceIds?: string[]; withLibrary?: boolean; limit?: number; embed?: Embedder | null; nearDistance?: number },
 ): { hits: PassageHit[]; covered: boolean; usedVectors: boolean; relevant: string[] } {
   const limit = options?.limit ?? 8;
   const withLibrary = options?.withLibrary ?? false;
@@ -283,7 +299,7 @@ export function retrieve(
   let bestDistance: number | null = null;
   const onTopic = new Set<string>();
   if (options?.embed) {
-    const vectors = vectorHits(db, options.embed, query, options.sourceIds, withLibrary);
+    const vectors = vectorHits(db, options.embed, query, options.sourceIds, withLibrary, options.nearDistance);
     bestDistance = vectors.bestDistance;
     for (const id of vectors.near) onTopic.add(id);
     const vectorNear =
