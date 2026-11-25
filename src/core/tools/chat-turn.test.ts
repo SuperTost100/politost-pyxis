@@ -126,4 +126,20 @@ describe("a chat turn with tools", () => {
     expect(result.message!.stopped).toBe(true);
     expect(result.message!.tools?.[resultId!]).toMatchObject({ count: 2 });
   });
+
+  it("does not resume an Antigravity session that began without the tools, and resumes one that began with them", async () => {
+    const db = setup();
+    const answer = (sessionId: string, tools: boolean) => async (input: TurnInput): Promise<EngineResult> => {
+      seen.push(input.conversation?.session ?? null);
+      return { text: "Va bene.", model: "gemini-3.8-flash", provider: "antigravity", inputTokens: 1, sessionId, cwd: "/scratch", continued: false, ...(tools ? { tools } : {}) };
+    };
+    const seen: Array<{ provider: string; id: string } | null> = [];
+    // A session stored before the tools, or opened by a run whose tools were refused.
+    const first = await askTurn(db, { text: "Ciao.", subject: "Fisica 1", run: answer("old", false) });
+    await askTurn(db, { chatId: first.chatId, text: "Fammi 2 flashcard.", run: answer("new", true) });
+    expect(seen[1]).toBeNull();
+    // The new session began with them, so the next turn resumes it.
+    await askTurn(db, { chatId: first.chatId, text: "Grazie.", run: answer("new", true) });
+    expect(seen[2]).toMatchObject({ provider: "antigravity", id: "new" });
+  });
 });

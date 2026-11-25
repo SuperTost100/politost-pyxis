@@ -48,6 +48,8 @@ export type EngineResult = {
   cwd?: string;
   /** The turn went on in the stored session. False when it started a new one (another tool, a folder that changed, a session the tool no longer knew). */
   continued?: boolean;
+  /** Pyxis's tools went with the run that answered (`TurnInput.tools`). */
+  tools?: boolean;
 };
 
 type Keys = { anthropic?: string; openai?: string };
@@ -328,7 +330,8 @@ export type TurnInput = {
      * process tracked for the key.
      */
     session?: { provider: string; id: string; cwd: string } | null;
-    onSession?: (sessionId: string, provider: string, cwd: string) => void;
+    /** `tools`: the run that reported the session has Pyxis's tools attached. */
+    onSession?: (sessionId: string, provider: string, cwd: string, tools?: boolean) => void;
     /**
      * Only a subscription CLI keeps this conversation. An API or local provider answers each call on its own, with the
      * whole prompt, because their history lives in this process, which a local model's small window cannot hold. A
@@ -496,7 +499,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
             // would answer without the conversation: stop it and send the whole prompt instead.
             if (continuing && tool && event.sessionId !== resumeId) throw new SessionReplaced();
             sessionId = event.sessionId;
-            if (tool) conversation!.onSession?.(event.sessionId, selection.provider, selection.cwd);
+            if (tool) conversation!.onSession?.(event.sessionId, selection.provider, selection.cwd, Boolean(servers));
           }
           if (event.type !== "text.delta") continue;
           text += event.text;
@@ -551,6 +554,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
                 continued,
               }
             : {}),
+          ...(servers ? { tools: true } : {}),
         };
       } catch (err) {
         following.end();

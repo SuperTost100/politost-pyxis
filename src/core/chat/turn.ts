@@ -1,5 +1,5 @@
 import { activeSimulation } from "../study/simulation";
-import { keepsFirstSystemPrompt } from "../engine/funnel";
+import { keepsFirstSystemPrompt, toolsAttach } from "../engine/funnel";
 import { checkSelection, needsSolverChecks, splitChecks, solverChecks } from "./checks";
 import { stripCheckFences, type AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
@@ -1364,6 +1364,13 @@ async function answer(
     },
   };
   let disarm = () => undefined as void;
+  // Antigravity does not give Pyxis's tools to a session that began without them: checked on agy 1.5.17 with
+  // gemini-3.8-flash, the server was listed, and the model answered that it had no such tool and wrote the cards as text.
+  // Such a session (every one stored before the tools, and one whose tools were refused) is not resumed when the tools
+  // would attach now: a new session starts with the whole conversation. Claude Code and Codex take the tools in a
+  // resumed session, and a session that began with them takes a new address and token after a restart on all three.
+  const withoutTools = (stored: NonNullable<typeof session>) =>
+    stored.provider === "antigravity" && !stored.tools && access !== null && toolsAttach("antigravity");
   // Fitting a saved photo can take seconds, so it runs in the extract worker. A photo left out is reported, not dropped silently.
   const saved =
     input.workspace && engineSeesImages(selection)
@@ -1446,12 +1453,12 @@ async function answer(
       conversation: {
         key: chatId,
         followUp: "",
-        session: session ? { provider: session.provider, id: session.sessionId, cwd: session.cwd } : null,
+        session: session && !withoutTools(session) ? { provider: session.provider, id: session.sessionId, cwd: session.cwd } : null,
         // A tool keeps what it was sent, a turn the student stops too, so the session is stored when the turn begins.
-        onSession: (sessionId, provider, cwd) => {
+        onSession: (sessionId, provider, cwd, tools) => {
           const open = currentSession(db, chatId);
           if (open?.provider === provider && open.sessionId === sessionId) return;
-          recordSession(db, chatId, open, { provider, sessionId, cwd, model: answering.model, effort: answering.effort ?? null, told: "", instructions, chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion }, "gone");
+          recordSession(db, chatId, open, { provider, sessionId, cwd, model: answering.model, effort: answering.effort ?? null, told: "", instructions, chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion, tools }, "gone");
         },
       },
       cache: true,
@@ -1498,6 +1505,7 @@ async function answer(
           chars: (result.continued ? followUpFor(result.provider) : promptFor(result.provider)).length + result.text.length,
           now: Date.now(),
           finished: true,
+          tools: result.tools,
           syncedTo: beforeQuestion,
         },
         "gone",

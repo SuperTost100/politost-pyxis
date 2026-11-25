@@ -26,12 +26,17 @@ type Seen = {
     onSession?: (sessionId: string, provider: string, cwd: string) => void;
   };
   cache?: boolean;
+  /** Pyxis's tools, which every chat turn offers. */
+  tools?: unknown;
 };
 
-/** An answer of a CLI tool: the session it ran in, and whether it continued the one the chat stored. */
+/**
+ * An answer of a CLI tool: the session it ran in, whether it continued the one the chat stored, and whether the run had
+ * Pyxis's tools, as a CLI run that takes them reports.
+ */
 function toolReply(sessionId: string, input: Seen, provider = "claude"): EngineResult {
   const continued = input.conversation?.session?.id === sessionId && input.conversation.session.provider === provider;
-  return { ...reply, provider, sessionId, cwd: "/scratch", continued };
+  return { ...reply, provider, sessionId, cwd: "/scratch", continued, ...(input.tools ? { tools: true } : {}) };
 }
 
 function setup() {

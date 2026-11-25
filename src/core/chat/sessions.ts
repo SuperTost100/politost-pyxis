@@ -21,6 +21,8 @@ export type StoredSession = {
   told: string | null;
   /** The hash of the system prompt the session was opened under (null: opened before it was kept). */
   instructions: string | null;
+  /** The session was opened with Pyxis's tools attached (`src/core/tools`). */
+  tools: boolean;
   /** Characters sent into the session so far. */
   chars: number;
   /** True after a turn that completed normally on this session, false from the start of any turn until one does. */
@@ -39,6 +41,7 @@ type Row = {
   cwd: string;
   told: string | null;
   instructions: string | null;
+  tools: number;
   chars: number;
   in_step: number;
   synced_to: string | null;
@@ -55,11 +58,11 @@ export function currentSession(db: Database.Database, owner: string): StoredSess
   ).run(Date.now(), owner, ...retiredProviders);
   const row = db
     .prepare(
-      `SELECT id, provider, session_id, cwd, told, instructions, chars, in_step, synced_to FROM tool_sessions
+      `SELECT id, provider, session_id, cwd, told, instructions, tools, chars, in_step, synced_to FROM tool_sessions
        WHERE owner = ? AND ended_at IS NULL ORDER BY opened_at DESC, rowid DESC LIMIT 1`,
     )
     .get(owner) as Row | undefined;
-  return row && { id: row.id, provider: row.provider, sessionId: row.session_id, cwd: row.cwd, told: row.told, instructions: row.instructions, chars: row.chars, inStep: row.in_step === 1, syncedTo: row.synced_to };
+  return row && { id: row.id, provider: row.provider, sessionId: row.session_id, cwd: row.cwd, told: row.told, instructions: row.instructions, tools: row.tools === 1, chars: row.chars, inStep: row.in_step === 1, syncedTo: row.synced_to };
 }
 
 /**
@@ -86,6 +89,8 @@ export type SessionTurn = {
   finished: boolean;
   /** For a session this turn opens: the last message its first prompt held (the one before the question). */
   syncedTo: string | null;
+  /** For a session this turn opens: it was opened with Pyxis's tools attached. */
+  tools?: boolean;
 };
 
 /**
@@ -129,8 +134,8 @@ export function recordSession(
     );
   db.prepare(
     `INSERT INTO tool_sessions
-      (id, owner, provider, session_id, model, effort, cwd, told, instructions, chars, in_step, synced_to, turns, opened_at, last_used_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+      (id, owner, provider, session_id, model, effort, cwd, told, instructions, chars, in_step, synced_to, turns, opened_at, last_used_at, tools)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
   ).run(
     uuidv7(turn.now),
     owner,
@@ -147,6 +152,7 @@ export function recordSession(
     turn.finished ? 1 : 0,
     turn.now,
     turn.now,
+    turn.tools ? 1 : 0,
   );
 }
 

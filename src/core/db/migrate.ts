@@ -573,6 +573,9 @@ END;`,
   // names the row in a ```pyxis-tool block; `message_id` is set once the reply is saved. `data_json` is the tool's own
   // record (for flashcards: the ids of the cards it created). `undone_json` lists what «Annulla» took away, so «Ripristina»
   // brings back exactly those; null while the result stands. The cards themselves stay in `cards`.
+  // `tool_sessions.tools` says the session was opened with Pyxis's tools attached: Antigravity does not give them to a
+  // session that began without them, so such a session is not resumed once they attach (`chat/turn.ts`). Every session
+  // stored before this step began without them.
   {
     version: 38,
     sql: `CREATE TABLE chat_tool_results (
@@ -584,7 +587,8 @@ END;`,
   undone_json TEXT CHECK (undone_json IS NULL OR json_valid(undone_json)),
   created_at INTEGER NOT NULL
 );
-CREATE INDEX chat_tool_results_message ON chat_tool_results(chat_id, message_id);`,
+CREATE INDEX chat_tool_results_message ON chat_tool_results(chat_id, message_id);
+ALTER TABLE tool_sessions ADD COLUMN tools INTEGER NOT NULL DEFAULT 0;`,
   },
 ] satisfies Array<{
   version: number;
