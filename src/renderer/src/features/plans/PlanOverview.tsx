@@ -178,6 +178,8 @@ function ExamPage({ planId }: { planId: string }) {
             .filter(Boolean)
             .join("\n\n"),
           sourceIds: topic.sourceIds,
+          // The chat belongs to this exam, so what it makes (a quiz) goes here even when the subject has other exams.
+          planId,
           subject: plan.data?.subject ?? undefined,
         });
         navigate(`/ask/${thread.chatId}`);

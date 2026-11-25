@@ -110,8 +110,8 @@ function cleanInstruction(instruction: string | undefined): string | undefined {
 }
 export function prepareMaps(db: Database.Database, input: Input, instruction?: string): Params {
   requireScope(db, input);
-  const params = isTopicScope(input) ? prepareTopicMap(db, input) : prepareSubjectMap(db, input);
   const text = cleanInstruction(instruction);
+  const params = isTopicScope(input) ? prepareTopicMap(db, input) : prepareSubjectMap(db, input, text);
   return text ? { ...params, instruction: text } : params;
 }
 function prepareTopicMap(db: Database.Database, input: Input & { planId: string; topicId: string }): Params {
@@ -191,11 +191,12 @@ function prepareTopicMap(db: Database.Database, input: Input & { planId: string;
  * whole subject gets its map built in one call from passages spread over all its sources (`subjectPassages`). The
  * profile's content language is used, since a subject has no exam that sets one.
  */
-function prepareSubjectMap(db: Database.Database, input: { subjectId: string }): Params {
+function prepareSubjectMap(db: Database.Database, input: { subjectId: string }, instruction?: string): Params {
   const name = db.prepare("SELECT name FROM subjects WHERE id = ?").pluck().get(input.subjectId) as string;
   return {
     input,
-    parts: [{ title: name, passages: subjectPassages(db, input.subjectId) }],
+    // A request in words reads the passages that name them first (`subjectPassages`).
+    parts: [{ title: name, passages: subjectPassages(db, input.subjectId, instruction) }],
     selection: selectionFor(db, "map"),
     language: contentLanguage(db),
     next: 0,

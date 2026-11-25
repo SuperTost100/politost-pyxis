@@ -1,22 +1,27 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
+import { SCHEMA_VERSION } from "../db/migrate";
 import type { GenerateInput } from "../engine/generate";
+import { trackCall } from "../jobs/activity";
 import { createRunner, type Runner } from "../jobs/runner";
-import { registerMapJobs } from "../maps/generate";
+import { currentUsageScope } from "../engine/usage";
+import { deleteMapAndBuilds, registerMapJobs } from "../maps/generate";
 import { listAllMaps } from "../maps/library";
 import { listMaps, renameMap } from "../maps/store";
 import { unfinishedActivities } from "../plans/unfinished";
 import { readQuiz, registerQuizJobs, saveQuizDraft } from "../study/quizJobs";
 import { registerQuizGradingJobs, submitQuiz } from "../study/quizGrading";
 import type { MapResultView, QuizResultView } from "../../shared/ipc";
-import { resumeToolJobs, setToolRunner } from "./jobs";
+import { setToolRunner } from "./jobs";
 import { MAP_TOPIC_MAX, mapInput, mapTool } from "./map";
 import { quizInput, quizTool, quizTopic } from "./quiz";
 import {
   dropStrayToolResults,
+  linkToolResults,
   restoreToolResult,
   restoreToolResults,
   retryToolResult,
+  startToolResults,
   takeBackToolResults,
   toolNote,
   toolView,
@@ -256,21 +261,29 @@ describe("create_map", () => {
     db.close();
   });
 
-  it("a build a restart cut off goes on when core starts, unless its result was undone", async () => {
+  it("a build a restart cut off goes on when core starts, unless its result was undone or its reply was never saved", async () => {
     const db = fixture();
     const gate = held(mapRun!);
     jobs(db, { map: gate.run });
-    const first = await makeMap(db);
-    const second = await mapTool(db).run(turn({ planId: null, subject: "Chimica" }), mapInput.parse({ topic: "Legami" }));
-    const secondJob = (JSON.parse(db.prepare("SELECT data_json FROM chat_tool_results WHERE id = ?").pluck().get(second.shown!.resultId) as string) as { jobId: string }).jobId;
-    undoToolResult(db, "chat", second.shown!.resultId);
+    const saved = await makeMap(db);
+    const undone = await mapTool(db).run(turn({ planId: null, subject: "Chimica" }), mapInput.parse({ topic: "Legami" }));
+    const undoneJob = (JSON.parse(db.prepare("SELECT data_json FROM chat_tool_results WHERE id = ?").pluck().get(undone.shown!.resultId) as string) as { jobId: string }).jobId;
+    undoToolResult(db, "chat", undone.shown!.resultId);
+    // Both replies were saved; a third call's reply never was, since Pyxis closed while it was written.
+    db.prepare("INSERT INTO messages (id, chat_id, role, body, created_at) VALUES ('m1', 'chat', 'assistant', 'x', 1)").run();
+    linkToolResults(db, "chat", "m1", [saved.id, undone.shown!.resultId]);
+    const lost = await mapTool(db).run(turn({ planId: null, subject: "Fisica 1" }), mapInput.parse({ topic: "Attrito" }));
+    const lostJob = (JSON.parse(db.prepare("SELECT data_json FROM chat_tool_results WHERE id = ?").pluck().get(lost.shown!.resultId) as string) as { jobId: string }).jobId;
     db.prepare("UPDATE jobs SET state = 'interrupted'").run();
     // A new runner, as after a restart, that has not picked the jobs up yet.
     const after = createRunner(db, () => undefined, undefined, true);
     setToolRunner(after);
-    resumeToolJobs(db);
-    expect(jobOf(db, first.jobId).state).toBe("queued");
-    expect(jobOf(db, secondJob).state).toBe("interrupted");
+    startToolResults(db);
+    expect(jobOf(db, saved.jobId).state).toBe("queued");
+    expect(jobOf(db, undoneJob).state).toBe("interrupted");
+    // No card can show, open or undo what the lost reply started: its build is given up and its row goes.
+    expect(jobOf(db, lostJob)).toEqual({ state: "cancelled", dismissed: 2 });
+    expect(db.prepare("SELECT COUNT(*) FROM chat_tool_results WHERE id = ?").pluck().get(lost.shown!.resultId)).toBe(0);
     db.close();
   });
 
@@ -289,6 +302,64 @@ describe("create_map", () => {
     gate.release();
     restoreToolResults(db, "chat", [id]);
     expect(mapOf(db, id)).toMatchObject({ undone: false, job: "working" });
+    db.close();
+  });
+
+  it("an answer given again gives up the wait of a build that failed on a usage limit, so it never writes the map later", async () => {
+    const db = fixture();
+    let fail = true;
+    jobs(db, {
+      map: async (input) => {
+        if (fail) throw new Error("quota [claude]: usage limit");
+        return mapRun!(input);
+      },
+    });
+    const { id, jobId } = await makeMap(db);
+    await until(() => mapOf(db, id).job === "failed", () => mapOf(db, id));
+    // The student chose to wait for the requests to come back: the build is retried by itself then.
+    expect(runner!.hold(jobId, Date.now() + 60)).toBe(true);
+    fail = false;
+    expect(takeBackToolResults(db, "chat", [id])).toEqual([id]);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(jobOf(db, jobId).state).toBe("failed");
+    expect(listMaps(db, { subjectId: "phys" })).toEqual([]);
+    expect(db.prepare("SELECT COUNT(*) FROM settings WHERE key LIKE 'job-wait:%'").pluck().get()).toBe(0);
+    db.close();
+  });
+
+  it("a map deleted in Mappe while it was built is gone from the card, which offers no resume the runner would refuse", async () => {
+    const db = fixture();
+    const gate = held(mapRun!);
+    jobs(db, { map: gate.run });
+    const { id, jobId } = await makeMap(db);
+    await until(() => jobOf(db, jobId).state === "running", () => jobOf(db, jobId));
+    deleteMapAndBuilds(db, runner!, { subjectId: "phys" }, { jobId });
+    await until(() => jobOf(db, jobId).state === "cancelled", () => jobOf(db, jobId));
+    expect(mapOf(db, id)).toMatchObject({ gone: true, undone: false });
+    expect(() => retryToolResult(db, "chat", id)).toThrow();
+    db.close();
+  });
+
+  it("says what the build's model call is doing and since when, as the app's other wait states do", async () => {
+    const db = fixture();
+    const gate = held(mapRun!);
+    jobs(db, {
+      map: async (input) => {
+        // As the engine does for every call of a job (`generate`), which a recorded run skips.
+        const call = trackCall(currentUsageScope()?.jobId);
+        try {
+          return await gate.run!(input);
+        } finally {
+          call.end();
+        }
+      },
+    });
+    const { id, jobId } = await makeMap(db);
+    await until(() => jobOf(db, jobId).state === "running" && mapOf(db, id).activity !== null, () => mapOf(db, id));
+    expect(mapOf(db, id).activity).toMatchObject({ phase: "starting", since: expect.any(Number) });
+    gate.release();
+    await until(() => mapOf(db, id).job === "done", () => mapOf(db, id));
+    expect(mapOf(db, id).activity).toBeNull();
     db.close();
   });
 
@@ -320,6 +391,20 @@ describe("create_quiz", () => {
     expect(quizTopic(db, "mech", "dinamica")).toEqual({ id: "dyn", title: "Dinamica", exact: true });
     expect(quizTopic(db, "mech", "Esercizi di cinematica")).toEqual({ id: "kin", title: "Cinematica", exact: false });
     expect(quizTopic(db, "mech", "attrito")).toBeNull();
+    // Words that name two topics span the exam, so the quiz reads both topics' material and not the first one's only.
+    expect(quizTopic(db, "mech", "Cinematica e dinamica")).toBeNull();
+    db.close();
+  });
+
+  it("writes a quiz whose words name two topics across the exam, with the words as its focus", async () => {
+    const db = fixture();
+    jobs(db);
+    await quizTool(db).run(turn({ planId: "mech", subject: null }), quizInput.parse({ topic: "Cinematica e dinamica" }));
+    const params = JSON.parse(db.prepare("SELECT params_json FROM jobs WHERE kind = 'quiz-build'").pluck().get() as string) as {
+      input: { scope: string; topicId?: string; focus?: string };
+    };
+    expect(params.input).toMatchObject({ scope: "plan", focus: "Cinematica e dinamica" });
+    expect(params.input.topicId).toBeUndefined();
     db.close();
   });
 
@@ -433,6 +518,65 @@ describe("create_quiz", () => {
     expect(takeBackToolResults(db, "chat", [id])).toEqual([]);
     dropStrayToolResults(db, "chat");
     expect(db.prepare("SELECT COUNT(*) FROM attempts WHERE id = ?").pluck().get(attemptId)).toBe(1);
+    db.close();
+  });
+
+  it("restores a quiz undone before a migration added a column, and leaves out a column its record has that the table lost", async () => {
+    const db = fixture();
+    jobs(db);
+    const { id } = await makeQuiz(db, "Dinamica", undefined, 2);
+    await until(() => quizOf(db, id).job === "done", () => quizOf(db, id));
+    const { attemptId } = quizOf(db, id);
+    const before = readQuiz(db, attemptId);
+    undoToolResult(db, "chat", id);
+    const record = JSON.parse(db.prepare("SELECT undone_json FROM chat_tool_results WHERE id = ?").pluck().get(id) as string) as {
+      schema: number;
+      rows: { items: Array<Record<string, unknown>> };
+    };
+    expect(record.schema).toBe(SCHEMA_VERSION);
+    // A later version adds a column with a default, and the record names one the table no longer has.
+    db.exec("ALTER TABLE items ADD COLUMN reviewed INTEGER NOT NULL DEFAULT 0");
+    record.rows.items[0]!.dropped_column = "x";
+    db.prepare("UPDATE chat_tool_results SET undone_json = ? WHERE id = ?").run(JSON.stringify(record), id);
+    expect(restoreToolResult(db, "chat", id)).toMatchObject({ undone: false, count: 2 });
+    expect(readQuiz(db, attemptId)).toEqual(before);
+    expect(db.prepare("SELECT reviewed FROM items WHERE kind = 'quiz'").pluck().get()).toBe(0);
+    db.close();
+  });
+
+  it("restores all of a quiz or none of it, and says plainly when its exam is gone", async () => {
+    const db = fixture();
+    jobs(db);
+    const { id } = await makeQuiz(db, "Dinamica", undefined, 2);
+    await until(() => quizOf(db, id).job === "done", () => quizOf(db, id));
+    undoToolResult(db, "chat", id);
+    const saved = db.prepare("SELECT undone_json FROM chat_tool_results WHERE id = ?").pluck().get(id) as string;
+    // A row that cannot go back (its attempt names an exam that is not there) undoes the rows put back before it.
+    const broken = JSON.parse(saved) as { rows: { attempts: Array<Record<string, unknown>> } };
+    broken.rows.attempts[0]!.plan_id = "nowhere";
+    db.prepare("UPDATE chat_tool_results SET undone_json = ? WHERE id = ?").run(JSON.stringify(broken), id);
+    expect(() => restoreToolResult(db, "chat", id)).toThrow();
+    expect(db.prepare("SELECT COUNT(*) FROM items WHERE kind = 'quiz'").pluck().get()).toBe(0);
+    expect(quizOf(db, id)).toMatchObject({ undone: true, restorable: true });
+    // The exam is deleted while the quiz is undone: nothing can take it back.
+    db.prepare("UPDATE chat_tool_results SET undone_json = ? WHERE id = ?").run(saved, id);
+    db.prepare("DELETE FROM plans WHERE id = 'mech'").run();
+    expect(quizOf(db, id)).toMatchObject({ undone: true, restorable: false });
+    expect(() => restoreToolResult(db, "chat", id)).toThrow("tool-restore-gone");
+    expect(db.prepare("SELECT COUNT(*) FROM items").pluck().get()).toBe(0);
+    db.close();
+  });
+
+  it("says plainly when an undone map's subject is gone", async () => {
+    const db = fixture();
+    jobs(db);
+    const { id } = await makeMap(db);
+    await until(() => mapOf(db, id).job === "done", () => mapOf(db, id));
+    undoToolResult(db, "chat", id);
+    expect(mapOf(db, id).restorable).toBe(true);
+    db.prepare("DELETE FROM subjects WHERE id = 'phys'").run();
+    expect(mapOf(db, id)).toMatchObject({ undone: true, restorable: false });
+    expect(() => restoreToolResult(db, "chat", id)).toThrow("tool-restore-gone");
     db.close();
   });
 

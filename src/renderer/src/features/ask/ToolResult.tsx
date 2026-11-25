@@ -5,6 +5,7 @@ import { useNavigate } from "react-router";
 import type { FlashcardsResultView, MapResultView, QuizResultView, ToolResultView } from "@shared/ipc";
 import { Button } from "../../components/Button";
 import { Icon } from "../../components/Icon";
+import { ActivityNote } from "../../components/ActivityNote";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { invoke } from "../../lib/ipc";
 import { useEngineError } from "../../lib/engineError";
@@ -49,6 +50,9 @@ export function ToolResult({
     queryKey: key,
     queryFn: () => invoke("chats.toolView", { chatId, resultId: line }),
     enabled: followsJob,
+    // A job's updates come with its steps, not with each model call: while it works the card looks again every few
+    // seconds, so its note says what the call is doing.
+    refetchInterval: (query) => (query.state.data && "job" in query.state.data && query.state.data.job === "working" && !query.state.data.undone ? 3000 : false),
   });
   const shown = followsJob && live.data ? live.data : state;
   const first = useRef(pending ? "pending" : stateKey(view));
@@ -120,16 +124,33 @@ function useResultAction(chatId: string, view: ToolResultView, onChange: (view: 
 }
 
 /** The tool at work: one quiet line and a grey shape where the card will be. A map or a quiz can be stopped there. */
-function Working({ tool, onStop, busy, failure }: { tool: string; onStop?: () => void; busy?: boolean; failure?: ReactNode }) {
+function Working({
+  tool,
+  onStop,
+  busy,
+  failure,
+  activity,
+  rootRef,
+}: {
+  tool: string;
+  onStop?: () => void;
+  busy?: boolean;
+  failure?: ReactNode;
+  /** What the job's model call is doing and since when, said as the app's other wait states say it. */
+  activity?: MapResultView["activity"];
+  /** The card's own ref, so the focus moves to «Ferma» when «Ripristina» or «Riprova» brings the card back to work. */
+  rootRef?: Ref<HTMLDivElement>;
+}) {
   const { t } = useTranslation();
   const map = tool === "create_map";
   const wide = map || tool === "create_quiz";
   return (
-    <div className={`px-toolres is-working${wide ? " is-wide" : ""}`}>
+    <div ref={rootRef} className={`px-toolres is-working${wide ? " is-wide" : ""}`}>
       <div className="px-toolres-working-head">
         <span className="small px-toolres-working-line" role="status">
           {t(map ? "components.toolResult.workingMap" : tool === "create_quiz" ? "components.toolResult.workingQuiz" : "components.toolResult.working")}
         </span>
+        <ActivityNote activity={activity} className="px-toolres-activity" />
         {onStop ? (
           <Button variant="ghost" size="sm" icon="square" disabled={busy} onClick={onStop} className="px-toolres-act">
             {t("components.toolResult.stop")}
@@ -274,6 +295,8 @@ function Made({
     </Button>
   );
 
+  // What the result went into was deleted while it was undone: nothing can bring it back, so the line says so, alone.
+  if (view.undone && !view.restorable) return <Line wide arriving={arriving} text={t(own("unrestorable"))} />;
   if (view.undone)
     return (
       <Line
@@ -287,7 +310,16 @@ function Made({
     );
   if (view.gone) return <Line wide arriving={arriving} text={t(own("gone"))} />;
   if (view.job === "working")
-    return <Working tool={view.tool} onStop={() => void act("chats.undoTool")} busy={busy} failure={failure} />;
+    return (
+      <Working
+        tool={view.tool}
+        onStop={() => void act("chats.undoTool")}
+        busy={busy}
+        failure={failure}
+        activity={view.activity}
+        rootRef={after}
+      />
+    );
   if (view.job === "failed") {
     const reason = view.error ? describeEngineError(jobErrorKey(view.error), jobErrorEngine(view.error)).text : t("jobs.failedGeneral");
     // A map whose words found nothing in the material reads nothing new on a retry: the student asks again in other words.

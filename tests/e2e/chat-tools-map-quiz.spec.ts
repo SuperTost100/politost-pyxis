@@ -238,6 +238,8 @@ test("an exam chat creates a quiz and a map in one answer: Ferma, a failed build
     await expect.poll(() => query(userData, "SELECT id FROM attempts")).toHaveLength(0);
     await saved.getByRole("button", { name: "Ripristina" }).click();
     await expect(saved.getByText("Creo il quiz…")).toBeVisible();
+    // The keyboard stays at the card: «Ripristina» gives way to «Ferma», which takes the focus.
+    await expect(saved.getByRole("button", { name: "Ferma" })).toBeFocused();
 
     // Done: what the quiz holds, about how long it takes and where it is.
     writeFileSync(hold, "");
@@ -266,6 +268,33 @@ test("an exam chat creates a quiz and a map in one answer: Ferma, a failed build
     await saved.getByRole("region", { name: "Quiz creato" }).getByRole("button", { name: "Apri" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-mech\/quiz\/t-dyn\?attempt=/);
     await expect(page.getByText("Quale forza si oppone al moto relativo di due superfici?")).toBeVisible({ timeout: 30000 });
+  } finally {
+    await app.close().catch(() => undefined);
+    removeTestFolder(userData);
+  }
+});
+
+test("a chat opened from an exam's topic belongs to that exam, so its quiz goes there when the subject has two exams", async () => {
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-chat-topic-"));
+  const { app, page } = await start(userData, {}, { planId: null });
+  try {
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    try {
+      seedPlan(db, { id: "p-opt", subjectId: "phys", title: "Ottica", topics: [{ id: "t-lens", title: "Lenti" }] });
+    } finally {
+      db.close();
+    }
+    await page.evaluate(() => {
+      location.hash = "/plans/p-mech";
+    });
+    await page.getByRole("button", { name: /Dinamica/, expanded: false }).first().click();
+    await page.getByRole("button", { name: "Chiedi al tutor" }).click();
+    await expect(page).toHaveURL(/#\/ask\//);
+    const chatId = decodeURIComponent(page.url().split("#/ask/")[1]!.split("?")[0]!);
+    const [chat] = query<{ scope_json: string; subject: string }>(userData, `SELECT scope_json, subject FROM chats WHERE id = '${chatId}'`);
+    expect(JSON.parse(chat!.scope_json)).toMatchObject({ planId: "p-mech" });
+    expect(chat!.subject).toBe("Fisica 1");
   } finally {
     await app.close().catch(() => undefined);
     removeTestFolder(userData);

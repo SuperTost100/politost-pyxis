@@ -3116,7 +3116,8 @@
         "undone": "Mappa annullata: non è più in Mappe.",
         "failed": "La mappa non è stata creata.",
         "stopped": "La creazione della mappa si è fermata.",
-        "gone": "La mappa non c’è più: è stata eliminata da Mappe."
+        "gone": "La mappa non c’è più: è stata eliminata da Mappe.",
+        "unrestorable": "Mappa annullata: la materia non c’è più, quindi non si può ripristinare."
       },
       "quiz": {
         "title": "Quiz creato",
@@ -3142,7 +3143,8 @@
         "undone": "Quiz annullato: non è più nell’esame.",
         "failed": "Il quiz non è stato creato.",
         "stopped": "La scrittura del quiz si è fermata.",
-        "gone": "Il quiz non c’è più: è stato eliminato dall’esame."
+        "gone": "Il quiz non c’è più: è stato eliminato dall’esame.",
+        "unrestorable": "Quiz annullato: l’esame non c’è più, quindi non si può ripristinare."
       }
     }
   },

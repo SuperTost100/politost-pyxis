@@ -148,9 +148,11 @@ export function prepareQuiz(
   if (config.scope === "page" && (!config.sourceId || !config.page))
     throw new Error("page-missing");
   const blocked = flaggedIds(db, "exercise");
-  // Smartbook exercises are tied to one topic's chapter, so only the topic scope mixes them in.
+  const focus = input.focus?.trim() || undefined;
+  // Smartbook exercises are tied to one topic's chapter, so only the topic scope mixes them in. A quiz on one subject
+  // matter takes none: a saved exercise is in the quiz before the model is asked, so the focus could not leave it out.
   const exercises =
-    config.scope === "topic"
+    config.scope === "topic" && !focus
       ? topicExercises(db, input.topicId!).filter(
           (row) => row.answer?.trim() && !blocked.has(row.id),
         )
@@ -189,7 +191,6 @@ export function prepareQuiz(
   // A page quiz without that page's text would silently turn into general knowledge.
   if (config.scope === "page" && !allPassages.length)
     throw new Error("page-empty");
-  const focus = input.focus?.trim() || undefined;
   // A quiz across the exam on one subject matter reads the passages that name it, when some do, rather than a sample of
   // the whole exam that may hold none of them.
   if (focus && config.scope === "plan") {

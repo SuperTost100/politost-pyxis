@@ -79,6 +79,21 @@ async function until(
   throw new Error(JSON.stringify(readQuiz(db, attemptId)));
 }
 describe("configured quizzes", () => {
+  it("leaves the topic's saved exercises out of a quiz asked for on one subject matter, whose questions all follow it", () => {
+    const db = fixture();
+    db.prepare(
+      `INSERT INTO exercises (id, prompt, answer, locator_json, created_at)
+       VALUES ('ex', 'Enuncia il terzo principio della dinamica.', 'Azione e reazione.', '{"kind":"generated","topicId":"topic"}', 1)`,
+    ).run();
+    const plain = prepareQuiz(db, { planId: "plan", topicId: "topic", count: 5, types: ["mcq", "open"] });
+    expect(plain.questions.map((question) => question.sourceId)).toEqual(["ex"]);
+    // The saved exercise is written before the model is asked, so the focus could not take it out afterwards.
+    const focused = prepareQuiz(db, { planId: "plan", topicId: "topic", count: 5, types: ["mcq", "open"], focus: "attrito statico" });
+    expect(focused.questions).toEqual([]);
+    expect(focused.focus).toBe("attrito statico");
+    db.close();
+  });
+
   it("asks at most ten questions, in one validated batch, whatever count is sent", async () => {
     const db = fixture();
     let calls = 0;

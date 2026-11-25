@@ -3,6 +3,7 @@ import { uuidv7 } from "../../shared/ids";
 import { removeCards, restoreCards } from "../study/cards";
 import type { ToolResultView } from "../../shared/ipc";
 import { mapToolBlocks, TOOL_FENCE, toolBlockIds } from "../../shared/tool-blocks";
+import { resumeToolJobs } from "./jobs";
 import { dropMap, mapView, restoreMap, retryMap, undoMap, type MapData, type MapUndone } from "./map";
 import { dropQuiz, quizView, restoreQuiz, retryQuiz, undoQuiz, type QuizData, type QuizUndone } from "./quiz";
 
@@ -242,6 +243,24 @@ export function dropStrayToolResults(db: Database.Database, chatId: string, keep
       db.prepare(`DELETE FROM chat_tool_results WHERE id = ?`).run(row.id);
     }
   })();
+}
+
+/**
+ * What core does with the chats' results when it starts, before the runner takes any job: a result no saved reply
+ * names was made by a reply that Pyxis closed while it was written, so no card can show, open or undo it, and it goes
+ * with what it made (`dropStrayToolResults`). Then the builds of the results that stand and that a restart cut off go
+ * on (`resumeToolJobs`).
+ */
+export function startToolResults(db: Database.Database): void {
+  const chats = db
+    .prepare(
+      `SELECT DISTINCT r.chat_id FROM chat_tool_results r
+       WHERE NOT EXISTS (SELECT 1 FROM messages m WHERE m.id = r.message_id AND m.chat_id = r.chat_id)`,
+    )
+    .pluck()
+    .all() as string[];
+  for (const chatId of chats) dropStrayToolResults(db, chatId);
+  resumeToolJobs(db);
 }
 
 /** The cards a result created, for «Apri», which lists them in the card browser. Empty for an unknown id. */

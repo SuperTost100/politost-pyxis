@@ -52,10 +52,13 @@ export function showJob(db: Database.Database, jobId: string, dismissed: number 
 }
 
 /**
- * Stops a job that is still making its map or quiz and takes it out of Attività, and says whether it was working. A job
- * cancelled here stays retryable: «Ripristina» queues it again from the step it reached.
+ * Stops a job that is still making its map or quiz, or waiting to retry, and takes it out of Attività, and says whether
+ * it was working. A job cancelled here stays retryable: «Ripristina» queues it again from the step it reached.
  */
 export function stopJob(db: Database.Database, jobId: string): boolean {
+  // A failed job the student chose to wait for retries by itself when its tool's requests are back, even hidden: the
+  // wait goes, whatever the job's state, so nothing of an undone result is made later.
+  toolRunner().hold(jobId, null);
   const job = jobRow(db, jobId);
   if (!job || !["queued", "running", "interrupted"].includes(job.state)) return false;
   // Hidden first: the runner publishes the cancel, and the list it refreshes must already leave the job out.
@@ -87,7 +90,7 @@ export function goOnWithJob(db: Database.Database, jobId: string): void {
 /**
  * The jobs of the chat's maps and quizzes that a restart cut off, queued again: the card in the chat stays at work, as
  * it was when Pyxis closed. Other model work waits for the student in Attività, but this job was asked for in the chat
- * and the chat shows it working. Results the student undid are left alone.
+ * and the chat shows it working. Results the student undid, and results no saved reply names, are left alone.
  */
 export function resumeToolJobs(db: Database.Database): void {
   if (!runner) return;
@@ -98,7 +101,8 @@ export function resumeToolJobs(db: Database.Database): void {
          (r.tool = 'create_map' AND j.id = json_extract(r.data_json, '$.jobId')) OR
          (r.tool = 'create_quiz' AND j.kind = 'quiz-build' AND json_extract(j.params_json, '$.attemptId') = json_extract(r.data_json, '$.attemptId'))
        )
-       WHERE r.undone_json IS NULL AND r.tool IN ('create_map', 'create_quiz') AND j.state = 'interrupted'`,
+       WHERE r.undone_json IS NULL AND r.tool IN ('create_map', 'create_quiz') AND j.state = 'interrupted'
+         AND EXISTS (SELECT 1 FROM messages m WHERE m.id = r.message_id AND m.chat_id = r.chat_id)`,
     )
     .pluck()
     .all() as string[];
@@ -110,10 +114,15 @@ export function readRows(db: Database.Database, table: string, where: string, ..
   return db.prepare(`SELECT * FROM ${table} WHERE ${where}`).all(...args) as Array<Record<string, unknown>>;
 }
 
-/** Puts rows `readRows` read back into their table, with the same ids and values. */
+/**
+ * Puts rows `readRows` read back into their table, with the same ids and values. Rows read by an older version of Pyxis
+ * go back too: a column added since takes its default, and a column the table no longer has is left out. The caller
+ * runs it in a transaction, so a row that cannot go back (a foreign key gone) takes the others with it.
+ */
 export function insertRows(db: Database.Database, table: string, rows: ReadonlyArray<Record<string, unknown>>): void {
+  const known = new Set((db.prepare(`SELECT name FROM pragma_table_info(?)`).pluck().all(table) as string[]));
   for (const row of rows) {
-    const columns = Object.keys(row);
+    const columns = Object.keys(row).filter((column) => known.has(column));
     db.prepare(
       `INSERT INTO ${table} (${columns.map((column) => `"${column}"`).join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
     ).run(...columns.map((column) => row[column]));

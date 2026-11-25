@@ -4,6 +4,8 @@ import { foldText } from "../../shared/fold-text";
 import { uuidv7 } from "../../shared/ids";
 import type { QuizResultView } from "../../shared/ipc";
 import { QUIZ_MAX_QUESTIONS, quizMinutes } from "../../shared/quiz";
+import { SCHEMA_VERSION } from "../db/migrate";
+import { activityOf } from "../jobs/activity";
 import { enqueueQuiz } from "../study/quizJobs";
 import { goOnWithJob, insertRows, jobRow, jobState, readRows, showJob, stopJob, toolRunner } from "./jobs";
 import type { Tool, ToolTurn } from "./server";
@@ -59,6 +61,8 @@ export type QuizUndone = {
   /** The quiz's jobs and the Attività mark each had; the build that was still writing it is `stopped`. */
   jobs: Array<{ id: string; dismissed: number }>;
   stopped: string | null;
+  /** The schema version the rows were read at (`SCHEMA_VERSION`); absent in records written before it was kept. */
+  schema?: number;
 };
 
 /** The tables an unfinished quiz lives in, in the order they are put back. */
@@ -99,8 +103,8 @@ function quizExam(db: Database.Database, place: ReturnType<ToolTurn["place"]>): 
 }
 
 /**
- * The exam's topic the words name: the one whose title is those words, else the first, in path order, whose title holds
- * them or is held in them. Null when none does: the quiz then spans the exam and asks about the words.
+ * The exam's topic the words name: the one whose title is those words, else the only one whose title holds them or is
+ * held in them. Null when none does, or when several do: the quiz then spans the exam and asks about the words.
  */
 export function quizTopic(db: Database.Database, planId: string, words: string): { id: string; title: string; exact: boolean } | null {
   const topics = db
@@ -109,11 +113,12 @@ export function quizTopic(db: Database.Database, planId: string, words: string):
   const want = foldText(words).replace(/\s+/g, " ").trim();
   const exact = topics.find((topic) => foldText(topic.title).trim() === want);
   if (exact) return { ...exact, exact: true };
-  const near = topics.find((topic) => {
+  const near = topics.filter((topic) => {
     const title = foldText(topic.title).trim();
     return title.length >= 4 && want.length >= 4 && (title.includes(want) || want.includes(title));
   });
-  return near ? { ...near, exact: false } : null;
+  // Words that name two topics ("Cinematica e dinamica") are no one topic: the quiz spans the exam on them.
+  return near.length === 1 ? { ...near[0]!, exact: false } : null;
 }
 
 const asTitle = (text: string) => text.charAt(0).toLocaleUpperCase() + text.slice(1);
@@ -206,7 +211,8 @@ export function quizView(db: Database.Database, id: string, stored: QuizData, un
     ? undone.rows.attempts.some((row) => row.id === stored.attemptId)
     : !!db.prepare("SELECT 1 FROM attempts WHERE id = ?").get(stored.attemptId);
   const body = item ? (JSON.parse(item.body_json) as QuizBody) : null;
-  const job = jobRow(db, buildJob(db, stored.attemptId));
+  const build = buildJob(db, stored.attemptId);
+  const job = jobRow(db, build);
   const state = jobState(job);
   const kinds: QuizResultView["kinds"] = {};
   for (const question of body?.questions ?? []) {
@@ -224,7 +230,9 @@ export function quizView(db: Database.Database, id: string, stored: QuizData, un
     // A quiz whose questions are all written is done whatever its job's row says.
     job: body?.complete ? "done" : state === "done" && !body ? "done" : state,
     error: state === "failed" ? (job?.error ?? null) : null,
+    activity: state === "working" && !undone ? activityOf(build) : null,
     undone: undone !== null,
+    restorable: !undone || restorableQuiz(db, stored, undone),
     gone: !undone && (!item || !attempt),
     topic: stored.topic,
     exam: stored.exam,
@@ -272,6 +280,7 @@ export function undoQuiz(db: Database.Database, stored: QuizData): QuizUndone {
     events: db.prepare("SELECT id FROM learning_events WHERE item_id = ?").pluck().all(stored.itemId) as string[],
     jobs: jobs.filter((job) => job.id !== stopped),
     stopped,
+    schema: SCHEMA_VERSION,
   };
   // Answers, checks and the attempt's helper chat go with the attempt; the passages it cites go with the item.
   db.prepare("DELETE FROM attempts WHERE item_id = ?").run(stored.itemId);
@@ -280,12 +289,21 @@ export function undoQuiz(db: Database.Database, stored: QuizData): QuizUndone {
 }
 
 /**
+ * Whether «Ripristina» can bring the quiz back: its exam is still there, and the rows are not from a newer Pyxis than
+ * this one (after a downgrade). The card says so plainly otherwise, with no button.
+ */
+function restorableQuiz(db: Database.Database, stored: QuizData, undone: QuizUndone): boolean {
+  return !!db.prepare("SELECT 1 FROM plans WHERE id = ?").get(stored.planId) && (undone.schema ?? 0) <= SCHEMA_VERSION;
+}
+
+/**
  * «Ripristina»: the quiz's rows go back as they were, with the answers given so far, and the build that «Ferma» stopped
  * goes on writing. A passage deleted since is left out of the quiz's sources, a topic deleted since leaves the quiz on the
- * whole exam, and an exam deleted since has nowhere to take it back (`tool-restore-gone`).
+ * whole exam, and an exam deleted since has nowhere to take it back (`tool-restore-gone`). It runs in the caller's
+ * transaction: a row that cannot go back takes the others with it, so a restore is whole or does nothing.
  */
 export function restoreQuiz(db: Database.Database, stored: QuizData, undone: QuizUndone): void {
-  if (!db.prepare("SELECT 1 FROM plans WHERE id = ?").get(stored.planId)) throw new Error("tool-restore-gone");
+  if (!restorableQuiz(db, stored, undone)) throw new Error("tool-restore-gone");
   const exists = (table: string, id: unknown) => !!db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id);
   insertRows(
     db,

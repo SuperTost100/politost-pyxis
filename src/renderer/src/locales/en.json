@@ -3116,7 +3116,8 @@
         "undone": "Map undone: it’s no longer in Maps.",
         "failed": "The map wasn’t created.",
         "stopped": "The map stopped before it was finished.",
-        "gone": "The map is gone: it was deleted from Maps."
+        "gone": "The map is gone: it was deleted from Maps.",
+        "unrestorable": "Map undone: its subject is gone, so it can’t be restored."
       },
       "quiz": {
         "title": "Quiz created",
@@ -3142,7 +3143,8 @@
         "undone": "Quiz undone: it’s no longer in the exam.",
         "failed": "The quiz wasn’t created.",
         "stopped": "The quiz stopped before it was finished.",
-        "gone": "The quiz is gone: it was deleted from the exam."
+        "gone": "The quiz is gone: it was deleted from the exam.",
+        "unrestorable": "Quiz undone: its exam is gone, so it can’t be restored."
       }
     }
   },

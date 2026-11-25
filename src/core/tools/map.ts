@@ -2,6 +2,9 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
 import type { MapResultView } from "../../shared/ipc";
+import { activityOf } from "../jobs/activity";
+import { SCHEMA_VERSION } from "../db/migrate";
+import { GIVEN_UP } from "../jobs/runner";
 import { startChatMap } from "../maps/generate";
 import { mapShape } from "../maps/library";
 import { deleteMap, readStoredMap, storeMap, type StoredMap } from "../maps/store";
@@ -34,7 +37,13 @@ export const MAP_DESCRIPTION = [
 export type MapData = { jobId: string; subjectId: string; subject: string; topic: string; mapId: string };
 
 /** What «Annulla» took away: the map as it was, with the student's edits, and whether its build was stopped on the way. */
-export type MapUndone = { map: StoredMap | null; stopped: boolean; dismissed: number | null };
+export type MapUndone = {
+  map: StoredMap | null;
+  stopped: boolean;
+  dismissed: number | null;
+  /** The schema version the record was written at (`SCHEMA_VERSION`); absent in records written before it was kept. */
+  schema?: number;
+};
 
 const TOOL_NAME = "create_map";
 
@@ -116,8 +125,11 @@ export function mapView(db: Database.Database, id: string, data: MapData, undone
     // A build that stored its map is done, whatever its row says now; one whose map is gone without an undo was deleted.
     job: map && !undone ? "done" : state,
     error: state === "failed" ? (job?.error ?? null) : null,
+    activity: state === "working" && !undone ? activityOf(data.jobId) : null,
     undone: undone !== null,
-    gone: !undone && state === "done" && !map,
+    restorable: !undone || restorableMap(db, data, undone),
+    // Deleted in Mappe: after it was made, or while it was built, which gives its build up for good (`deleteMapAndBuilds`).
+    gone: !undone && !map && (state === "done" || (job?.dismissed ?? 0) >= GIVEN_UP),
     topic: map?.title ?? data.topic,
     subject: data.subject,
     subjectId: data.subjectId,
@@ -138,13 +150,21 @@ export function undoMap(db: Database.Database, data: MapData): MapUndone {
   const map = storedMap(db, data) ?? null;
   if (map) deleteMap(db, { subjectId: data.subjectId }, data.mapId);
   // A finished build leaves Attività's "finished today" too, since it opens a map that is not there.
-  return { map, stopped, dismissed: stopped ? null : hideJob(db, data.jobId) };
+  return { map, stopped, dismissed: stopped ? null : hideJob(db, data.jobId), schema: SCHEMA_VERSION };
+}
+
+/**
+ * Whether «Ripristina» can bring the map back: its subject is still there, and the record is not from a newer Pyxis
+ * than this one (after a downgrade). The card says so plainly otherwise, with no button.
+ */
+function restorableMap(db: Database.Database, data: MapData, undone: MapUndone): boolean {
+  return !!db.prepare("SELECT 1 FROM subjects WHERE id = ?").get(data.subjectId) && (undone.schema ?? 0) <= SCHEMA_VERSION;
 }
 
 /** «Ripristina»: the map comes back as it was, or its build goes on from where «Ferma» stopped it. */
 export function restoreMap(db: Database.Database, data: MapData, undone: MapUndone): void {
+  if (!restorableMap(db, data, undone)) throw new Error("tool-restore-gone");
   if (undone.map) {
-    if (!db.prepare("SELECT 1 FROM subjects WHERE id = ?").get(data.subjectId)) throw new Error("tool-restore-gone");
     storeMap(db, { subjectId: data.subjectId }, undone.map);
   }
   if (undone.stopped) goOnWithJob(db, data.jobId);

@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { foldText } from "../../shared/fold-text";
 
 /**
  * How much of a subject one map reads: one model call with up to 24 passages, each cut to 750 characters, about the
@@ -7,7 +8,7 @@ import type Database from "better-sqlite3";
  */
 export const SUBJECT_MAP = { passages: 24, chars: 750 } as const;
 
-type Row = { id: string; section_path: string | null; source_id: string; title: string };
+type Row = { id: string; rid: number; section_path: string | null; source_id: string; title: string };
 
 /** The study material of the subject's exams, which a subject's sources take in (bound as `@subject`). */
 const STUDIED = `WITH studied AS (
@@ -44,12 +45,15 @@ export type SubjectPassage = { id: string; text: string; section: string };
  * the map sees how the material is organised; when a subject has more sections than fit, they are taken evenly from the
  * first to the last, and with fewer, the rest is filled evenly from the other passages. Only the chosen passages' text
  * is read, so a subject with many books costs one pass over passage ids.
+ *
+ * A map on one topic (`focus`, the student's words) takes the passages that name it first, by the full-text index and by
+ * their section's name, and fills the rest as above: the even sample alone can miss a topic's only section.
  */
-export function subjectPassages(db: Database.Database, subjectId: string): SubjectPassage[] {
+export function subjectPassages(db: Database.Database, subjectId: string, focus?: string): SubjectPassage[] {
   const rows = db
     .prepare(
       `${STUDIED}
-       SELECT p.id, p.section_path, s.id AS source_id, s.title
+       SELECT p.id, p.rowid AS rid, p.section_path, s.id AS source_id, s.title
        FROM sources s
        JOIN passages p ON p.source_id = s.id
          AND p.version = (SELECT MAX(version) FROM passages WHERE source_id = s.id)
@@ -62,9 +66,11 @@ export function subjectPassages(db: Database.Database, subjectId: string): Subje
     const before = rows[index - 1];
     if (!before || before.source_id !== row.source_id || before.section_path !== row.section_path) opens.add(index);
   });
-  const heads = [...opens];
-  const picked = new Set(spread(heads, SUBJECT_MAP.passages));
-  const rest = rows.map((_, index) => index).filter((index) => !opens.has(index));
+  const named = focus ? naming(db, rows, focus) : [];
+  const picked = new Set(spread(named, SUBJECT_MAP.passages));
+  const heads = [...opens].filter((index) => !picked.has(index));
+  for (const index of spread(heads, SUBJECT_MAP.passages - picked.size)) picked.add(index);
+  const rest = rows.map((_, index) => index).filter((index) => !opens.has(index) && !picked.has(index));
   for (const index of spread(rest, SUBJECT_MAP.passages - picked.size)) picked.add(index);
   const chosen = [...picked].sort((a, b) => a - b).map((index) => rows[index]!);
   const text = db.prepare(`SELECT substr(text, 1, ${SUBJECT_MAP.chars}) FROM passages WHERE id = ?`).pluck();
@@ -73,6 +79,23 @@ export function subjectPassages(db: Database.Database, subjectId: string): Subje
     text: text.get(row.id) as string,
     section: row.section_path ? `${row.title} › ${row.section_path}` : row.title,
   }));
+}
+
+/**
+ * The indexes of `rows` whose passage holds a word of `focus` (four letters or more, any ending: "attrito" finds
+ * "attriti"), or whose section's name does, in their order.
+ */
+function naming(db: Database.Database, rows: Row[], focus: string): number[] {
+  const stems = [...new Set(foldText(focus).split(/[^\p{L}\p{N}]+/u).filter((word) => word.length >= 4))].map((word) =>
+    word.length >= 5 ? word.slice(0, -1) : word,
+  );
+  if (!stems.length) return [];
+  const query = stems.map((stem) => `"${stem}"*`).join(" OR ");
+  const hits = new Set(db.prepare("SELECT rowid FROM passages_fts WHERE passages_fts MATCH ?").pluck().all(query) as number[]);
+  return rows.flatMap((row, index) => {
+    const section = foldText(row.section_path ?? "");
+    return hits.has(row.rid) || stems.some((stem) => section.includes(stem)) ? [index] : [];
+  });
 }
 
 /** `count` items taken at even steps from the first item of `list` to its last, or all of them when they fit. */

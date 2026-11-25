@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { SUBJECT_MAP, spread, subjectPassages } from "./subject-sources";
+import { prepareMaps } from "./generate";
 
 /** A subject's material and, around it, the sources a whole-subject map must leave out. */
 function seed() {
@@ -95,5 +96,37 @@ describe("subjectPassages", () => {
     expect(spread([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], 4)).toEqual([0, 3, 6, 9]);
     expect(spread([4, 5, 6], 1)).toEqual([4]);
     expect(spread([1, 2], 0)).toEqual([]);
+  });
+});
+
+describe("subjectPassages for a map on one topic", () => {
+  /** A subject of 50 sections, one passage each; only the second is about friction. */
+  function sections() {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      INSERT INTO subjects(id,name,position,created_at) VALUES('phys','Fisica I',0,1);
+      INSERT INTO sources(id,subject_id,kind,title,status,library,created_at,updated_at) VALUES('book','phys','pdf','Mazzoldi','ready',1,1,1);
+    `);
+    const insert = db.prepare("INSERT INTO passages(id,source_id,version,text,section_path,created_at) VALUES(?,?,1,?,?,1)");
+    for (let n = 0; n < 50; n += 1)
+      insert.run(`s${n}`, "book", n === 1 ? "La forza d'attrito si oppone allo strisciamento delle superfici." : `Argomento numero ${n}.`, `Sezione ${n}`);
+    return db;
+  }
+
+  it("takes the passages on the topic before the even sample, which can miss the topic's only section", () => {
+    const db = sections();
+    // The whole-subject sample of 24 out of 50 skips the second section.
+    expect(subjectPassages(db, "phys").map((passage) => passage.id)).not.toContain("s1");
+    const focused = subjectPassages(db, "phys", "L'attrito").map((passage) => passage.id);
+    expect(focused).toContain("s1");
+    expect(focused).toHaveLength(SUBJECT_MAP.passages);
+    // Words found nowhere leave the sample as it is.
+    expect(subjectPassages(db, "phys", "termodinamica")).toEqual(subjectPassages(db, "phys"));
+    // A map asked for in words, from the chat or from Mappe, reads them.
+    db.prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)").run(
+      JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }),
+    );
+    expect(prepareMaps(db, { subjectId: "phys" }, "L'attrito").parts[0]!.passages.map((passage) => passage.id)).toContain("s1");
+    db.close();
   });
 });

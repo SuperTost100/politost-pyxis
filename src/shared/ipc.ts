@@ -516,7 +516,11 @@ const mapResultView = z.object({
   tool: z.literal("create_map"),
   job: toolJobState,
   error: z.string().nullable(),
+  /** What the job's model call is doing and since when, while it works (`activityOf`); null between calls. */
+  activity: JobActivity.nullable(),
   undone: z.boolean(),
+  /** False for an undone result «Ripristina» cannot bring back: what it went into was deleted since. */
+  restorable: z.boolean(),
   /** The map was deleted in Mappe (or with its subject) after it was made: there is nothing to open or undo. */
   gone: z.boolean(),
   topic: z.string(),
@@ -537,7 +541,11 @@ const quizResultView = z.object({
   tool: z.literal("create_quiz"),
   job: toolJobState,
   error: z.string().nullable(),
+  /** What the job's model call is doing and since when, while it works (`activityOf`); null between calls. */
+  activity: JobActivity.nullable(),
   undone: z.boolean(),
+  /** False for an undone result «Ripristina» cannot bring back: what it went into was deleted since. */
+  restorable: z.boolean(),
   /** The quiz was deleted from the exam's unfinished activities (or with its exam) after it was made. */
   gone: z.boolean(),
   topic: z.string(),

@@ -19,6 +19,10 @@
   display: block;
   color: var(--ink-subtle);
 }
+/* What the job's model call is doing, and for how long, beside the line. */
+.px-toolres-activity {
+  color: var(--ink-subtle);
+}
 .px-toolres-ghost {
   display: flex;
   gap: 16px;
