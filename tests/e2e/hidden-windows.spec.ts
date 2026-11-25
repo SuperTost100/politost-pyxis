@@ -111,7 +111,8 @@ test("on macOS, closing the main window after Python ran keeps the app, and an a
     await app.evaluate(({ app: electron }) => electron.emit("activate"));
     await expect.poll(() => mainWindows(app), { timeout: 30_000 }).toBe(1);
     const again = app.windows().find((window) => window.url().startsWith("pyxis-app://app/index.html"))!;
-    await expect(again.getByRole("navigation", { name: "Sezioni" })).toBeVisible({ timeout: 30_000 });
+    // The shell's section switcher, there only once the app has loaded in the window.
+    await expect(again.getByRole("radiogroup", { name: "Sezioni" })).toBeVisible({ timeout: 30_000 });
     // A second click makes none.
     await app.evaluate(({ app: electron }) => electron.emit("activate"));
     expect(await mainWindows(app)).toBe(1);
