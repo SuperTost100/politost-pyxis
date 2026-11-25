@@ -264,15 +264,17 @@ test("the outline has a mark per question from the third on, a card on hover and
 
     // Folding the sidebar moves the outline to the left edge of the content; unfolding moves it back.
     await page.getByRole("button", { name: "Riduci la barra" }).click();
-    await expect.poll(async () => (await outline.boundingBox())!.x).toBeLessThan(120);
+    // While the sidebar folds or the window changes width the outline is taken away for a moment, so it has no box: the
+    // polls below wait for it to come back instead of reading a missing one (run of #565).
+    await expect.poll(async () => (await outline.boundingBox())?.x ?? Infinity).toBeLessThan(120);
     await checkLeftPlacement();
     await page.getByRole("button", { name: "Espandi la barra" }).click();
-    await expect.poll(async () => (await outline.boundingBox())!.x).toBeGreaterThan(250);
+    await expect.poll(async () => (await outline.boundingBox())?.x ?? -Infinity).toBeGreaterThan(250);
     await checkLeftPlacement();
 
     // At 960 px wide the sidebar folds and the outline stays at the left edge without covering text.
     await page.setViewportSize({ width: 960, height: 800 });
-    await expect.poll(async () => (await outline.boundingBox())!.x).toBeLessThan(120);
+    await expect.poll(async () => (await outline.boundingBox())?.x ?? Infinity).toBeLessThan(120);
     await checkLeftPlacement();
   } finally {
     await app.close();
