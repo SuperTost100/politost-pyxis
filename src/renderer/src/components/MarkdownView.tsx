@@ -36,6 +36,12 @@ type MarkdownScope = {
 };
 const Scope = createContext<MarkdownScope>({ claims: [], canRun: false, drawing: false });
 
+/**
+ * The passages a page knows, for the Markdown views inside it that are not given them, such as a worked example in a
+ * lesson part. A view with neither shows a text's [Pn] as it is stored: only a page with a sources row hides its marks.
+ */
+export const KnownPassages = createContext<KnownPassage | undefined>(undefined);
+
 const components: Components = {
   a: function Link({ href, children: linkChildren, node: _node, ...rest }) {
     const { claims, knownPassage } = useContext(Scope);
@@ -47,7 +53,7 @@ const components: Components = {
       return claim ? <AsyncCheck claim={claim} /> : null;
     }
     // A citation mark: nothing to read or click in the text, only the place the sources row tints the words before.
-    const id = citedPassage(href, knownPassage);
+    const id = knownPassage ? citedPassage(href, knownPassage) : null;
     if (id !== null) return <span className="px-cite-mark" data-cite={id} />;
     // A cite: link the reply wrote for a passage it was never given: its text, not a mark and not a link.
     if (href?.startsWith("cite:")) return <>{linkChildren}</>;
@@ -133,7 +139,10 @@ export const MarkdownView = memo(function MarkdownView({
    */
   drawing?: boolean;
   variant?: "reading" | "body";
-  /** Which [Pn] marks name a passage the page knows; a mark for any other is left out. Without it every mark counts. */
+  /**
+   * Which [Pn] marks name a passage the page knows: those become anchors for the sources row, and a mark for any other is
+   * left out. Without it (or `KnownPassages` around the view) the text's [Pn] is shown as it is stored.
+   */
   knownPassage?: KnownPassage;
   /** Python blocks get an editor and a Run button; defaults to on inside tutor messages. */
   runnable?: boolean;
@@ -141,21 +150,23 @@ export const MarkdownView = memo(function MarkdownView({
   toolBlock?: (line: string) => ReactNode;
 }) {
   const inherited = useContext(RunnablePython);
+  const pageKnows = useContext(KnownPassages);
+  const known = knownPassage ?? pageKnows;
   const canRun = runnable ?? inherited;
   const claims = useMemo(() => textClaims(children, checks), [children, checks]);
   const source = useMemo(
     () =>
       markdownSource(
         stripCheckFences(children),
-        knownPassage,
+        known,
         drawing,
         claims.map((claim) => claim.step),
       ),
-    [children, knownPassage, claims, drawing],
+    [children, known, claims, drawing],
   );
   const scope = useMemo(
-    () => ({ claims, canRun, knownPassage, figures, drawing, toolBlock }),
-    [claims, canRun, knownPassage, figures, drawing, toolBlock],
+    () => ({ claims, canRun, knownPassage: known, figures, drawing, toolBlock }),
+    [claims, canRun, known, figures, drawing, toolBlock],
   );
   // The same element for the same text, so React skips the parse; the renderers read a changed scope from context.
   const tree = useMemo(

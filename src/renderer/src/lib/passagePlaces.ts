@@ -42,6 +42,7 @@ export function usePassagePlaces(
       slide: place?.locator.slide,
       chapter: place?.locator.chapter,
       section: place?.sectionPath ?? undefined,
+      version: place?.version,
       fallbackTitle: cite.label,
     };
   });

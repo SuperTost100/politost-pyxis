@@ -58,6 +58,10 @@ describe("rehypeMarks", () => {
     ]);
   });
 
+  it("hides a paragraph of marks and the punctuation after them, as a mark-only one", async () => {
+    expect(await shape("$$\ny\n$$\n\n[](cite:p1).\n\nFine.")).toEqual(["span.katex-display", "p.px-cite-only", "  a cite:p1", "p"]);
+  });
+
   it("leaves a check with no step before it on its own", async () => {
     expect(await shape("[check](mathcheck:0)")).toEqual(["div.px-check-slot", "  a mathcheck:0"]);
   });

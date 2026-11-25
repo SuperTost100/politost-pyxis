@@ -48,6 +48,7 @@ import {
   seedSentFilesChat,
   seedSourcesChats,
   seedStoppedChat,
+  seedTallSourcesChat,
   seedToolChat,
   writeBlob,
 } from "./chat-look-seed";
@@ -468,6 +469,8 @@ const routes = [
   ["ask-sources-one", "/ask/look-sources-one"],
   ["ask-sources-none", "/ask/look-sources-none"],
   ["ask-sources-failed", "/ask/look-sources-failed"],
+  // A chapter that stands for eight passages, in a window 640 pixels high: its card stays in the window and scrolls.
+  ["ask-sources-tall", "/ask/look-sources-tall"],
   // The chat panel and search; the subject chip's menu on a chat with a very long subject, and on a new chat's first page.
   ["ask-panel", "/ask/audit-chat"],
   ["ask-search", "/ask/audit-chat"],
@@ -3702,6 +3705,29 @@ async function openState(page: Page, name: string) {
     case "lesson-part-sources":
       await openSources(page, name);
       break;
+    case "ask-sources-tall": {
+      const reply = page.locator(".px-msg:not(.px-msg-user)").last();
+      const place = reply.getByRole("button", { name: /^Analisi matematica 2, (cap|ch)\. 5$/ });
+      await atRest(place);
+      // From the keyboard: the place's card quotes the eight passages, stays inside the window and scrolls.
+      await place.focus();
+      const card = page.getByRole("tooltip");
+      await expect(card).toContainText("Capitolo 5, brano 8");
+      const box = await card.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom, window: innerHeight, scroll: element.scrollHeight, client: element.clientHeight };
+      });
+      expect(box.top, "the card starts above the window").toBeGreaterThanOrEqual(0);
+      expect(box.bottom, "the card ends below the window").toBeLessThanOrEqual(box.window);
+      expect(box.scroll, "the card should need to scroll").toBeGreaterThan(box.client);
+      await page.keyboard.press("End");
+      await expect.poll(() => card.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(1);
+      await page.keyboard.press("Home");
+      await expect.poll(() => card.evaluate((element) => element.scrollTop)).toBe(0);
+      await page.keyboard.press("ArrowDown");
+      await expect.poll(() => card.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      break;
+    }
     case "ask-sources-one": {
       const reply = page.locator(".px-msg:not(.px-msg-user)").last();
       // One passage of one source: the row is the link to it, and nothing opens.
@@ -5986,6 +6012,9 @@ test.afterAll(async () => {
   for (const folder of [...auditFolders, updateFolder, auditEngines]) rmSync(folder, { recursive: true, force: true });
 });
 
+/** States drawn in a window 640 pixels high instead of 800. */
+const SHORT_STATES = new Set(["ask-sources-tall"]);
+
 /** Whether the formulas' checks can run here: the pinned Python fixture is in `.tmp/pyodide`. */
 const CHECKS_RUN = existsSync(".tmp/pyodide/pyodide.js");
 const pyodideVersion = () => (JSON.parse(readFileSync("resources/pyodide-manifest.json", "utf8")) as { version: string }).version;
@@ -6009,6 +6038,7 @@ function lookChats(name: string) {
       DELETE FROM subjects WHERE id LIKE 'look-%';`);
     if (name.startsWith("ask-sources") || name === "lesson-part-sources") {
       seedSourcesChats(db);
+      if (name === "ask-sources-tall") seedTallSourcesChat(db);
       // The checks of the formulas run in the Python pack, which these states find installed when the fixture is there.
       const pack = join(auditUserData, "workspace/runtimes/pyodide", pyodideVersion());
       if (CHECKS_RUN && !existsSync(join(pack, "pyodide.js"))) {
@@ -6057,6 +6087,8 @@ async function walk(slice: typeof auditRoutes) {
             process.env.PYXIS_UI_LARGE ? ("lg" as const) : ("md" as const),
           );
           for (const [name, route] of slice) {
+            // A state about a short window gets one; every other state the combination's height.
+            await page.setViewportSize({ width, height: SHORT_STATES.has(name) ? 640 : 800 });
             const key = `${name}-${language}-${theme}-${width}${process.env.PYXIS_UI_LARGE ? "-large" : ""}`;
             const before = pageErrors.length;
             auditNow = key;
@@ -6151,7 +6183,7 @@ async function walk(slice: typeof auditRoutes) {
               // Moving focus can clear a text selection, and the menu goes with it.
               if (name.startsWith("selection-")) await openState(page, name);
               // The keyboard check moves the focus and the page, and a passage's card goes with the pointer that left it.
-              if (name === "ask-sources-passage" || name === "lesson-part-sources") await openState(page, name);
+              if (name === "ask-sources-passage" || name === "lesson-part-sources" || name === "ask-sources-tall") await openState(page, name);
               await page.evaluate(
                 () =>
                   new Promise<void>((resolve) =>

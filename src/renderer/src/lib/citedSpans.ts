@@ -74,6 +74,11 @@ export function coveredRuns(text: string): CoveredRun[] {
   });
 }
 
+/** Whether a block's flat text has words: a letter, a digit or a formula. Marks, spaces and punctuation are none. */
+export function hasWords(text: string): boolean {
+  return new RegExp(`[\\p{L}\\p{N}${ATOM}]`, "u").test(text);
+}
+
 /** The part of a DOM node `flatten` needs, so a unit test can run it on a linkedom tree. */
 export type FlatNode = {
   nodeType: number;

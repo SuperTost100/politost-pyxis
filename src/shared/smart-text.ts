@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { seededRandom, shuffleChoices } from "./choices";
 import { figureKind, type FigureKind } from "./figure-kinds";
-import { mapOutsideCode } from "./math-delimiters";
+import { priceFormulas } from "./math-delimiters";
+import { inRanges, notProseRanges } from "./outside-code";
 import { indentWidth, inListItem } from "./markdown-tree";
 
 /**
@@ -619,8 +620,8 @@ export function partQuestions(segments: SmartSegment[], kind: "part" | "recap"):
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 /** A passage reference as a model writes it: [P3], a group such as [P1, P3; 2], or raw passage ids. */
 const PASSAGE_REF = String.raw`\[(?:P\d+(?:\s*[,;]\s*P?\d+)*|${UUID}(?:\s*[,;]\s*${UUID})*)\]`;
-/** The [Pn] marks a view links, after `splitCitationGroups`. */
-export const PASSAGE_MARK = String.raw`\[P\d+\]`;
+/** The [Pn] marks a view links, a group such as [P1, P3] included. */
+export const PASSAGE_MARK = String.raw`\[P\d+(?:\s*[,;]\s*P?\d+)*\]`;
 /** What may come before a run on its line when the space before the run is Markdown's own: indentation, a list marker, a quote. */
 const SYNTAX_LEAD = /^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+|>[ \t]?)*$/;
 
@@ -632,10 +633,20 @@ const SYNTAX_LEAD = /^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+|>[ \t]?)*$/;
  * line, after its indentation, a list marker or a quote, that whitespace is Markdown's and stays, so the line stays in its
  * list item; a run removed there also takes the spaces after it, so "- [P1] See" reads "- See".
  */
-export function replaceMarkRuns(text: string, mark: string, render: (run: string) => string): string {
+export function replaceMarkRuns(
+  text: string,
+  mark: string,
+  render: (run: string, at: number) => string,
+  { proseOnly = true }: { proseOnly?: boolean } = {},
+): string {
+  // Only prose holds marks: a [P1] in code, a formula or a link is part of it (`notProseRanges`). Two prices the parser
+  // pairs as one formula are prose, as the view draws them (`priceFormulas`).
+  const prices = new Set(proseOnly ? priceFormulas(text) : []);
+  const skip = proseOnly ? notProseRanges(text).filter(([from]) => !prices.has(from)) : [];
   const run = new RegExp(String.raw`([ \t]*)(${mark}(?:[ \t]*[,;]?[ \t]*${mark})*)([ \t]*)`, "gi");
   return text.replace(run, (all: string, before: string, marks: string, after: string, at: number, whole: string) => {
-    const replaced = render(marks);
+    if (inRanges(skip, at + before.length)) return all;
+    const replaced = render(marks, at + before.length);
     const lead = whole.slice(whole.lastIndexOf("\n", at - 1) + 1, at) + before;
     // After prose the run takes the spaces before it, and the ones after it when punctuation follows ("Vedi [P1] .").
     if (!SYNTAX_LEAD.test(lead)) return /[.,;:!?)\]»]/.test(whole[at + all.length] ?? "") ? replaced : replaced + after;
@@ -643,9 +654,12 @@ export function replaceMarkRuns(text: string, mark: string, render: (run: string
   });
 }
 
-/** Removes passage references ([P3], raw passage ids), as an export or an older introduction needs. */
+/**
+ * Removes passage references ([P3], raw passage ids) everywhere, the JSON of a pyxis-* block included, as an older
+ * introduction or a figure's caption needs.
+ */
 export function stripPassageRefs(markdown: string): string {
-  return replaceMarkRuns(markdown, PASSAGE_REF, () => "");
+  return replaceMarkRuns(markdown, PASSAGE_REF, () => "", { proseOnly: false });
 }
 
 /** Rewrites a grouped citation such as [P1, P3] or [P1; 3] as [P1][P3], the form the chat links. */
@@ -656,11 +670,12 @@ export function splitCitationGroups(markdown: string): string {
 }
 
 /**
- * The same for a chat reply, where code is code: `list[P1]`, `x : int` and the indent of a chained call stay as written.
- * Lessons and introductions keep stripPassageRefs, since their pyxis-* blocks are JSON that carries markers too.
+ * The same for a chat reply or an export, where only prose holds marks: code (`list[P1]`, the indent of a chained
+ * call), a formula ($A[P1]$) and a link ([P1](url)) stay as written. Introductions keep stripPassageRefs, since their
+ * pyxis-* blocks are JSON that carries marks too.
  */
 export function stripPassageRefsOutsideCode(markdown: string): string {
-  return mapOutsideCode(markdown, stripPassageRefs);
+  return replaceMarkRuns(markdown, PASSAGE_REF, () => "");
 }
 
 export type SmartSection = { title: string; start: number; end: number };

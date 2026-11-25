@@ -317,3 +317,30 @@ export function seedToolChat(db: DatabaseSync, state: "working" | "done" | "undo
     "reported",
   );
 }
+
+/** Eight passages of one chapter, each a few lines long: the card of the chapter quotes them all. */
+const CHAPTER_PASSAGES = Array.from({ length: 8 }, (_, index) => [
+  `look-p-ch5-${index + 1}`,
+  `Capitolo 5, brano ${index + 1}. ${"Il teorema di Fubini permette di calcolare un integrale doppio come due integrali semplici, uno dopo l'altro, quando la funzione è integrabile sul rettangolo. ".repeat(2)}`,
+] as const);
+
+/** A chat whose answer cites eight passages of one chapter: the place stands for all of them and its card is tall. */
+export function seedTallSourcesChat(db: DatabaseSync, id = "look-sources-tall") {
+  db.prepare("INSERT INTO sources(id,kind,title,status,library,created_at,updated_at) VALUES('look-src-tall','pdf','Analisi matematica 2','ready',1,1,1)").run();
+  db.prepare("INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('look-src-tall-doc','look-src-tall',1,'{\"kind\":\"pdf\"}',1)").run();
+  const passage = db.prepare("INSERT INTO passages(id,source_id,document_id,text,locator_json,section_path,created_at) VALUES(?,'look-src-tall','look-src-tall-doc',?,'{\"chapter\":5}',NULL,1)");
+  for (const [passageId, text] of CHAPTER_PASSAGES) passage.run(passageId, text);
+  db.prepare("INSERT INTO chats(id,title,subject,created_at,updated_at) VALUES(?,?,'Analisi matematica II',1,2)").run(id, "Fubini, tutti i casi");
+  const message = db.prepare("INSERT INTO messages(id,chat_id,role,body,grounding,created_at) VALUES(?,?,?,?,?,?)");
+  message.run(`${id}-q`, id, "user", "Quando posso usare Fubini?", null, 1);
+  message.run(
+    `${id}-a`,
+    id,
+    "assistant",
+    CHAPTER_PASSAGES.map((_, index) => `Questo è il caso ${index + 1} in cui Fubini vale [P${index + 1}].`).join(" "),
+    "sources",
+    2,
+  );
+  const cite = db.prepare("INSERT INTO message_passages(message_id,passage_id,label) VALUES(?,?,?)");
+  CHAPTER_PASSAGES.forEach(([passageId], index) => cite.run(`${id}-a`, passageId, `P${index + 1}`));
+}

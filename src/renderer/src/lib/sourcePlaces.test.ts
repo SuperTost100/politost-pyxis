@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInstance, type TFunction } from "i18next";
 import { beforeAll, describe, expect, it } from "vitest";
-import { citedOrder, citedPassageIds, lessonPlaces, placeText, rowText, sourceGroups, sourceName, type CitedPlace } from "./sourcePlaces";
+import { citedOrder, citedPassageIds, lessonPlaces, listedPlaceText, placeText, rowText, sourceGroups, sourceName, type CitedPlace } from "./sourcePlaces";
 
 const book = { sourceId: "b", title: "Analisi matematica 2" };
 const notes = { sourceId: "n", title: "Appunti · Lezione 14" };
@@ -48,6 +48,10 @@ describe("citedOrder", () => {
     expect(citedOrder(`Prima [P1].\n\n${example}\n\n${figure}\n\n${tool}\n\n\`\`\`python\nx[P7]\n\`\`\``)).toEqual([1, 2, 3]);
   });
 
+  it("reads marks as the view links them: not in a formula or a link, and between two prices", () => {
+    expect(citedOrder("La matrice $A[P4]$ e [P5](https://x.it), poi [P1]. Costa $5 per voce [P2] e $10.")).toEqual([1, 2]);
+  });
+
   it("does not read code", () => {
     expect(citedOrder("Vedi `list[P4]` e\n\n```\nx[P5]\n```\n\nfine [P2].")).toEqual([2]);
   });
@@ -73,6 +77,21 @@ describe("sourceGroups", () => {
       { n: 5, passageId: "p5" },
       { n: 10, passageId: "p10" },
     ]);
+  });
+
+  it("keeps two versions of a linked file cited on the same page apart, each named by its version", () => {
+    const versions: CitedPlace[] = [
+      { n: 1, passageId: "old", ...book, page: 4, version: 1 },
+      { n: 2, passageId: "new", ...book, page: 4, version: 2 },
+      { n: 3, passageId: "other", ...book, page: 9, version: 2 },
+    ];
+    const [group] = sourceGroups(versions, [1, 2, 3]);
+    expect(group!.places.map((place) => [place.passageId, listedPlaceText(it_, place)])).toEqual([
+      ["old", "p. 4 · versione 1"],
+      ["new", "p. 4 · versione 2"],
+      ["other", "p. 9"],
+    ]);
+    expect(listedPlaceText(en, group!.places[0]!)).toBe("p. 4 · version 1");
   });
 
   it("leaves out places the text does not cite and lists a place cited twice once", () => {

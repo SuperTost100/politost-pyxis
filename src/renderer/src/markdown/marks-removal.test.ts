@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { stripPassageRefsOutsideCode } from "../../../shared/smart-text";
-import { parseMarkdown, walk, type MdNode } from "../../../shared/markdown-tree";
+import { end, parseMarkdown, start, walk, type MdNode } from "../../../shared/markdown-tree";
 import chatFixtures from "../../../../tests/fixtures/chat-conversations.json";
 import { SOURCES_ANSWER, SOURCES_LESSON } from "../../../../tests/e2e/chat-look-seed";
 import { partText, recapText } from "../../../../tests/e2e/part-texts";
@@ -30,6 +30,18 @@ function blocks(text: string): string[] {
   return found;
 }
 
+/** The formulas and the links of a text as written, in order: what removing marks must never touch. */
+function formulasAndLinks(text: string): string[] {
+  const found: string[] = [];
+  walk(parseMarkdown(text), (node: MdNode) => {
+    if (!["math", "inlineMath", "link", "image"].includes(node.type)) return;
+    // The view's own anchors are the marks it added, not links of the text.
+    if (node.type !== "link" || !String((node as { url?: string }).url).startsWith("cite:")) found.push(text.slice(start(node), end(node)));
+    return false;
+  });
+  return found;
+}
+
 const strings = (value: unknown): string[] =>
   typeof value === "string" ? [value] : Array.isArray(value) ? value.flatMap(strings) : value && typeof value === "object" ? Object.values(value).flatMap(strings) : [];
 
@@ -41,6 +53,7 @@ const texts = [
   SOURCES_ANSWER("$$h = 2$$"),
   SOURCES_LESSON,
   "- ![Diagramma](diagram.png)\n- Una voce .\n\n1. Uno ;\n2. Due",
+  "La matrice $A[P1]$ e la serie $$\\sum a[P2]$$ restano formule. Il link [P1](https://esempio.it) e [vedi [P2]](https://x.it) restano link, e ![P3](foto.png) un'immagine.",
 ];
 
 /** The text with marks where a model writes them: after each sentence, and at the start of each list item. */
@@ -77,6 +90,19 @@ describe("removing citation marks", () => {
       expect(blocks(stripPassageRefsOutsideCode(withMarks)), withMarks.slice(0, 120)).toEqual(expected);
     }
     expect(checked).toBeGreaterThan(40);
+  });
+
+  it("leaves formulas and links byte for byte, for the view and for an export", () => {
+    for (const text of texts) {
+      for (const input of [text, marked(text)]) {
+        const expected = formulasAndLinks(input);
+        expect(formulasAndLinks(stripPassageRefsOutsideCode(input)), input.slice(0, 120)).toEqual(expected);
+        expect(formulasAndLinks(linkCitations(input, () => true)), input.slice(0, 120)).toEqual(expected);
+      }
+    }
+    expect(stripPassageRefsOutsideCode("La matrice $A[P1]$ e [P1](https://esempio.it), fine [P2].")).toBe(
+      "La matrice $A[P1]$ e [P1](https://esempio.it), fine.",
+    );
   });
 
   it("keeps the space after a list marker and the indentation of a mark on its own line", () => {

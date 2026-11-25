@@ -191,6 +191,7 @@ const Reply = memo(function Reply({
         slide: cite.locator.slide,
         chapter: cite.locator.chapter,
         section: cite.label,
+        version: cite.version,
       })),
     [row.citations],
   );

@@ -166,6 +166,21 @@ describe("importSmartbook", () => {
     ]);
   });
 
+  it("names the version of the file each passage was read from", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('s', 'pdf', 'Note', 'ready', 1, 1);
+      INSERT INTO source_documents (id, source_id, version, tree_json, created_at) VALUES ('d1', 's', 1, '{}', 1), ('d2', 's', 2, '{}', 2);`);
+    const insert = db.prepare(
+      `INSERT INTO passages (id, source_id, document_id, text, locator_json, created_at) VALUES (?, 's', ?, 'Testo.', '{"page":4}', 1)`,
+    );
+    insert.run("old", "d1");
+    insert.run("new", "d2");
+    expect(passagePlaces(db, ["old", "new"]).map((place) => [place.passageId, place.version])).toEqual([
+      ["old", 1],
+      ["new", 2],
+    ]);
+  });
+
   it("refuses an encrypted package", () => {
     const db = openDatabase(":memory:");
     const bytes = new Uint8Array([0x50, 0x54, 0x53, 0x42, 0, 0]);

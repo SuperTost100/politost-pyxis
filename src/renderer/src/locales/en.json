@@ -4314,6 +4314,8 @@
     "failedValue": "The result does not match the expected value.",
     "failedSolutions": "The solutions do not match the ones Pyxis finds.",
     "untitled": "Untitled source",
-    "supports": "For “{{sentence}}”"
+    "supports": "For “{{sentence}}”",
+    "version": "version {{n}}",
+    "scrollHint": "The up and down arrows scroll the text"
   }
 }

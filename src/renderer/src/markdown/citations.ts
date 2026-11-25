@@ -1,5 +1,4 @@
 import { PASSAGE_MARK, replaceMarkRuns, splitCitationGroups } from "../../../shared/smart-text";
-import { mapOutsideCode } from "../../../shared/math-delimiters";
 
 /** Whether a [Pn] mark names a passage the page knows, such as one stored with the reply. */
 export type KnownPassage = (passageId: number) => boolean;
@@ -7,18 +6,17 @@ export type KnownPassage = (passageId: number) => boolean;
 /**
  * Turns each [Pn] mark into an empty `cite:` link, which the Markdown view draws as an invisible anchor: the text shows
  * no mark, and the sources row finds the words a passage supports from it. The spaces before a mark go with it, so
- * "volume [P1]." reads "volume." With `known`, a mark for a passage the page does not know (the model cited one the
- * reply never stored) is dropped, since nothing can open it. Without it, every mark is kept by its number. Whitespace
+ * "volume [P1]." reads "volume." A mark for a passage `known` does not name (the model cited one the reply never stored)
+ * is dropped, since nothing can open it. Only a view that knows its passages calls this; any other shows a stored text's
+ * [Pn] as written. Whitespace
  * is touched only next to a run of marks (`replaceMarkRuns`), so the Markdown keeps its blocks.
  */
-export function linkCitations(markdown: string, known?: KnownPassage): string {
-  return mapOutsideCode(markdown, (text) =>
-    replaceMarkRuns(splitCitationGroups(text), PASSAGE_MARK, (run) =>
-      [...run.matchAll(/\[P(\d+)\]/g)]
-        .map(([, raw]) => Number(raw))
-        .map((id) => (!known || known(id) ? `[](cite:p${id})` : ""))
-        .join(""),
-    ),
+export function linkCitations(markdown: string, known: KnownPassage): string {
+  return replaceMarkRuns(markdown, PASSAGE_MARK, (run) =>
+    [...splitCitationGroups(run).matchAll(/\[P(\d+)\]/g)]
+      .map(([, raw]) => Number(raw))
+      .map((id) => (known(id) ? `[](cite:p${id})` : ""))
+      .join(""),
   );
 }
 

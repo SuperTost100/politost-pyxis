@@ -87,6 +87,8 @@ export type ChatCitation = {
   subject?: string | null;
   /** The file was attached to the chat rather than taken from the Library. */
   attached?: boolean;
+  /** The version of the file the passage was read from: a linked file read again has a new one. */
+  version?: number;
 };
 
 /**
@@ -2062,9 +2064,10 @@ export function readChat(
   const links = new Map<string, ChatCitation[]>();
   for (const link of db
     .prepare(
-      `SELECT mp.message_id, mp.label, mp.passage_id, p.source_id, p.section_path, p.locator_json
+      `SELECT mp.message_id, mp.label, mp.passage_id, p.source_id, p.section_path, p.locator_json, d.version
        FROM message_passages mp
        JOIN passages p ON p.id = mp.passage_id
+       LEFT JOIN source_documents d ON d.id = p.document_id
        WHERE mp.message_id IN (SELECT id FROM messages WHERE chat_id = ?)
        ORDER BY mp.message_id, mp.passage_id`,
     )
@@ -2075,6 +2078,7 @@ export function readChat(
     source_id: string | null;
     section_path: string | null;
     locator_json: string | null;
+    version: number | null;
   }>) {
     const list = links.get(link.message_id) ?? [];
     list.push({
@@ -2086,6 +2090,7 @@ export function readChat(
       locator: link.locator_json
         ? (JSON.parse(link.locator_json) as PassageHit["locator"])
         : {},
+      ...(link.version != null ? { version: link.version } : {}),
     });
     links.set(link.message_id, list);
   }

@@ -1,6 +1,6 @@
 import type { TFunction } from "i18next";
-import { parseMarkdown, walk } from "../../../shared/markdown-tree";
-import { parseLooseJson, splitCitationGroups } from "../../../shared/smart-text";
+import { parseMarkdown, start, walk } from "../../../shared/markdown-tree";
+import { PASSAGE_MARK, parseLooseJson, replaceMarkRuns, splitCitationGroups } from "../../../shared/smart-text";
 import { TOOL_FENCE } from "../../../shared/tool-blocks";
 
 /** A passage a text cites as [Pn], with what is known of its source and where the passage sits in it. */
@@ -16,6 +16,8 @@ export type CitedPlace = {
   chapter?: number;
   /** A section's name, for a source without pages, slides or chapters. */
   section?: string | null;
+  /** The version of the file the passage was read from: a linked file read again has a new one. */
+  version?: number;
   /** Shown as the source's name when the title is not known. */
   fallbackTitle?: string;
 };
@@ -31,6 +33,8 @@ export type PlaceLabel =
  */
 export type ListedPlace = CitedPlace & {
   label: PlaceLabel | null;
+  /** The same page of another version of the file is listed too, so the version is named. */
+  versionShown?: boolean;
   numbers: number[];
   passages: Array<{ n: number; passageId: string }>;
 };
@@ -49,24 +53,26 @@ function blockTexts(value: unknown, key = ""): string[] {
 
 /**
  * The passage numbers a text cites, each once, in the order the text first cites them. Code is found by the Markdown
- * parser, as `linkCitations` finds it, so a mark the view draws is a mark the row lists. The app's own blocks (```pyxis-*,
+ * parser, as `linkCitations` finds it (not in code, a formula or a link), so a mark the view draws is a mark the row
+ * lists. The app's own blocks (```pyxis-*,
  * such as a worked example or a figure's caption) are read for the text they draw; real code and a tool's block are not.
  */
 export function citedOrder(markdown: string): number[] {
-  const numbers: number[] = [];
-  const read = (text: string) => {
-    for (const match of splitCitationGroups(text).matchAll(/\[P(\d+)\]/g)) numbers.push(Number(match[1]));
-  };
-  walk(parseMarkdown(markdown), (node) => {
-    if (node.type === "code") {
-      const lang = (node as { lang?: string | null }).lang ?? "";
-      if (lang.startsWith("pyxis-") && lang !== TOOL_FENCE) blockTexts(parseLooseJson(node.value ?? "")).forEach(read);
-      return false;
-    }
-    if (node.type === "inlineCode" || node.type === "math" || node.type === "inlineMath") return false;
-    if (typeof node.value === "string") read(node.value);
+  const found: Array<{ at: number; numbers: number[] }> = [];
+  const numbers = (text: string) => [...splitCitationGroups(text).matchAll(/\[P(\d+)\]/g)].map((match) => Number(match[1]));
+  // Prose, by the rule the view links its marks with: not in code, a formula or a link.
+  replaceMarkRuns(markdown, PASSAGE_MARK, (run, at) => {
+    found.push({ at, numbers: numbers(run) });
+    return run;
   });
-  return [...new Set(numbers)];
+  walk(parseMarkdown(markdown), (node) => {
+    if (node.type !== "code") return;
+    const lang = (node as { lang?: string | null }).lang ?? "";
+    if (lang.startsWith("pyxis-") && lang !== TOOL_FENCE)
+      found.push({ at: start(node), numbers: blockTexts(parseLooseJson(node.value ?? "")).flatMap(numbers) });
+    return false;
+  });
+  return [...new Set(found.sort((a, b) => a.at - b.at).flatMap((entry) => entry.numbers))];
 }
 
 /** The ids of the passages a text's marks name (`order`), where [Pn] is `cited[n - 1]`: what its row lists. */
@@ -107,7 +113,10 @@ export function sourceGroups(places: readonly CitedPlace[], order: readonly numb
       places: [],
     };
     const label = placeLabel(place);
-    const same = label && group.places.find((listed) => JSON.stringify(listed.label) === JSON.stringify(label));
+    // One place per page (or slide, chapter, section) of one version of the file: two versions each open their own.
+    const same =
+      label &&
+      group.places.find((listed) => JSON.stringify(listed.label) === JSON.stringify(label) && listed.version === place.version);
     if (same) {
       same.numbers.push(place.n);
       same.passages.push({ n: place.n, passageId: place.passageId });
@@ -123,6 +132,10 @@ export function sourceGroups(places: readonly CitedPlace[], order: readonly numb
       return KIND_ORDER[x.kind] - KIND_ORDER[y.kind] || x.n - y.n;
     });
     group.places = [...numbered, ...rest];
+    for (const place of group.places)
+      place.versionShown = group.places.some(
+        (other) => other !== place && other.label && JSON.stringify(other.label) === JSON.stringify(place.label),
+      );
     const unnamed = group.places.filter((place) => !place.label);
     if (group.places.length > 1) unnamed.forEach((place, index) => (place.label = { kind: "passage", n: index + 1 }));
   }
@@ -133,6 +146,16 @@ export function sourceGroups(places: readonly CitedPlace[], order: readonly numb
 export type CheckTally = { verified: number; failed: number; pending: number };
 
 type Translate = TFunction;
+
+/**
+ * A place's words in the list: its page (or slide, chapter, section), and its file's version when the same page of
+ * another version is listed too.
+ */
+export function listedPlaceText(t: Translate, place: ListedPlace): string {
+  if (!place.label) return "";
+  const text = placeText(t, place.label);
+  return place.versionShown && place.version !== undefined ? `${text} · ${t("sourcesRow.version", { n: place.version })}` : text;
+}
 
 export function placeText(t: Translate, label: PlaceLabel): string {
   if (label.kind === "section") return label.text;
@@ -173,7 +196,7 @@ export function rowText(
 type LessonSource = {
   sourceId: string;
   title: string;
-  places: ReadonlyArray<{ passageId: string; page?: number; slide?: number; chapter?: number; section?: string }>;
+  places: ReadonlyArray<{ passageId: string; page?: number; slide?: number; chapter?: number; section?: string; version?: number }>;
 };
 
 /**
@@ -203,6 +226,7 @@ export function lessonPlaces(
         slide: place.slide,
         chapter: place.chapter,
         section: place.section,
+        version: place.version,
       },
     ];
   });

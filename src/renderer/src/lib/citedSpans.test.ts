@@ -1,6 +1,6 @@
 import { parseHTML } from "linkedom";
 import { describe, expect, it } from "vitest";
-import { ATOM, MARK, coveredRuns, flatten, type FlatNode } from "./citedSpans";
+import { ATOM, MARK, coveredRuns, flatten, hasWords, type FlatNode } from "./citedSpans";
 
 /** The words each run covers, for a text written with [m] for a mark and $ for a formula. */
 function covered(source: string): string[] {
@@ -81,5 +81,14 @@ describe("flatten", () => {
     );
     const item = document.querySelector("li") as unknown as FlatNode;
     expect(flatten(item).text).toBe(`Voce ${MARK}`);
+  });
+});
+
+describe("hasWords", () => {
+  it("counts letters, digits and formulas as words, and marks and punctuation as none", () => {
+    expect(hasWords(`${MARK}.`)).toBe(false);
+    expect(hasWords(` ${MARK}, ${MARK};`)).toBe(false);
+    expect(hasWords(`${ATOM}${MARK}`)).toBe(true);
+    expect(hasWords(`Vale ${MARK}`)).toBe(true);
   });
 });

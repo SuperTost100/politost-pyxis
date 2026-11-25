@@ -549,14 +549,15 @@ function viewerPassages(db: Database.Database, sourceId: string, chapter?: numbe
 
 /**
  * Where each passage asked for sits: its source, the source's title (also for a file that left the Library or was only
- * attached) and its place, without its text, in the order asked. A passage that is gone is left out.
+ * attached), its place and the version of the file it was read from, without its text, in the order asked. A passage
+ * that is gone is left out.
  */
 export function passagePlaces(db: Database.Database, passageIds: readonly string[]) {
   if (passageIds.length === 0) return [];
   const rows = db
     .prepare(
-      `SELECT p.id, p.source_id, p.locator_json, p.section_path, s.title
-       FROM passages p LEFT JOIN sources s ON s.id = p.source_id
+      `SELECT p.id, p.source_id, p.locator_json, p.section_path, s.title, d.version
+       FROM passages p LEFT JOIN sources s ON s.id = p.source_id LEFT JOIN source_documents d ON d.id = p.document_id
        WHERE p.id IN (SELECT value FROM json_each(?))`,
     )
     .all(JSON.stringify(passageIds)) as Array<{
@@ -565,6 +566,7 @@ export function passagePlaces(db: Database.Database, passageIds: readonly string
     locator_json: string | null;
     section_path: string | null;
     title: string | null;
+    version: number | null;
   }>;
   const byId = new Map(rows.map((row) => [row.id, row]));
   return passageIds.flatMap((id) => {
@@ -577,6 +579,7 @@ export function passagePlaces(db: Database.Database, passageIds: readonly string
         sourceTitle: row.title ?? "",
         locator: row.locator_json ? (JSON.parse(row.locator_json) as PassageHit["locator"]) : {},
         sectionPath: row.section_path,
+        ...(row.version != null ? { version: row.version } : {}),
       },
     ];
   });

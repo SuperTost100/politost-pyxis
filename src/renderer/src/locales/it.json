@@ -4314,6 +4314,8 @@
     "failedValue": "Il risultato non coincide con il valore atteso.",
     "failedSolutions": "Le soluzioni non coincidono con quelle che trova Pyxis.",
     "untitled": "Fonte senza titolo",
-    "supports": "Per «{{sentence}}»"
+    "supports": "Per «{{sentence}}»",
+    "version": "versione {{n}}",
+    "scrollHint": "Le frecce su e giù scorrono il testo"
   }
 }

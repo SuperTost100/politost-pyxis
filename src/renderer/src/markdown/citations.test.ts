@@ -9,7 +9,7 @@ describe("linkCitations", () => {
   });
 
   it("splits a group into one link per passage", () => {
-    expect(linkCitations("Vale [P1, P3; 2].")).toBe("Vale[](cite:p1)[](cite:p3)[](cite:p2).");
+    expect(linkCitations("Vale [P1, P3; 2].", () => true)).toBe("Vale[](cite:p1)[](cite:p3)[](cite:p2).");
   });
 
   it("drops a mark for a passage the page does not know", () => {

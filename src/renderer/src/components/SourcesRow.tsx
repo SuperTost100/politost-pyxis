@@ -9,17 +9,20 @@ import {
   useRef,
   useState,
   type FocusEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent,
+  type RefObject,
   type ReactNode,
 } from "react";
 import type { TFunction } from "i18next";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { MathCheck } from "@shared/math-check";
 import { passageQuery } from "../lib/passagePlaces";
 import { useCheckTally } from "../lib/mathChecks";
 import { citedRanges } from "../lib/citedRanges";
 import { renderedText } from "../lib/renderedText";
-import { placeText, rowText, sourceGroups, sourceName, type CitedPlace, type ListedPlace, type SourceGroup } from "../lib/sourcePlaces";
+import { listedPlaceText, rowText, sourceGroups, sourceName, type CitedPlace, type ListedPlace, type SourceGroup } from "../lib/sourcePlaces";
 import { openSourceViewer } from "./SourceViewer";
 import "./SourcesRow.css";
 
@@ -27,6 +30,11 @@ import "./SourcesRow.css";
 const TINT = "px-cited";
 /** A pointer that only crosses the list opens no passage. */
 const HOVER_DELAY = 110;
+/** How long a card stays after the pointer leaves its place, so the pointer can move onto a card that scrolls. */
+const LEAVE_DELAY = 150;
+/** The card's distance from its place and from the window's edges. */
+const GAP = 8;
+const EDGE = 12;
 
 /** Words cut at a word near `length` characters, as the card shows them. */
 function excerpt(text: string, length = 280): string {
@@ -100,6 +108,7 @@ export function SourcesRow({
   const [statHover, setStatHover] = useState(false);
   const [card, setCard] = useState<Card | null>(null);
   const timer = useRef(0);
+  const cardBox = useRef<HTMLDivElement>(null);
   const host = useCallback(() => box.current?.closest<HTMLElement>("[data-cited-host]") ?? null, []);
 
   const shown = open || pressed || statHover;
@@ -162,9 +171,29 @@ export function SourcesRow({
     "aria-describedby": card?.place.passageId === place.passageId ? cardId : undefined,
     onClick: () => openSourceViewer({ passageId: place.passageId }),
     onPointerEnter: (event: PointerEvent<HTMLElement>) => show(place, sourceName(t, group), event.currentTarget, true),
-    onPointerLeave: hide,
+    // A card that scrolls can be reached with the pointer: leaving the place for it keeps it open.
+    onPointerLeave: () => {
+      window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(hide, LEAVE_DELAY);
+    },
     onFocus: (event: FocusEvent<HTMLElement>) => show(place, sourceName(t, group), event.currentTarget, false),
-    onBlur: hide,
+    // Focus moving into the card keeps it.
+    onBlur: (event: FocusEvent<HTMLElement>) => {
+      if (event.relatedTarget instanceof Node && cardBox.current?.contains(event.relatedTarget)) return;
+      hide();
+    },
+    // From the keyboard, the arrows, Page Up and Down, Home and End read a card too long for the window.
+    onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => {
+      const box = cardBox.current;
+      if (!box || box.scrollHeight <= box.clientHeight + 1) return;
+      const page = box.clientHeight - 40;
+      const by: Record<string, number> = { ArrowDown: 40, ArrowUp: -40, PageDown: page, PageUp: -page };
+      if (event.key === "Home") box.scrollTop = 0;
+      else if (event.key === "End") box.scrollTop = box.scrollHeight;
+      else if (event.key in by) box.scrollTop += by[event.key]!;
+      else return;
+      event.preventDefault();
+    },
   });
   const sep = (
     <span className="px-sources-sep" aria-hidden>
@@ -193,7 +222,7 @@ export function SourcesRow({
   if (text.single) {
     const group = groups[0]!;
     const place = text.single;
-    const where = place.label ? placeText(t, place.label) : null;
+    const where = place.label ? listedPlaceText(t, place) : null;
     bar = (
       <>
         <button
@@ -276,7 +305,7 @@ export function SourcesRow({
                           aria-label={placeName(t, sourceName(t, group), place)}
                           {...placeProps(place, group)}
                         >
-                          {place.label ? placeText(t, place.label) : null}
+                          {place.label ? listedPlaceText(t, place) : null}
                         </button>
                       ))}
                     </span>
@@ -287,14 +316,30 @@ export function SourcesRow({
           </div>
         </div>
       ) : null}
-      {card ? <PassageCard id={cardId} card={card} /> : null}
+      {card
+        ? createPortal(
+        <PassageCard
+          id={cardId}
+          card={card}
+          cardRef={cardBox}
+          onPointerEnter={() => window.clearTimeout(timer.current)}
+          onPointerLeave={hide}
+          onBlur={(event) => {
+            if (event.relatedTarget !== card.anchor) hide();
+          }}
+        />,
+            // Out of the message, whose `content-visibility` would make it the card's frame instead of the window, and into
+            // the page's main landmark, where a screen reader finds it with the page.
+            box.current?.closest("main") ?? document.body,
+          )
+        : null}
     </div>
   );
 }
 
 /** A place's name for a screen reader: its source and its place, with the words the place shows, as "Analisi 2, p. 172". */
 function placeName(t: TFunction, title: string, place: ListedPlace): string | undefined {
-  return place.label ? t("sourcesRow.placeAria", { title, place: placeText(t, place.label) }) : undefined;
+  return place.label ? t("sourcesRow.placeAria", { title, place: listedPlaceText(t, place) }) : undefined;
 }
 
 /**
@@ -302,9 +347,22 @@ function placeName(t: TFunction, title: string, place: ListedPlace): string | un
  * for several passages (two cited on one page) quotes each one, introduced by the start of the sentence it supports,
  * whose words are tinted with the others.
  */
-function PassageCard({ id, card }: { id: string; card: Card }) {
+function PassageCard({
+  id,
+  card,
+  cardRef: ref,
+  onPointerEnter,
+  onPointerLeave,
+  onBlur,
+}: {
+  id: string;
+  card: Card;
+  cardRef: RefObject<HTMLDivElement | null>;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
+  onBlur: (event: FocusEvent<HTMLDivElement>) => void;
+}) {
   const { t } = useTranslation();
-  const ref = useRef<HTMLDivElement>(null);
   const several = card.place.passages.length > 1;
   const quotes = useQueries({
     queries: card.place.passages.map(({ passageId }) => ({
@@ -321,28 +379,46 @@ function PassageCard({ id, card }: { id: string; card: Card }) {
     if (!element || !card.anchor.isConnected) return;
     const at = card.anchor.getBoundingClientRect();
     const width = element.offsetWidth;
-    const height = element.offsetHeight;
-    const left = Math.max(12, Math.min(window.innerWidth - width - 12, at.left - 14));
-    // In the list the card opens above the place, so it covers the list rather than the text it tints.
-    const above = at.top - height - 8 >= 12;
+    // The whole card, however much of it shows: scrollHeight does not change with the height it is given.
+    const natural = element.scrollHeight;
+    const left = Math.max(EDGE, Math.min(window.innerWidth - width - EDGE, at.left - 14));
+    // Above the place when it fits there, so it covers the list rather than the text it tints; else below when it fits
+    // there; else on the side with more room. It never runs past the window: what does not fit scrolls inside it.
+    // Measured from the part of the place inside the window, so a place half out of view still keeps the card in it.
+    const top = Math.min(Math.max(at.top, 0), window.innerHeight);
+    const bottom = Math.min(Math.max(at.bottom, 0), window.innerHeight);
+    const roomAbove = top - GAP - EDGE;
+    const roomBelow = window.innerHeight - bottom - GAP - EDGE;
+    const above = natural <= roomAbove || (natural > roomBelow && roomAbove > roomBelow);
+    const room = Math.max(0, above ? roomAbove : roomBelow);
+    const height = Math.min(natural, room);
+    element.style.maxHeight = `${room}px`;
+    const overflow = natural > room + 1;
+    element.toggleAttribute("data-overflow", overflow);
+    // A card that scrolls is a stop for the keyboard too, where the arrows read it as in any scrolling box.
+    element.tabIndex = overflow ? 0 : -1;
     element.style.left = `${left}px`;
-    element.style.top = `${above ? at.top - height - 8 : at.bottom + 8}px`;
+    element.style.top = `${above ? top - GAP - height : bottom + GAP}px`;
     element.style.transformOrigin = `${Math.round(at.left + at.width / 2 - left)}px ${above ? "100%" : "0"}`;
   }, [card.anchor]);
   const loaded = quotes.map((quote) => quote.data ?? "").join("\n");
   useLayoutEffect(place, [place, loaded]);
   useEffect(() => {
-    window.addEventListener("scroll", place, true);
+    // The page scrolling moves the place; the card scrolling its own quotes does not.
+    const onScroll = (event: Event) => {
+      if (event.target !== ref.current) place();
+    };
+    window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", place);
     return () => {
-      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", place);
     };
   }, [place]);
-  const where = card.place.label ? placeText(t, card.place.label) : null;
-  // Drawn in the row, so it stays in the page's landmarks; fixed, so the list's fold does not clip it.
+  const where = card.place.label ? listedPlaceText(t, card.place) : null;
+  // Fixed to the window, so the list's fold does not clip it.
   return (
-    <div ref={ref} id={id} className="px-passage-card" role="tooltip">
+    <div ref={ref} id={id} className="px-passage-card" role="tooltip" onPointerEnter={onPointerEnter} onPointerLeave={onPointerLeave} onBlur={onBlur}>
       <small>{[card.title, where].filter(Boolean).join(" · ")}</small>
       {card.place.passages.map(({ n }, index) => {
         const quote = quotes[index];
@@ -358,6 +434,7 @@ function PassageCard({ id, card }: { id: string; card: Card }) {
         );
       })}
       <span className="px-passage-hint">{t("sourcesRow.hint")}</span>
+      <span className="px-passage-hint is-scroll">{t("sourcesRow.scrollHint")}</span>
     </div>
   );
 }

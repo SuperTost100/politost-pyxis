@@ -548,6 +548,8 @@ const LessonSources = z.array(
         slide: z.number().optional(),
         chapter: z.number().optional(),
         section: z.string().optional(),
+        /** The version of the file the passage was read from. */
+        version: z.number().optional(),
       }),
     ),
   }),
@@ -3266,6 +3268,8 @@ export const requests = {
               sourceTitle: z.string().optional(),
               subject: z.string().nullable().optional(),
               attached: z.boolean().optional(),
+              /** The version of the file the passage was read from. */
+              version: z.number().optional(),
             }),
           ),
         }),
@@ -3697,6 +3701,8 @@ export const requests = {
         sourceTitle: z.string(),
         locator: locatorSchema,
         sectionPath: z.string().nullable(),
+        /** The version of the file the passage was read from. */
+        version: z.number().optional(),
       }),
     ),
   },

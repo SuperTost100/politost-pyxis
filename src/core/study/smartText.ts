@@ -214,8 +214,8 @@ export function smartSources(db: Database.Database, passageIds: string[]) {
   if (!passageIds.length) return [];
   const rows = db
     .prepare(
-      `SELECT p.id, p.source_id, p.locator_json, p.section_path, s.title
-       FROM passages p JOIN sources s ON s.id = p.source_id
+      `SELECT p.id, p.source_id, p.locator_json, p.section_path, s.title, d.version
+       FROM passages p JOIN sources s ON s.id = p.source_id LEFT JOIN source_documents d ON d.id = p.document_id
        WHERE p.id IN (SELECT value FROM json_each(?))`,
     )
     .all(JSON.stringify(passageIds)) as Array<{
@@ -224,6 +224,7 @@ export function smartSources(db: Database.Database, passageIds: string[]) {
     locator_json: string | null;
     section_path: string | null;
     title: string;
+    version: number | null;
   }>;
   const byId = new Map(rows.map((row) => [row.id, row]));
   const sources = new Map<
@@ -237,6 +238,7 @@ export function smartSources(db: Database.Database, passageIds: string[]) {
         slide?: number;
         chapter?: number;
         section?: string;
+        version?: number;
       }>;
     }
   >();
@@ -269,7 +271,7 @@ export function smartSources(db: Database.Database, passageIds: string[]) {
     sources.set(row.source_id, source);
     // Every passage keeps its place, two on one page included: the text cites each by its own number, and the sources
     // row lists their page once.
-    source.places.push({ passageId: row.id, ...place });
+    source.places.push({ passageId: row.id, ...place, ...(row.version != null ? { version: row.version } : {}) });
   }
   return [...sources.values()].map((source) => ({
     ...source,

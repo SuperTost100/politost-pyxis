@@ -183,6 +183,9 @@
   border-radius: var(--radius-md);
   background: var(--surface-overlay);
   box-shadow: var(--shadow-overlay);
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   pointer-events: none;
   animation: px-passage-in 170ms var(--ease-out);
 }
@@ -219,6 +222,22 @@
 }
 .px-passage-card p.is-reading {
   color: var(--ink-subtle);
+}
+/* A card taller than the room beside its place scrolls inside itself: the wheel reaches it, and the hint says how to
+   read it from the keyboard. */
+.px-passage-card[data-overflow] {
+  pointer-events: auto;
+}
+.px-passage-card:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.px-passage-hint.is-scroll {
+  display: none;
+}
+.px-passage-card[data-overflow] .px-passage-hint.is-scroll {
+  display: block;
+  margin-top: 2px;
 }
 .px-passage-hint {
   display: block;

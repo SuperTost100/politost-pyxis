@@ -1,4 +1,4 @@
-import { coveredRuns, flatten, type FlatNode, type FlatPiece } from "./citedSpans";
+import { coveredRuns, flatten, hasWords, type FlatNode, type FlatPiece } from "./citedSpans";
 
 /** The blocks a citation mark's sentence is looked for in: the nearest one around the mark. */
 const BLOCK = "p, li, td, th, h1, h2, h3, h4, h5, h6, dd, dt, figcaption, blockquote, .px-markdown";
@@ -46,7 +46,8 @@ export function citedRanges(host: HTMLElement, numbers: ReadonlySet<number>): Ra
       if (!cited) continue;
       const range = document.createRange();
       if (run.fallback) {
-        const words = text.replace(//g, "").trim() ? block : wordsBefore(block);
+        // A block of nothing but marks and punctuation ("[P1]." after a formula) covers the block before it.
+        const words = hasWords(text) ? block : wordsBefore(block);
         if (!words) continue;
         range.selectNodeContents(words);
       } else if (!setAt(range, pieces, run.start, false) || !setAt(range, pieces, run.end, true)) continue;
