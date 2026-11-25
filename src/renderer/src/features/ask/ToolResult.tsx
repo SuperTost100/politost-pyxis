@@ -35,6 +35,7 @@ export function ToolResult({
   onView,
   onWaiting,
   onAsk,
+  fresh = false,
 }: {
   chatId: string;
   line: string;
@@ -45,6 +46,8 @@ export function ToolResult({
   onWaiting?: (id: string, waiting: boolean) => void;
   /** Sends a message in the chat, for a proposal's «Chiedi di nuovo». */
   onAsk?: (text: string) => void;
+  /** The reply was just written: a proposal it holds takes the focus to its safe choice. */
+  fresh?: boolean;
 }) {
   const client = useQueryClient();
   const pending = line.startsWith("pending:");
@@ -80,7 +83,7 @@ export function ToolResult({
   if (shown.tool === "create_flashcards")
     return <Flashcards chatId={chatId} view={shown} arriving={arriving} onChange={onChange} />;
   if (shown.tool === "propose_path_change" || shown.tool === "propose_exam" || shown.tool === "propose_delete")
-    return <Proposal chatId={chatId} view={shown} arriving={arriving} onChange={onChange} onWaiting={onWaiting} onAsk={onAsk} />;
+    return <Proposal chatId={chatId} view={shown} arriving={arriving} onChange={onChange} onWaiting={onWaiting} onAsk={onAsk} fresh={fresh} />;
   return <Made chatId={chatId} view={shown} arriving={arriving} onChange={onChange} />;
 }
 

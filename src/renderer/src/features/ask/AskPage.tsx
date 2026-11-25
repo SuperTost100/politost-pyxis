@@ -239,9 +239,10 @@ const Reply = memo(function Reply({
         view={row.tools?.[saved]}
         onWaiting={proposalWaiting}
         onAsk={busy ? undefined : onSuggest}
+        fresh={arriving}
       />
     ) : null;
-  }, [chatId, row.tools, proposalWaiting, busy, onSuggest]);
+  }, [chatId, row.tools, proposalWaiting, busy, onSuggest, arriving]);
   return (
     <ChatMessage
       engine={

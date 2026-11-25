@@ -29,6 +29,7 @@ export function Proposal({
   onChange,
   onWaiting,
   onAsk,
+  fresh,
 }: {
   chatId: string;
   view: ProposalView;
@@ -38,6 +39,8 @@ export function Proposal({
   onWaiting?: (id: string, waiting: boolean) => void;
   /** Sends a message in the chat, for «Chiedi di nuovo»; absent while an answer is written. */
   onAsk?: (text: string) => void;
+  /** Its reply was just written, so a card that waits takes the focus as it appears. */
+  fresh: boolean;
 }) {
   const { t } = useTranslation();
   const client = useQueryClient();
@@ -52,15 +55,22 @@ export function Proposal({
     return () => onWaiting?.(view.id, false);
   }, [onWaiting, view.id, waiting]);
 
-  // The card became one the student can answer while on screen (its reply was just saved): the focus goes to the safe
-  // choice, unless the student is already somewhere else, such as typing.
-  const wasWaiting = useRef(waiting);
+  // The card became one the student can answer while on screen, in the reply just written or after «Rivedi la
+  // proposta»: the focus goes to the safe choice, unless the student is already somewhere else, such as typing.
+  const wasWaiting = useRef(waiting && !fresh);
   useEffect(() => {
     const became = waiting && !wasWaiting.current;
     wasWaiting.current = waiting;
     if (!became) return;
+    // The focus is free when nothing holds it, or when it is in an empty field, such as the composer after sending.
     const active = document.activeElement;
-    const free = !active || active === document.body || (active instanceof HTMLTextAreaElement && !active.value.trim());
+    const typed =
+      active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement
+        ? active.value
+        : active instanceof HTMLElement && active.isContentEditable
+          ? (active.textContent ?? "")
+          : null;
+    const free = !active || active === document.body || (typed !== null && !typed.trim());
     if (free) root.current?.querySelector<HTMLButtonElement>("button.px-ask-safe")?.focus();
   }, [waiting]);
 
