@@ -39,7 +39,7 @@ import { radialFixtures, storedGraph } from "../fixtures/maps";
 import type Database from "better-sqlite3";
 import { partMarkdown, seedOutline, type SeedPart } from "../../src/core/study/test-parts";
 import { figureKey } from "../../src/shared/smart-text";
-import { seedFigureChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat, writeBlob } from "./chat-look-seed";
+import { seedFigureChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat, seedToolChat, writeBlob } from "./chat-look-seed";
 import { photoPng } from "./pictures";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
@@ -442,6 +442,10 @@ const routes = [
   ["ask-viewer", "/ask/look-figure-one"],
   ["ask-outline", "/ask/look-outline"],
   ["ask-stopped", "/ask/look-stopped"],
+  // What the chat's flashcard tool did, in the reply: at work, the card of what it made, and the line after «Annulla».
+  ["ask-tool-working", "/ask/look-tool-working"],
+  ["ask-tool-done", "/ask/look-tool-done"],
+  ["ask-tool-undone", "/ask/look-tool-undone"],
   ["ask-photo-viewer", "/ask/look-files"],
   // The chat panel and search; the subject chip's menu on a chat with a very long subject, and on a new chat's first page.
   ["ask-panel", "/ask/audit-chat"],
@@ -3593,6 +3597,16 @@ async function openState(page: Page, name: string) {
       expect(box!.x + box!.width).toBeLessThanOrEqual(msg!.x);
       break;
     }
+    case "ask-tool-working":
+      await expect(page.getByText(both("Creo le flashcard…", "Creating the flashcards…"))).toBeVisible();
+      break;
+    case "ask-tool-done":
+      await expect(page.getByText(both("8 flashcard sui tre principi della dinamica", "8 flashcards sui tre principi della dinamica"))).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Annulla", "Undo") })).toBeVisible();
+      break;
+    case "ask-tool-undone":
+      await expect(page.getByRole("button", { name: both("Ripristina", "Restore") })).toBeVisible();
+      break;
     case "ask-stopped":
       await expect(page.getByText(both("Interrotta", "Stopped"))).toBeVisible();
       await expect(page.locator(".px-composer-bar").getByRole("button", { name: both("Continua", "Continue") })).toBeVisible();
@@ -5864,8 +5878,11 @@ function lookChats(name: string) {
     db.exec(`DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE chat_id LIKE 'look-%');
       DELETE FROM messages WHERE chat_id LIKE 'look-%';
       DELETE FROM chats WHERE id LIKE 'look-%';
-      DELETE FROM sources WHERE id LIKE 'look-%';`);
+      DELETE FROM sources WHERE id LIKE 'look-%';
+      DELETE FROM cards WHERE id LIKE 'look-%';
+      DELETE FROM subjects WHERE id LIKE 'look-%';`);
     if (name === "ask-figure" || name === "ask-viewer") seedFigureChat(db);
+    else if (name.startsWith("ask-tool-")) seedToolChat(db, name.slice("ask-tool-".length) as "working" | "done" | "undone");
     else if (name === "ask-outline") seedOutlineChat(db);
     else if (name === "ask-stopped") seedStoppedChat(db);
     else if (name === "ask-photo-viewer") seedSentFilesChat(db, auditUserData);

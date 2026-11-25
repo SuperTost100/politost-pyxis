@@ -26,6 +26,7 @@ import { MathText } from "../../components/math/MathText";
 import { ContextBlock } from "../../components/ContextBlock";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView } from "../../components/MarkdownView";
+import { ToolResult } from "./ToolResult";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
@@ -145,6 +146,7 @@ const Question = memo(function Question({ id, body, files }: { id?: string; body
  * new message or a streamed piece leaves this one alone instead of parsing its Markdown and math again.
  */
 const Reply = memo(function Reply({
+  chatId,
   row,
   last,
   busy,
@@ -154,6 +156,7 @@ const Reply = memo(function Reply({
   onReact,
   onMakeCards,
 }: {
+  chatId: string;
   row: ChatRow;
   /** The reply that ends the chat: it carries Regenerate and the suggestions. */
   last: boolean;
@@ -193,6 +196,10 @@ const Reply = memo(function Reply({
     [row.citations],
   );
   const makeCards = useCallback(() => onMakeCards(row), [onMakeCards, row]);
+  const toolBlock = useCallback(
+    (line: string) => <ToolResult chatId={chatId} line={line} view={row.tools?.[line]} />,
+    [chatId, row.tools],
+  );
   return (
     <ChatMessage
       engine={
@@ -218,6 +225,7 @@ const Reply = memo(function Reply({
         figures={row.figures}
         citationResolver={citationResolver}
         onCitationClick={onCitationClick}
+        toolBlock={toolBlock}
       >
         {row.body}
       </MarkdownView>
@@ -244,6 +252,12 @@ function StreamingReply({
   const text = useSyncExternalStore(turn.live.subscribe, turn.live.get);
   const passages = useSyncExternalStore(turn.passages.subscribe, turn.passages.get);
   const figures = useSyncExternalStore(turn.figures.subscribe, turn.figures.get);
+  const tools = useSyncExternalStore(turn.tools.subscribe, turn.tools.get);
+  const chatId = useSyncExternalStore(turn.chat.subscribe, turn.chat.get);
+  const toolBlock = useCallback(
+    (line: string) => <ToolResult chatId={chatId} line={line} view={tools[line]} />,
+    [chatId, tools],
+  );
   // Only the passages retrieved for this turn link, with the labels the saved reply will show.
   const citationResolver = useCallback(
     (index: number) => passages.find((passage) => passage.index === index)?.label,
@@ -252,7 +266,7 @@ function StreamingReply({
   useEffect(() => onGrow(), [text, onGrow]);
   return text ? (
     <ChatMessage role="tutor" streaming>
-      <MarkdownView drawing figures={figures} citationResolver={citationResolver}>
+      <MarkdownView drawing figures={figures} citationResolver={citationResolver} toolBlock={toolBlock}>
         {text}
       </MarkdownView>
     </ChatMessage>
@@ -1024,6 +1038,7 @@ export function AskPage() {
             ) : (
               <Reply
                 key={row.id}
+                chatId={chatId ?? ""}
                 row={row}
                 last={row.id === lastTutorId}
                 busy={row.id === lastTutorId && busy}

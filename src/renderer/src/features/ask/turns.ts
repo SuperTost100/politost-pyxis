@@ -1,4 +1,5 @@
 import { darkFigureKey } from "../../../../shared/smart-text";
+import type { ToolResultView } from "../../../../shared/ipc";
 import { latestEvery, liveValue } from "./throttle";
 
 /** A passage the reply being written may cite, with the label its stored message will show. */
@@ -31,6 +32,8 @@ export type Turn = {
    * left out, which stops showing its working state. The page shows each in its place while the others go on.
    */
   readonly figures: ReturnType<typeof liveValue<Record<string, string>>>;
+  /** What the reply's tool calls did, by result id, as each is stored; the reply's text places them. */
+  readonly tools: ReturnType<typeof liveValue<Record<string, ToolResultView>>>;
   /** Takes a stream event: the reply so far, applied at most every 100 ms, a figure, or the turn's passages. */
   readonly onEvent: (event: unknown) => void;
   stop: () => void;
@@ -68,6 +71,7 @@ export const turns = {
     const passages = liveValue<TurnPassage[]>([]);
     const questionId = liveValue<string | null>(null);
     const figures = liveValue<Record<string, string>>({});
+    const tools = liveValue<Record<string, ToolResultView>>({});
     const chat = liveValue(from);
     // Each delta carries the whole reply so far. Rendering it at most every 100 ms keeps long answers with math responsive.
     const text = latestEvery<string>(100, live.set);
@@ -81,6 +85,7 @@ export const turns = {
       live,
       passages,
       figures,
+      tools,
       onEvent(event) {
         const data = event as {
           type?: string;
@@ -90,13 +95,16 @@ export const turns = {
           chatId?: unknown;
           key?: unknown;
           image?: unknown;
-    dark?: unknown;
+          dark?: unknown;
+          view?: { id?: unknown };
         };
         if (typeof data.text === "string") text.push(data.text);
         else if (data.type === "question" && typeof data.id === "string") {
           questionId.set(data.id);
           if (typeof data.chatId === "string") chat.set(data.chatId);
         }
+        else if (data.type === "tool" && typeof data.view?.id === "string")
+          tools.set({ ...tools.get(), [data.view.id]: data.view as ToolResultView });
         else if (data.type === "passages" && Array.isArray(data.passages))
           passages.set(data.passages as TurnPassage[]);
         else if (data.type === "figure" && typeof data.key === "string")
