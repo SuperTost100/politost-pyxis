@@ -89,6 +89,23 @@ describe("smart text", () => {
     });
   });
 
+  it("reads a single-backslash escape in block JSON by the text around it", () => {
+    // Raw model text, as a block body holds it: in String.raw, `\n` and `\t` are the two characters of a JSON escape.
+    const read = (json: string) => (parseLooseJson(json) as { body: string }).body;
+    // A display formula laid out on lines of its own: the line breaks are line breaks, not \nu or \ne.
+    expect(read(String.raw`{"body": "$$\nu(t) = e^{t}\n$$"}`)).toBe("$$\nu(t) = e^{t}\n$$");
+    expect(read(String.raw`{"body": "$$\ne^{-st} e^{2t} = e^{(2-s)t}.\n$$"}`)).toBe("$$\ne^{-st} e^{2t} = e^{(2-s)t}.\n$$");
+    // The same commands in the middle of a formula are commands.
+    expect(read(String.raw`{"body": "$$\nu = \frac{1}{T}$$ e $a \neq b$ e $x \to 0$"}`)).toBe(
+      "$$\\nu = \\frac{1}{T}$$ e $a \\neq b$ e $x \\to 0$",
+    );
+    // In code a tab is a tab, and a tab that opens a line of prose is indentation.
+    expect(read(String.raw`{"body": "Codice:\n\n${"```"}python\nfor i in x:\n\tprint(i)\n${"```"}"}`)).toBe(
+      "Codice:\n\n```python\nfor i in x:\n\tprint(i)\n```",
+    );
+    expect(read(String.raw`{"body": "Elenco:\n\tPrimo punto"}`)).toBe("Elenco:\n\tPrimo punto");
+  });
+
   it("drops invalid and unknown blocks instead of showing raw JSON", () => {
     const segments = parseSmartText(
       [

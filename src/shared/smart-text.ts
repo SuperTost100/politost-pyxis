@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { seededRandom, shuffleChoices } from "./choices";
 import { figureKind, type FigureKind } from "./figure-kinds";
+import { escapeIsText } from "./latex-repair";
 import { mapOutsideCode } from "./math-delimiters";
 import { indentWidth, inListItem } from "./markdown-tree";
 
@@ -166,8 +167,29 @@ function decodedKey(written: string): string {
 }
 
 /**
+ * The string whose escape at `at` of `text` is being repaired, as JSON will read it: `before` is the part already
+ * repaired, the rest is read up to the closing quote with every `\n` and `\t` as a line break and a tab. `at` is where
+ * the escape is in the result.
+ */
+function readString(text: string, at: number, before: string): { text: string; at: number } {
+  let decoded = before;
+  try {
+    decoded = JSON.parse(`"${before}"`) as string;
+  } catch {
+    // A part that is not valid JSON yet is read as written; it only gives the context.
+  }
+  let end = at;
+  while (end < text.length && text[end] !== '"') end += text[end] === "\\" ? 2 : 1;
+  const rest = text.slice(at, end).replace(/\\(["\\/nt])/g, (_, char: string) => (char === "n" ? "\n" : char === "t" ? "\t" : char));
+  return { text: decoded + rest, at: decoded.length };
+}
+
+/**
  * Makes model JSON parseable without changing what it meant: a single backslash before a LaTeX command is doubled
  * (JSON would read \frac as a form feed and \alpha as an error), and raw line breaks inside strings become \n.
+ * `\n` and `\t` before a command name are the two ambiguous ones: a line break before "u" or a tab before "imes" may be
+ * one, or `\nu` and `\times`. In a value they are the command unless the string around them says otherwise
+ * (`escapeIsText`): in code, as indentation, or where a formula has a line end or a relation has no left side.
  */
 function repairJsonText(text: string, verbatim: readonly string[] = []): string {
   let out = "";
@@ -224,11 +246,16 @@ function repairJsonText(text: string, verbatim: readonly string[] = []): string 
       i++;
     } else if (next === "u" && /^[0-9a-fA-F]{4}/.test(text.slice(i + 2))) {
       out += char;
-    } else if (next === "n") {
-      out += latexAfterN.has(word) ? "\\\\" : "\\";
-    } else if ("bfrt".includes(next) && next !== "" && word.length > 1) {
+    } else if (next === "n" || next === "t") {
+      let command = next === "n" ? latexAfterN.has(word) : word.length > 1;
+      if (command && valueString) {
+        const read = readString(text, i, out.slice(stringAt));
+        command = !escapeIsText(read.text, read.at, word);
+      }
+      out += command ? "\\\\" : "\\";
+    } else if ("bfr".includes(next) && next !== "" && word.length > 1) {
       out += "\\\\";
-    } else if ("bfrt".includes(next) && next !== "") {
+    } else if ("bfr".includes(next) && next !== "") {
       out += "\\";
     } else {
       out += "\\\\";

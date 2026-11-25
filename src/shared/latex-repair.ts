@@ -1,4 +1,4 @@
-import { mapOutsideCode } from "./outside-code";
+import { codeRanges, mapOutsideCode } from "./outside-code";
 
 /**
  * A model that writes LaTeX with one backslash inside a JSON string loses it: `\theta` becomes a tab and "heta", `\frac` a
@@ -32,6 +32,8 @@ const DOUBLED_OK = new Set([
 ]);
 // What a model's JSON makes of a line break it wrote as `\n` once the string is read: a backslash and an n.
 const AFTER_N = new Set(BY_LETTER.n);
+// Commands that stand between two sides: ≠, ∋, ∉, ≰ and the rest, and the arrow `\to`.
+const RELATIONS = new Set(["ne", "neq", "ni", "notin", "nleq", "ngeq", "nmid", "nsim", "ncong", "nless", "ngtr", "nsubseteq", "nparallel", "nrightarrow", "nleftarrow", "to"]);
 const CONTROL: Record<string, string> = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v" };
 
 /**
@@ -55,6 +57,54 @@ function insideMath(text: string, index: number): boolean {
     }
   }
   return open !== null;
+}
+
+/** Where a row of a display formula begins: after its opening `$$` or `\[`, a `\\` row break or a `\begin{…}` and its arguments. */
+const ROW_START = /(?:\$\$|\\\[|(?<!\\)\\\\|\\begin\{[^{}]*\}(?:\{[^{}]*\})*)$/;
+
+/**
+ * Whether the tab or line break at `at`, followed by the rest of the name `name` up to `end`, is really a tab or a line
+ * break inside a formula, although `\name` is a LaTeX command too. The text around it decides:
+ * - A relation (≠, ∉, →…) stands between two sides. One with nothing on its left in its row of a display formula, or
+ *   with an exponent or an index right after it, is no relation: `$$` and a line break before `e^{-st}` is `e^{-st}`,
+ *   never `\ne^{-st}`. Inline, `$\ne$` alone is the symbol, so there the left side may be empty.
+ * - A line break where a formula laid out on lines has a line end is a line break: right after its opening `$$` or
+ *   `\[` when its closing delimiter starts a line too, right after a `\\` row break, or after `\begin{…}`. Only a one-
+ *   letter name counts (`\nu`, `\ne`, `\ni`), since only one letter is a variable: `$$` and a line break before
+ *   `abla` is `\nabla` wherever it is.
+ * `layout` says whether the second rule applies: it does to a control character, which a real line break may be, and
+ * not to a backslash and an n written out, which is a real `\nu` far more often than a line break written twice.
+ */
+function textBreak(text: string, at: number, end: number, name: string, layout: boolean): boolean {
+  if (RELATIONS.has(name) && (/[\^_]/.test(text[end] ?? "") || ROW_START.test(text.slice(0, at).trimEnd()))) return true;
+  if (!layout || text[at] !== "\n" || name.length !== 2) return false;
+  const line = text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
+  if (/(?<!\\)\\\\$|\\begin\{[^{}]*\}(?:\{[^{}]*\})*$/.test(line)) return true;
+  const open = /(\$\$|\\\[)[ \t]*$/.exec(line)?.[1];
+  if (!open) return false;
+  const close = text.indexOf(open === "$$" ? "$$" : "\\]", at + 1);
+  // A formula still being written is laid out as it began.
+  return close < 0 || /\n[ \t>]*$/.test(text.slice(at, close));
+}
+
+/**
+ * For the JSON text repair: whether the `\n` or `\t` escape at `at` of a string, which `text` holds read with that
+ * escape as the control character it says, is a real line break or tab although the letters `name` (the escape's letter
+ * and those after it) could be a LaTeX command. Inside a formula `textBreak` decides. Outside one:
+ * - a tab that indents a line after a line break is a tab, in code or in prose;
+ * - anything else in code is what it says;
+ * - in prose a tab is a tab when no command of that name is known (`\tPrimo`); a `\text…` command counts as known. A
+ *   line break before a whole command name is the command, as before.
+ * A tab that opens the string is no indentation, although the parser would read the line as code because of it.
+ */
+export function escapeIsText(text: string, at: number, name: string): boolean {
+  const before = text.slice(0, at);
+  const tab = text[at] === "\t";
+  const opensLine = tab && /(?:^|\n)[ \t]*$/.test(before);
+  if (!opensLine && codeRanges(text).some(([from, to]) => at >= from && at < to)) return true;
+  if (insideMath(text, at)) return textBreak(text, at, at + name.length, name, true);
+  if (!tab) return false;
+  return /\n[ \t]*$/.test(before) || !(BY_LETTER.t!.includes(name) || name.startsWith("text"));
 }
 
 const PATTERNS = Object.entries(BY_LETTER).map(([letter, rest]) => ({
@@ -83,9 +133,12 @@ function undoubled(text: string): string {
  */
 function literalBreaks(text: string): string {
   if (!text.includes("\\n")) return text;
-  return text.replace(/(?<!\\)\\n([A-Za-z]*)/g, (match, tail: string, offset: number, whole: string) =>
-    AFTER_N.has(`n${tail}`) && (insideMath(whole, offset) || tail.length > 1) ? match : `\n${tail}`,
-  );
+  return text.replace(/(?<!\\)\\n([A-Za-z]*)/g, (match, tail: string, offset: number, whole: string) => {
+    const name = `n${tail}`;
+    if (!AFTER_N.has(name)) return `\n${tail}`;
+    const command = insideMath(whole, offset) ? !textBreak(whole, offset, offset + match.length, name, false) : tail.length > 1;
+    return command ? match : `\n${tail}`;
+  });
 }
 
 /**
@@ -105,6 +158,7 @@ export function repairLatexEscapes(text: string, atLineStart = true): string {
       if (letter === "n" && whole[offset - 1] === "\r") return match;
       const guarded = GUARDED.has(name) || letter === "n";
       if (guarded && !inMath) return match;
+      if (inMath && (letter === "n" || letter === "t") && textBreak(whole, offset, offset + name.length, name, true)) return match;
       return `\\${name}`;
     });
   }
@@ -120,7 +174,13 @@ export function repairLatexOutsideCode(text: string): string {
 
 /** The value with every string in it repaired by `repairLatexOutsideCode`. */
 export function repairModelStrings<T>(value: T): T {
-  if (typeof value === "string") return repairLatexOutsideCode(value) as T;
+  if (typeof value === "string") {
+    // No model indents the first line of a string, so a tab that opens one before a command name is that command, although
+    // the parser would read the line as indented code because of the tab.
+    const opening = /^\t([A-Za-z]+)(?![A-Za-z])/.exec(value)?.[1];
+    const text = opening && BY_LETTER.t!.includes(`t${opening}`) ? `\\t${value.slice(1)}` : value;
+    return repairLatexOutsideCode(text) as T;
+  }
   if (Array.isArray(value)) return value.map(repairModelStrings) as T;
   if (value && typeof value === "object")
     return Object.fromEntries(

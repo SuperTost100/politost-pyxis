@@ -7,8 +7,10 @@ import { markdownSource } from "./source";
 /**
  * The answers of the four AI tools (Claude Haiku and Sonnet, ChatGPT Luna and Terra, Cursor Grok, Gemini Hydrogen and
  * Argon) to the same course material, recorded on 2026-11-19: the texts that drew an error or showed a formula as text,
- * and the most formula-heavy text of every place the app shows AI text. Every formula goes through the pipeline the
- * views use, so a change that breaks one of them fails here.
+ * and the most formula-heavy text of every place the app shows AI text. One more, recorded on 2026-11-25 (its own
+ * `recorded`), is a lesson part of ChatGPT's whose display formulas open with a line break before `e^z` and `u=`, which
+ * an earlier repair drew as `\ne^z` and `\nu=`. Every formula goes through the pipeline the views use, so a change that
+ * breaks one of them fails here.
  */
 type Entry = {
   id: string;
@@ -45,6 +47,18 @@ describe("the corpus of recorded AI answers", () => {
     const text = visibleText(html);
     expect(text.match(/\\[A-Za-z]{2,}/g) ?? []).toEqual([]);
     expect((text.match(/\$/g) ?? []).length).toBe(entry.dollars);
+  });
+});
+
+describe("the corpus and the line breaks before a formula", () => {
+  // A line break the repair took for the backslash of `\ne` draws ≠ where the formula had `e`. A relation never opens a display
+  // formula or one of its rows, and never takes an exponent or an index, so no drawn formula of the corpus may show one there.
+  it.each(entries.map((entry) => [entry.id, entry] as const))("%s draws no relation where the text had a line break", (_id, entry) => {
+    const html = render(entry.text, entry.inline);
+    const display = [...html.matchAll(/<span class="katex-display">[\s\S]*?<annotation encoding="application\/x-tex">([^<]*)<\/annotation>/g)].map((m) => m[1]!);
+    const all = [...html.matchAll(/<annotation encoding="application\/x-tex">([^<]*)<\/annotation>/g)].map((m) => m[1]!);
+    expect(display.filter((latex) => /^\s*\\(?:ne|neq|ni|notin)(?![A-Za-z])/.test(latex))).toEqual([]);
+    expect(all.filter((latex) => /\\(?:ne|neq|ni|notin)(?![A-Za-z])\s*[\^_]/.test(latex))).toEqual([]);
   });
 });
 
@@ -89,6 +103,20 @@ describe("a formula KaTeX draws without a failure", () => {
     expect(undrawn(html)).toBe(0);
     expect(drawn(html)).toBe(3);
     expect(html).toContain("color:#cc0000");
+  });
+});
+
+describe("a display formula that opens on a line of its own", () => {
+  // From a lesson of dev.13, where the line break before `e^{-st}` was drawn as ≠.
+  it.each([
+    "Sostituendo nella definizione, l'integranda diventa\n\n$$\ne^{-st} e^{2t} = e^{(2-s)t}.\n$$",
+    "Sostituendo nella definizione, l'integranda diventa\n$$\ne^{-st} e^{2t} = e^{(2-s)t}.$$",
+    "La soluzione è\n\n$$\nu(t) = e^{t}\n$$",
+  ])("draws the formula as written: %j", (text) => {
+    const html = render(text, false);
+    const latex = [...html.matchAll(/<annotation encoding="application\/x-tex">([^<]*)<\/annotation>/g)].map((m) => m[1]!.trim());
+    expect(latex).toEqual([text.slice(text.indexOf("$$") + 3).replace(/\n?\$\$$/, "").trim()]);
+    expect(html).not.toContain("≠");
   });
 });
 

@@ -45,6 +45,59 @@ describe("repairLatexEscapes", () => {
   });
 });
 
+describe("a line break or a tab that the text around it shows is real", () => {
+  // From a lesson of dev.13: the display formula opened on its own line, and the line break before `e^{-st}` was drawn as ≠.
+  it("keeps the line break that opens a display formula laid out on lines of its own", () => {
+    for (const text of [
+      "$$\ne^{-st} e^{2t} = e^{(2-s)t}.\n$$",
+      "$$\nu(t) = e^{t}\n$$",
+      "\\[\ne^{x} = 1\n\\]",
+      "Prima\n\n$$\ne = mc^2\n$$\n\nDopo",
+    ]) {
+      expect(repairLatexEscapes(text), JSON.stringify(text)).toBe(text);
+    }
+  });
+
+  it("keeps the line break after a row break or the start of an environment", () => {
+    const text = "$$\\begin{aligned}\nu &= 1 \\\\\ne^{x} &= 2\n\\end{aligned}$$";
+    expect(repairLatexEscapes(text)).toBe(text);
+  });
+
+  it("keeps a line break before a relation with nothing on its left, or with an exponent", () => {
+    for (const text of ["$$\ne^{-st} e^{2t} = e^{(2-s)t}.$$", "$$ \ne = 1$$", "$$f = 1 +\ne^{t}$$", "$$a\ne_1$$"]) {
+      expect(repairLatexEscapes(text), JSON.stringify(text)).toBe(text);
+    }
+  });
+
+  it("still restores the commands where the text around them needs them", () => {
+    expect(repairLatexEscapes("$$\nu = \\frac{1}{T}$$")).toBe("$$\\nu = \\frac{1}{T}$$");
+    expect(repairLatexEscapes("$$a \ne b$$ e $x\ni y$ e $\ne$")).toBe("$$a \\ne b$$ e $x\\ni y$ e $\\ne$");
+    expect(repairLatexEscapes("$$\nabla f\n$$")).toBe("$$\\nabla f\n$$");
+    expect(repairLatexEscapes("$$\n\nu = 1\n$$")).toBe("$$\n\\nu = 1\n$$");
+    expect(repairLatexEscapes("$x \to 0$ e $$\theta = 1\n$$")).toBe("$x \\to 0$ e $$\\theta = 1\n$$");
+  });
+
+  it("keeps a tab before o with nothing on its left in a display formula", () => {
+    expect(repairLatexEscapes("$$\to 1$$")).toBe("$$\to 1$$");
+  });
+
+  it("reads a line break written as \\n the same way: a relation with nothing on its left is no relation", () => {
+    expect(repairLatexEscapes("$$\\ne^{-st} e^{2t} = e^{(2-s)t}.$$")).toBe("$$\ne^{-st} e^{2t} = e^{(2-s)t}.$$");
+    // A real ≠ written as a symbol, or between two sides, stays.
+    for (const text of ["il simbolo $\\ne$", "$a \\ne b$", "$$\\nu = 1\n$$"]) {
+      expect(repairLatexEscapes(text), JSON.stringify(text)).toBe(text);
+    }
+  });
+
+  it("restores a command that opens a string of a structured answer, which the parser would take for indented code", () => {
+    expect(repairModelStrings(["\theta", "\times 2", "\tPrimo"])).toEqual(["\\theta", "\\times 2", "\tPrimo"]);
+  });
+
+  it("is the same in a structured answer", () => {
+    expect(repairModelStrings({ body: "Quindi\n$$\ne^{-st} e^{2t}\n$$" })).toEqual({ body: "Quindi\n$$\ne^{-st} e^{2t}\n$$" });
+  });
+});
+
 describe("a backslash written twice", () => {
   // A structured answer is already decoded, so the "\\\\vec" the prompt asks for in JSON stays as two backslashes.
   it("goes back to one before a command inside a formula, so KaTeX does not break the line there", () => {
