@@ -123,7 +123,9 @@ function useResultAction(chatId: string, view: ToolResultView, onChange: (view: 
   return { act, busy, failure, after };
 }
 
-/** The tool at work: one quiet line and a grey shape where the card will be. A map or a quiz can be stopped there. */
+/**
+ * The tool at work: one quiet line and a grey shape where the card will be. A map or a quiz can be stopped there.
+ */
 function Working({
   tool,
   onStop,
@@ -142,6 +144,13 @@ function Working({
   rootRef?: Ref<HTMLDivElement>;
 }) {
   const { t } = useTranslation();
+  // A tool that only reads, such as `read_progress`, leaves no card, so its line stands alone and goes when the call ends.
+  if (tool === "read_progress")
+    return (
+      <div className="px-toolres is-working" role="status">
+        <span className="small px-toolres-working-line">{t("components.toolResult.reading")}</span>
+      </div>
+    );
   const map = tool === "create_map";
   const wide = map || tool === "create_quiz";
   return (

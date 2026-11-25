@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { flashcardsTool } from "./flashcards";
 import { mapTool } from "./map";
+import { progressTool } from "./progress";
 import { quizTool } from "./quiz";
 import type { Tool } from "./server";
 
@@ -11,5 +12,5 @@ import type { Tool } from "./server";
  * so they are offered only where core has a job runner (`setToolRunner`).
  */
 export function chatToolList(db: Database.Database, jobs: boolean): Tool[] {
-  return [flashcardsTool(db), ...(jobs ? [mapTool(db), quizTool(db)] : [])];
+  return [flashcardsTool(db), progressTool(db), ...(jobs ? [mapTool(db), quizTool(db)] : [])];
 }

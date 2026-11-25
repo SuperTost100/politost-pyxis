@@ -15,10 +15,13 @@ const vendors: Record<EngineProvider, string> = {
   antigravity: "Google",
 };
 
-/** An engine that is ready and whose notice has not been read yet. */
-export type NoticeEngine = { id: string; name: string; acknowledged: boolean };
+/** An engine that is ready and whose notice has not been read yet, or was read before it named the student's results. */
+export type NoticeEngine = { id: string; name: string; acknowledged: boolean; current?: boolean };
 
-/** Ready engines the student lets Pyxis use and has not confirmed the notice for. One left out never needs it. */
+/**
+ * Ready engines the student lets Pyxis use and has not confirmed the notice for, or confirmed only before it named the
+ * student's results. One left out never needs it.
+ */
 export function unacknowledged<
   T extends NoticeEngine & {
     installed: boolean;
@@ -29,7 +32,11 @@ export function unacknowledged<
 >(rows: readonly T[] | undefined): T[] {
   return (rows ?? []).filter(
     (row) =>
-      row.installed && row.loggedIn && !row.outdated && row.allowed !== false && !row.acknowledged,
+      row.installed &&
+      row.loggedIn &&
+      !row.outdated &&
+      row.allowed !== false &&
+      (!row.acknowledged || row.current === false),
   );
 }
 
@@ -53,7 +60,7 @@ function useAcknowledge(onDone: () => void) {
       const ids = new Set<string>(engines.map((engine) => engine.id));
       client.setQueryData<NoticeEngine[]>(["engines"], (rows) =>
         rows?.map((row) =>
-          ids.has(row.id) ? { ...row, acknowledged: true } : row,
+          ids.has(row.id) ? { ...row, acknowledged: true, current: true } : row,
         ),
       );
       for (const queryKey of [["engines"], ["engine-features"]])

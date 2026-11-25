@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { darkFigureKey, figureKey } from "../../src/shared/smart-text";
+import { chatQuestion } from "../../src/shared/chat-blocks";
 import { dataUrl, photoPng, plotPng } from "./pictures";
 
 /** Chats for the look of Chiedi: figures, the outline, a stopped answer and the files a message carried. */
@@ -461,6 +462,105 @@ export function seedMadeChat(db: DatabaseSync, tool: "map" | "quiz", state: "wor
       "Dinamica",
     );
     db.prepare("INSERT INTO message_passages(message_id,passage_id,label) VALUES(?,?,'P1')").run(`${id}-a`, `look-p-${tool}`);
+  }
+}
+
+/** The grades chart of the chat's blocks: the latest quiz of each topic out of 30, the pass mark, one topic not done yet. */
+export const GRADES_CHART = {
+  title: "I tuoi voti nei quiz di Fisica 1",
+  subtitle: "In trentesimi, l'ultimo quiz di ogni argomento",
+  kind: "bar",
+  x: "Argomento",
+  y: "Voto",
+  unit: "/30",
+  min: 0,
+  max: 30,
+  series: [
+    {
+      name: "Voto",
+      points: [
+        { label: "Cinematica", value: 26, note: "quiz del 9 novembre" },
+        { label: "Dinamica del punto", value: 21, note: "quiz del 19 novembre" },
+        { label: "Lavoro ed energia", value: 24, note: "quiz del 14 novembre" },
+        { label: "Oscillazioni", value: 17, note: "quiz del 16 novembre" },
+        { label: "Termodinamica", value: null, note: "non ancora fatto" },
+      ],
+    },
+  ],
+  reference: { value: 18, label: "sufficienza, 18" },
+};
+
+/** The same grades over time, as a line. */
+export const GRADES_LINE = {
+  title: "Come sono andati i tuoi quiz di Fisica 1",
+  kind: "line",
+  x: "Quiz",
+  y: "Voto su 30",
+  min: 0,
+  max: 30,
+  series: [
+    {
+      name: "Voto",
+      points: [
+        { label: "2 nov", value: 18 },
+        { label: "9 nov", value: 26 },
+        { label: "14 nov", value: 24 },
+        { label: "16 nov", value: 17 },
+        { label: "19 nov", value: 21 },
+      ],
+    },
+  ],
+  reference: { value: 18, label: "sufficienza, 18" },
+};
+
+/** The practice question of the chat's blocks; its right option is the second as written. */
+export const PRACTICE_QUESTION = {
+  question: "Un blocco è fermo su un piano inclinato con attrito. Quanto vale la forza di attrito statico?",
+  options: ["$\\mu_s N$, sempre", "$mg \\sin\\theta$, quanto basta a tenerlo fermo", "$mg \\cos\\theta$, come la normale"],
+  answer: 1,
+  feedback: [
+    "L'attrito statico non ha un valore fisso: vale quanto serve a tenere fermo il blocco, cioè $mg \\sin\\theta$. Arriva a $\\mu_s N$ solo un attimo prima che il blocco parta.",
+    "Equilibra la componente del peso lungo il piano, e cresce con l'inclinazione finché il blocco non parte.",
+    "$mg \\cos\\theta$ è la forza normale, perpendicolare al piano; l'attrito agisce lungo il piano.",
+  ],
+};
+
+const blockFence = (language: string, value: object) => `\`\`\`${language}\n${JSON.stringify(value)}\n\`\`\``;
+
+/**
+ * A chat whose answer holds one of the chat's blocks: a bar chart of quiz grades, a line, or a practice question, which
+ * `answered` (the option's place as written) has already been checked.
+ */
+export function seedBlocksChat(db: DatabaseSync, kind: "chart" | "line" | "question", answered?: number, id = `look-${kind}${answered === undefined ? "" : "-done"}`) {
+  if (!db.prepare("SELECT 1 FROM subjects WHERE id = 'look-phys'").get())
+    db.prepare("INSERT INTO subjects(id,name,created_at) VALUES('look-phys','Fisica 1',1)").run();
+  const title = kind === "question" ? "Attrito statico, ho capito?" : "Come vado in Fisica 1";
+  db.prepare("INSERT INTO chats(id,title,subject,created_at,updated_at) VALUES(?,?,?,1,2)").run(id, title, "Fisica 1");
+  const question =
+    kind === "question"
+      ? "Credo di aver capito l'attrito statico. Mi fai una domanda per controllare?"
+      : kind === "line"
+        ? "Come sono andati i miei quiz di Fisica 1 nel tempo?"
+        : "Come sto andando nei quiz di Fisica 1?";
+  db.prepare("INSERT INTO messages(id,chat_id,role,body,created_at) VALUES(?,?,?,?,1)").run(`${id}-q`, id, "user", question);
+  const body =
+    kind === "question"
+      ? `Eccone una che trae in inganno spesso.\n\n${blockFence("pyxis-question", PRACTICE_QUESTION)}`
+      : kind === "line"
+        ? `Dopo il primo quiz sei salito, poi le oscillazioni ti hanno fatto scendere.\n\n${blockFence("pyxis-chart", GRADES_LINE)}\n\nL'ultimo voto, 21, è sopra la sufficienza.`
+        : `Bene su tre argomenti su quattro. Ecco l'ultimo voto di ognuno.\n\n${blockFence("pyxis-chart", GRADES_CHART)}\n\nIl punto debole sono le oscillazioni, un punto sotto la sufficienza. Termodinamica non l'hai ancora cominciata.`;
+  db.prepare("INSERT INTO messages(id,chat_id,role,body,engine_provider,model_id,model_source,created_at) VALUES(?,?,?,?,?,?,?,2)").run(
+    `${id}-a`,
+    id,
+    "assistant",
+    body,
+    "claude",
+    "claude-sonnet-5-5",
+    "reported",
+  );
+  if (answered !== undefined) {
+    const questionId = chatQuestion(JSON.stringify(PRACTICE_QUESTION))!.id;
+    db.prepare("INSERT INTO chat_question_answers(message_id,question_id,pick,answered_at) VALUES(?,?,?,3)").run(`${id}-a`, questionId, answered);
   }
 }
 

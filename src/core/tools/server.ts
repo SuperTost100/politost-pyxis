@@ -49,6 +49,11 @@ export type ToolTurn = {
   readonly tally: Record<string, number>;
   /** The result a tool stored in this turn, by tool, so a later call of the same tool adds to it. Tools set it. */
   readonly kept: Record<string, string>;
+  /**
+   * Whether the tool answering may receive the student's own results: it is on this computer, or the student confirmed
+   * the notice that names them. A tool with `results` is listed and called only then. Absent, it may not.
+   */
+  results?(): boolean;
   /** The tool started, before its arguments are read: the chat shows its working state. Returns the call's handle. */
   started(tool: string): unknown;
   /** The call ended: a result to show in the chat, or nothing when it failed (the model was told why). */
@@ -64,6 +69,8 @@ export type ToolOutcome = { text: string; isError?: boolean; shown?: ToolShown }
 export type Tool = {
   name: string;
   description: string;
+  /** It sends the student's stored results (grades, mastery): offered only to a turn whose `results()` says yes. */
+  results?: boolean;
   input: z.ZodType;
   run(turn: ToolTurn, args: unknown): ToolOutcome | Promise<ToolOutcome>;
 };
@@ -271,13 +278,23 @@ async function dispatch(chat: Chat, message: Rpc): Promise<unknown> {
     case "ping":
       return rpcResult(id, {});
     case "tools/list":
-      return rpcResult(id, { tools: tools.map(describe) });
+      return rpcResult(id, { tools: offered(chat).map(describe) });
     case "tools/call":
       return rpcResult(id, await call(chat, params));
     default:
       // agy opens with `server/discover`, and every unknown method must get this error rather than silence.
       return rpcError(id, -32601, "Method not found");
   }
+}
+
+/**
+ * The tools this chat's token may see and call now. One that sends the student's results needs a running turn whose
+ * answering tool may receive them, so between turns, or for a tool the student has not confirmed the notice for, it is
+ * not there at all, and the model is told by the prompt that it cannot see the results.
+ */
+function offered(chat: Chat): readonly Tool[] {
+  const results = chat.armed?.turn.chatId === chat.chatId && chat.armed.turn.results?.() === true;
+  return results ? tools : tools.filter((tool) => !tool.results);
 }
 
 const inputSchemas = new WeakMap<Tool, Record<string, unknown>>();
@@ -300,7 +317,7 @@ async function call(chat: Chat, params: Record<string, unknown>) {
   if (!armed || armed.turn.chatId !== chat.chatId)
     return errorResult("This tool can only be used while you are answering the student.");
   const { turn } = armed;
-  const tool = tools.find((entry) => entry.name === params.name);
+  const tool = offered(chat).find((entry) => entry.name === params.name);
   if (!tool) return errorResult("Unknown tool.");
   if (armed.calls >= MAX_CALLS_PER_TURN)
     return errorResult(`No more tool calls in this answer (at most ${MAX_CALLS_PER_TURN}). Finish your answer.`);

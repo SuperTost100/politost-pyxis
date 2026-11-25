@@ -590,6 +590,23 @@ END;`,
 CREATE INDEX chat_tool_results_message ON chat_tool_results(chat_id, message_id);
 ALTER TABLE tool_sessions ADD COLUMN tools INTEGER NOT NULL DEFAULT 0;`,
   },
+  // The student's answer to a practice question in a chat reply (a ```pyxis-question block, `shared/chat-blocks.ts`), by
+  // the question's id. It is the reply's own state, kept so the answer is there when the chat is opened again; nothing
+  // that grades, counts or schedules study reads it.
+  {
+    version: 39,
+    sql: `CREATE TABLE chat_question_answers (
+  message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  question_id TEXT NOT NULL,
+  pick INTEGER NOT NULL CHECK (pick >= 0),
+  answered_at INTEGER NOT NULL,
+  PRIMARY KEY (message_id, question_id)
+);`,
+  },
+  // A reply whose turn read the student's own results (the chat's `read_progress` tool), so its text and its charts may
+  // hold their grades. Such a reply is left out of the conversation handed to a tool the student has not confirmed the
+  // notice naming results for (`chat/turn.ts`, `historyText`).
+  { version: 40, sql: `ALTER TABLE messages ADD COLUMN results INTEGER NOT NULL DEFAULT 0;` },
 ] satisfies Array<{
   version: number;
   sql: string;

@@ -26,6 +26,7 @@ export function Composer({
   onStop,
   onContinue,
   waiting,
+  quiet = false,
   onAttach,
   onPasteImages,
   dropping,
@@ -41,6 +42,8 @@ export function Composer({
   onContinue?: () => void;
   /** What the message waits for, such as "Reading 3 files…": it shows beside Invia, which goes quiet. Sending still works and goes once the files are read. */
   waiting?: string;
+  /** Another button on the page is the next step, such as «Controlla» on a picked practice question: Invia goes quiet. */
+  quiet?: boolean;
   onAttach?: () => void;
   /** Images pasted without text, such as a screenshot. Text pastes into the field as usual. */
   onPasteImages?: (images: File[]) => void;
@@ -185,7 +188,7 @@ export function Composer({
                 {t("components.chat.continue")}
               </Button>
             ) : null}
-            <Button variant={waiting ? "secondary" : "primary"} onClick={onSend}>
+            <Button variant={waiting || quiet ? "secondary" : "primary"} onClick={onSend}>
               {t("components.composer.send")}
             </Button>
           </>

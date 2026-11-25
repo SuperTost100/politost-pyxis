@@ -43,6 +43,7 @@ import { figureKey } from "../../src/shared/smart-text";
 import {
   SOURCES_LESSON,
   SOURCES_PASSAGE_IDS,
+  seedBlocksChat,
   seedFigureChat,
   seedMadeChat,
   seedOutlineChat,
@@ -470,6 +471,14 @@ const routes = [
   ["ask-quiz-working", "/ask/look-quiz-working"],
   ["ask-quiz-done", "/ask/look-quiz-done"],
   ["ask-quiz-undone", "/ask/look-quiz-undone"],
+  // The chat's own blocks: a chart of quiz grades with a bar's value on hover, the same as a table, a line chart, and a
+  // practice question new, with an option picked, and checked.
+  ["ask-chart", "/ask/look-chart"],
+  ["ask-chart-table", "/ask/look-chart"],
+  ["ask-chart-line", "/ask/look-line"],
+  ["ask-question", "/ask/look-question"],
+  ["ask-question-picked", "/ask/look-question"],
+  ["ask-question-done", "/ask/look-question-done"],
   ["ask-photo-viewer", "/ask/look-files"],
   // The sources row under an answer: closed, open, a page pointed at with its passage and the sentence it supports
   // tinted, one passage of one source, an answer from general knowledge with a checked result, and a failed check.
@@ -1941,7 +1950,8 @@ function prepareEngines(name: string) {
     // What the signed-in tools receive is already confirmed, so their notice covers none of these states.
     if (CONNECTED_TOOLS.includes(name))
       for (const provider of ["claude", "antigravity"])
-        db.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES(?,'true',?)").run(
+        // The current notice's version (`DISCLOSURE_VERSION`): an older one would bring the notice back over the state.
+        db.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES(?,'2',?)").run(
           `engine-disclosure:${provider}`,
           Date.now(),
         );
@@ -3755,6 +3765,33 @@ async function openState(page: Page, name: string) {
     case "ask-quiz-done":
       await expect(page.getByText(both("Dinamica, 10 domande", "Dinamica, 10 questions"))).toBeVisible();
       await expect(page.getByRole("button", { name: both("Annulla", "Undo") })).toBeVisible();
+      break;
+    case "ask-chart": {
+      const bar = page.locator(".px-chart-hit").nth(1);
+      await expect(bar).toBeVisible();
+      await bar.hover();
+      await expect(page.locator(".px-chart-tip")).toBeVisible();
+      break;
+    }
+    case "ask-chart-table": {
+      await page.locator(".px-chart").hover();
+      await page.getByRole("button", { name: both("Altro sul grafico", "More on the chart") }).click();
+      await page.getByRole("menuitem", { name: both("Mostra come tabella", "Show as a table") }).click();
+      await expect(page.locator(".px-chart-table")).toBeVisible();
+      break;
+    }
+    case "ask-chart-line":
+      await expect(page.locator(".px-chart-line")).toBeVisible();
+      break;
+    case "ask-question":
+      await expect(page.getByRole("radiogroup", { name: both("Risposte", "Answers") })).toBeVisible();
+      break;
+    case "ask-question-picked":
+      await page.getByRole("radio").nth(1).click();
+      await expect(page.getByRole("button", { name: both("Controlla", "Check") })).toBeEnabled();
+      break;
+    case "ask-question-done":
+      await expect(page.getByText(both("Quella giusta", "The right one"))).toBeVisible();
       break;
     case "ask-stopped":
       await expect(page.getByText(both("Interrotta", "Stopped"))).toBeVisible();
@@ -6100,6 +6137,7 @@ function lookChats(name: string) {
   const db = new DatabaseSync(join(auditUserData, "workspace", "pyxis.db"), { timeout: 10000 });
   try {
     db.exec(`DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE chat_id LIKE 'look-%');
+      DELETE FROM chat_question_answers WHERE message_id IN (SELECT id FROM messages WHERE chat_id LIKE 'look-%');
       DELETE FROM message_passages WHERE message_id IN (SELECT id FROM messages WHERE chat_id LIKE 'look-%');
       DELETE FROM item_passages WHERE passage_id LIKE 'look-%';
       DELETE FROM messages WHERE chat_id LIKE 'look-%';
@@ -6130,6 +6168,10 @@ function lookChats(name: string) {
       const [, tool, state] = name.split("-") as [string, "map" | "quiz", "working" | "done" | "undone"];
       seedMadeChat(db, tool, state);
     }
+    else if (name === "ask-chart" || name === "ask-chart-table") seedBlocksChat(db, "chart");
+    else if (name === "ask-chart-line") seedBlocksChat(db, "line");
+    else if (name === "ask-question" || name === "ask-question-picked") seedBlocksChat(db, "question");
+    else if (name === "ask-question-done") seedBlocksChat(db, "question", 0);
     else if (name === "ask-outline") seedOutlineChat(db);
     else if (name === "ask-stopped") seedStoppedChat(db);
     else if (name === "ask-photo-viewer") seedSentFilesChat(db, auditUserData);

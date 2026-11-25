@@ -356,6 +356,50 @@ test("Automatic engines: with all three CLIs ready, the summary names each engin
   }
 });
 
+test("A tool confirmed before the notice named the student's results gets the notice once more, which names them", async () => {
+  // The stand-in CLIs are POSIX shell scripts. Windows still runs the notice's versions in the unit tests.
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-notice-results-"));
+  const tools = standInTools(["claude"]);
+  const app = await launchPyxis({ userData, env: tools.env });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    // Claude was confirmed with the notice of an earlier version, which stored `true`.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    db.prepare("INSERT OR REPLACE INTO settings (key, value_json, updated_at) VALUES ('engine-disclosure:claude', 'true', 1)").run();
+    db.close();
+    await page.evaluate(() => {
+      location.hash = "/settings/engines";
+    });
+    await page.reload();
+    const notice = page.getByRole("dialog", { name: "Cosa esce da questo computer" });
+    await expect(notice).toBeVisible({ timeout: 30000 });
+    await expect(notice).toContainText("quando chiedi dei tuoi risultati, i voti dei quiz e lo stato degli argomenti di quell'esame");
+    await expect(notice.getByText("Claude li invia ad Anthropic.")).toBeVisible();
+    await saveShot(page, "engines-notice-results-it.png");
+    await clickSettled(page, notice.getByRole("button", { name: "Ho capito" }));
+    await expect(notice).toHaveCount(0);
+    const stored = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    try {
+      expect(stored.prepare("SELECT value_json FROM settings WHERE key = 'engine-disclosure:claude'").get()).toEqual({ value_json: "2" });
+    } finally {
+      stored.close();
+    }
+    // Confirmed, it does not come back.
+    await page.reload();
+    await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(1, { timeout: 30000 });
+    await expect(notice).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(tools.bin, { recursive: true, force: true });
+  }
+});
+
 test("Settings: a test the provider refuses turns the engine to an expired sign-in, names it, offers sign-in and takes it out of the plan", async () => {
   // The stand-in CLIs are POSIX shell scripts. Windows still runs the readiness rules in the unit tests.
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");

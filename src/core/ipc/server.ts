@@ -451,6 +451,7 @@ const routes = {
   "chats.restoreTool": ["chats", "restoreTool"],
   "chats.toolView": ["chats", "toolView"],
   "chats.retryTool": ["chats", "retryTool"],
+  "chats.answerQuestion": ["chats", "answerQuestion"],
   "chats.rename": ["chats", "rename"],
   "chats.delete": ["chats", "remove"],
   "chats.search": ["chats", "search"],

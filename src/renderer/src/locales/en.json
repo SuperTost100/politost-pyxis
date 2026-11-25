@@ -136,7 +136,7 @@
       "found": "I found {{names}}.",
       "foundSignedOut": "I found {{names}}, but it still needs a sign-in.",
       "foundNone": "I didn't find any AI on this computer.",
-      "disclosure": "Later, text, retrieved passages and attachments leave this computer and reach the company behind the AI. Right now I send nothing to any model.",
+      "disclosure": "Later, text, retrieved passages, attachments and, when you ask about your results, the quiz grades and topic states of that exam leave this computer and reach the company behind the AI. Right now I send nothing to any model.",
       "offersLink": "Free and student plans for each AI",
       "listLabel": "AI tools on this computer",
       "autoHint": "For each task Pyxis uses the cheapest model that does the job, and if an AI tool stops it moves to another ready one.",
@@ -3128,7 +3128,40 @@
         "stopped": "The quiz stopped before it was finished.",
         "gone": "The quiz is gone: it was deleted from the exam.",
         "unrestorable": "Quiz undone: its exam is gone, so it can’t be restored."
-      }
+      },
+      "reading": "Looking at your results…"
+    },
+    "chart": {
+      "drawing": "Drawing the chart…",
+      "failed": "The chart could not be drawn.",
+      "menu": "More on the chart",
+      "zoom": "Enlarge",
+      "asTable": "Show as a table",
+      "asChart": "Show as a chart",
+      "download": "Download PNG",
+      "copy": "Copy image",
+      "viewer": "Enlarged chart",
+      "fileName": "chart",
+      "legend": "Legend",
+      "category": "Item",
+      "value": "Value",
+      "note": "Detail",
+      "missing": "no data"
+    },
+    "question": {
+      "label": "Question",
+      "options": "Answers",
+      "check": "Check",
+      "right": "The right one",
+      "yours": "Your answer",
+      "correct": "Right.",
+      "notQuite": "Not quite.",
+      "another": "Another question",
+      "anotherMessage": "Ask me another question on the same topic.",
+      "practice": "It's just practice: it doesn't count toward your grades.",
+      "saveFailed": "Your answer couldn't be saved. Try again.",
+      "writing": "Writing the question…",
+      "failed": "The question could not be shown."
     }
   },
   "math": {
@@ -3288,14 +3321,14 @@
     "cancel": "Cancel",
     "keyRemoved": "API key removed. Choose another default AI tool if needed.",
     "terms": "A test sends one short sentence to the provider you pick.",
-    "disclosure": "The text, the retrieved passages and the attachments leave this computer and go to that AI tool's vendor.",
+    "disclosure": "The text, the retrieved passages, the attachments and, when you ask about your results, the quiz grades and topic states of that exam leave this computer and go to that AI tool's vendor.",
     "disclosureLocal": "Every task uses the model on this computer, so nothing leaves it.",
-    "disclosureMixed_one": "{{local}} runs on this computer, so nothing leaves it for that. For {{cloud}}, the text, the retrieved passages and the attachments go to that AI tool's vendor.",
-    "disclosureMixed_other": "{{local}} run on this computer, so nothing leaves it for them. For {{cloud}}, the text, the retrieved passages and the attachments go to that AI tool's vendor.",
+    "disclosureMixed_one": "{{local}} runs on this computer, so nothing leaves it for that. For {{cloud}}, the text, the retrieved passages, the attachments and, when you ask about your results, the quiz grades and topic states of that exam go to that AI tool's vendor.",
+    "disclosureMixed_other": "{{local}} run on this computer, so nothing leaves it for them. For {{cloud}}, the text, the retrieved passages, the attachments and, when you ask about your results, the quiz grades and topic states of that exam go to that AI tool's vendor.",
     "acknowledge": "I understand",
     "notice": {
       "title": "What leaves this computer",
-      "intro": "When you use an AI tool, the text, the retrieved passages and the attachments leave this computer. Pyxis sends nothing until you confirm.",
+      "intro": "When you use an AI tool, the text, the retrieved passages, the attachments and, when you ask about your results, the quiz grades and topic states of that exam leave this computer. Pyxis sends nothing until you confirm.",
       "item": "{{name}} sends them to {{vendor}}.",
       "item_vowel": "{{name}} sends them to {{vendor}}.",
       "later": "Not now"

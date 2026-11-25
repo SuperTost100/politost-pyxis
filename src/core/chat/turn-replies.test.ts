@@ -13,6 +13,8 @@ import {
   setChecksListener,
   settleChecks,
 } from "./turn";
+import { answerQuestion } from "./questions";
+import { chatQuestions } from "../../shared/chat-blocks";
 
 const step = "La derivata di $f(x) = x^2\\sin(x)$ è $f'(x) = 2x\\sin(x) + x^2\\cos(x)$.";
 const claim = {
@@ -286,6 +288,31 @@ describe("partial replies", () => {
       "Spiega il teorema",
       "Il teorema dice che ogni funzione continua ha un massimo.",
     ]);
+  });
+
+  it("keeps the student's answer to a practice question when a cut reply is continued", async () => {
+    const db = chatDb();
+    const block = "```pyxis-question\n" + JSON.stringify({ question: "Quanto fa 2+2?", options: ["3", "4", "5"], answer: 1 }) + "\n```";
+    const cut = await askTurn(db, {
+      text: "Mettimi alla prova",
+      allowGeneral: true,
+      run: async (input) => {
+        input.onDelta?.(`Eccone una.\n\n${block}\n\nE poi`);
+        throw truncated();
+      },
+    });
+    const stopped = readChat(db, cut.chatId).find((row) => row.role === "assistant")!;
+    const [questionId] = [...chatQuestions(stopped.body).keys()];
+    answerQuestion(db, { chatId: cut.chatId, messageId: stopped.id, questionId: questionId!, pick: 2 });
+    await regenerateTurn(db, {
+      chatId: cut.chatId,
+      allowGeneral: true,
+      resume: true,
+      run: async () => reply(" un'altra cosa."),
+    });
+    const continued = readChat(db, cut.chatId).find((row) => row.role === "assistant")!;
+    expect(continued.id).not.toBe(stopped.id);
+    expect(continued.answers).toEqual({ [questionId!]: 2 });
   });
 
   it("keeps a longer cut reply when Continue fails again, and the old one when it adds nothing", async () => {
