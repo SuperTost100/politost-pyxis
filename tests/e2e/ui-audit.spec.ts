@@ -3197,11 +3197,18 @@ async function openSources(page: Page, name: string) {
   const place = host.getByRole("button", { name: "Analisi matematica 2, p. 172", exact: true });
   await atRest(place);
   await place.hover();
-  await expect(page.getByRole("tooltip")).toContainText("Se D è un rettangolo");
-  // The sentence that ends at the mark of that passage, and nothing else.
+  // The page stands for two passages behind two sentences: the card quotes each, introduced by its sentence, and both
+  // sentences are tinted, each the words that end at its mark and nothing else.
+  const card = page.getByRole("tooltip");
+  await expect(card).toContainText("Se D è un rettangolo");
+  await expect(card).toContainText("l'altezza media del solido è il volume diviso");
+  await expect(card.locator(".px-passage-for")).toHaveText([/^(Per «|For “)Ora il dominio è un rettangolo/, /^(Per «|For “)Torna, perché il paraboloide/]);
   expect(
     await page.evaluate(() => [...(CSS.highlights.get("px-cited") ?? [])].map((range) => (range as Range).toString())),
-  ).toEqual([expect.stringMatching(/^Ora il dominio è un rettangolo e la funzione non dipende da .*, quindi l'integrale si separa in due integrali in una variabile$/)]);
+  ).toEqual([
+    expect.stringMatching(/^Ora il dominio è un rettangolo e la funzione non dipende da .*, quindi l'integrale si separa in due integrali in una variabile$/),
+    "Torna, perché il paraboloide scende da 4 al centro a 0 sul bordo",
+  ]);
 }
 
 async function openState(page: Page, name: string) {

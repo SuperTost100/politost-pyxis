@@ -1,6 +1,7 @@
 import type { TFunction } from "i18next";
-import { mapOutsideCode } from "../../../shared/math-delimiters";
-import { splitCitationGroups } from "../../../shared/smart-text";
+import { parseMarkdown, walk } from "../../../shared/markdown-tree";
+import { parseLooseJson, splitCitationGroups } from "../../../shared/smart-text";
+import { TOOL_FENCE } from "../../../shared/tool-blocks";
 
 /** A passage a text cites as [Pn], with what is known of its source and where the passage sits in it. */
 export type CitedPlace = {
@@ -24,21 +25,53 @@ export type PlaceLabel =
   | { kind: "page" | "slide" | "chapter" | "passage"; n: number }
   | { kind: "section"; text: string };
 
-/** A place as the list shows it. Passages on the same page are one place, which stands for all their numbers. */
-export type ListedPlace = CitedPlace & { label: PlaceLabel | null; numbers: number[] };
+/**
+ * A place as the list shows it. Passages on the same page are one place, which stands for all of them: `passages` keeps
+ * each, so the card can quote the one each sentence rests on, and `numbers` are their [Pn] numbers.
+ */
+export type ListedPlace = CitedPlace & {
+  label: PlaceLabel | null;
+  numbers: number[];
+  passages: Array<{ n: number; passageId: string }>;
+};
 export type SourceGroup = { key: string; sourceId?: string; title: string; places: ListedPlace[] };
+
+/** Fields of the app's own blocks that hold code to run, not words to read. */
+const CODE_FIELDS = new Set(["code"]);
+
+/** Every string of a block's JSON that the app draws as text, in order. */
+function blockTexts(value: unknown, key = ""): string[] {
+  if (typeof value === "string") return CODE_FIELDS.has(key) ? [] : [value];
+  if (Array.isArray(value)) return value.flatMap((item) => blockTexts(item, key));
+  if (value && typeof value === "object") return Object.entries(value).flatMap(([name, item]) => blockTexts(item, name));
+  return [];
+}
 
 /**
  * The passage numbers a text cites, each once, in the order the text first cites them. Code is found by the Markdown
- * parser, as `linkCitations` finds it, so a mark the view draws is a mark the row lists.
+ * parser, as `linkCitations` finds it, so a mark the view draws is a mark the row lists. The app's own blocks (```pyxis-*,
+ * such as a worked example or a figure's caption) are read for the text they draw; real code and a tool's block are not.
  */
 export function citedOrder(markdown: string): number[] {
   const numbers: number[] = [];
-  mapOutsideCode(markdown, (text) => {
+  const read = (text: string) => {
     for (const match of splitCitationGroups(text).matchAll(/\[P(\d+)\]/g)) numbers.push(Number(match[1]));
-    return text;
+  };
+  walk(parseMarkdown(markdown), (node) => {
+    if (node.type === "code") {
+      const lang = (node as { lang?: string | null }).lang ?? "";
+      if (lang.startsWith("pyxis-") && lang !== TOOL_FENCE) blockTexts(parseLooseJson(node.value ?? "")).forEach(read);
+      return false;
+    }
+    if (node.type === "inlineCode" || node.type === "math" || node.type === "inlineMath") return false;
+    if (typeof node.value === "string") read(node.value);
   });
   return [...new Set(numbers)];
+}
+
+/** The ids of the passages a text's marks name (`order`), where [Pn] is `cited[n - 1]`: what its row lists. */
+export function citedPassageIds(cited: ReadonlyArray<{ passageId: string }>, order: readonly number[]): string[] {
+  return [...new Set(order.flatMap((n) => (cited[n - 1] ? [cited[n - 1]!.passageId] : [])))];
 }
 
 const KIND_ORDER = { chapter: 0, page: 1, slide: 2 } as const;
@@ -75,8 +108,10 @@ export function sourceGroups(places: readonly CitedPlace[], order: readonly numb
     };
     const label = placeLabel(place);
     const same = label && group.places.find((listed) => JSON.stringify(listed.label) === JSON.stringify(label));
-    if (same) same.numbers.push(place.n);
-    else group.places.push({ ...place, label, numbers: [place.n] });
+    if (same) {
+      same.numbers.push(place.n);
+      same.passages.push({ n: place.n, passageId: place.passageId });
+    } else group.places.push({ ...place, label, numbers: [place.n], passages: [{ n: place.n, passageId: place.passageId }] });
     groups.set(key, group);
   }
   for (const group of groups.values()) {

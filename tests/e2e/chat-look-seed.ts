@@ -163,6 +163,8 @@ const LOOK_PASSAGES = [
   ["look-p-exercise", "look-src-sheet", { page: 2 }, null, "Esercizio 3. Calcolare il volume del solido compreso tra il piano z = 0 e il paraboloide z = 9 − x² − y²."],
   // A section with no page and a long name, which the open list wraps.
   ["look-p-cartesian", "look-src-sheet", {}, "Svolgimento completo in coordinate cartesiane, con la sostituzione trigonometrica x = 3 sin t e tutti i passaggi", "Svolgimento in coordinate cartesiane: si arriva all'integrale di (9 − x²)^{3/2}, che richiede la sostituzione x = 3 sin t."],
+  // A second passage on page 172, behind another sentence: the page stands for both.
+  ["look-p-mean", "look-src-book", { page: 172 }, null, "Per una funzione non negativa, l'altezza media del solido è il volume diviso per l'area della base."],
 ] as const;
 
 const POLAR = "$$V = \\int_0^{2\\pi} d\\theta \\int_0^2 (4 - \\rho^2)\\,\\rho\\,d\\rho = 2\\pi \\left[2\\rho^2 - \\frac{\\rho^4}{4}\\right]_0^2 = 8\\pi$$";
@@ -179,7 +181,7 @@ export const SOURCES_ANSWER = (mean: string) =>
     POLAR,
     "Per controllo, l'altezza media del solido è il volume diviso per l'area della base:",
     mean,
-    "Torna, perché il paraboloide scende da 4 al centro a 0 sul bordo. L'esercizio 3 dell'esercitazione 7 è lo stesso con $z = 9 - x^2 - y^2$ [P6], e lo svolgimento in coordinate cartesiane [P7] mostra quanta fatica risparmi con le polari.",
+    "Torna, perché il paraboloide scende da 4 al centro a 0 sul bordo [P8]. L'esercizio 3 dell'esercitazione 7 è lo stesso con $z = 9 - x^2 - y^2$ [P6], e lo svolgimento in coordinate cartesiane [P7] mostra quanta fatica risparmi con le polari.",
   ].join("\n\n");
 const CHECKS = (mean: string, claimed: string) =>
   `<checks>${JSON.stringify([

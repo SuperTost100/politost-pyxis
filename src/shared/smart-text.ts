@@ -616,28 +616,42 @@ export function partQuestions(segments: SmartSegment[], kind: "part" | "recap"):
   return checks.slice(-1);
 }
 
-const uuidRef =
-  /\s?\[(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\s*[,;]\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})*\]/gi;
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+/** A passage reference as a model writes it: [P3], a group such as [P1, P3; 2], or raw passage ids. */
+const PASSAGE_REF = String.raw`\[(?:P\d+(?:\s*[,;]\s*P?\d+)*|${UUID}(?:\s*[,;]\s*${UUID})*)\]`;
+/** The [Pn] marks a view links, after `splitCitationGroups`. */
+export const PASSAGE_MARK = String.raw`\[P\d+\]`;
+/** What may come before a run on its line when the space before the run is Markdown's own: indentation, a list marker, a quote. */
+const SYNTAX_LEAD = /^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+|>[ \t]?)*$/;
 
-/** Removes passage references ([P3], raw passage ids) that an older introduction carried as plain text. */
+/**
+ * Replaces each run of neighbouring marks ("[P1], [P2]") with `render(run)`, and touches whitespace only next to a run. The
+ * commas and semicolons between the marks only separate them, so they go with the run; the sentence's own punctuation
+ * after it stays. After prose, the spaces before the run go too, and the ones after it when punctuation follows, so
+ * "holds [P1], [P2]." and "holds [P1] ." read "holds.". At the start of a
+ * line, after its indentation, a list marker or a quote, that whitespace is Markdown's and stays, so the line stays in its
+ * list item; a run removed there also takes the spaces after it, so "- [P1] See" reads "- See".
+ */
+export function replaceMarkRuns(text: string, mark: string, render: (run: string) => string): string {
+  const run = new RegExp(String.raw`([ \t]*)(${mark}(?:[ \t]*[,;]?[ \t]*${mark})*)([ \t]*)`, "gi");
+  return text.replace(run, (all: string, before: string, marks: string, after: string, at: number, whole: string) => {
+    const replaced = render(marks);
+    const lead = whole.slice(whole.lastIndexOf("\n", at - 1) + 1, at) + before;
+    // After prose the run takes the spaces before it, and the ones after it when punctuation follows ("Vedi [P1] .").
+    if (!SYNTAX_LEAD.test(lead)) return /[.,;:!?)\]»]/.test(whole[at + all.length] ?? "") ? replaced : replaced + after;
+    return before + replaced + (replaced ? after : "");
+  });
+}
+
+/** Removes passage references ([P3], raw passage ids), as an export or an older introduction needs. */
+export function stripPassageRefs(markdown: string): string {
+  return replaceMarkRuns(markdown, PASSAGE_REF, () => "");
+}
+
 /** Rewrites a grouped citation such as [P1, P3] or [P1; 3] as [P1][P3], the form the chat links. */
 export function splitCitationGroups(markdown: string): string {
   return markdown.replace(/\[P\d+(?:\s*[,;]\s*P?\d+)+\]/g, (group) =>
     [...group.matchAll(/\d+/g)].map((match) => `[P${match[0]}]`).join(""),
-  );
-}
-
-const PASSAGE_REF = String.raw`\[P\d+(?:\s*[,;]\s*P?\d+)*\]`;
-/** A run of neighbouring references ("[P1], [P2]") with the spaces before it; the separators between them go with it. */
-const PASSAGE_RUN = new RegExp(String.raw`([ \t]*)${PASSAGE_REF}(?:[ \t]*[,;]?[ \t]*${PASSAGE_REF})*`, "g");
-
-export function stripPassageRefs(markdown: string): string {
-  return (
-    markdown
-      .replace(uuidRef, "")
-      // A reference on a line of its own keeps the line's indentation, which keeps the line in its list item.
-      .replace(PASSAGE_RUN, (_, space: string, at: number, whole: string) => (whole[at - 1] === "\n" ? space : ""))
-      .replace(/[ \t]+([.,;:!?])/g, "$1")
   );
 }
 

@@ -202,6 +202,21 @@
   color: var(--ink);
   font: 400 calc(13.5px * var(--text-scale, 1)) / 1.5 var(--font-sans);
 }
+/* A place that stands for several passages: each quote, introduced by the sentence it supports. */
+.px-passage-quote + .px-passage-quote {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.px-passage-for {
+  display: block;
+  margin-top: 5px;
+  color: var(--ink-muted);
+  font: 500 12.5px/1.4 var(--font-sans);
+}
+.px-passage-for + p {
+  margin-top: 3px;
+}
 .px-passage-card p.is-reading {
   color: var(--ink-subtle);
 }

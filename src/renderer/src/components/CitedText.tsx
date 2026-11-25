@@ -18,8 +18,8 @@ export function CitedText({
   citations: ReadonlyArray<{ passageId: string; label?: string }>;
   variant?: "body" | "reading";
 }) {
-  const places = usePassagePlaces(citations);
   const order = useMemo(() => citedOrder(children), [children]);
+  const places = usePassagePlaces(citations, order);
   const claims = useMemo(() => textClaims(children), [children]);
   const count = citations.length;
   const knownPassage = useMemo(() => (n: number) => n >= 1 && n <= count, [count]);

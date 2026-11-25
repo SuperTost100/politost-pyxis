@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import {
   useCallback,
@@ -18,6 +18,7 @@ import type { MathCheck } from "@shared/math-check";
 import { passageQuery } from "../lib/passagePlaces";
 import { useCheckTally } from "../lib/mathChecks";
 import { citedRanges } from "../lib/citedRanges";
+import { renderedText } from "../lib/renderedText";
 import { placeText, rowText, sourceGroups, sourceName, type CitedPlace, type ListedPlace, type SourceGroup } from "../lib/sourcePlaces";
 import { openSourceViewer } from "./SourceViewer";
 import "./SourcesRow.css";
@@ -27,11 +28,23 @@ const TINT = "px-cited";
 /** A pointer that only crosses the list opens no passage. */
 const HOVER_DELAY = 110;
 
-/** The words of a passage as the card quotes them: about three lines, cut at a word. */
-function excerpt(text: string): string {
+/** Words cut at a word near `length` characters, as the card shows them. */
+function excerpt(text: string, length = 280): string {
   const flat = text.replace(/\s+/g, " ").trim();
-  if (flat.length <= 280) return flat;
-  return `${flat.slice(0, 280).replace(/\s+\S*$/, "")}…`;
+  if (flat.length <= length) return flat;
+  return `${flat.slice(0, length).replace(/\s+\S*$/, "")}…`;
+}
+
+/** The words in `host` that rest on passage `n`, as a reader sees them (each formula read once). */
+function sentenceOf(host: HTMLElement | null, n: number): string {
+  if (!host) return "";
+  return citedRanges(host, new Set([n]))
+    .map((range) => {
+      const holder = document.createElement("div");
+      holder.append(range.cloneContents());
+      return renderedText(holder);
+    })
+    .join(" … ");
 }
 
 function tint(host: HTMLElement | null, numbers: readonly number[]) {
@@ -44,7 +57,8 @@ function tint(host: HTMLElement | null, numbers: readonly number[]) {
   registry.set(TINT, new Highlight(...citedRanges(host, new Set(numbers))));
 }
 
-type Card = { place: ListedPlace; title: string; anchor: HTMLElement };
+/** The card of a place, and for a place that stands for several passages, the start of the sentence each one supports. */
+type Card = { place: ListedPlace; title: string; anchor: HTMLElement; sentences: Record<number, string> };
 
 /**
  * The row that ends an answer or a lesson part, in place of marks in its text: "3 fonti · 2 risultati verificati". It
@@ -105,8 +119,13 @@ export function SourcesRow({
     (place: ListedPlace, title: string, anchor: HTMLElement, wait: boolean) => {
       window.clearTimeout(timer.current);
       const now = () => {
-        setCard({ place, title, anchor });
-        tint(host(), place.numbers);
+        const element = host();
+        const sentences =
+          place.passages.length > 1
+            ? Object.fromEntries(place.passages.map(({ n }) => [n, excerpt(sentenceOf(element, n), 60)]))
+            : {};
+        setCard({ place, title, anchor, sentences });
+        tint(element, place.numbers);
       };
       if (wait) timer.current = window.setTimeout(now, HOVER_DELAY);
       else now();
@@ -278,17 +297,24 @@ function placeName(t: TFunction, title: string, place: ListedPlace): string | un
   return place.label ? t("sourcesRow.placeAria", { title, place: placeText(t, place.label) }) : undefined;
 }
 
-/** The passage of a place, over or under it: where it comes from, its words, and what a click does. */
+/**
+ * The passage of a place, over or under it: where it comes from, its words, and what a click does. A place that stands
+ * for several passages (two cited on one page) quotes each one, introduced by the start of the sentence it supports,
+ * whose words are tinted with the others.
+ */
 function PassageCard({ id, card }: { id: string; card: Card }) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
-  const passage = useQuery({
-    ...passageQuery(card.place.passageId),
-    // The cited passage's own words: the current row can be the whole page, merged for the source viewer.
-    select: (rows) => {
-      const current = rows.find((row) => row.current);
-      return current?.quote ?? current?.text ?? "";
-    },
+  const several = card.place.passages.length > 1;
+  const quotes = useQueries({
+    queries: card.place.passages.map(({ passageId }) => ({
+      ...passageQuery(passageId),
+      // The cited passage's own words: the current row can be the whole page, merged for the source viewer.
+      select: (rows: Array<{ current: boolean; quote?: string; text: string }>) => {
+        const current = rows.find((row) => row.current);
+        return current?.quote ?? current?.text ?? "";
+      },
+    })),
   });
   const place = useCallback(() => {
     const element = ref.current;
@@ -303,7 +329,8 @@ function PassageCard({ id, card }: { id: string; card: Card }) {
     element.style.top = `${above ? at.top - height - 8 : at.bottom + 8}px`;
     element.style.transformOrigin = `${Math.round(at.left + at.width / 2 - left)}px ${above ? "100%" : "0"}`;
   }, [card.anchor]);
-  useLayoutEffect(place, [place, passage.data]);
+  const loaded = quotes.map((quote) => quote.data ?? "").join("\n");
+  useLayoutEffect(place, [place, loaded]);
   useEffect(() => {
     window.addEventListener("scroll", place, true);
     window.addEventListener("resize", place);
@@ -317,7 +344,19 @@ function PassageCard({ id, card }: { id: string; card: Card }) {
   return (
     <div ref={ref} id={id} className="px-passage-card" role="tooltip">
       <small>{[card.title, where].filter(Boolean).join(" · ")}</small>
-      {passage.data ? <p>«{excerpt(passage.data)}»</p> : passage.isPending ? <p className="is-reading">{t("sourcesRow.reading")}</p> : null}
+      {card.place.passages.map(({ n }, index) => {
+        const quote = quotes[index];
+        return (
+          <div key={n} className="px-passage-quote">
+            {several && card.sentences[n] ? <span className="px-passage-for">{t("sourcesRow.supports", { sentence: card.sentences[n] })}</span> : null}
+            {quote?.data ? (
+              <p>«{excerpt(quote.data, several ? 180 : 280)}»</p>
+            ) : quote?.isPending ? (
+              <p className="is-reading">{t("sourcesRow.reading")}</p>
+            ) : null}
+          </div>
+        );
+      })}
       <span className="px-passage-hint">{t("sourcesRow.hint")}</span>
     </div>
   );

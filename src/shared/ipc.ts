@@ -3684,8 +3684,19 @@ export const requests = {
         current: z.boolean(),
         /** On the current row: the cited passage's own words, which `text` may merge with its neighbours on the page. */
         quote: z.string().optional(),
-        /** On the current row: the title of the passage's source, whether or not it is still in the Library. */
-        sourceTitle: z.string().optional(),
+      }),
+    ),
+  },
+  // Where passages sit, without their text: the sources row under a text that cites them.
+  "sources.places": {
+    input: z.object({ passageIds: z.array(z.string()).max(200) }),
+    output: z.array(
+      z.object({
+        passageId: z.string(),
+        sourceId: z.string(),
+        sourceTitle: z.string(),
+        locator: locatorSchema,
+        sectionPath: z.string().nullable(),
       }),
     ),
   },

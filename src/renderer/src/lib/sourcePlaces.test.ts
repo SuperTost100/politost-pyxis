@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInstance, type TFunction } from "i18next";
 import { beforeAll, describe, expect, it } from "vitest";
-import { citedOrder, lessonPlaces, placeText, rowText, sourceGroups, sourceName, type CitedPlace } from "./sourcePlaces";
+import { citedOrder, citedPassageIds, lessonPlaces, placeText, rowText, sourceGroups, sourceName, type CitedPlace } from "./sourcePlaces";
 
 const book = { sourceId: "b", title: "Analisi matematica 2" };
 const notes = { sourceId: "n", title: "Appunti · Lezione 14" };
@@ -41,6 +41,13 @@ describe("citedOrder", () => {
     expect(citedOrder("Prima [P1].\n\n````md\n```\ncodice [P3]\n```\n````\n\nDopo il codice [P2].")).toEqual([1, 2]);
   });
 
+  it("reads the marks in the text of the blocks the app draws, and still skips code and tool blocks", () => {
+    const example = "```pyxis-example\n" + JSON.stringify({ title: "Un disco", body: "Il volume vale $8\\pi$ [P2]." }) + "\n```";
+    const figure = "```pyxis-figure\n" + JSON.stringify({ caption: "Il paraboloide [P3].", code: "plot([P9])" }) + "\n```";
+    const tool = "```pyxis-tool\ncards:[P8]\n```";
+    expect(citedOrder(`Prima [P1].\n\n${example}\n\n${figure}\n\n${tool}\n\n\`\`\`python\nx[P7]\n\`\`\``)).toEqual([1, 2, 3]);
+  });
+
   it("does not read code", () => {
     expect(citedOrder("Vedi `list[P4]` e\n\n```\nx[P5]\n```\n\nfine [P2].")).toEqual([2]);
   });
@@ -60,6 +67,11 @@ describe("sourceGroups", () => {
     expect(first!.places.map((place) => [placeText(it_, place.label!), place.numbers])).toEqual([
       ["p. 172", [5, 10]],
       ["p. 181", [3]],
+    ]);
+    // Each passage behind the page stays, so its card can quote the one each sentence rests on.
+    expect(first!.places[0]!.passages).toEqual([
+      { n: 5, passageId: "p5" },
+      { n: 10, passageId: "p10" },
     ]);
   });
 
@@ -156,5 +168,17 @@ describe("lessonPlaces", () => {
 
   it("lists every passage given when the text cites none, as the book's own text", () => {
     expect(lessonPlaces("Testo del libro.", ["x", "gone", "z"], sources).order).toEqual([1, 3]);
+  });
+});
+
+describe("citedPassageIds", () => {
+  const cited = [{ passageId: "a" }, { passageId: "b" }, { passageId: "c" }];
+
+  it("asks only for the passages the text's marks name, as the row lists them", () => {
+    expect(citedPassageIds(cited, [3, 1, 9])).toEqual(["c", "a"]);
+  });
+
+  it("asks for nothing when the text has no mark, so no row means no read", () => {
+    expect(citedPassageIds(cited, [])).toEqual([]);
   });
 });

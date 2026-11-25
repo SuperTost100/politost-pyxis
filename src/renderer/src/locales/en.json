@@ -4313,6 +4313,7 @@
     "failed": "Not verified",
     "failedValue": "The result does not match the expected value.",
     "failedSolutions": "The solutions do not match the ones Pyxis finds.",
-    "untitled": "Untitled source"
+    "untitled": "Untitled source",
+    "supports": "For “{{sentence}}”"
   }
 }

@@ -78,6 +78,7 @@ import { maxSourceBytes, MAX_SOURCE_BYTES } from "../../shared/source-types";
 import {
   chapterPassages,
   listSources,
+  passagePlaces,
   passagesAround,
   parsedChapter,
   smartbookChapters,
@@ -973,6 +974,9 @@ export function sourceHandlers(
     },
     passage(input: { passageId: string }) {
       return passagesAround(db, input.passageId);
+    },
+    places(input: { passageIds: string[] }) {
+      return passagePlaces(db, input.passageIds);
     },
     viewerDocument(input: { sourceId?: string; passageId?: string }) {
       const row = db
