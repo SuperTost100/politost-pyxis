@@ -44,3 +44,16 @@ export function chatAnswers(db: Database.Database, chatId: string): Map<string, 
   for (const row of rows) answers.set(row.message_id, { ...answers.get(row.message_id), [row.question_id]: row.pick });
   return answers;
 }
+
+/**
+ * A reply that takes another's place with the same questions, as a Continue does (it saves the longer reply as a new
+ * message and deletes the cut one), takes the student's answers to those questions along. Call it before the old reply
+ * is deleted, which would delete its answers with it.
+ */
+export function carryAnswers(db: Database.Database, from: string, to: string, body: string): void {
+  const ids = [...chatQuestions(body).keys()];
+  if (ids.length === 0) return;
+  db.prepare(
+    `UPDATE chat_question_answers SET message_id = ? WHERE message_id = ? AND question_id IN (SELECT value FROM json_each(?))`,
+  ).run(to, from, JSON.stringify(ids));
+}

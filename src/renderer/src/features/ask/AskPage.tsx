@@ -26,6 +26,7 @@ import { MathText } from "../../components/math/MathText";
 import { ContextBlock } from "../../components/ContextBlock";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView, type ChatBlocks } from "../../components/MarkdownView";
+import { chatQuestions } from "@shared/chat-blocks";
 import { ToolResult } from "./ToolResult";
 import { savedToolLine } from "@shared/tool-blocks";
 import { Notice } from "../../components/Notice";
@@ -209,9 +210,12 @@ const Reply = memo(function Reply({
       answers: row.answers,
       onCheck: (questionId, pick) => onAnswer(row.id, questionId, pick),
       onAnother: busy ? undefined : () => onSuggest(t("components.question.anotherMessage")),
+      // Only the chat's latest question offers one more: the request says "on the same topic", which an older card's
+      // topic may no longer be.
+      anotherFor: last ? [...chatQuestions(row.body).keys()].at(-1) : undefined,
       onPicking,
     }),
-    [row.answers, row.id, onAnswer, busy, onSuggest, t, onPicking],
+    [row.answers, row.id, row.body, last, onAnswer, busy, onSuggest, t, onPicking],
   );
   // A saved reply never has a tool at work: a `pending:` block in it is drawn as nothing (`savedToolLine`).
   const toolBlock = useCallback((line: string) => {

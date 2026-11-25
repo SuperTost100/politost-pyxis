@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseChart } from "../../../shared/chat-blocks";
-import { chartDomain, chartRows } from "./chartScale";
+import { chartDomain, chartRows, chartTick } from "./chartScale";
 
 const chart = (value: object) => parseChart(JSON.stringify({ title: "T", kind: "bar", ...value }))!;
 
@@ -41,5 +41,26 @@ describe("chart scale", () => {
       ["y", [2, "-"]],
       ["z", ["-", 3]],
     ]);
+  });
+});
+
+describe("chart bounds from the block", () => {
+  it("never lets min or max cut off a value, the reference line or the bars' zero", () => {
+    const bars = chartDomain(chart({ min: 10, series: [{ name: "x", points: [{ label: "a", value: 5 }, { label: "b", value: 10 }] }] }));
+    expect(bars.lo).toBeLessThanOrEqual(0);
+    expect(bars.hi).toBeGreaterThanOrEqual(10);
+    const line = chartDomain(
+      chart({ kind: "line", min: 18, max: 19, series: [{ name: "x", points: [{ label: "a", value: 30 }, { label: "b", value: 18.5 }] }] }),
+    );
+    expect(line.lo).toBeLessThanOrEqual(18.5);
+    expect(line.hi).toBeGreaterThanOrEqual(30);
+    expect(line.ticks.length).toBeGreaterThanOrEqual(2);
+    // Bounds that hold every value are kept as written.
+    expect(chartDomain(chart({ min: 0, max: 30, series: [{ name: "x", points: [{ label: "a", value: 26 }] }] }))).toMatchObject({ lo: 0, hi: 30 });
+  });
+
+  it("writes ticks with the precision their step needs", () => {
+    const small = chartDomain(chart({ kind: "line", series: [{ name: "x", points: [{ label: "a", value: 0.0001 }, { label: "b", value: 0.0004 }] }] }));
+    expect(new Set(small.ticks.map((tick) => chartTick(tick, small.ticks, "en"))).size).toBe(small.ticks.length);
   });
 });

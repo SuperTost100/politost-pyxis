@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { end, parseMarkdown, start, walk } from "./markdown-tree";
 import { arranged, hash, mapFencedBlocks, parseLooseJson, stripPassageRefs } from "./smart-text";
 
 /**
@@ -77,19 +78,30 @@ type Point = { label: string; value: number | null; note?: string };
 
 /**
  * The categories of a chart along its axis, each with the point of every series there (null where a series has none).
- * One series keeps its points as written, so a line of quizzes over time may label two points with the same topic.
- * Several series line up by label, in the order the labels first appear.
+ * Series line up by label, in the order the labels first appear, and a label a series repeats is matched by its turn:
+ * the second "9 nov" of one series sits with the second "9 nov" of another, so two results on one day both stay. One
+ * series is the same rule with nothing to match.
  */
 export function chartCategories<P extends Point>(chart: { series: ReadonlyArray<{ points: ReadonlyArray<P> }> }): Array<{
   label: string;
   points: Array<P | null>;
 }> {
-  if (chart.series.length === 1) return chart.series[0]!.points.map((point) => ({ label: point.label, points: [point] }));
-  const labels = [...new Set(chart.series.flatMap((series) => series.points.map((point) => point.label)))];
-  return labels.map((label) => ({
-    label,
-    points: chart.series.map((series) => series.points.find((point) => point.label === label) ?? null),
-  }));
+  const categories = new Map<string, { label: string; points: Array<P | null> }>();
+  chart.series.forEach((series, column) => {
+    const seen = new Map<string, number>();
+    for (const point of series.points) {
+      const turn = seen.get(point.label) ?? 0;
+      seen.set(point.label, turn + 1);
+      const key = `${turn}\u0000${point.label}`;
+      let category = categories.get(key);
+      if (!category) {
+        category = { label: point.label, points: chart.series.map(() => null) };
+        categories.set(key, category);
+      }
+      category.points[column] = point;
+    }
+  });
+  return [...categories.values()];
 }
 
 type Loose = Record<string, unknown>;
@@ -178,8 +190,11 @@ export type ChatQuestion = QuestionData & { id: string; order: number[] };
 function repairQuestion(raw: unknown): QuestionData | null {
   const value = record(raw);
   if (!value) return null;
-  let options = (first(value, "options", "choices") as unknown[] | undefined)?.map?.(text);
-  if (!options || options.some((option) => option === undefined)) return null;
+  const listed = first(value, "options", "choices");
+  // Only a list is a list of options: an object with a `map` key of its own must not reach a call.
+  if (!Array.isArray(listed)) return null;
+  let options = listed.map(text);
+  if (options.some((option) => option === undefined)) return null;
   // "A) text" on every option: the letter is the chat's, not the model's.
   if (options.every((option) => /^[A-Ea-e][).:]\s+/.test(option!)))
     options = options.map((option) => option!.replace(/^[A-Ea-e][).:]\s+/, ""));
@@ -235,53 +250,45 @@ export function chatQuestion(body: string): ChatQuestion | null {
 }
 
 /**
- * Rewrites every closed chart and question block of a reply, as `mapFigureBlocks` does figures: `replace` gets the
- * parsed block (null data when it does not validate) and returns the text to put in its place, or null to keep it.
+ * A reply's text as the Markdown view reads it: a figure, chart or question block indented as far as indented code in a
+ * list item is lifted to where it reads as that block (`mapFencedBlocks`). The view and every reader of the blocks below
+ * start from this text, so they find the same blocks.
+ */
+export function liftBlocks(body: string): string {
+  return mapFencedBlocks(body, ["pyxis-figure", ...CHAT_BLOCK_FENCES], () => null);
+}
+
+/**
+ * Rewrites every chart and question block of a reply: `replace` gets the parsed block (null data when it does not
+ * validate) and returns the text to put in its place, or null to keep it. A block is what the Markdown view draws as
+ * one: a code block of that language in the parser's tree (`parseMarkdown`, the view's own parser), at the top level,
+ * in a list item (even right after the marker) or in a quote, closed or left open at the end of the reply. Text put in
+ * a block's place stays where the block was: each of its lines after the first gets the block's own indent and quote
+ * marks.
  */
 export function mapChatBlocks(body: string, replace: (block: ChatBlock) => string | null): string {
   if (!body.includes(CHART_FENCE) && !body.includes(QUESTION_FENCE)) return body;
-  const one = (language: string, inner: string) =>
-    language === CHART_FENCE
-      ? replace({ kind: "chart", chart: parseChart(inner) })
-      : replace({ kind: "question", question: chatQuestion(inner) });
-  return mapQuotedBlocks(mapFencedBlocks(body, CHAT_BLOCK_FENCES, one), one);
-}
-
-const QUOTED_OPEN = /^((?:[ \t]*>[ \t]?)+)(`{3,}|~{3,})[ \t]*(pyxis-chart|pyxis-question)[ \t]*$/i;
-
-/** The blocks written inside a block quote (`> ```pyxis-chart`), with their replacement quoted as they were. */
-function mapQuotedBlocks(body: string, replace: (language: string, inner: string) => string | null): string {
-  if (!/^[ \t]*>/m.test(body)) return body;
-  const lines = body.split("\n");
-  const out: string[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const open = QUOTED_OPEN.exec(lines[i]!);
-    if (!open) {
-      out.push(lines[i]!);
-      continue;
-    }
-    const lead = open[1]!;
-    const fence = open[2]!;
-    const bare = lead.replace(/[ \t]+$/, "");
-    let close = i + 1;
-    const inside = (line: string) => line.startsWith(bare);
-    const strip = (line: string) => line.slice(line.startsWith(lead) ? lead.length : bare.length);
-    // Only the opener's own character, at least as many times, closes it.
-    const closes = (line: string) => {
-      const text = strip(line).trim();
-      return text.length >= fence.length && text === fence[0]!.repeat(text.length);
-    };
-    while (close < lines.length && inside(lines[close]!) && !closes(lines[close]!)) close++;
-    if (close >= lines.length || !inside(lines[close]!)) {
-      out.push(lines[i]!);
-      continue;
-    }
-    const next = replace(open[3]!.toLowerCase(), lines.slice(i + 1, close).map(strip).join("\n"));
-    if (next === null) out.push(...lines.slice(i, close + 1));
-    else out.push(...next.split("\n").map((line) => (line ? `${lead}${line}` : bare)));
-    i = close;
+  const text = liftBlocks(body);
+  const found: Array<{ from: number; to: number; next: string }> = [];
+  walk(parseMarkdown(text), (node) => {
+    if (node.type !== "code" || (node.lang !== CHART_FENCE && node.lang !== QUESTION_FENCE) || !node.position) return;
+    const block: ChatBlock =
+      node.lang === CHART_FENCE
+        ? { kind: "chart", chart: parseChart(node.value ?? "") }
+        : { kind: "question", question: chatQuestion(node.value ?? "") };
+    const next = replace(block);
+    if (next !== null) found.push({ from: start(node), to: end(node), next });
+  });
+  if (found.length === 0) return body;
+  let out = text;
+  for (const { from, to, next } of found.reverse()) {
+    // What stands before the block on its line: a list marker becomes as many spaces, quote marks stay.
+    const lead = text.slice(text.lastIndexOf("\n", from - 1) + 1, from);
+    const going = lead.replace(/[-*+]|\d+[.)]/g, (marker) => " ".repeat(marker.length));
+    const lines = next.split("\n").map((line, index) => (index === 0 || !line ? line : going + line));
+    out = `${out.slice(0, from)}${lines.map((line, index) => (index > 0 && !line ? going.trimEnd() : line)).join("\n")}${out.slice(to)}`;
   }
-  return out.join("\n");
+  return out;
 }
 
 /** The questions a reply holds, by id. */
@@ -307,8 +314,18 @@ export type ChatBlockLabels = {
 
 const cell = (value: string) => value.replace(/\|/g, "\\|");
 
+/**
+ * A number with the decimals it needs: two at most from 1 up, and below 1 enough to keep three significant digits, so
+ * 0.0001 and 0.00034 stay apart instead of both reading 0.
+ */
+export function formatChartNumber(value: number, locale: string): string {
+  const size = Math.abs(value);
+  const decimals = size === 0 || size >= 1 ? 2 : Math.min(12, Math.ceil(-Math.log10(size)) + 2);
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: decimals }).format(value);
+}
+
 export function formatChartValue(value: number, unit: string | undefined, locale: string): string {
-  const number = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value);
+  const number = formatChartNumber(value, locale);
   if (!unit) return number;
   return /^[/%]/.test(unit) ? `${number}${unit}` : `${number} ${unit}`;
 }

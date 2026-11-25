@@ -52,6 +52,8 @@ export type ChatBlocks = {
   answers?: Record<string, number>;
   onCheck?: (questionId: string, pick: number) => Promise<number>;
   onAnother?: () => void;
+  /** The question «Un'altra domanda» is offered on: the chat's latest one, so a request never refers to an older card. */
+  anotherFor?: string;
   /** A question has an option picked and not checked yet (true), or no longer (false). */
   onPicking?: (questionId: string, picking: boolean) => void;
 };
@@ -115,7 +117,7 @@ const components: Components = {
           pick={question ? blocks.answers?.[question.id] : undefined}
           drawing={drawing}
           onCheck={blocks.onCheck}
-          onAnother={blocks.onAnother}
+          onAnother={question && question.id === blocks.anotherFor ? blocks.onAnother : undefined}
           onPicking={blocks.onPicking}
         />
       );

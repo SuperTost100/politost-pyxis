@@ -9,6 +9,7 @@ import { answerNextMenu } from "./native-menu";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { saveShot, SHOTS } from "./shots";
+import { clickSettled } from "./settled";
 
 /*
  * The chat's own blocks: a chart the app draws from the numbers in the answer, and a practice question answered in the
@@ -90,6 +91,9 @@ async function start(env: Record<string, string>) {
     await first.getByRole("button", { name: "Salta" }).click();
     await fromChiediToExams(first);
     seed(userData);
+    // The tools' notice is confirmed before the chat opens, so its dialog cannot come up over the chart when a recorded
+    // tool turns ready during the test.
+    await first.evaluate(() => window.pyxis.invoke("engines.acknowledge", { providers: ["claude", "codex", "antigravity"] }));
     await first.evaluate(() => window.pyxis.setAppearance("light"));
     return first;
   });
@@ -167,13 +171,16 @@ test("a chart grows out of its placeholder, shows values on hover and focus, tur
     // Drawn at twice the chart's size, with the title over it.
     expect(picture.width).toBeGreaterThan(600);
     expect(picture.height).toBeGreaterThan(300);
-    // Ingrandisci opens the picture in the viewer.
-    await stored.click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Ingrandisci" }).click();
+    // Ingrandisci opens the picture in the viewer, from the keyboard too, and closing it gives the focus back to the dots.
+    const dots = stored.getByRole("button", { name: "Altro sul grafico" });
+    await dots.focus();
+    await page.keyboard.press("Enter");
+    await clickSettled(page, page.getByRole("menuitem", { name: "Ingrandisci" }));
     await expect(page.getByRole("dialog", { name: "Grafico ingrandito" })).toBeVisible();
     await shots(page, "chart-viewer");
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "Grafico ingrandito" })).toHaveCount(0);
+    await expect(dots).toBeFocused();
 
     // «Copia» on the answer pastes the chart's data as a table, not its JSON.
     await answer.hover();
@@ -229,7 +236,7 @@ test("a practice question is answered in the chat, kept after a reopen and a res
     await expect(group.getByRole("radio").filter({ hasText: "Quella giusta" })).toContainText("quanto basta a tenerlo fermo");
     await expect(page.getByText("Non proprio.")).toBeVisible();
     await expect(page.getByText(/L'attrito statico non ha un valore fisso/)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Un'altra domanda" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Un'altra domanda", exact: true })).toBeFocused();
     await expect(send).toHaveClass(/ant-btn-primary/);
     await expect(page.getByText("È solo per provare: non conta nei voti.")).toBeVisible();
     await shots(page, "question-done");
@@ -251,8 +258,18 @@ test("a practice question is answered in the chat, kept after a reopen and a res
     await openChat(later);
     await expect(later.getByText("La tua risposta")).toBeVisible({ timeout: 30000 });
     await expect(later.getByText("Quella giusta")).toBeVisible();
-    await later.getByRole("button", { name: "Un'altra domanda" }).click();
+    await later.getByRole("button", { name: "Un'altra domanda", exact: true }).click();
     await expect(later.locator(".px-msg-user").last()).toContainText("Fammi un'altra domanda sullo stesso argomento.");
+    // The new question arrives; «Un'altra domanda» is offered only on the latest question, never on an older card, whose
+    // topic may no longer be the one the chat is on.
+    await expect(later.getByRole("radiogroup", { name: "Risposte" })).toHaveCount(2, { timeout: 30000 });
+    await expect(later.getByRole("button", { name: "Interrompi", exact: true })).toHaveCount(0, { timeout: 30000 });
+    await expect(later.getByRole("button", { name: "Un'altra domanda", exact: true })).toHaveCount(0);
+    const newest = later.locator(".px-msg:not(.px-msg-user)").last();
+    await newest.getByRole("radio").first().click();
+    await newest.getByRole("button", { name: "Controlla" }).click();
+    await expect(later.getByRole("button", { name: "Un'altra domanda", exact: true })).toHaveCount(1);
+    await expect(newest.getByRole("button", { name: "Un'altra domanda", exact: true })).toBeVisible();
     expect(counted(userData).graded).toEqual(before.graded);
   } finally {
     await (again ?? app).close().catch(() => undefined);

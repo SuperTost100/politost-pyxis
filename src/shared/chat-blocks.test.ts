@@ -213,3 +213,79 @@ describe("chart categories", () => {
     );
   });
 });
+
+describe("review fixes", () => {
+  const fence = (language: string, value: unknown) => `\`\`\`${language}\n${JSON.stringify(value)}\n\`\`\``;
+
+  it("never throws on odd JSON shapes, and draws its quiet line instead", () => {
+    const shapes: unknown[] = [
+      { ...QUESTION, options: { map: 1 } },
+      { ...QUESTION, options: { map: () => [] } },
+      { ...QUESTION, options: "A, B" },
+      { ...QUESTION, options: [1, null, {}] },
+      { ...QUESTION, answer: { index: 1 } },
+      { ...QUESTION, question: ["a"] },
+      { ...GRADES, series: { 0: GRADES.series[0] } },
+      { ...GRADES, series: [{ name: "x", points: { label: "a" } }] },
+      { ...GRADES, series: [null, 1, "x"] },
+      { ...GRADES, series: [{ name: "x", points: [null, 3, "x", { label: { x: 1 }, value: [1] }] }] },
+      { ...GRADES, reference: [18] },
+      { ...GRADES, reference: { value: { v: 1 } } },
+      { ...GRADES, title: { it: "x" }, kind: ["bar"] },
+      [],
+      null,
+      42,
+      "text",
+    ];
+    for (const shape of shapes) {
+      for (const language of ["pyxis-question", "pyxis-chart"]) {
+        const body = fence(language, shape);
+        expect(() => chatQuestions(body), JSON.stringify(shape)).not.toThrow();
+        expect(() => chatBlocksAsText(body, CHAT_BLOCK_TEXT.it, "it"), JSON.stringify(shape)).not.toThrow();
+      }
+      expect(chatQuestion(JSON.stringify(shape))).toBeNull();
+    }
+    // Feedback that is not a list is left out: the question still works, with no sentence after the pick.
+    expect(chatQuestion(JSON.stringify({ ...QUESTION, feedback: { 0: "x" } }))?.feedback).toBeUndefined();
+    expect(chatBlocksAsText(fence("pyxis-question", { ...QUESTION, options: { map: 1 } }), CHAT_BLOCK_TEXT.it, "it")).toBe(
+      "*Non è stato possibile mostrare la domanda.*",
+    );
+  });
+
+  it("finds a block where the Markdown view draws one: right after a list marker, and unclosed at the end of a reply", () => {
+    const json = JSON.stringify(QUESTION);
+    expect(chatQuestions(`1. Prova:\n2. \`\`\`pyxis-question\n   ${json}\n   \`\`\``).size).toBe(1);
+    expect(chatQuestions(`- \`\`\`pyxis-question\n  ${json}\n  \`\`\``).size).toBe(1);
+    expect(chatQuestions(`Ecco una domanda.\n\n\`\`\`pyxis-question\n${json}`).size).toBe(1);
+    // As text, a block after a list marker stays in its item.
+    expect(chatBlocksAsText(`- \`\`\`pyxis-chart\n  ${chart(GRADES)}\n  \`\`\`\n- Dopo`, CHAT_BLOCK_TEXT.it, "it")).toContain(
+      "- **I tuoi voti nei quiz di Fisica 1**\n\n  In trentesimi",
+    );
+  });
+
+  it("keeps two results with the same label in several series, matched by their order", () => {
+    const parsed = parseChart(
+      chart({
+        title: "Confronto",
+        kind: "line",
+        series: [
+          { name: "Io", points: [{ label: "9 nov", value: 20 }, { label: "9 nov", value: 24 }, { label: "12 nov", value: 26 }] },
+          { name: "Media", points: [{ label: "9 nov", value: 18 }, { label: "9 nov", value: 19 }] },
+        ],
+      }),
+    )!;
+    expect(chatBlocksAsText(fence("pyxis-chart", parsed), CHAT_BLOCK_TEXT.en, "en")).toContain(
+      "| 9 nov | 20 | 18 |\n| 9 nov | 24 | 19 |\n| 12 nov | 26 |  |",
+    );
+  });
+
+  it("shows small values with the precision they need", () => {
+    const parsed = parseChart(
+      chart({ title: "Tempi", kind: "bar", unit: "s", series: [{ name: "t", points: [{ label: "a", value: 0.0001 }, { label: "b", value: 0.00034 }, { label: "c", value: 1250.5 }] }] }),
+    )!;
+    const text = chatBlocksAsText(fence("pyxis-chart", parsed), CHAT_BLOCK_TEXT.en, "en");
+    expect(text).toContain("| a | 0.0001 s |");
+    expect(text).toContain("| b | 0.00034 s |");
+    expect(text).toContain("| c | 1,250.5 s |");
+  });
+});

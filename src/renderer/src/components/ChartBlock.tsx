@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { formatChartValue, parseChart, type ChartData } from "@shared/chat-blocks";
 import { copyImage, saveImage } from "../lib/imageActions";
 import { imageFileName } from "../lib/imageName";
-import { chartDomain, chartRows } from "./chartScale";
+import { chartDomain, chartRows, chartTick } from "./chartScale";
 import { Icon } from "./Icon";
 import { ImageViewer } from "./ImageViewer";
 import { MenuButton, useItemMenu } from "./ItemMenu";
@@ -95,7 +95,10 @@ function Chart({ chart, arriving, still }: { chart: ChartData; arriving: boolean
   const { t, i18n } = useTranslation();
   const wrap = useRef<HTMLDivElement>(null);
   const plot = useRef<SVGSVGElement>(null);
-  const dots = useRef<HTMLButtonElement>(null);
+  const card = useRef<HTMLElement>(null);
+  // The three dots, where the focus goes back when the menu or the enlarged chart closes. MenuButton takes no ref, so the
+  // button is found in the card.
+  const dots = () => card.current?.querySelector<HTMLButtonElement>("button.px-chart-dots") ?? null;
   const [size, setSize] = useState<Size | null>(null);
   const [active, setActive] = useState<{ index: number; focus: boolean } | null>(null);
   const [table, setTable] = useState(false);
@@ -161,7 +164,7 @@ function Chart({ chart, arriving, still }: { chart: ChartData; arriving: boolean
     ],
     onClick: ({ key }) => void act(key as Action),
   };
-  const { bind, popup } = useItemMenu({ menu, region: t("components.chart.menu"), returnTo: () => dots.current });
+  const { bind, popup } = useItemMenu({ menu, region: t("components.chart.menu"), returnTo: dots });
 
   const legend =
     chart.series.length > 1 ? (
@@ -292,7 +295,7 @@ function Chart({ chart, arriving, still }: { chart: ChartData; arriving: boolean
 
   return (
     <>
-      <figure className={table ? "px-chart is-table" : "px-chart"} {...(still ? {} : bind)}>
+      <figure ref={card} className={table ? "px-chart is-table" : "px-chart"} {...(still ? {} : bind)}>
         <figcaption className="px-chart-head">
           <span className="px-chart-title">{chart.title}</span>
           {chart.subtitle ? <span className="px-chart-sub">{chart.subtitle}</span> : null}
@@ -320,7 +323,7 @@ function Chart({ chart, arriving, still }: { chart: ChartData; arriving: boolean
           caption={chart.title}
           filename={fileName}
           ground={document.documentElement.dataset.theme === "dark" ? "dark" : "white"}
-          origin={dots.current}
+          origin={dots()}
           onClose={() => setZoomed(null)}
         />
       ) : null}
@@ -437,7 +440,7 @@ function lineChart(
 ): Geometry {
   const { lo, hi, ticks } = chartDomain(chart);
   const f = size.font;
-  const tick = (number: number) => new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(number);
+  const tick = (number: number) => chartTick(number, ticks, locale);
   const left = Math.max(...ticks.map((item) => measure(tick(item)))) + 10;
   // The reference line's label sits past the line's right end, outside the plot, where no point can cover it.
   const refLabel = chart.reference ? fit(chart.reference.label, size.width * 0.28, measure) : "";

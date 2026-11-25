@@ -19,6 +19,8 @@ const QUIZZES_LISTED = 60;
 /** Exams of one subject read in one call. */
 const EXAMS_LISTED = 6;
 
+export const PROGRESS_TOOL = "read_progress";
+
 export const progressInput = z.object({}).strict();
 
 export const PROGRESS_DESCRIPTION = [
@@ -53,7 +55,9 @@ function score(payload: string | null): number | null {
 /** One exam as the student sees it in Pyxis: its handed-in quizzes and each topic's state, on the student's scale. */
 export function examProgress(db: Database.Database, planId: string, scale: GradeScale) {
   const plan = db.prepare(`SELECT title FROM plans WHERE id = ?`).get(planId) as { title: string };
-  const goal = reachableTarget(planTarget(db, planId));
+  const target = planTarget(db, planId);
+  // The path counts a topic as at its goal from this threshold, which keeps a goal of 100% reachable.
+  const threshold = reachableTarget(target);
   const attempts = db
     .prepare(
       `SELECT a.submitted_at, i.kind, i.topic_id, t.title AS topic,
@@ -75,7 +79,7 @@ export function examProgress(db: Database.Database, planId: string, scale: Grade
   const graded = attempts.map((attempt) => ({ ...attempt, score: score(attempt.payload) }));
   return {
     exam: plan.title,
-    goal: gradeWhole(goal, scale),
+    goal: gradeValue(target, scale),
     quizzesDone: attempts.length,
     quizzes: graded.slice(0, QUIZZES_LISTED).map((attempt) => ({
       date: dayKey(attempt.submitted_at),
@@ -93,7 +97,7 @@ export function examProgress(db: Database.Database, planId: string, scale: Grade
         lessonRead: own.some((step) => step.activity === "lesson"),
         latestQuizGrade: latest ? gradeValue(latest.score!, scale) : null,
         mastery: studied ? gradeWhole(topic.mastery, scale) : null,
-        goalReached: studied && topic.mastery >= goal,
+        goalReached: studied && topic.mastery >= threshold,
         openMistakes: gaps.get(topic.id) ?? 0,
       };
     }),
@@ -102,11 +106,10 @@ export function examProgress(db: Database.Database, planId: string, scale: Grade
 
 /** The exams the chat's work belongs to: its exam, or else every exam of its subject that is not archived. */
 function examsOf(db: Database.Database, place: ReturnType<ToolTurn["place"]>): { name: string; planIds: string[] } | null {
+  // A chat of an exam reads that exam alone, archived or not (an archived exam keeps its history), and never another.
   if (place.planId) {
-    const plan = db.prepare(`SELECT id, title FROM plans WHERE id = ? AND archived_at IS NULL`).get(place.planId) as
-      | { id: string; title: string }
-      | undefined;
-    if (plan) return { name: plan.title, planIds: [plan.id] };
+    const plan = db.prepare(`SELECT id, title FROM plans WHERE id = ?`).get(place.planId) as { id: string; title: string } | undefined;
+    return plan ? { name: plan.title, planIds: [plan.id] } : null;
   }
   if (!place.subject) return null;
   const subject = db.prepare(`SELECT id, name FROM subjects WHERE name = ? COLLATE NOCASE`).get(place.subject.trim()) as
@@ -133,14 +136,15 @@ export function readProgress(db: Database.Database, place: ReturnType<ToolTurn["
 
 export function progressTool(db: Database.Database): Tool {
   return {
-    name: "read_progress",
+    name: PROGRESS_TOOL,
     description: PROGRESS_DESCRIPTION,
+    results: true,
     input: progressInput,
     run(turn) {
       const progress = readProgress(db, turn.place());
       if (!progress)
         return {
-          text: "This chat has no exam or subject, so there are no results to read. Tell the student to choose a subject for the chat (the subject button above the conversation) and ask again. Do not guess their results.",
+          text: "There are no results to read for this chat: it has no subject or exam, or its exam is no longer in Pyxis. Tell the student in one sentence; if the chat has no subject, they can choose one with the subject button above the conversation. Do not guess their results.",
         };
       if (progress.exams.length === 0)
         return {

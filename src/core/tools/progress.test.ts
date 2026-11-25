@@ -116,7 +116,7 @@ describe("read_progress", () => {
     expect(progressInput.safeParse({}).success).toBe(true);
     // Where it looks comes from the chat: an argument naming another exam is refused.
     expect(progressInput.safeParse({ planId: "gen" }).success).toBe(false);
-    expect((await tool.run(turn({ planId: null, subject: null }), {})).text).toMatch(/no exam or subject/);
+    expect((await tool.run(turn({ planId: null, subject: null }), {})).text).toMatch(/no subject or exam/);
     db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('bio', 'Biologia', 1)").run();
     expect((await tool.run(turn({ planId: null, subject: "Biologia" }), {})).text).toMatch(/has no exam in Pyxis yet/);
     const read = JSON.parse((await tool.run(turn({ planId: "mech", subject: "Fisica 1" }), {})).text) as { exams: unknown[] };
@@ -134,5 +134,26 @@ describe("read_progress", () => {
     const before = count();
     await progressTool(db).run(turn({ planId: "mech", subject: "Fisica 1" }), {});
     expect(count()).toEqual(before);
+  });
+});
+
+describe("read_progress, the chat's own exam", () => {
+  it("reads an archived exam's own history, and never widens a chat's exam to its subject's other exams", () => {
+    const db = fixture();
+    db.prepare("INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('thermo', 'phys', 'Termodinamica', 'ready', 1, 1)").run();
+    db.prepare("UPDATE plans SET archived_at = 5 WHERE id = 'mech'").run();
+    const archived = readProgress(db, { planId: "mech", subject: "Fisica 1" })!;
+    expect(archived.exams.map((exam) => exam.exam)).toEqual(["Meccanica"]);
+    expect(archived.exams[0]!.quizzesDone).toBe(5);
+    // An exam that is gone leaves nothing to read: not the subject's other exams.
+    expect(readProgress(db, { planId: "deleted", subject: "Fisica 1" })).toBeNull();
+  });
+
+  it("sends the exam's saved goal, and counts a topic as at its goal by the threshold the path uses", () => {
+    const db = fixture();
+    db.prepare("UPDATE plans SET target = 1 WHERE id = 'mech'").run();
+    expect(readProgress(db, { planId: "mech", subject: null })!.exams[0]!.goal).toBe(30);
+    db.prepare("UPDATE plans SET target = 0.75 WHERE id = 'mech'").run();
+    expect(readProgress(db, { planId: "mech", subject: null })!.exams[0]!.goal).toBe(22.5);
   });
 });
