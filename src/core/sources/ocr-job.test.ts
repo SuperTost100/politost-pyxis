@@ -89,24 +89,62 @@ function start(
 }
 
 describe("reading a scan in core", () => {
-  it("reads the pictures of a Word file or a presentation made of pictures, each passage named by its picture", async () => {
+  it("reads the pictures of a Word file or a presentation, named and located by picture and slide, and resumes at the next picture", async () => {
     for (const [kind, ext] of [["docx", ".docx"], ["pptx", ".pptx"]] as const) {
-      const fixture = scan(2, kind);
-      const asked: string[] = [];
-      const readPages: ScanDeps["readPages"] = async (_path, pages, signal, fileExt) => {
-        asked.push(fileExt);
+      const fixture = scan(10, kind);
+      const asked: Array<[string, number[]]> = [];
+      // Picture N sits on slide ceil(N / 2) of the deck.
+      const readPages = (stop: boolean): ScanDeps["readPages"] => async (_path, pages, signal, fileExt) => {
+        asked.push([fileExt, pages]);
+        if (stop && asked.length === 2) throw new Error("ocr-worker-crashed");
         signal.throwIfAborted();
-        return { count: 2, pages: pages.filter((page) => page <= 2).map((page) => ({ page, text: `Alcani ${page}`, section: `picture ${page}` })) };
+        return {
+          count: 10,
+          pages: pages.map((page) => ({
+            page,
+            text: `Alcani ${page}`,
+            ...(kind === "pptx"
+              ? { section: `slide ${Math.ceil(page / 2)}`, locator: { slide: Math.ceil(page / 2), picture: page } }
+              : { section: `picture ${page}`, locator: { picture: page } }),
+          })),
+        };
       };
-      const { runner, state } = start(fixture, readPages);
-      const jobId = startScan(fixture.db, runner, "scan");
-      await until(() => state(jobId) === "succeeded");
+      const first = start(fixture, readPages(true));
+      const failed = startScan(fixture.db, first.runner, "scan");
+      await until(() => first.state(failed) === "failed");
+      const second = start(fixture, readPages(false));
+      const jobId = startScan(fixture.db, second.runner, "scan");
+      await until(() => second.state(jobId) === "succeeded");
       expect(fixture.status()).toBe("ready");
-      expect(asked).toEqual([ext]);
-      expect(fixture.db.prepare(`SELECT section_path FROM passages WHERE source_id = 'scan' ORDER BY section_path`).pluck().all()).toEqual([
-        "picture 1",
-        "picture 2",
-      ]);
+      // The second run does not know the count before its first batch, so it asks from the first picture without text.
+      expect(asked).toEqual([[ext, [1, 2, 3, 4, 5, 6, 7, 8]], [ext, [9, 10]], [ext, [9, 10, 11, 12, 13, 14, 15, 16]]]);
+      const rows = fixture.db
+        .prepare(`SELECT section_path AS section, locator_json AS locator FROM passages WHERE source_id = 'scan' ORDER BY rowid`)
+        .all() as Array<{ section: string; locator: string }>;
+      expect(rows[1]).toEqual(
+        kind === "pptx"
+          ? { section: "slide 1", locator: JSON.stringify({ slide: 1, picture: 2 }) }
+          : { section: "picture 2", locator: JSON.stringify({ picture: 2 }) },
+      );
+    }
+  });
+
+  it("ends a mixed deck ready on its own text when OCR finds nothing in its pictures", async () => {
+    const fixture = scan(2, "pptx");
+    fixture.db
+      .prepare(`INSERT INTO passages (id, source_id, document_id, version, text, locator_json, section_path, created_at) VALUES ('text', 'scan', 'doc', 1, ?, ?, 'slide 3', 1)`)
+      .run("Il secondo principio della termodinamica.", JSON.stringify({ slide: 3 }));
+    const blank: ScanDeps["readPages"] = async (_path, pages) => ({ count: 2, pages: pages.map((page) => ({ page, text: "" })) });
+    const { runner, state } = start(fixture, blank);
+    const jobId = startScan(fixture.db, runner, "scan");
+    await until(() => state(jobId) === "succeeded");
+    expect(fixture.status()).toBe("ready");
+  });
+
+  it("finds a Word file or deck waiting for OCR, as it finds a PDF, when the language data arrives", () => {
+    for (const kind of ["docx", "pptx"]) {
+      const fixture = scan(1, kind);
+      expect(waitingScans(fixture.db)).toEqual(["scan"]);
     }
   });
 

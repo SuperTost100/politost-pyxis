@@ -27,7 +27,7 @@ import { LOCAL_PROVIDER } from "../engine/local";
 import { selectionFor, selectionOn, strongestSelection, type StoredSelection } from "../engine/selection";
 import { withUsageScope } from "../engine/usage";
 import type { Embedder, PassageHit } from "../sources/retrieve";
-import { contentWords, hitOf, queryEmbedder, retrieveWithModel, topicWords, type PassageRow } from "../sources/retrieve";
+import { contentWords, fuseRanks, hitOf, queryEmbedder, retrieveWithModel, topicWords, type PassageRow } from "../sources/retrieve";
 import { readingOrder } from "../sources/smartbook";
 import { commitStaged, recognisePhoto, savedImages, stagePhoto, type PreparedFiles, type SkippedImage, type StagedBlob } from "./attach";
 import type { HeldFiles, TakenFiles } from "./held-files";
@@ -190,9 +190,7 @@ function keptPassages(
 
 /** Passages a chat turn sends to the model. Questions that ask for a full explanation need more than the default eight. */
 const CHAT_PASSAGES = 12;
-/** Passages of a document attached to this turn that always go with it, whatever the question says. */
-const ATTACHED_PASSAGES = 4;
-/** At most this many passages are added for this turn's documents, on top of the ones retrieval found. */
+/** Passages of the documents attached to this turn, shared evenly among them: at most 8 files leave each 1 or more. */
 const ATTACHED_TOTAL = 12;
 /** How much of the files' text joins the question in the Library search of a message with files. */
 const FILES_QUERY_CHARS = 1_000;
@@ -415,13 +413,12 @@ function historyText(
 /**
  * Passages of the documents attached to this turn, so a question like "summarise this" sees the file even when its
  * words match nothing in it: the best matches retrieval found, then the best matches within each document, then its
- * opening passages. ATTACHED_TOTAL is shared among the documents, at least ATTACHED_PASSAGES each.
+ * opening passages, an even share of ATTACHED_TOTAL each.
  */
 async function attachedPassages(
   db: Database.Database,
   text: string,
   sourceIds: string[],
-  found: PassageHit[],
   embed: AskInput["embed"],
 ): Promise<PassageHit[]> {
   const opening = db.prepare(
@@ -429,15 +426,15 @@ async function attachedPassages(
      WHERE p.source_id = ? AND p.document_id = ${latestDocument("p.source_id")}
      ORDER BY ${readingOrder("p")} LIMIT ?`,
   );
-  const taken = new Set(found.map((hit) => hit.id));
+  const taken = new Set<string>();
   const added: PassageHit[] = [];
-  const each = Math.max(ATTACHED_PASSAGES, Math.floor(ATTACHED_TOTAL / Math.max(1, sourceIds.length)));
+  const each = Math.max(1, Math.floor(ATTACHED_TOTAL / Math.max(1, sourceIds.length)));
   for (const sourceId of sourceIds) {
     const within = await retrieveWithModel(db, text, { sourceIds: [sourceId], embed, limit: each });
     const first = (opening.all(sourceId, each) as PassageRow[]).map(hitOf);
-    let have = found.filter((hit) => hit.sourceId === sourceId).length;
+    let have = 0;
     for (const hit of [...within.hits, ...first]) {
-      if (have >= each || added.length >= ATTACHED_TOTAL) break;
+      if (have >= each) break;
       if (taken.has(hit.id)) continue;
       taken.add(hit.id);
       added.push(hit);
@@ -517,10 +514,11 @@ function filesOpening(db: Database.Database, sourceIds: string[], notes: string[
 }
 
 /**
- * The Library's passages for a message with files, which is about them first. Two searches: the question with the opening
- * of the files' text, and the question alone when it names a topic of its own (see POINTING). Only hits that pass the
- * relevance bar of their search come along, so a Library on another subject than the files adds nothing. The files' own
- * passages are left out here: `attachedPassages` adds them.
+ * The Library's passages for a message with files, which is about them first. Two searches: the question's topic words
+ * with the opening of the files' text, and the topic words alone when the question has any (see POINTING). Only hits that
+ * pass the relevance bar of their search come along, so a Library on another subject than the files adds nothing, and
+ * the two rankings are merged before the cap, so neither crowds out the other. The files themselves are searched apart,
+ * by `attachedPassages`, and are left out of this scope.
  */
 async function gatherWithFiles(
   db: Database.Database,
@@ -531,23 +529,22 @@ async function gatherWithFiles(
   question: AskInput["embed"],
   own: string[],
 ): Promise<{ hits: PassageHit[]; covered: boolean; usedVectors: boolean; relevant: string[] }> {
-  if (!scope.withLibrary && scope.sourceIds.length === 0)
-    return { hits: [], covered: false, usedVectors: false, relevant: [] };
+  const sourceIds = scope.sourceIds.filter((id) => !own.includes(id));
+  if (!scope.withLibrary && sourceIds.length === 0) return { hits: [], covered: false, usedVectors: false, relevant: [] };
   const topic = topicWords(text, POINTING).join(" ");
   const searches = [];
-  const options = { ...scope, limit: CHAT_PASSAGES, nearDistance: FILES_NEAR_DISTANCE };
-  if (filesText) searches.push(await retrieveWithModel(db, `${text}\n${filesText}`, { ...options, embed }));
+  const options = { ...scope, sourceIds, limit: CHAT_PASSAGES, nearDistance: FILES_NEAR_DISTANCE };
+  if (filesText) searches.push(await retrieveWithModel(db, `${topic}\n${filesText}`, { ...options, embed }));
   // The question's own vector, already computed, with only its topic words for the lexical side.
   if (topic) searches.push(await retrieveWithModel(db, topic, { ...options, embed: question }));
-  const relevant = new Set(searches.flatMap((found) => found.relevant));
-  const hits = new Map<string, PassageHit>();
-  for (const hit of searches.flatMap((found) => found.hits))
-    if (relevant.has(hit.id) && !own.includes(hit.sourceId) && hits.size < CHAT_PASSAGES) hits.set(hit.id, hit);
+  const byId = new Map(searches.flatMap((found) => found.hits.map((hit) => [hit.id, hit] as const)));
+  const ids = fuseRanks(searches.map((found) => found.hits.filter((hit) => found.relevant.includes(hit.id)).map((hit) => hit.id)));
+  const hits = ids.slice(0, CHAT_PASSAGES).map((id) => byId.get(id)!);
   return {
-    hits: [...hits.values()],
+    hits,
     covered: searches.some((found) => found.covered),
     usedVectors: searches.some((found) => found.usedVectors),
-    relevant: [...hits.keys()],
+    relevant: hits.map((hit) => hit.id),
   };
 }
 
@@ -1299,7 +1296,7 @@ async function answer(
     ...gathered,
     hits: [
       ...gathered.hits,
-      ...(kept ? [] : await attachedPassages(db, input.text, attachedIds, gathered.hits, questionEmbed)),
+      ...(kept ? [] : await attachedPassages(db, input.text, attachedIds, questionEmbed)),
     ],
   };
   const selected = searches || sourceIds.length > 0 || Boolean(planId) || Boolean(subject);
@@ -1343,8 +1340,9 @@ async function answer(
     const unread = file.kind === "document" && !citations.some((cite) => cite.sourceId === file.sourceId);
     return `${index + 1}. ${oneLine(file.name)} (${file.kind === "photo" ? "photo" : "document"})${unread ? ": no text could be read from it" : ""}`;
   });
+  // The names are the files' own, from wherever they came, so they sit inside the data block with what was read from them.
   const attachedBlock = files.length
-    ? `Files attached to this message:\n${fileLines.join("\n")}${fromFiles.length ? `\n${dataBlock("attached", fromFiles.join("\n\n"))}` : ""}`
+    ? dataBlock("attached", [`Files attached to this message:\n${fileLines.join("\n")}`, ...fromFiles].join("\n\n"))
     : "";
   const subjectLine = subject ? `Subject: ${oneLine(subject)}.` : "";
   const pinned = chatContext(db, chatId);

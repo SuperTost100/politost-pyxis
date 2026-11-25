@@ -6,6 +6,8 @@ export type PassageLocator = {
   paragraph?: string;
   page?: number;
   slide?: number;
+  /** A picture of a Word file or deck read by OCR: its number among the file's pictures. */
+  picture?: number;
 };
 
 export type PassageHit = {

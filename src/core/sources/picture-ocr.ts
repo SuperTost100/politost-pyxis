@@ -1,7 +1,7 @@
 import { scanPictures } from "./documents";
 import type { OcrPage } from "./ocr";
 import { withOcrWorker } from "./recognize";
-import { assertDecodable, sniffImage, uprightForOcr } from "./vision-image";
+import { assertDecodable, decode, sniffImage, uprightForOcr } from "./vision-image";
 
 /**
  * Reads `pages` of a scanned .docx or .pptx with local OCR, in one worker thread: page N is its Nth picture in reading
@@ -26,7 +26,7 @@ export async function ocrScanPictures(
           for (const page of wanted) {
             const picture = pictures[page - 1]!;
             const pixels = decodable(picture.read());
-            out.push({ page, section: picture.section, text: pixels ? await recognize(pixels) : "" });
+            out.push({ page, section: picture.section, locator: picture.locator, text: pixels ? await recognize(pixels) : "" });
           }
           return out;
         },
@@ -36,12 +36,16 @@ export async function ocrScanPictures(
   return { count: pictures.length, pages: read };
 }
 
-/** The picture turned upright for OCR, or null when the decoder refuses it, with the same header checks every decode has. */
+/**
+ * The picture turned upright for OCR, or null when it cannot be decoded: its header is refused, or the file is cut short
+ * or damaged, which Tesseract would fail on and stop the batch. It is decoded here once to find out.
+ */
 function decodable(bytes: Uint8Array | undefined): Uint8Array | null {
   const mime = bytes ? sniffImage(bytes) : null;
   if (!bytes || !mime) return null;
   try {
     assertDecodable(bytes, mime);
+    decode(bytes, mime);
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("vision-image-")) return null;
     throw error;

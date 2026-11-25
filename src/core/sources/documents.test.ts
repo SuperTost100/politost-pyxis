@@ -199,6 +199,24 @@ describe("document extract", () => {
     expect(extracted.pages[1]?.section).toBe("Lavoro");
   });
 
+  it("keeps the short real text of a Word file or deck that is read as a scan: OCR reads only its pictures", () => {
+    const picture = PNG.sync.write(new PNG({ width: 1, height: 1 }));
+    const db = openDatabase(":memory:");
+    const workspace = tempDir("pyxis-office-scan-");
+    const store = async (title: string, ext: string, bytes: Uint8Array, extracted: ExtractedDocument) =>
+      storeExtracted(db, workspace, { title, kind: ext.slice(1), mime: "application/octet-stream", ext, bytes, extracted });
+    const deck = pptxOf([{ pictures: [picture] }, { pictures: [picture] }, { pictures: [picture] }, { text: "Midterm on Friday" }]);
+    return (async () => {
+      const slides = await store("deck", ".pptx", deck, extractPptx(deck));
+      const doc = docxOf(["Chimica organica", picture, picture]);
+      const word = await store("word", ".docx", doc, await extractDocx(doc));
+      const text = (sourceId: string) => db.prepare(`SELECT text FROM passages WHERE source_id = ?`).pluck().all(sourceId);
+      expect(text(slides.sourceId)).toEqual(["Midterm on Friday"]);
+      expect(text(word.sourceId)).toEqual(["Chimica organica"]);
+      expect(listSources(db).map((source) => source.status)).toEqual(["needs-ocr", "needs-ocr"]);
+    })();
+  });
+
   it("stores a scanned PDF as needing OCR and keeps its text out", async () => {
     const dir = tempDir("pyxis-pdf-");
     const file = join(dir, "scan.pdf");

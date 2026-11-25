@@ -174,8 +174,11 @@ function picturesOf(entries: BoundedZip, partKey: string): string[] {
   return [...pictures];
 }
 
-/** A picture a scanned .docx or .pptx is read from: where it sits, as a passage names it, and its bytes. */
-export type ScanPicture = { section: string; read: () => Uint8Array | undefined };
+/**
+ * A picture a scanned .docx or .pptx is read from: where it sits, as a passage names it and as its locator places it (its
+ * slide, and its number among the pictures, which the scan job resumes by), and its bytes.
+ */
+export type ScanPicture = { section: string; locator: { picture: number; slide?: number }; read: () => Uint8Array | undefined };
 
 /**
  * The pictures OCR reads in a .docx or .pptx that `extractDocx` or `extractPptx` called a scan, in reading order: every
@@ -184,12 +187,13 @@ export type ScanPicture = { section: string; read: () => Uint8Array | undefined 
  */
 export function scanPictures(bytes: Uint8Array, ext: string): ScanPicture[] {
   const entries = openZip(bytes, OFFICE_ZIP_LIMITS);
-  const picture = (section: string, path: string): ScanPicture => ({ section, read: () => entries.read(path) });
-  if (ext === ".docx") return picturesOf(entries, DOCX_BODY).map((path, index) => picture(`picture ${index + 1}`, path));
+  const read = (path: string) => () => entries.read(path);
+  if (ext === ".docx")
+    return picturesOf(entries, DOCX_BODY).map((path, index) => ({ section: `picture ${index + 1}`, locator: { picture: index + 1 }, read: read(path) }));
   if (ext === ".pptx")
-    return slidesOf(entries).flatMap((slide) =>
-      slide.text.length < emptyPage ? picturesOf(entries, slide.key).map((path) => picture(`slide ${slide.number}`, path)) : [],
-    );
+    return slidesOf(entries)
+      .flatMap((slide) => (slide.text.length < emptyPage ? picturesOf(entries, slide.key).map((path) => ({ slide: slide.number, path })) : []))
+      .map(({ slide, path }, index) => ({ section: `slide ${slide}`, locator: { slide, picture: index + 1 }, read: read(path) }));
   return [];
 }
 
@@ -477,8 +481,9 @@ function insertPages(
  * PDF that mixes text and scanned pages keeps its text and has only the scanned pages read.
  */
 function keptPages(extracted: ExtractedDocument): ExtractedPage[] {
+  // Only a PDF's pages are read again by OCR. A Word file or deck read as a scan has its pictures read, so its text stays.
   return extracted.pages.filter((page) =>
-    extracted.scanned ? page.text.trim().length >= emptyPage : page.text.trim(),
+    extracted.scanned && page.locator.page !== undefined ? page.text.trim().length >= emptyPage : page.text.trim(),
   );
 }
 

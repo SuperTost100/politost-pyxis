@@ -17,9 +17,9 @@ it("reads the pictures of a Word file as pages in reading order, skips pages pas
   expect(read).toEqual({
     count: 3,
     pages: [
-      { page: 1, section: "picture 1", text: "larga 3" },
-      { page: 2, section: "picture 2", text: "" },
-      { page: 3, section: "picture 3", text: "larga 5" },
+      { page: 1, section: "picture 1", locator: { picture: 1 }, text: "larga 3" },
+      { page: 2, section: "picture 2", locator: { picture: 2 }, text: "" },
+      { page: 3, section: "picture 3", locator: { picture: 3 }, text: "larga 5" },
     ],
   });
 });
@@ -30,8 +30,18 @@ it("reads the pictures of the slides of a presentation that have no text of thei
   expect(read).toEqual({
     count: 3,
     pages: [
-      { page: 2, section: "slide 3", text: "larga 4" },
-      { page: 3, section: "slide 3", text: "larga 6" },
+      { page: 2, section: "slide 3", locator: { slide: 3, picture: 2 }, text: "larga 4" },
+      { page: 3, section: "slide 3", locator: { slide: 3, picture: 3 }, text: "larga 6" },
     ],
   });
+});
+
+it("reads a picture that is cut short as blank and goes on with the next one", async () => {
+  const whole = png(7);
+  const docx = docxOf([whole.subarray(0, whole.length - 20), png(8)]);
+  const read = await ocrScanPictures(docx, ".docx", [1, 2], "unused");
+  expect(read.pages).toEqual([
+    { page: 1, section: "picture 1", locator: { picture: 1 }, text: "" },
+    { page: 2, section: "picture 2", locator: { picture: 2 }, text: "larga 8" },
+  ]);
 });

@@ -1,6 +1,7 @@
 import { linkedFile, readableLinkedPath } from "./linked-file";
 import type Database from "better-sqlite3";
 import type { Runner } from "../jobs/runner";
+import { SCAN_KINDS } from "../../shared/source-types";
 import { hasBlob, readBlob } from "../blobs";
 import { heldMark, isHeldReading, sourceTitle } from "./jobs";
 import {
@@ -14,9 +15,6 @@ import {
   stopOcr,
   type OcrPage,
 } from "./ocr";
-
-/** The kinds of source a scan can be: a PDF, or a Word file or presentation made of pictures. */
-const SCAN_KINDS = ["pdf", "docx", "pptx"];
 
 /** Pages drawn and read per worker run. Each run loads the PDF and the languages once, and the bar moves after each. */
 export const OCR_BATCH = 8;
@@ -175,7 +173,7 @@ export function waitingScans(db: Database.Database): string[] {
   return (
     db
       .prepare(
-        `SELECT id FROM sources WHERE status = 'needs-ocr' AND kind = 'pdf'
+        `SELECT id FROM sources WHERE status = 'needs-ocr' AND kind IN (${SCAN_KINDS.map((kind) => `'${kind}'`).join(", ")})
          AND (blob_sha IS NOT NULL
            OR id IN (SELECT source_id FROM linked_files WHERE missing_at IS NULL AND source_id IS NOT NULL))
          ORDER BY created_at, rowid`,
