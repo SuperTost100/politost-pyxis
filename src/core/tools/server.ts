@@ -15,11 +15,14 @@ import { z } from "zod";
  *
  * Who may call:
  * - Every request needs `Authorization: Bearer <token>`. A chat gets one token (256 random bits) the first time one of
- *   its turns needs tools, and keeps it until its live CLI process ends (`revokeChatTools`) or core stops, so the process
+ *   its turns needs tools, and keeps it until the chat is deleted (`revokeChatTools`) or core stops, so the process
  *   cli-funnel keeps between questions is reused: a new token would change the run's settings and restart it. The token
- *   is accepted only while a turn of that chat is running (`armChatTools`), and a call acts only on that chat.
+ *   is accepted only while a turn of that chat is running (`armChatTools`), and a call acts only on that chat, so between
+ *   questions it opens nothing, whichever CLI process still holds it. A turn answered on Antigravity ends the token too
+ *   (`chat/turn.ts`), since agy writes the headers into its conversation store.
  * - The Host header must be this server's own `127.0.0.1:<port>`, and a request that carries an Origin header is refused,
  *   so neither a page in a browser nor a DNS name rebound to 127.0.0.1 can reach it.
+ * - At most `MAX_CONNECTIONS` connections are held at once; one more is closed as it opens.
  * - A body is at most `MAX_BODY` bytes of JSON. Each tool validates its arguments with its own Zod schema, and the
  *   number of calls in a turn is capped (`MAX_CALLS_PER_TURN`); each tool caps what one call and one turn may do.
  *
@@ -28,6 +31,8 @@ import { z } from "zod";
 
 /** Bytes of request body accepted. Thirty cards of a few thousand characters each fit with room to spare. */
 export const MAX_BODY = 512 * 1024;
+/** Connections held at once. Any process on the machine can connect, and idle connections must not use up core's files. */
+export const MAX_CONNECTIONS = 32;
 /** Tool calls one chat turn may make, whatever the tool. */
 export const MAX_CALLS_PER_TURN = 4;
 /** The MCP revisions this server speaks; it answers with the client's when it knows it, else the newest. */
@@ -133,6 +138,7 @@ function ensureServer(): Promise<number> {
     // A client that opens a connection and sends nothing does not hold it open.
     created.requestTimeout = 60_000;
     created.headersTimeout = 10_000;
+    created.maxConnections = MAX_CONNECTIONS;
     created.on("error", (err) => {
       if (!port) {
         starting = undefined;

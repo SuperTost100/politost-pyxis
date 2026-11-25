@@ -1,10 +1,12 @@
 import { request } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { connect, type Socket } from "node:net";
 import {
   armChatTools,
   chatTools,
   MAX_BODY,
+  MAX_CONNECTIONS,
   MAX_CALLS_PER_TURN,
   revokeChatTools,
   setTools,
@@ -209,5 +211,33 @@ describe("tool server", () => {
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result)).not.toContain("secret");
     expect(shown).toEqual([{ chatId: "chat-a", resultId: null }]);
+  });
+
+  it("holds at most MAX_CONNECTIONS connections, so idle ones cannot use up core's files", async () => {
+    expect(MAX_CONNECTIONS).toBe(32);
+    const { url, token } = await chatTools("chat-a");
+    const port = Number(new URL(url).port);
+    const open = (): Promise<Socket> =>
+      new Promise((resolve, reject) => {
+        const socket = connect(port, "127.0.0.1", () => resolve(socket));
+        socket.on("error", reject);
+      });
+    const idle: Socket[] = [];
+    try {
+      for (let i = 0; i < MAX_CONNECTIONS; i += 1) idle.push(await open());
+      // One more is closed at once, before it can send anything.
+      const extra = await open();
+      const closed = await new Promise<boolean>((resolve) => {
+        extra.on("close", () => resolve(true));
+        extra.on("error", () => undefined);
+        setTimeout(() => resolve(false), 2000);
+      });
+      expect(closed).toBe(true);
+    } finally {
+      for (const socket of idle) socket.destroy();
+    }
+    // With the idle ones gone, the server answers again.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect((await send(url, { headers: auth(token), body: rpc("ping") })).status).toBe(200);
   });
 });

@@ -21,7 +21,7 @@ import {
   type FigureRunner,
 } from "../math/figures";
 import { isAbort, IpcError, toIpcError, type AttachmentError, type MessageFile, type ToolResultView } from "../../shared/ipc";
-import { armChatTools, chatTools } from "../tools/server";
+import { armChatTools, chatTools, revokeChatTools } from "../tools/server";
 import {
   describeToolBlocks,
   dropStrayToolResults,
@@ -1379,7 +1379,7 @@ async function answer(
   // with the whole conversation. Checked on agy 1.5.17 with gemini-3.8-flash: such a session never used the tools (the
   // server was listed, and the model said it had no such tool and wrote the cards as text). Codex took them in four runs of
   // five and wrote text in the fifth; Claude Code took them in four of four. This happens once for each chat opened before
-  // the tools, or whose tools were refused. A session that began with them takes a new address and token after a restart
+  // the tools. A tool that refused them is not offered them again while core runs (`toolsAttach`), so its sessions resume. A session that began with them takes a new address and token after a restart
   // on all three.
   const withoutTools = (stored: NonNullable<typeof session>) =>
     !stored.tools && access !== null && toolsAttach(stored.provider);
@@ -1543,6 +1543,10 @@ async function answer(
     throw err;
   } finally {
     disarm();
+    // Antigravity keeps the server's headers, the token included, in its conversation store on disk. A turn it answered
+    // ends that token, and the chat's next turn gets a new one; agy keeps no process between questions, so nothing is
+    // restarted for it. Claude Code and Codex write no token to disk (checked in their session files).
+    if ((result?.provider ?? answering.provider) === "antigravity") revokeChatTools(chatId);
   }
   // The reply with each finished tool call in its place. With tools the streamed text is the whole reply, since a CLI's
   // final text can be only what it wrote after the last call; text the model wrote as a tool block never counts as one.

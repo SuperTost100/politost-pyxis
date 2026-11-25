@@ -5,7 +5,8 @@ import { askTurn, deleteChat, readChat, regenerateTurn } from "../chat/turn";
 import { undoToolResult } from "./results";
 import { toolBlockIds } from "../../shared/tool-blocks";
 import { chatToolList } from "./registry";
-import { setTools, stopToolServer } from "./server";
+import { chatTools, setTools, stopToolServer } from "./server";
+import { markToolsRefused } from "../engine/funnel";
 
 afterEach(async () => {
   await stopToolServer();
@@ -27,6 +28,9 @@ const callTool = (tools: NonNullable<TurnInput["tools"]>, name: string, args: un
     headers: { "content-type": "application/json", authorization: `Bearer ${tools.token}` },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
   }).then((response) => response.json() as Promise<{ result: { content: Array<{ text: string }>; isError?: boolean } }>);
+
+/** The server's address, which every chat shares. */
+const chatToolsUrl = async () => (await chatTools("any-chat")).url;
 
 const cards = [
   { front: "Che cosa dice il primo principio?", back: "Un corpo con risultante nulla mantiene il suo stato di moto." },
@@ -262,6 +266,32 @@ describe("regenerating a reply that created cards", () => {
     noStrayResults(db);
   });
 
+  it("puts the old cards back when the new answer is stopped right after the tool showed it was at work", async () => {
+    const db = setup();
+    const { chatId, resultId, replyId } = await firstReply(db);
+    const stop = new AbortController();
+    const shown: string[] = [];
+    await expect(
+      regenerateTurn(db, {
+        chatId,
+        signal: stop.signal,
+        onDelta: (text) => shown.push(text),
+        run: async (input) => {
+          input.tools!.onTool?.({ phase: "start", id: "c1", tool: "create_flashcards" });
+          stop.abort();
+          throw new DOMException("Engine turn cancelled", "AbortError");
+        },
+      }),
+    ).rejects.toThrow();
+    expect(shown.at(-1)).toContain("pending:create_flashcards");
+    const last = readChat(db, chatId).at(-1)!;
+    expect(last.id).toBe(replyId);
+    expect(last.body).not.toContain("pending:");
+    expect(last.tools?.[resultId]).toMatchObject({ undone: null });
+    expect(removed(db).map((card) => card.removed)).toEqual([0, 0]);
+    noStrayResults(db);
+  });
+
   it("puts the old cards back when the new answer is stopped halfway through its text", async () => {
     const db = setup();
     const { chatId, resultId } = await firstReply(db);
@@ -305,5 +335,45 @@ describe("regenerating a reply that created cards", () => {
     deleteChat(db, "", chatId);
     expect(db.prepare("SELECT COUNT(*) FROM chat_tool_results").pluck().get()).toBe(0);
     expect(removed(db).map((card) => card.removed)).toEqual([0, 0]);
+  });
+});
+
+describe("a tool that refuses Pyxis's server", () => {
+  it("resumes its session on the next question instead of starting a new one", async () => {
+    const db = setup();
+    const seen: Array<{ provider: string; id: string } | null> = [];
+    // What runTurn does when Codex refuses the server: it notes the refusal and answers without the tools.
+    const refusing = async (input: TurnInput): Promise<EngineResult> => {
+      seen.push(input.conversation?.session ?? null);
+      markToolsRefused("codex");
+      return { text: "Va bene.", model: "gpt-6.1-terra", provider: "codex", inputTokens: 1, sessionId: "x1", cwd: "/scratch", continued: Boolean(input.conversation?.session) };
+    };
+    const first = await askTurn(db, { text: "Ciao.", run: refusing });
+    await askTurn(db, { chatId: first.chatId, text: "E poi?", run: refusing });
+    expect(seen).toEqual([null, expect.objectContaining({ provider: "codex", id: "x1" })]);
+  });
+});
+
+describe("the token of a chat answered on Antigravity", () => {
+  it("stops working when the turn ends, since agy keeps the header in its conversation store; on Claude it stays", async () => {
+    const db = setup();
+    const tokens: string[] = [];
+    const answer = (provider: string) => async (input: TurnInput): Promise<EngineResult> => {
+      tokens.push(input.tools!.token);
+      return { text: "Va bene.", model: "m", provider, inputTokens: 1 };
+    };
+    const first = await askTurn(db, { text: "Ciao.", run: answer("claude") });
+    await askTurn(db, { chatId: first.chatId, text: "Ancora.", run: answer("claude") });
+    expect(tokens[1]).toBe(tokens[0]);
+    db.prepare("UPDATE feature_engines SET selection_json = ?").run(JSON.stringify({ provider: "antigravity", model: "gemini-3.8-flash" }));
+    await askTurn(db, { chatId: first.chatId, text: "E con Gemini?", run: answer("antigravity") });
+    const ping = await fetch(new URL("/mcp", "http://" + new URL((await chatToolsUrl())).host), {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${tokens[2]}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+    });
+    expect(ping.status).toBe(401);
+    await askTurn(db, { chatId: first.chatId, text: "Di nuovo.", run: answer("antigravity") });
+    expect(tokens[3]).not.toBe(tokens[2]);
   });
 });
