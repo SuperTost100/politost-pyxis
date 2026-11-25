@@ -17,6 +17,14 @@ export function mapToolBlocks(body: string, describe: (line: string) => string):
   return body.includes(TOOL_FENCE) ? body.replace(BLOCK, (_, line: string) => describe(line.trim())) : body;
 }
 
+/**
+ * What a saved reply's tool block shows: its result. Only a reply still being written has a tool at work, so a saved one
+ * that says `pending:` was not written by core and shows nothing.
+ */
+export function savedToolLine(line: string): string | null {
+  return line.startsWith("pending:") ? null : line;
+}
+
 /** A reply's text without its tool blocks: what is read aloud, copied, searched or exported as the reply's own words. */
 export function stripToolBlocks(body: string): string {
   return mapToolBlocks(body, () => "").replace(/\n{3,}/g, "\n\n");

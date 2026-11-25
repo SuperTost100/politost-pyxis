@@ -227,7 +227,9 @@ export function toolNote(view: ToolResultView): string {
  * language becomes a plain code fence, so only core's blocks are ever read as results.
  */
 export function spliceToolBlocks(raw: string, marks: ReadonlyArray<{ offset: number; body: string }>): string {
-  const neutral = (text: string) => text.replace(/^([ \t]*(?:\x60{3,}|~{3,})[ \t]*)pyxis-tool\b/gim, "$1text");
+  // Any fence in the tool's language, wherever it starts on its line: Markdown reads one inside a block quote or a list
+  // item too.
+  const neutral = (text: string) => text.replace(/((?:\x60{3,}|~{3,})[ \t]*)pyxis-tool\b/gi, "$1text");
   if (marks.length === 0) return raw.includes(TOOL_FENCE) ? neutral(raw) : raw;
   const sorted = [...marks].sort((a, b) => a.offset - b.offset);
   let out = "";

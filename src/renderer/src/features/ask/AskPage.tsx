@@ -27,6 +27,7 @@ import { ContextBlock } from "../../components/ContextBlock";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView } from "../../components/MarkdownView";
 import { ToolResult } from "./ToolResult";
+import { savedToolLine } from "@shared/tool-blocks";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
@@ -196,10 +197,11 @@ const Reply = memo(function Reply({
     [row.citations],
   );
   const makeCards = useCallback(() => onMakeCards(row), [onMakeCards, row]);
-  const toolBlock = useCallback(
-    (line: string) => <ToolResult chatId={chatId} line={line} view={row.tools?.[line]} />,
-    [chatId, row.tools],
-  );
+  // A saved reply never has a tool at work: a `pending:` block in it is drawn as nothing (`savedToolLine`).
+  const toolBlock = useCallback((line: string) => {
+    const saved = savedToolLine(line);
+    return saved ? <ToolResult chatId={chatId} line={saved} view={row.tools?.[saved]} /> : null;
+  }, [chatId, row.tools]);
   return (
     <ChatMessage
       engine={
