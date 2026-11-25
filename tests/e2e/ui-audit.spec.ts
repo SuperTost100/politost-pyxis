@@ -2386,19 +2386,32 @@ function prepareAnswerSheet(name: string) {
   });
 }
 
-/** Stops the turn a state left running in Chiedi, with the composer's Stop, and waits until the composer can send again. */
+/**
+ * Stops the turn a state left running in Chiedi, with the composer's Stop, and waits until the composer can send again.
+ * When Stop does not end it, the held call is let go instead, so the chat is idle for the next state either way (the cards
+ * it makes go with the look chats), and the failure is thrown for the state's record.
+ */
 async function stopHeldTurn(page: Page) {
   const stop = page.locator(".px-composer-bar").getByRole("button", { name: both("Interrompi", "Stop") });
   if (!(await stop.isVisible().catch(() => false))) return;
-  await stop.click();
-  await expect(stop).toHaveCount(0);
+  try {
+    await stop.click();
+    await expect(stop).toHaveCount(0);
+  } catch (error) {
+    writeFileSync(toolGoFile(auditUserData), "");
+    await expect(stop).toHaveCount(0, { timeout: 30_000 }).catch(() => undefined);
+    throw error;
+  }
 }
 
 /** While this file exists, a question sent in Chiedi gets a reply that calls the flashcard tool and holds it at work. */
 const toolTurnFile = (userData: string) => join(userData, "tool-turn");
+/** The held call goes on once this file exists, which only a Stop that failed creates (`stopHeldTurn`). */
+const toolGoFile = (userData: string) => join(userData, "tool-go");
 function prepareToolTurn(name: string) {
   if (name === "ask-tool-working") writeFileSync(toolTurnFile(auditUserData), "");
   else rmSync(toolTurnFile(auditUserData), { force: true });
+  rmSync(toolGoFile(auditUserData), { force: true });
 }
 
 /** Pyxis stays at work on the new-flashcard dialog until this file exists; every other state finds it there. */
@@ -3624,6 +3637,8 @@ async function openState(page: Page, name: string) {
     }
     case "ask-tool-working": {
       // A saved reply never shows a tool at work, so the state asks for the cards and the recorded engine holds its call.
+      // Enter sends only once the chat is read, which its earlier answer on screen shows.
+      await expect(page.getByText("La dinamica studia il moto dei corpi a partire dalle forze che lo causano.")).toBeVisible();
       const box = page.getByRole("textbox", { name: both("Messaggio", "Message") });
       await box.fill(TOOL_QUESTION);
       await box.press("Enter");
@@ -5797,7 +5812,7 @@ test.beforeAll(async () => {
     PYXIS_E2E_REPLY: [
       `@@tool create_flashcards ${JSON.stringify({
         _when: toolTurnFile(userData),
-        _hold: join(userData, "tool-go"),
+        _hold: toolGoFile(userData),
         title: "sui tre principi della dinamica",
         cards: TOOL_CARDS,
       })}`,
@@ -5921,7 +5936,7 @@ function lookChats(name: string) {
       DELETE FROM messages WHERE chat_id LIKE 'look-%';
       DELETE FROM chats WHERE id LIKE 'look-%';
       DELETE FROM sources WHERE id LIKE 'look-%';
-      DELETE FROM cards WHERE id LIKE 'look-%';
+      DELETE FROM cards WHERE id LIKE 'look-%' OR subject_id LIKE 'look-%';
       DELETE FROM subjects WHERE id LIKE 'look-%';`);
     if (name === "ask-figure" || name === "ask-viewer") seedFigureChat(db);
     else if (name.startsWith("ask-tool-")) seedToolChat(db, name.slice("ask-tool-".length) as "working" | "done" | "undone");
@@ -6196,8 +6211,14 @@ async function walk(slice: typeof auditRoutes) {
               });
             }
             record.write();
-            // The turn ask-tool-working holds would keep its chat busy in the next language, theme or width: it is stopped.
-            if (name === "ask-tool-working") await stopHeldTurn(page);
+            // The turn ask-tool-working holds would keep its chat busy in the next language, theme or width: it is stopped,
+            // and a Stop that fails is the state's failure, recorded like any other, while the walk goes on.
+            if (name === "ask-tool-working")
+              await stopHeldTurn(page).catch((error: unknown) => {
+                failures.push(`${key}: the held turn did not stop: ${String(error).slice(0, 600)}`);
+                records.push({ name, route, language, theme, width, failed: `the held turn did not stop: ${String(error)}` });
+                record.write();
+              });
             console.log(
               `M14 ${key}: ${failures.at(-1)?.startsWith(key) ? failures.at(-1) : "passed"}`,
             );
