@@ -9,7 +9,8 @@ import {
 } from "../core/ipc/file-grants";
 import { MAX_DROPPED_FILES, SOURCE_EXTENSIONS } from "../shared/source-types";
 import { fetchPlanText } from "./plan-fetch";
-import { isPlanFileName, needsWindowForPlan, planFileFromArgv, readOpenedPlan } from "./plan-open";
+import { endsWithMainWindow, needsMainWindow } from "./main-window";
+import { isPlanFileName, planFileFromArgv, readOpenedPlan } from "./plan-open";
 import { openTerminal } from "./terminal";
 import { stageWorkspaceMove } from "./workspace-move";
 import {
@@ -592,9 +593,12 @@ function createWindow(route?: string): void {
     clearTimeout(boundsTimer);
     saveBounds();
   });
-  // On macOS the app outlives its window; core restart messages must not reach a destroyed one.
+  // On macOS the app outlives its window; core restart messages must not reach a destroyed one. Elsewhere the app is
+  // its main window: the hidden Python window stays open after it answers, so `window-all-closed` cannot be what ends
+  // it (see `main-window.ts`).
   mainWindow.on("closed", () => {
     mainWindow = null;
+    if (endsWithMainWindow(process.platform)) app.quit();
   });
 
   const hash = route ?? process.env["PYXIS_ROUTE"];
@@ -1664,7 +1668,7 @@ function openPlanFile(path: string | null): void {
   waitingPlanPath = path;
   // The window may not exist yet (a launch from the file), or have been closed on macOS. It takes the file when it loads.
   if (!mainWindow || mainWindow.isDestroyed()) {
-    if (needsWindowForPlan(startupWindowCreated, BrowserWindow.getAllWindows().length)) createWindow();
+    if (needsMainWindow(mainWindow, startupWindowCreated)) createWindow();
     return;
   }
   showWindow();
@@ -1756,7 +1760,7 @@ app.whenReady().then(() => {
     startupWindowCreated = true;
   });
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (needsMainWindow(mainWindow, startupWindowCreated)) createWindow();
   });
 });
 
