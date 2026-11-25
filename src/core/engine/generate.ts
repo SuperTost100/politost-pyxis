@@ -19,6 +19,7 @@ import { isRetiredProvider } from "../../shared/limits";
 import { engineIpcError, fallbackReason } from "./errors";
 import {
   providerName,
+  reachedTools,
   runTurn,
   type EngineResult,
   type Selection,
@@ -276,7 +277,8 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
     // failure is marked even when no engine can answer instead and for a model the student pinned, so Settings says
     // what is wrong with the engine and the next automatic call does not start with it.
     const reason = markFailure(input, input.selection, err);
-    const next = reason ? usableFallback(input, reason) : undefined;
+    // A turn that reached Pyxis's tools stays where it is: another tool would not know what the call saved.
+    const next = reason && !reachedTools(err) ? usableFallback(input, reason) : undefined;
     if (!reason || !next) throw engineIpcError(err, input.selection.provider);
     return moveOn(input, next, reason);
   }
@@ -399,7 +401,7 @@ async function answerOn(
     // pick it, or its refused model, again.
     const reason = markFailure(input, selection, err);
     const error = engineIpcError(err, selection.provider);
-    throw reason ? new Failed(error, reason) : error;
+    throw reason && !reachedTools(err) ? new Failed(error, reason) : error;
   }
 }
 

@@ -187,20 +187,24 @@ test("the outline has a mark per question from the third on, a card on hover and
     const checkLeftPlacement = async () => {
       const current = outline.locator('button[aria-current="true"] i');
       const other = outline.locator('button:not([aria-current="true"]) i').first();
-      await expect.poll(async () => (await current.boundingBox())!.width).toBeCloseTo(22, 0);
-      const box = await outline.boundingBox();
-      const pane = await page.locator(".ask-page").boundingBox();
-      const side = await page.locator("aside.px-side").boundingBox();
-      const msg = await page.locator(".px-msg-text").last().boundingBox();
-      const shortBar = await other.boundingBox();
-      const currentBar = await current.boundingBox();
-      expect(box!.x).toBeCloseTo(pane!.x + 6, 0);
-      expect(box!.x).toBeGreaterThanOrEqual(side!.x + side!.width);
-      expect(box!.x + box!.width).toBeLessThanOrEqual(msg!.x);
-      // Marks align to the left edge and the current mark grows to the right.
-      expect(currentBar!.x).toBeCloseTo(shortBar!.x, 0);
-      expect(currentBar!.x).toBeCloseTo(pane!.x + 10, 0);
-      expect(currentBar!.width).toBeGreaterThan(shortBar!.width);
+      // The current mark can move to another question while the page settles, and its bar then grows again: the
+      // measurements are taken together and repeated until they hold (run of #563, where the bar was read at 12 px).
+      await expect(async () => {
+        const box = await outline.boundingBox();
+        const pane = await page.locator(".ask-page").boundingBox();
+        const side = await page.locator("aside.px-side").boundingBox();
+        const msg = await page.locator(".px-msg-text").last().boundingBox();
+        const shortBar = await other.boundingBox();
+        const currentBar = await current.boundingBox();
+        expect(box!.x).toBeCloseTo(pane!.x + 6, 0);
+        expect(box!.x).toBeGreaterThanOrEqual(side!.x + side!.width);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(msg!.x);
+        // Marks align to the left edge and the current mark grows to the right.
+        expect(currentBar!.x).toBeCloseTo(shortBar!.x, 0);
+        expect(currentBar!.x).toBeCloseTo(pane!.x + 10, 0);
+        expect(currentBar!.width).toBeCloseTo(22, 0);
+        expect(currentBar!.width).toBeGreaterThan(shortBar!.width);
+      }).toPass({ timeout: 10_000 });
     };
     await page.setViewportSize({ width: 1280, height: 800 });
     await checkLeftPlacement();
@@ -260,15 +264,17 @@ test("the outline has a mark per question from the third on, a card on hover and
 
     // Folding the sidebar moves the outline to the left edge of the content; unfolding moves it back.
     await page.getByRole("button", { name: "Riduci la barra" }).click();
-    await expect.poll(async () => (await outline.boundingBox())!.x).toBeLessThan(120);
+    // While the sidebar folds or the window changes width the outline is taken away for a moment, so it has no box: the
+    // polls below wait for it to come back instead of reading a missing one (run of #565).
+    await expect.poll(async () => (await outline.boundingBox())?.x ?? Infinity).toBeLessThan(120);
     await checkLeftPlacement();
     await page.getByRole("button", { name: "Espandi la barra" }).click();
-    await expect.poll(async () => (await outline.boundingBox())!.x).toBeGreaterThan(250);
+    await expect.poll(async () => (await outline.boundingBox())?.x ?? -Infinity).toBeGreaterThan(250);
     await checkLeftPlacement();
 
     // At 960 px wide the sidebar folds and the outline stays at the left edge without covering text.
     await page.setViewportSize({ width: 960, height: 800 });
-    await expect.poll(async () => (await outline.boundingBox())!.x).toBeLessThan(120);
+    await expect.poll(async () => (await outline.boundingBox())?.x ?? Infinity).toBeLessThan(120);
     await checkLeftPlacement();
   } finally {
     await app.close();
