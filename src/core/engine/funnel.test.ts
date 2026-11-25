@@ -608,26 +608,68 @@ describe("API keys", () => {
 });
 
 describe("Antigravity's quota notice", () => {
-  // agy 1.5.17 over ACP, word for word: a message chunk, then `stopReason: end_turn`, no tokens.
-  const notice =
-    "\n⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h30m10s.\n";
+  // Recorded from agy 1.5.17 over ACP on 2026-11-25, word for word: one message chunk, then `stopReason: end_turn`, no tokens.
+  const recorded = [
+    ["\n⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h30m10s.\n", 3 * 3600 + 30 * 60 + 10],
+    ["\n⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h29m2s.\n", 3 * 3600 + 29 * 60 + 2],
+    ["\n⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h14m26s.\n", 3 * 3600 + 14 * 60 + 26],
+  ] as const;
+  const notice = recorded[0][0];
+  const delta = (text: string) => ({ type: "text.delta", text });
 
-  it("is a usage limit with its reset, not an answer", async () => {
+  it.each(recorded)("is a usage limit with its reset, not an answer: %j", async (text, seconds) => {
     vi.useFakeTimers({ now: Date.parse("2026-11-25T10:41:13Z"), toFake: ["Date"] });
-    run.mockResolvedValueOnce({ text: notice });
+    run.mockResolvedValueOnce({ text });
     const error = await runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi" }).catch(
       (err: unknown) => err,
     );
     expect(error).toMatchObject({
       code: "cli-failed",
-      message: notice.trim(),
+      message: text.trim(),
       limit: {
         kind: "quota",
-        detail: notice.trim(),
-        retryAfterMs: (3 * 3600 + 30 * 60 + 10) * 1000,
-        resetAt: "2026-11-25T14:11:23.000Z",
+        detail: text.trim(),
+        retryAfterMs: seconds * 1000,
+        resetAt: new Date(Date.parse("2026-11-25T10:41:13Z") + seconds * 1000).toISOString(),
       },
     });
+  });
+
+  it("never reaches the screen of a chat, a lesson or a quiz that streams, even in pieces", async () => {
+    const shown: string[] = [];
+    run.mockResolvedValueOnce({ events: [delta(notice.slice(0, 20)), delta(notice.slice(20))] });
+    const error = await runTurn({
+      selection: { provider: "antigravity", model: "m" },
+      prompt: "hi",
+      onDelta: (text) => shown.push(text),
+      conversation: { key: "chat-quota", followUp: "", session: null },
+    }).catch((err: unknown) => err);
+    expect(error).toMatchObject({ limit: { kind: "quota" } });
+    expect(shown).toEqual([]);
+  });
+
+  it("streams an answer that is not the notice, holding back only what could still become it", async () => {
+    const shown: string[] = [];
+    run.mockResolvedValueOnce({ events: [delta("Ciao"), delta(", ecco la risposta.")] });
+    await runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi", onDelta: (text) => shown.push(text) });
+    expect(shown).toEqual(["Ciao", "Ciao, ecco la risposta."]);
+    shown.length = 0;
+    // Starts like the notice, then turns into an answer: held until it cannot be the notice, then shown whole.
+    run.mockResolvedValueOnce({
+      events: [delta("⚠ Individual quota"), delta(" reached is what the tool says when the account runs out.")],
+    });
+    const answer = await runTurn({
+      selection: { provider: "antigravity", model: "m" },
+      prompt: "hi",
+      onDelta: (text) => shown.push(text),
+    });
+    expect(shown).toEqual(["⚠ Individual quota reached is what the tool says when the account runs out."]);
+    expect(answer.text).toBe(shown[0]);
+    shown.length = 0;
+    // A reply that ends while it could still have been the notice is shown at the end.
+    run.mockResolvedValueOnce({ events: [delta("⚠ Individual quota reached.")] });
+    await runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi", onDelta: (text) => shown.push(text) });
+    expect(shown).toEqual(["⚠ Individual quota reached."]);
   });
 
   it("stops a structured call at once with the usage-limit message, instead of two repairs and a reply that cannot be used", async () => {
@@ -645,10 +687,22 @@ describe("Antigravity's quota notice", () => {
     expect(error).toMatchObject({ code: "quota", messageKey: "engines.errors.quota", detail: notice.trim() });
   });
 
-  it("stays an answer when the reply only quotes it, or when another tool writes it", async () => {
-    run.mockResolvedValue({ text: `Il messaggio era: ${notice.trim()}` });
-    const quoted = await runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi" });
-    expect(quoted.text).toContain("Individual quota reached");
+  it.each([
+    "Individual quota reached. This means you hit your personal allowance.",
+    "Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h30m10s.",
+    "⚠ Individual quota reached.",
+    "⚠ Individual quota reached. Please upgrade your subscription to increase your limits.",
+    "⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h30m10s. Nel frattempo, ecco la risposta.",
+    "⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in soon.",
+    `Il messaggio era: ${notice.trim()}`,
+    `${notice.trim()}\n\nLa derivata misura il tasso di variazione.`,
+  ])("stays an answer when it is not the notice alone: %j", async (text) => {
+    run.mockResolvedValueOnce({ text });
+    const answer = await runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi" });
+    expect(answer.text).toBe(text);
+  });
+
+  it("stays an answer when another tool writes it", async () => {
     run.mockResolvedValue({ text: notice });
     const other = await runTurn({ selection: { provider: "claude", model: "m" }, prompt: "hi" });
     expect(other.text).toBe(notice);

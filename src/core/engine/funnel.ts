@@ -207,29 +207,35 @@ export function isSessionGone(err: unknown): boolean {
 }
 
 /**
- * Antigravity 1.5 over ACP ends a turn it refused for its quota as a finished one, with its notice as the whole answer
- * ("⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h30m10s."), and
+ * Antigravity over ACP ends a turn it refused for its quota as a finished one, with its notice as the whole answer, and
  * cli-funnel 1.0.0 passes it on as text. Read as an answer, a structured call repairs it twice and stops as a reply that
- * cannot be used, so the student never learns that the tool ran out of requests.
- * shortcut: matches agy's English wording and only a reply that is the notice alone; remove once cli-funnel reports it
- * as a limit.
+ * cannot be used, and a chat, a lesson or a quiz streams it as the start of a reply. The wording is agy 1.5.17's, recorded
+ * on 2026-11-25: "⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in
+ * 3h30m10s." Only a reply that is exactly that, give or take the space around it, counts.
+ * shortcut: matches agy 1.5.17's English wording; remove once cli-funnel reports the notice as a limit.
  */
-const AGY_QUOTA = /^\s*(?:⚠\s*)?Individual quota reached\.[^\n]*$/;
-const AGY_RESET = /\bResets in (?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/;
+const AGY_QUOTA_HEAD =
+  "⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in ";
+const AGY_QUOTA_RESET = /^(?=\d)(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?\.$/;
+
+/** True while the reply so far may still turn out to be the whole quota notice, so a stream holds it back. */
+function mayBeAgyQuota(text: string): boolean {
+  const reply = text.trimStart();
+  if (AGY_QUOTA_HEAD.startsWith(reply)) return true;
+  return reply.startsWith(AGY_QUOTA_HEAD) && /^[\dhms]*\.?\s*$/.test(reply.slice(AGY_QUOTA_HEAD.length));
+}
 
 /** The usage-limit error, shaped as cli-funnel shapes one, for Antigravity's quota notice; undefined for any other reply. */
 function antigravityQuota(provider: string, text: string, now = Date.now()): Error | undefined {
-  if (provider !== "antigravity" || !AGY_QUOTA.test(text.trim())) return undefined;
+  if (provider !== "antigravity") return undefined;
   const detail = text.trim();
-  const [, hours = "0", minutes = "0", seconds = "0"] = AGY_RESET.exec(detail) ?? [];
+  const reset = detail.startsWith(AGY_QUOTA_HEAD) ? AGY_QUOTA_RESET.exec(detail.slice(AGY_QUOTA_HEAD.length)) : null;
+  if (!reset) return undefined;
+  const [, hours = "0", minutes = "0", seconds = "0"] = reset;
   const wait = ((Number(hours) * 60 + Number(minutes)) * 60 + Number(seconds)) * 1000;
   return Object.assign(new Error(detail), {
     code: "cli-failed",
-    limit: {
-      kind: "quota",
-      detail,
-      ...(wait > 0 ? { retryAfterMs: wait, resetAt: new Date(now + wait).toISOString() } : {}),
-    },
+    limit: { kind: "quota", detail, retryAfterMs: wait, resetAt: new Date(now + wait).toISOString() },
   });
 }
 
@@ -512,6 +518,8 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         ...(input.system ? { system: input.system } : {}),
       });
       text = "";
+      // Antigravity's reply is held back while it may be its quota notice (see `mayBeAgyQuota`).
+      let holding = selection.provider === "antigravity";
       // A call reached Pyxis's server in this attempt (see `toolsRefused`).
       let reached = false;
       const following = trackCall(scope?.jobId);
@@ -551,6 +559,10 @@ async function turn(input: TurnInput): Promise<EngineResult> {
           }
           if (event.type !== "text.delta") continue;
           text += event.text;
+          // Antigravity's quota notice must not reach the screen as the start of a reply: the text waits while it may
+          // still be the notice, and goes out whole once it cannot.
+          if (holding && mayBeAgyQuota(text)) continue;
+          holding = false;
           input.onDelta?.(text);
         }
         const result = await stream.result;
@@ -572,6 +584,8 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         }
         const quota = antigravityQuota(selection.provider, result.text || text);
         if (quota) throw quota;
+        // A reply that ended while it still looked like the notice, and is not it, is shown now.
+        if (holding && text) input.onDelta?.(text);
         finished = true;
         continued = continuing;
         following.end();
