@@ -94,7 +94,7 @@ async function toMaterial(page: Page) {
   await page.getByLabel("Nome", { exact: true }).fill("Ada");
   await button(page, "Continua").click();
   await button(page, /^(Lo faccio dopo|Continua)$/).click();
-  await expect(title(page)).toHaveText("Come tieni il materiale per studiare?");
+  await expect(title(page)).toHaveText("Dove tieni il materiale di studio?");
 }
 
 test("Setup links the study folder in place, finds its subjects, and the Library keeps in step with the folder", async () => {
@@ -381,7 +381,7 @@ test("The empty Library's Collega una cartella runs setup's folder step, links t
     await toLibrary(page);
     await button(page, "Collega una cartella").click();
     await expect(page).toHaveURL(/#\/onboarding\?again=1&step=material&from=library$/);
-    await expect(title(page)).toHaveText("Come tieni il materiale per studiare?");
+    await expect(title(page)).toHaveText("Dove tieni il materiale di studio?");
     // Leaving without linking goes back to the page that opened it, by the control that names it.
     await button(page, "Torna a Libreria").click();
     await expect(page).toHaveURL(/#\/exams\/library$/);

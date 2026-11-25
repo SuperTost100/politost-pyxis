@@ -71,9 +71,9 @@ describe("interface languages", () => {
     };
     const it_ = await say("it");
     expect([0, 1, 2].map((count) => it_("examPage.stepsDone", { count, total: 3 }))).toEqual([
-      "0 passi su 3 fatti",
-      "1 passo su 3 fatto",
-      "2 passi su 3 fatti",
+      "0 passi completati su 3",
+      "1 passo completato su 3",
+      "2 passi completati su 3",
     ]);
     expect([1, 2].map((count) => it_("smart.recapProgress", { count, total: 3 }))).toEqual(["1 risposta su 3", "2 risposte su 3"]);
     const en = await say("en");

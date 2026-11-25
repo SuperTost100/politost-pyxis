@@ -222,7 +222,7 @@ test("First setup: you with crash reports off, the AI with its notice, the two w
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
     await button(page, "Continua").click();
     await expect(
-      page.getByRole("heading", { name: "Come tieni il materiale per studiare?" }),
+      page.getByRole("heading", { name: "Dove tieni il materiale di studio?" }),
     ).toBeVisible();
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -260,7 +260,7 @@ test("First setup: you with crash reports off, the AI with its notice, the two w
     await noAxeViolations(page);
     await button(page, "Passo precedente").click();
     await expect(
-      page.getByRole("heading", { name: "Come tieni il materiale per studiare?" }),
+      page.getByRole("heading", { name: "Dove tieni il materiale di studio?" }),
     ).toBeFocused();
     await button(page, "Lo faccio dopo").click();
     await expect(page).toHaveURL(/#\/ask$/);
@@ -513,7 +513,7 @@ test("First setup: a signed-out tool offers sign-in first, with none installed n
     // Nothing is ready, so the footer carries on and says it will be done later.
     await button(page, "Lo faccio dopo").click();
     await expect(
-      page.getByRole("heading", { name: "Come tieni il materiale per studiare?" }),
+      page.getByRole("heading", { name: "Dove tieni il materiale di studio?" }),
     ).toBeVisible();
     await button(page, "Passo precedente").click();
     await expect(currentStep(page)).toHaveText("Passo 2 di 3: 2 · L'AI");
@@ -651,7 +651,7 @@ test("First setup: skipping leaves crash reports off, and a new profile at schoo
       await button(second, "Continua").click();
       await button(second, "Lo faccio dopo").click();
       await expect(
-        second.getByRole("heading", { name: "Come tieni il materiale per studiare?" }),
+        second.getByRole("heading", { name: "Dove tieni il materiale di studio?" }),
       ).toBeVisible();
       expect(await profile(second)).toMatchObject({
         educationLevel: "upper-secondary",
@@ -840,7 +840,7 @@ test("Run setup again: Settings reopens all three steps filled in, without Skip,
     await button(page, "Continua").click();
     await expect(currentStep(page)).toHaveText("Passo 3 di 3: 3 · Il materiale");
     await expect(
-      page.getByRole("heading", { name: "Come tieni il materiale per studiare?" }),
+      page.getByRole("heading", { name: "Dove tieni il materiale di studio?" }),
     ).toBeVisible();
     await button(page, "Lo faccio dopo").click();
     await expect(page).toHaveURL(/#\/settings\/profile$/);

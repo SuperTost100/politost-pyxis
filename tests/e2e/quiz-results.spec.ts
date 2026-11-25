@@ -194,7 +194,7 @@ test("results list every question in order, right ones folded in green, the othe
     await expect(page.locator(".px-res .ant-btn-primary")).toHaveText("Rivedi i 4 errori");
     // Going to the exam is the quiet second action, between the step and the ghost button.
     await expect(page.getByRole("button", { name: "Torna all'esame", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Rifai solo le 4 da rivedere" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Riprova le 4 domande non giuste" })).toBeVisible();
     await page.getByRole("button", { name: "Rivedi i 4 errori", exact: true }).click();
     // The drill is prepared where the student is: the results stay, with no detour through the exam page.
     // This workspace has no model to write it, so the drill stops with its notice, and the results are still the page.
@@ -202,7 +202,7 @@ test("results list every question in order, right ones folded in green, the othe
     await expect(page).toHaveURL(/#\/plans\/p-fis\/quiz\/t-kin\?attempt=a-quiz$/);
     await expect(page.locator(".px-res-title")).toBeVisible();
     // Its wrong answers can also be asked again on their own.
-    await page.getByRole("button", { name: "Rifai solo le 4 da rivedere" }).click();
+    await page.getByRole("button", { name: "Riprova le 4 domande non giuste" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/review\?from=a-quiz$/);
   } finally {
     await done();
@@ -222,16 +222,16 @@ test("the next steps wait for the read that decides them, and stay once they are
     // offered yet: the place of both buttons is held by a placeholder.
     await expect(actions).toHaveAttribute("aria-busy", "true");
     await expect(page.getByRole("button", { name: /^Rivedi (l'errore|i \d+ errori)$/ })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /^Rifai solo le/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Riprova le/ })).toHaveCount(0);
     // Once the read is in, both buttons are there, and from then on none of them is removed or relabelled.
     const targeted = page.getByRole("button", { name: /^Rivedi (l'errore|i \d+ errori)$/ });
     await expect(targeted).toBeVisible({ timeout: 10_000 });
     await expect(actions).not.toHaveAttribute("aria-busy", "true");
-    await expect(page.getByRole("button", { name: "Rifai solo le 4 da rivedere" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Riprova le 4 domande non giuste" })).toBeVisible();
     const handle = await targeted.elementHandle();
     await page.waitForTimeout(1500);
     expect(await handle!.evaluate((element) => element.isConnected), "Rivedi gli errori stays in the page").toBe(true);
-    await expect(page.getByRole("button", { name: "Rifai solo le 4 da rivedere" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Riprova le 4 domande non giuste" })).toBeVisible();
     // The first click prepares the gap's drill in place, on the results.
     await targeted.click();
     await page.waitForTimeout(1000);
@@ -333,7 +333,7 @@ test("a redo with an open gap offers the Rivedi gli errori its summary announces
     });
     await expect(page.locator(".px-res-title")).toBeVisible();
     await expect(page.locator(".px-res-changes")).toContainText("Nuovo passo: rivedi gli errori");
-    await expect(page.getByRole("button", { name: /^Rifai solo le \d+ da rivedere$/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Riprova le \d+ domande non giuste$/ })).toHaveCount(0);
     // The announced step is the one primary action, and going to the exam sits under it as a secondary one.
     await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
     await expect(page.locator(".px-res .ant-btn-primary")).toHaveText("Rivedi gli errori");
