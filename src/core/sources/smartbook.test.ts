@@ -126,6 +126,30 @@ describe("importSmartbook", () => {
     expect(rows.find((row) => row.id === cited)?.current).toBe(true);
   });
 
+  it("quotes the cited passage itself when it is merged with the one before it on its page", () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      `INSERT INTO sources (id, kind, title, status, created_at, updated_at)
+       VALUES ('s', 'pdf', 'Note', 'ready', 1, 1)`,
+    ).run();
+    const first = uuidv7();
+    const cited = uuidv7();
+    const insert = db.prepare(
+      `INSERT INTO passages (id, source_id, text, locator_json, char_start, created_at) VALUES (?, 's', ?, ?, ?, 1)`,
+    );
+    insert.run(first, "L'inizio della pagina parla d'altro.", JSON.stringify({ page: 4 }), 10);
+    insert.run(cited, "Il brano citato è questo.", JSON.stringify({ page: 4 }), 60);
+    const rows = passagesAround(db, cited);
+    const current = rows.find((row) => row.current);
+    // The source viewer reads the page as one paragraph; the card quotes only the cited words.
+    expect(current?.text).toContain("L'inizio della pagina");
+    expect(current?.quote).toBe("Il brano citato è questo.");
+    // The source's own title, also for a file that left the Library.
+    db.prepare("UPDATE sources SET status = 'removed' WHERE id = 's'").run();
+    expect(passagesAround(db, cited).find((row) => row.current)?.sourceTitle).toBe("Note");
+    expect(rows.filter((row) => row.quote !== undefined)).toHaveLength(1);
+  });
+
   it("refuses an encrypted package", () => {
     const db = openDatabase(":memory:");
     const bytes = new Uint8Array([0x50, 0x54, 0x53, 0x42, 0, 0]);

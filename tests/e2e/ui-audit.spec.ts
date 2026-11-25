@@ -3181,6 +3181,12 @@ async function openSources(page: Page, name: string) {
   }
   if ((await row.getAttribute("aria-expanded")) !== "true") await row.click();
   await expect(host.getByRole("list", { name: both("Fonti", "Sources") })).toBeVisible();
+  // A long section's name wraps inside the list instead of running past the fold, which clips what does.
+  const edges = await host.locator(".px-sources-fold > div").evaluate((fold) => {
+    const right = fold.getBoundingClientRect().right;
+    return [...fold.querySelectorAll(".px-sources-place")].map((place) => Math.round(place.getBoundingClientRect().right - right));
+  });
+  expect(Math.max(...edges), "a place runs past the fold's right edge, which clips it").toBeLessThanOrEqual(0);
   if (CHECKS_RUN) await expect(host.locator(".px-check-badge.is-verified").first()).toBeVisible();
   if (name === "ask-sources-open") return;
   const place = host.getByRole("button", { name: "Analisi matematica 2, p. 172", exact: true });
@@ -3685,10 +3691,16 @@ async function openState(page: Page, name: string) {
     }
     case "ask-sources-none": {
       const reply = page.locator(".px-msg:not(.px-msg-user)").last();
-      // The warning stays above the answer; with no source, the row only counts the checked result.
+      // The warning stays above the answer; with no source, the row only counts the checked results. Two checks of the
+      // same step make one mark beside it, which says how many passed, and one stop for the keyboard.
       await expect(reply.getByText(/^(Non ho trovato nulla su questa domanda nella tua Libreria|I found nothing on this in your Library)/)).toBeVisible();
-      if (CHECKS_RUN)
-        await expect(reply.getByRole("button", { name: both("1 risultato verificato", "1 verified result") })).toBeVisible({ timeout: 90_000 });
+      if (CHECKS_RUN) {
+        const count = reply.getByRole("button", { name: both("2 risultati verificati", "2 verified results") });
+        await expect(count).toBeVisible({ timeout: 90_000 });
+        await count.click();
+        await expect(reply.locator(".px-check-badge.is-verified")).toHaveCount(1);
+        await expect(reply.locator(".px-check-badge.is-verified")).toHaveAccessibleName(/^(2 calcoli verificati|2 calculations verified)/);
+      }
       break;
     }
     case "ask-subject-menu":
@@ -5498,6 +5510,10 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     }
+    case "gallery":
+      // A verified check with no sources row to reveal it, as in a generated exercise, shows at once.
+      await expect(page.locator(".px-gallery-checks .px-check-badge.is-verified")).toBeVisible();
+      break;
     case "gallery-dialog-confirm":
     case "gallery-dialog-form":
     case "gallery-dialog-info": {

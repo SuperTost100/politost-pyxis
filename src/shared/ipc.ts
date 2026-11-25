@@ -3649,6 +3649,10 @@ export const requests = {
         sectionPath: z.string().nullable(),
         locator: locatorSchema,
         current: z.boolean(),
+        /** On the current row: the cited passage's own words, which `text` may merge with its neighbours on the page. */
+        quote: z.string().optional(),
+        /** On the current row: the title of the passage's source, whether or not it is still in the Library. */
+        sourceTitle: z.string().optional(),
       }),
     ),
   },

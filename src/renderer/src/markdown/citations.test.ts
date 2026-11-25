@@ -16,6 +16,19 @@ describe("linkCitations", () => {
     expect(linkCitations("Uno [P1], due [P2].", (id) => id === 1)).toBe("Uno[](cite:p1), due.");
   });
 
+  it("keeps the indentation of a mark on its own line, so a list item stays whole", () => {
+    expect(linkCitations("1. Primo passo.\n\n   [P1]\n\n   Ancora il primo.\n2. Secondo.", () => true)).toBe(
+      "1. Primo passo.\n\n   [](cite:p1)\n\n   Ancora il primo.\n2. Secondo.",
+    );
+  });
+
+  it("drops the commas and semicolons that only separate neighbouring marks, and keeps the sentence's own", () => {
+    expect(linkCitations("Vale [P1], [P2]. Poi [P3]; [P4], e basta.", () => true)).toBe(
+      "Vale[](cite:p1)[](cite:p2). Poi[](cite:p3)[](cite:p4), e basta.",
+    );
+    expect(linkCitations("Uno [P1], due.", () => true)).toBe("Uno[](cite:p1), due.");
+  });
+
   it("leaves marks in code alone", () => {
     expect(linkCitations("Usa `a[P1]` qui [P1].", () => true)).toBe("Usa `a[P1]` qui[](cite:p1).");
   });

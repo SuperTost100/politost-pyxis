@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { stripCheckFences, type AnchoredCheck, type MathCheck } from "@shared/math-check";
 import { createContext, isValidElement, memo, useContext, useMemo } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
@@ -54,6 +54,19 @@ const components: Components = {
         {linkChildren}
       </a>
     );
+  },
+  // The checks of one step (`rehypeMarks`): its failures each say so, and its passes share one mark.
+  div: function Div({ node, children: divChildren, ...rest }) {
+    const classes = node?.properties?.["className"];
+    if (Array.isArray(classes) && classes.includes("px-check-slot")) {
+      const indexes = (node?.children ?? []).flatMap((child) => {
+        const href = child.type === "element" ? String(child.properties?.["href"] ?? "") : "";
+        const index = href.match(/^mathcheck:(\d+)$/)?.[1];
+        return index === undefined ? [] : [Number(index)];
+      });
+      return <CheckSlot indexes={indexes} />;
+    }
+    return <div {...rest}>{divChildren}</div>;
   },
   // A wide table scrolls in its own box instead of pushing the page sideways.
   table: ({ children: tableChildren, node: _node, ...rest }) => (
@@ -175,4 +188,24 @@ function FormulaPending({ display, size }: { display: boolean; size: number }) {
 function AsyncCheck({ claim }: { claim: MathCheck }) {
   const result = useQuery(checkQuery(claim));
   return result.data || result.isError ? <CheckBadge state={result.data?.state ?? "none"} reason={result.data?.reason} /> : null;
+}
+
+/**
+ * The checks of one step, run when the step is drawn: each failure under the step with its reason, and one mark beside it
+ * for the ones that passed, however many, so the student sees one icon and the keyboard stops once. While they run
+ * nothing shows: the sources row says the checks are running.
+ */
+function CheckSlot({ indexes }: { indexes: number[] }) {
+  const { claims } = useContext(Scope);
+  const own = indexes.map((index) => claims[index]).filter((claim): claim is MathCheck => claim !== undefined);
+  const results = useQueries({ queries: own.map(checkQuery) });
+  const passed = results.filter((result) => result.data?.state === "verified").length;
+  return (
+    <div className="px-check-slot">
+      {results.map((result, index) =>
+        result.data?.state === "failed" ? <CheckBadge key={index} state="failed" reason={result.data.reason} /> : null,
+      )}
+      {passed > 0 ? <CheckBadge state="verified" count={passed} /> : null}
+    </div>
+  );
 }

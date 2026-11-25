@@ -452,8 +452,8 @@ export function ComponentGallery() {
       </Section>
 
       <Section eyebrow={t("gallery.sections.layout")} title="CheckBadge">
-        {/* The grey check shows while an answer's sources row is open, which the gallery stands in for. */}
-        <div className="px-markdown" data-checks-shown>
+        {/* A step's check where no sources row reveals it, as in a generated exercise: always shown. */}
+        <div className="px-markdown px-gallery-checks">
           <div className="px-checked is-prose">
             <p>ΔU = Q − L</p>
             <div className="px-check-slot">

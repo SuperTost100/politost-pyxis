@@ -1,4 +1,5 @@
 import type { TFunction } from "i18next";
+import { mapOutsideCode } from "../../../shared/math-delimiters";
 import { splitCitationGroups } from "../../../shared/smart-text";
 
 /** A passage a text cites as [Pn], with what is known of its source and where the passage sits in it. */
@@ -27,10 +28,17 @@ export type PlaceLabel =
 export type ListedPlace = CitedPlace & { label: PlaceLabel | null; numbers: number[] };
 export type SourceGroup = { key: string; sourceId?: string; title: string; places: ListedPlace[] };
 
-/** The passage numbers a text cites, each once, in the order the text first cites them. Code is not read. */
+/**
+ * The passage numbers a text cites, each once, in the order the text first cites them. Code is found by the Markdown
+ * parser, as `linkCitations` finds it, so a mark the view draws is a mark the row lists.
+ */
 export function citedOrder(markdown: string): number[] {
-  const text = markdown.replace(/```[\s\S]*?(?:```|$)/g, "").replace(/`[^`\n]*`/g, "");
-  return [...new Set([...splitCitationGroups(text).matchAll(/\[P(\d+)\]/g)].map((match) => Number(match[1])))];
+  const numbers: number[] = [];
+  mapOutsideCode(markdown, (text) => {
+    for (const match of splitCitationGroups(text).matchAll(/\[P(\d+)\]/g)) numbers.push(Number(match[1]));
+    return text;
+  });
+  return [...new Set(numbers)];
 }
 
 const KIND_ORDER = { chapter: 0, page: 1, slide: 2 } as const;
@@ -96,6 +104,11 @@ export function placeText(t: Translate, label: PlaceLabel): string {
   return t(`sourcesRow.place.${label.kind}`, { n: label.n });
 }
 
+/** A source's name in the row: its title, or a word that says it has none, so no link is ever blank. */
+export function sourceName(t: Translate, group: SourceGroup): string {
+  return group.title || t("sourcesRow.untitled");
+}
+
 /** The row's words for the checked results, or null when no result was checked. */
 export function checksText(t: Translate, tally: CheckTally): string | null {
   if (tally.pending > 0) return t("sourcesRow.checking");
@@ -130,8 +143,8 @@ type LessonSource = {
 
 /**
  * A lesson's passages as the row lists them: [Pn] is the lesson's n-th passage, and its source and place come from the
- * sources the lesson was given. The order is the text's; a text with no marks, such as the book's own text shown when the
- * lesson could not be written, lists every passage it was given.
+ * sources the lesson was given. The order is the text's. A text none of whose marks names one of its passages, such as
+ * the book's own text shown when the lesson could not be written, lists every passage it was given.
  */
 export function lessonPlaces(
   markdown: string,
@@ -158,6 +171,7 @@ export function lessonPlaces(
       },
     ];
   });
-  const cited = citedOrder(markdown);
+  const known = new Set(places.map((place) => place.n));
+  const cited = citedOrder(markdown).filter((n) => known.has(n));
   return { places, order: cited.length > 0 ? cited : places.map((place) => place.n) };
 }

@@ -604,7 +604,7 @@ export function passagesAround(db: Database.Database, passageId: string) {
     locator_json: string | null;
     char_start?: number;
   }>;
-  return mergeViewerParagraphs(
+  const merged = mergeViewerParagraphs(
     rows.map((item) => ({
       id: item.id,
       sourceId: row.source_id ?? "",
@@ -616,6 +616,15 @@ export function passagesAround(db: Database.Database, passageId: string) {
       current: item.id === passageId,
     })),
     rows.map((item) => item.char_start ?? 0),
+  );
+  // The viewer reads merged paragraphs; a quote of the citation needs the cited passage's own words. The source's title
+  // comes with it, also for a file that left the Library or was only attached, which the Library's list leaves out.
+  const own = rows.find((item) => item.id === passageId)?.text;
+  const sourceTitle = row.source_id
+    ? (db.prepare("SELECT title FROM sources WHERE id = ?").pluck().get(row.source_id) as string | undefined)
+    : undefined;
+  return merged.map((item): (typeof merged)[number] & { quote?: string; sourceTitle?: string } =>
+    item.current && own !== undefined ? { ...item, quote: own, ...(sourceTitle !== undefined ? { sourceTitle } : {}) } : item,
   );
 }
 

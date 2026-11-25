@@ -627,11 +627,18 @@ export function splitCitationGroups(markdown: string): string {
   );
 }
 
+const PASSAGE_REF = String.raw`\[P\d+(?:\s*[,;]\s*P?\d+)*\]`;
+/** A run of neighbouring references ("[P1], [P2]") with the spaces before it; the separators between them go with it. */
+const PASSAGE_RUN = new RegExp(String.raw`([ \t]*)${PASSAGE_REF}(?:[ \t]*[,;]?[ \t]*${PASSAGE_REF})*`, "g");
+
 export function stripPassageRefs(markdown: string): string {
-  return markdown
-    .replace(uuidRef, "")
-    .replace(/\s?\[P\d+(?:\s*[,;]\s*P?\d+)*\]/g, "")
-    .replace(/[ \t]+([.,;:!?])/g, "$1");
+  return (
+    markdown
+      .replace(uuidRef, "")
+      // A reference on a line of its own keeps the line's indentation, which keeps the line in its list item.
+      .replace(PASSAGE_RUN, (_, space: string, at: number, whole: string) => (whole[at - 1] === "\n" ? space : ""))
+      .replace(/[ \t]+([.,;:!?])/g, "$1")
+  );
 }
 
 /**

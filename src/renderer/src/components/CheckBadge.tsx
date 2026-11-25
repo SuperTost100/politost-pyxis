@@ -6,16 +6,25 @@ import "./CheckBadge.css";
 const SOLUTIONS = new Set(["solution-set", "incomplete-solution-set"]);
 
 /**
- * The result of a step's math check, beside the step. A verified step gets a grey check at its right edge, which shows
- * only while the answer's sources row is open (`[data-checks-shown]` on the answer) and says what it means on hover or
- * focus. A failed step says so under itself, with the reason, always: it is a warning. A claim the checker cannot
+ * The result of a step's math check, beside the step. A verified step gets a grey check at its right edge, which says
+ * what it means on hover or focus. Where a sources row counts the checks, it shows only while that row is open
+ * (`[data-checks-shown]` on the host); anywhere else it always shows. A failed step says so under itself, with the reason, always: it is a warning. A claim the checker cannot
  * evaluate tells the student nothing, so it shows nothing.
  */
-export function CheckBadge({ state, reason }: { state: "verified" | "failed" | "none"; reason?: string }) {
+export function CheckBadge({
+  state,
+  reason,
+  count = 1,
+}: {
+  state: "verified" | "failed" | "none";
+  reason?: string;
+  /** For a verified mark: how many checks of the step passed, which its label says. */
+  count?: number;
+}) {
   const { t } = useTranslation();
   if (state === "none") return null;
   if (state === "verified") {
-    const label = t("sourcesRow.checkMark");
+    const label = t("sourcesRow.checkMark", { count });
     return (
       <span className="px-check-badge is-verified" role="img" aria-label={label} tabIndex={0}>
         <Check size={16} strokeWidth={2} aria-hidden />

@@ -18,7 +18,7 @@ import type { MathCheck } from "@shared/math-check";
 import { passageQuery } from "../lib/passagePlaces";
 import { useCheckTally } from "../lib/mathChecks";
 import { citedRanges } from "../lib/citedRanges";
-import { placeText, rowText, sourceGroups, type CitedPlace, type ListedPlace, type SourceGroup } from "../lib/sourcePlaces";
+import { placeText, rowText, sourceGroups, sourceName, type CitedPlace, type ListedPlace, type SourceGroup } from "../lib/sourcePlaces";
 import { openSourceViewer } from "./SourceViewer";
 import "./SourcesRow.css";
 
@@ -142,9 +142,9 @@ export function SourcesRow({
     "data-cite-place": place.numbers.join(" "),
     "aria-describedby": card?.place.passageId === place.passageId ? cardId : undefined,
     onClick: () => openSourceViewer({ passageId: place.passageId }),
-    onPointerEnter: (event: PointerEvent<HTMLElement>) => show(place, group.title, event.currentTarget, true),
+    onPointerEnter: (event: PointerEvent<HTMLElement>) => show(place, sourceName(t, group), event.currentTarget, true),
     onPointerLeave: hide,
-    onFocus: (event: FocusEvent<HTMLElement>) => show(place, group.title, event.currentTarget, false),
+    onFocus: (event: FocusEvent<HTMLElement>) => show(place, sourceName(t, group), event.currentTarget, false),
     onBlur: hide,
   });
   const sep = (
@@ -180,11 +180,11 @@ export function SourcesRow({
         <button
           type="button"
           className="px-sources-row is-link"
-          aria-label={placeName(t, group.title, place)}
+          aria-label={placeName(t, sourceName(t, group), place)}
           {...placeProps(place, group)}
         >
           <span>
-            <b>{group.title}</b>
+            <b>{sourceName(t, group)}</b>
             {where ? `, ${where}` : null}
           </span>
         </button>
@@ -245,7 +245,7 @@ export function SourcesRow({
                     onFocus={() => tint(host(), group.places.flatMap((place) => place.numbers))}
                     onBlur={() => tint(null, [])}
                   >
-                    {group.title}
+                    {sourceName(t, group)}
                   </button>
                   {group.places.some((place) => place.label) ? (
                     <span className="px-sources-places">
@@ -253,8 +253,8 @@ export function SourcesRow({
                         <button
                           key={place.passageId}
                           type="button"
-                          className="px-sources-place"
-                          aria-label={placeName(t, group.title, place)}
+                          className={place.label?.kind === "section" ? "px-sources-place is-section" : "px-sources-place"}
+                          aria-label={placeName(t, sourceName(t, group), place)}
                           {...placeProps(place, group)}
                         >
                           {place.label ? placeText(t, place.label) : null}
@@ -284,7 +284,11 @@ function PassageCard({ id, card }: { id: string; card: Card }) {
   const ref = useRef<HTMLDivElement>(null);
   const passage = useQuery({
     ...passageQuery(card.place.passageId),
-    select: (rows) => rows.find((row) => row.current)?.text ?? "",
+    // The cited passage's own words: the current row can be the whole page, merged for the source viewer.
+    select: (rows) => {
+      const current = rows.find((row) => row.current);
+      return current?.quote ?? current?.text ?? "";
+    },
   });
   const place = useCallback(() => {
     const element = ref.current;

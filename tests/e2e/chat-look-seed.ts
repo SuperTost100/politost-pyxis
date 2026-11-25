@@ -161,7 +161,8 @@ const LOOK_PASSAGES = [
   ["look-p-bounds", "look-src-notes", { page: 7 }, null, "Il disco di raggio R diventa il rettangolo [0, R] × [0, 2π] nel piano (ρ, θ). Controllare sempre gli estremi dopo il cambio."],
   ["look-p-split", "look-src-book", { page: 172 }, null, "Se D è un rettangolo e f(x, y) = g(x) h(y), l'integrale doppio è il prodotto dei due integrali in una variabile."],
   ["look-p-exercise", "look-src-sheet", { page: 2 }, null, "Esercizio 3. Calcolare il volume del solido compreso tra il piano z = 0 e il paraboloide z = 9 − x² − y²."],
-  ["look-p-cartesian", "look-src-sheet", { page: 3 }, null, "Svolgimento in coordinate cartesiane: si arriva all'integrale di (9 − x²)^{3/2}, che richiede la sostituzione x = 3 sin t."],
+  // A section with no page and a long name, which the open list wraps.
+  ["look-p-cartesian", "look-src-sheet", {}, "Svolgimento completo in coordinate cartesiane, con la sostituzione trigonometrica x = 3 sin t e tutti i passaggi", "Svolgimento in coordinate cartesiane: si arriva all'integrale di (9 − x²)^{3/2}, che richiede la sostituzione x = 3 sin t."],
 ] as const;
 
 const POLAR = "$$V = \\int_0^{2\\pi} d\\theta \\int_0^2 (4 - \\rho^2)\\,\\rho\\,d\\rho = 2\\pi \\left[2\\rho^2 - \\frac{\\rho^4}{4}\\right]_0^2 = 8\\pi$$";
@@ -233,7 +234,11 @@ export function seedSourcesChats(db: DatabaseSync) {
     "look-sources-none-a",
     "look-sources-none",
     "assistant",
-    `Vale $\\sqrt{\\pi}$, e si calcola con le coordinate polari. Se chiami $I$ l'integrale, il suo quadrato è un integrale doppio su tutto il piano:\n\n${GAUSS}\n\nQuindi $I = \\sqrt{\\pi}$, circa 1,772.\n<checks>${JSON.stringify([{ kind: "equal", expr: "2*pi/2", claimed: "pi", step: GAUSS }])}</checks>`,
+    `Vale $\\sqrt{\\pi}$, e si calcola con le coordinate polari. Se chiami $I$ l'integrale, il suo quadrato è un integrale doppio su tutto il piano:\n\n${GAUSS}\n\nQuindi $I = \\sqrt{\\pi}$, circa 1,772.\n<checks>${JSON.stringify([
+      { kind: "equal", expr: "2*pi/2", claimed: "pi", step: GAUSS },
+      // A second check of the same step: one mark beside it, which says two results passed.
+      { kind: "equal", expr: "2*pi*(1/2)", claimed: "pi", step: GAUSS },
+    ])}</checks>`,
     "general",
     JSON.stringify({ found: false, where: "library" }),
     2,

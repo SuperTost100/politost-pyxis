@@ -4288,9 +4288,11 @@
     "list": "Sources",
     "hint": "Click to open the source at this place",
     "reading": "Reading the passage…",
-    "checkMark": "Verified: Pyxis redid this calculation and got the same result.",
+    "checkMark_one": "Verified: Pyxis redid this calculation and got the same result.",
+    "checkMark_other": "{{count}} calculations verified: Pyxis redid them and got the same results.",
     "failed": "Not verified",
     "failedValue": "The result does not match the expected value.",
-    "failedSolutions": "The solutions do not match the ones Pyxis finds."
+    "failedSolutions": "The solutions do not match the ones Pyxis finds.",
+    "untitled": "Untitled source"
   }
 }

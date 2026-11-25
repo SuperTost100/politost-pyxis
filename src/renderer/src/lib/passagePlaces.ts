@@ -28,7 +28,7 @@ export function usePassagePlaces(cited: ReadonlyArray<{ passageId: string; label
       n: index + 1,
       passageId: cite.passageId,
       sourceId: row?.sourceId,
-      title: row ? titles.get(row.sourceId) : undefined,
+      title: row?.sourceTitle ?? (row ? titles.get(row.sourceId) : undefined),
       page: row?.locator.page,
       slide: row?.locator.slide,
       chapter: row?.locator.chapter,

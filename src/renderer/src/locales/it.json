@@ -4288,9 +4288,11 @@
     "list": "Fonti",
     "hint": "Un clic apre la fonte in questo punto",
     "reading": "Leggo il brano…",
-    "checkMark": "Verificato: Pyxis ha rifatto questo calcolo e il risultato coincide.",
+    "checkMark_one": "Verificato: Pyxis ha rifatto questo calcolo e il risultato coincide.",
+    "checkMark_other": "{{count}} calcoli verificati: Pyxis li ha rifatti e i risultati coincidono.",
     "failed": "Non verificato",
     "failedValue": "Il risultato non coincide con il valore atteso.",
-    "failedSolutions": "Le soluzioni non coincidono con quelle che trova Pyxis."
+    "failedSolutions": "Le soluzioni non coincidono con quelle che trova Pyxis.",
+    "untitled": "Fonte senza titolo"
   }
 }

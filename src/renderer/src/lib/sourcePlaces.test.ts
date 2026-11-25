@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInstance, type TFunction } from "i18next";
 import { beforeAll, describe, expect, it } from "vitest";
-import { citedOrder, lessonPlaces, placeText, rowText, sourceGroups, type CitedPlace } from "./sourcePlaces";
+import { citedOrder, lessonPlaces, placeText, rowText, sourceGroups, sourceName, type CitedPlace } from "./sourcePlaces";
 
 const book = { sourceId: "b", title: "Analisi matematica 2" };
 const notes = { sourceId: "n", title: "Appunti · Lezione 14" };
@@ -35,6 +35,10 @@ beforeAll(async () => {
 describe("citedOrder", () => {
   it("lists each cited passage once, in the order the text first cites it, groups included", () => {
     expect(citedOrder("Uno [P3]. Due [P1, P3; 2]. Tre [P1].")).toEqual([3, 1, 2]);
+  });
+
+  it("reads a mark after a four-backtick fence that holds a three-backtick line, as the view does", () => {
+    expect(citedOrder("Prima [P1].\n\n````md\n```\ncodice [P3]\n```\n````\n\nDopo il codice [P2].")).toEqual([1, 2]);
   });
 
   it("does not read code", () => {
@@ -78,6 +82,15 @@ describe("sourceGroups", () => {
       ["passage:x", "1. Dinamica"],
       ["passage:y", ""],
     ]);
+  });
+});
+
+describe("sourceName", () => {
+  it("never leaves a source unnamed: its title, else a word that says it has none", () => {
+    const [named, blank] = sourceGroups([{ n: 1, passageId: "x", sourceId: "a", title: "Appunti" }, { n: 2, passageId: "y", sourceId: "b" }], [1, 2]);
+    expect(sourceName(it_, named!)).toBe("Appunti");
+    expect(sourceName(it_, blank!)).toBe("Fonte senza titolo");
+    expect(sourceName(en, blank!)).toBe("Untitled source");
   });
 });
 
@@ -134,6 +147,11 @@ describe("lessonPlaces", () => {
       [3, "Appunti", "Polari"],
     ]);
     expect(order).toEqual([3, 1]);
+  });
+
+  it("lists every passage given when no mark of the text names one of them", () => {
+    expect(lessonPlaces("Vale [P9].", ["x"], sources).order).toEqual([1]);
+    expect(lessonPlaces("Vale [P9] e [P3].", ["x", "y", "z"], sources).order).toEqual([3]);
   });
 
   it("lists every passage given when the text cites none, as the book's own text", () => {

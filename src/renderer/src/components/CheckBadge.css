@@ -1,5 +1,6 @@
 /* A step with its check beside it (`rehypeMarks`): the check sits at the step's right edge, as a textbook puts a formula's
-   number. The step keeps room for it whether it shows or not, so opening the sources row moves nothing. */
+   number, one mark however many checks of the step passed. The step keeps room for it whether it shows or not, so opening
+   the sources row moves nothing. */
 .px-checked {
   position: relative;
 }
@@ -21,8 +22,6 @@
   margin-top: -14px;
   border-radius: 7px;
   color: var(--ink-subtle);
-  opacity: 0;
-  visibility: hidden;
   transition:
     opacity var(--duration-small) ease-out,
     visibility var(--duration-small),
@@ -32,8 +31,14 @@
 .px-checked.is-prose .px-check-badge.is-verified {
   right: 0;
 }
-/* While the answer's sources row is open, or its count of checked results is pointed at. */
-[data-checks-shown] .px-check-badge.is-verified {
+/* Where a sources row counts the checks (an answer, a lesson part, a quiz explanation), the mark waits for the row: it
+   shows while the row is open or its count is pressed or pointed at. Anywhere else, such as a generated exercise, it
+   always shows. */
+[data-cited-host]:has(.px-sources) .px-check-badge.is-verified {
+  opacity: 0;
+  visibility: hidden;
+}
+[data-cited-host][data-checks-shown] .px-check-badge.is-verified {
   opacity: 1;
   visibility: visible;
 }

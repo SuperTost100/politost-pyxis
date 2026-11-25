@@ -90,8 +90,11 @@
   grid-template-rows: 0fr;
   transition: grid-template-rows var(--duration-small) var(--ease-out);
 }
+/* The fold clips while it grows; its box reaches 8px past the list on each side, where a place's fill ends. */
 .px-sources-fold > div {
   min-height: 0;
+  margin-inline: -8px;
+  padding-inline: 8px;
   overflow: hidden;
 }
 .px-sources-fold.is-open {
@@ -130,6 +133,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0 2px;
+  min-width: 0;
+  max-width: calc(100% + 16px);
   margin: 0 -8px;
 }
 .px-sources-place {
@@ -148,6 +153,16 @@
   transition:
     background-color var(--duration-micro) ease-out,
     color var(--duration-micro) ease-out;
+}
+/* A section's name can be long: it wraps inside the list instead of running past it. */
+.px-sources-place.is-section {
+  height: auto;
+  min-height: 28px;
+  padding-block: 4px;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
 }
 .px-sources-place:hover,
 .px-sources-place:focus-visible {
