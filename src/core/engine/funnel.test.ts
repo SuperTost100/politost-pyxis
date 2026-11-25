@@ -573,6 +573,54 @@ describe("API keys", () => {
   });
 });
 
+describe("Antigravity's quota notice", () => {
+  // agy 1.5.17 over ACP, word for word: a message chunk, then `stopReason: end_turn`, no tokens.
+  const notice =
+    "\n⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h30m10s.\n";
+
+  it("is a usage limit with its reset, not an answer", async () => {
+    vi.useFakeTimers({ now: Date.parse("2026-11-25T10:41:13Z"), toFake: ["Date"] });
+    run.mockResolvedValueOnce({ text: notice });
+    const error = await runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi" }).catch(
+      (err: unknown) => err,
+    );
+    expect(error).toMatchObject({
+      code: "cli-failed",
+      message: notice.trim(),
+      limit: {
+        kind: "quota",
+        detail: notice.trim(),
+        retryAfterMs: (3 * 3600 + 30 * 60 + 10) * 1000,
+        resetAt: "2026-11-25T14:11:23.000Z",
+      },
+    });
+  });
+
+  it("stops a structured call at once with the usage-limit message, instead of two repairs and a reply that cannot be used", async () => {
+    const { generate } = await import("./generate");
+    const { clearBench } = await import("./bench");
+    const { z } = await import("zod");
+    run.mockResolvedValue({ text: notice });
+    const error = await generate({
+      selection: { provider: "antigravity", model: "m" },
+      prompt: "build the topics",
+      schema: z.object({ topics: z.array(z.string()) }),
+    }).catch((err: unknown) => err);
+    clearBench();
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(error).toMatchObject({ code: "quota", messageKey: "engines.errors.quota", detail: notice.trim() });
+  });
+
+  it("stays an answer when the reply only quotes it, or when another tool writes it", async () => {
+    run.mockResolvedValue({ text: `Il messaggio era: ${notice.trim()}` });
+    const quoted = await runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi" });
+    expect(quoted.text).toContain("Individual quota reached");
+    run.mockResolvedValue({ text: notice });
+    const other = await runTurn({ selection: { provider: "claude", model: "m" }, prompt: "hi" });
+    expect(other.text).toBe(notice);
+  });
+});
+
 describe("schema repairs", () => {
   it("resend the whole prompt with the bad answer, in a call the tool does not keep", async () => {
     const { generate } = await import("./generate");

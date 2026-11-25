@@ -204,6 +204,33 @@ export function isSessionGone(err: unknown): boolean {
   return SESSION_GONE.test(err instanceof Error ? err.message : String(err));
 }
 
+/**
+ * Antigravity 1.5 over ACP ends a turn it refused for its quota as a finished one, with its notice as the whole answer
+ * ("⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h30m10s."), and
+ * cli-funnel 1.0.0 passes it on as text. Read as an answer, a structured call repairs it twice and stops as a reply that
+ * cannot be used, so the student never learns that the tool ran out of requests.
+ * shortcut: matches agy's English wording and only a reply that is the notice alone; remove once cli-funnel reports it
+ * as a limit.
+ */
+const AGY_QUOTA = /^\s*(?:⚠\s*)?Individual quota reached\.[^\n]*$/;
+const AGY_RESET = /\bResets in (?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/;
+
+/** The usage-limit error, shaped as cli-funnel shapes one, for Antigravity's quota notice; undefined for any other reply. */
+function antigravityQuota(provider: string, text: string, now = Date.now()): Error | undefined {
+  if (provider !== "antigravity" || !AGY_QUOTA.test(text.trim())) return undefined;
+  const detail = text.trim();
+  const [, hours = "0", minutes = "0", seconds = "0"] = AGY_RESET.exec(detail) ?? [];
+  const wait = ((Number(hours) * 60 + Number(minutes)) * 60 + Number(seconds)) * 1000;
+  return Object.assign(new Error(detail), {
+    code: "cli-failed",
+    limit: {
+      kind: "quota",
+      detail,
+      ...(wait > 0 ? { retryAfterMs: wait, resetAt: new Date(now + wait).toISOString() } : {}),
+    },
+  });
+}
+
 /** Thrown inside a turn when the tool started another session than the one it was asked to resume. */
 class SessionReplaced extends Error {}
 
@@ -461,6 +488,8 @@ async function turn(input: TurnInput): Promise<EngineResult> {
           });
           throw new DOMException("Engine turn cancelled", "AbortError");
         }
+        const quota = antigravityQuota(selection.provider, result.text || text);
+        if (quota) throw quota;
         finished = true;
         continued = continuing;
         following.end();

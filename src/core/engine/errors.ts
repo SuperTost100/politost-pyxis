@@ -121,10 +121,8 @@ export function fallbackReason(
   err: unknown,
   provider: string,
 ): "limit" | "signed-out" | "model" | "not-installed" | undefined {
-  if (!isEngineFailure(err) && !(err instanceof Error && "limit" in err))
-    return undefined;
-  if (err && typeof err === "object" && "limit" in err && err.limit)
-    return "limit";
+  if (!isEngineFailure(err)) return undefined;
+  if (hasLimit(err)) return "limit";
   const { code } = translateEngineError(err, provider);
   if (code === "quota") return "limit";
   if (code === "not-logged-in" || code === "refused") return "signed-out";
@@ -145,11 +143,11 @@ const networkCodes = new Set([
 
 /**
  * True for a failure of the engine itself: CLI Funnel's own errors (also the plain errors it builds from a stream, which
- * carry its `code`) and a lost connection. Anything else, such as a reply that cannot be used or a bug in Pyxis, is not
- * an engine problem and keeps its own message.
+ * carry its `code`, or only the `limit` it reported, as Codex's usage limit does), and a lost connection. Anything else,
+ * such as a reply that cannot be used or a bug in Pyxis, is not an engine problem and keeps its own message.
  */
 function isEngineFailure(err: unknown): boolean {
-  if (err instanceof FunnelError) return true;
+  if (err instanceof FunnelError || hasLimit(err)) return true;
   if (!err || typeof err !== "object" || !("code" in err)) return false;
   const code = String(err.code);
   return (
