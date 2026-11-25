@@ -219,8 +219,11 @@ test("a right-click opens the same menu as the three dots, at the pointer, and s
     const finder = page.getByRole("dialog", { name: "Cerca" });
     await expect(finder.getByRole("group", { name: "Chat" }).getByRole("option")).toHaveCount(2);
     await answerNextMenu(app, null);
-    await finder.getByRole("option", { name: /Analisi/ }).click({ button: "right" });
+    const analisi = finder.getByRole("option", { name: /Analisi/ });
+    await analisi.click({ button: "right" });
     await expect.poll(() => lastMenuLabels(app)).toEqual(chatDots);
+    // Right-clicking selects the row right away, so Alt+Enter acts on it and never races a delayed mousemove frame.
+    await expect(analisi).toHaveAttribute("aria-selected", "true");
     // The menu keys stay with the search field, whose own menu (copy, paste, spelling) they open: the chat's menu does
     // not take them, and nothing is prevented.
     const search = finder.getByRole("combobox", { name: "Cerca" });
