@@ -524,6 +524,21 @@ describe("switching engines on a usage limit or sign-out", () => {
     db.close();
   });
 
+  it("stays on an engine that failed after the turn reached Pyxis's tools, which may have saved something", async () => {
+    const db = automaticChat();
+    const afterTools = Object.assign(new Error("You've hit your usage limit"), {
+      code: "cli-failed",
+      limit: { kind: "rate", detail: "You've hit your usage limit" },
+      toolsReached: true,
+    });
+    const error = await ask(db, afterTools).catch((err: unknown) => err);
+    expect(error).toMatchObject({ code: "quota" });
+    // The limit is still recorded, so the next call starts elsewhere.
+    expect(isBenched("claude")).toBe(true);
+    expect(await ask(db, limited)).toEqual(["codex"]);
+    db.close();
+  });
+
   it("answers once on the next ready engine and says which one", async () => {
     const db = automaticChat();
     const heard: unknown[] = [];
