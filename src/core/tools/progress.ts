@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { z } from "zod";
+import { CHART_POINTS_MAX } from "../../shared/chat-blocks";
 import { gradeScaleOf, gradeValue, gradeWhole, type GradeScale } from "../../shared/grade";
 import { dayKey } from "../../shared/local-day";
 import { reachableTarget } from "../../shared/plan-file";
@@ -14,10 +15,8 @@ import type { Tool, ToolTurn } from "./server";
  * from the chat (`ToolTurn.place`), never from the arguments, so it never returns another subject's results.
  */
 
-/** Handed-in attempts listed per exam, newest first. Older ones are counted but not listed. */
-const QUIZZES_LISTED = 60;
-/** Exams of one subject read in one call. */
-const EXAMS_LISTED = 6;
+/** Handed-in attempts listed per exam, newest first: as many as a chart can draw. Older ones are counted, not listed. */
+const QUIZZES_LISTED = CHART_POINTS_MAX;
 
 export const PROGRESS_TOOL = "read_progress";
 
@@ -27,7 +26,7 @@ export const PROGRESS_DESCRIPTION = [
   "Reads the student's own results in Pyxis for the exam or subject of this chat: the quizzes they handed in, each with its date, topic and grade, and every topic's state (lesson read, mastery, goal reached, open mistakes). It only reads.",
   "This tool is the only source of the student's grades, quiz results and progress: you cannot know them otherwise. Call it whenever the student asks how they are doing, about their grades, quizzes, weak or strong topics or progress, or asks for a chart of them, and use only the numbers it returns. Never estimate, complete or invent a number about the student.",
   "Every grade, the goal and the pass mark are already on the student's scale (`scale`: out of 30 or out of 100). Write them as they come.",
-  "To chart grades, write a pyxis-chart block from these numbers only: for the latest grade of each topic, one bar per topic in the exam's order, `max` equal to `scale`, `unit` \"/30\" or \"/100\", the pass mark as `reference`, and every topic without a quiz as a point with value null and the note \"not done yet\" in the student's language. To chart change over time, a line with one point per quiz in date order, labelled by its short date, with the topic as its note.",
+  "To chart grades, write a pyxis-chart block from these numbers only: for the latest grade of each topic, one bar per topic in the exam's order, `max` equal to `scale`, `unit` \"/30\" or \"/100\", the pass mark as `reference`, and every topic without a quiz as a point with value null and the note \"not done yet\" in the student's language. To chart change over time, a line with one point per quiz in date order, labelled by its short date, with the topic as its note. An exam lists at most its latest 40 quizzes (`quizzesListed` says so when there are more): then say that the chart shows the latest 40.",
   "It sees only this chat's exam or subject. When it lists no quizzes, say so in one sentence and do not draw a chart.",
 ].join(" ");
 
@@ -81,6 +80,10 @@ export function examProgress(db: Database.Database, planId: string, scale: Grade
     exam: plan.title,
     goal: gradeValue(target, scale),
     quizzesDone: attempts.length,
+    quizzesListed:
+      attempts.length > QUIZZES_LISTED
+        ? `the latest ${QUIZZES_LISTED} of ${attempts.length}, newest first`
+        : `all ${attempts.length}, newest first`,
     quizzes: graded.slice(0, QUIZZES_LISTED).map((attempt) => ({
       date: dayKey(attempt.submitted_at),
       kind: attempt.kind === "review" ? "mistakes review" : attempt.kind === "simulation" ? "exam simulation" : attempt.kind,
@@ -117,8 +120,8 @@ function examsOf(db: Database.Database, place: ReturnType<ToolTurn["place"]>): {
     | undefined;
   if (!subject) return null;
   const plans = db
-    .prepare(`SELECT id FROM plans WHERE subject_id = ? AND archived_at IS NULL ORDER BY updated_at DESC LIMIT ?`)
-    .all(subject.id, EXAMS_LISTED) as Array<{ id: string }>;
+    .prepare(`SELECT id FROM plans WHERE subject_id = ? AND archived_at IS NULL ORDER BY updated_at DESC`)
+    .all(subject.id) as Array<{ id: string }>;
   return { name: subject.name, planIds: plans.map((plan) => plan.id) };
 }
 
@@ -150,6 +153,8 @@ export function progressTool(db: Database.Database): Tool {
         return {
           text: `The subject ${progress.subject} has no exam in Pyxis yet, so the student has no quizzes or topics there. Say so in one sentence and do not draw a chart.`,
         };
+      // The reply this turn writes now may hold the student's results: it is kept from tools not cleared for them.
+      turn.tally.results = 1;
       return { text: JSON.stringify(progress) };
     },
   };

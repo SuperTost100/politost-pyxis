@@ -603,6 +603,10 @@ ALTER TABLE tool_sessions ADD COLUMN tools INTEGER NOT NULL DEFAULT 0;`,
   PRIMARY KEY (message_id, question_id)
 );`,
   },
+  // A reply whose turn read the student's own results (the chat's `read_progress` tool), so its text and its charts may
+  // hold their grades. Such a reply is left out of the conversation handed to a tool the student has not confirmed the
+  // notice naming results for (`chat/turn.ts`, `historyText`).
+  { version: 40, sql: `ALTER TABLE messages ADD COLUMN results INTEGER NOT NULL DEFAULT 0;` },
 ] satisfies Array<{
   version: number;
   sql: string;

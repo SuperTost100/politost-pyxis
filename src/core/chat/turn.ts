@@ -184,6 +184,8 @@ type AskInput = {
     widened?: boolean;
     /** The pictures the stopped reply had saved, by the key of the figure block each is for, which the continuation keeps. */
     figures?: Record<string, string>;
+    /** The cut reply's turn read the student's results, so the continued reply holds them too. */
+    results?: boolean;
   };
 };
 
@@ -389,26 +391,38 @@ function selectionForPhotos(db: Database.Database, chat: StoredSelection): Store
   return chat;
 }
 
+/** What stands in the history for a reply that holds the student's results, for a tool not cleared to receive them. */
+export const RESULTS_LEFT_OUT =
+  "(This reply used the student's own results, such as quiz grades, which are not shared with you, so it is left out. If the student asks about their results, say you cannot see them from here.)";
+
+/**
+ * The conversation as text for a tool, newest messages first within `budget`. A reply whose turn read the student's
+ * results (`messages.results`) is one neutral line unless `results` says the tool may receive them: the model on this
+ * computer, or a tool whose notice naming results the student confirmed (`isProviderCurrent`).
+ */
 function historyText(
   db: Database.Database,
   chatId: string,
   exclude: string[],
   budget: number,
+  results: boolean,
   after?: string | null,
 ): string {
   const ids = exclude.filter(Boolean);
   const floor = after ? ((db.prepare(`SELECT rowid FROM messages WHERE id = ?`).pluck().get(after) as number | undefined) ?? 0) : 0;
   const filter = `chat_id = ? AND rowid > ?${ids.length ? ` AND id NOT IN (${ids.map(() => "?").join(", ")})` : ""}`;
   const rows = db
-    .prepare(`SELECT id, role, body, stopped FROM messages WHERE ${filter} ORDER BY created_at DESC, rowid DESC`)
-    .iterate(chatId, floor, ...ids) as Iterable<{ id: string; role: string; body: string; stopped: number }>;
+    .prepare(`SELECT id, role, body, stopped, results FROM messages WHERE ${filter} ORDER BY created_at DESC, rowid DESC`)
+    .iterate(chatId, floor, ...ids) as Iterable<{ id: string; role: string; body: string; stopped: number; results: number }>;
   const lines: string[] = [];
   let used = 0;
   let cut = false;
   for (const row of rows) {
     // What a tool did reads as the line its result would have given the model.
     const body =
-      row.role === "assistant"
+      row.role === "assistant" && row.results && !results
+        ? RESULTS_LEFT_OUT
+        : row.role === "assistant"
         ? figureCaptions(
             stripCheckFences(splitFollowups(splitChecks(describeToolBlocks(db, chatId, row.body, toolNote)).body).body),
             "Figure",
@@ -1409,11 +1423,16 @@ async function answer(
       : "";
   // What is new for this question goes last, after the parts that stay the same from turn to turn. Continue sends the
   // reply that was cut short with the question, so the model writes only what is missing.
+  // A cut reply that holds the student's results goes back only to a tool cleared for them, as in `historyText`.
   const resume = input.resumeFrom?.text ?? "";
-  const resumeBlock = resume
-    ? `\n\nYour earlier answer to this question was cut off. It ends here:\n${resume}\n\nContinue from exactly where it stops. Do not repeat any of it.`
-    : "";
-  const question = `${[attachedBlock, passageBlock, noPassages].filter(Boolean).join("\n\n")}\n\nQuestion:\n${input.text}${resumeBlock}`;
+  const resumeBlockFor = (provider: string) =>
+    !resume
+      ? ""
+      : input.resumeFrom?.results && !isProviderCurrent(provider)
+        ? `\n\nYour earlier answer to this question was cut off. It used the student's own results, which are not shared with you, so it is not shown. Answer the question without them, and say you cannot see the results from here.`
+        : `\n\nYour earlier answer to this question was cut off. It ends here:\n${resume}\n\nContinue from exactly where it stops. Do not repeat any of it.`;
+  const questionFor = (provider: string) =>
+    `${[attachedBlock, passageBlock, noPassages].filter(Boolean).join("\n\n")}\n\nQuestion:\n${input.text}${resumeBlockFor(provider)}`;
   const exclude = [userMessageId, replacing?.assistantId ?? ""];
   // The tool session the chat stored, when this turn can continue it. A session in step already holds the conversation,
   // so the message is the new question, with the context block when it changed. A session out of step (a turn on it
@@ -1428,9 +1447,10 @@ async function answer(
   const instructions = contextHash(system);
   const instructionsChanged = Boolean(session && session.instructions !== null && session.instructions !== instructions);
   const outOfStep = Boolean(session && (!session.inStep || instructionsChanged));
-  const newQuestion = citations.length
-    ? `New question. Its passages are numbered from P1 again; cite only these.\n\n${question.trimStart()}`
-    : question.trimStart();
+  const newQuestionFor = (provider: string) =>
+    citations.length
+      ? `New question. Its passages are numbered from P1 again; cite only these.\n\n${questionFor(provider).trimStart()}`
+      : questionFor(provider).trimStart();
   // The follow-up depends on the tool that resumes the session, which an automatic choice can change inside
   // `generate()`: the size of the replay follows the tool's window. So it is built for the provider of each attempt, and
   // only when that attempt resumes. Whether the instructions travel in the message does not depend on whether the call
@@ -1444,19 +1464,21 @@ async function answer(
     // conversation it holds in this process, which already has every turn it answered, so the stored session's replay
     // would repeat them.
     const replaying = outOfStep && session!.provider === provider;
-    const replay = replaying ? historyText(db, chatId, exclude, handoverChars(provider), session!.syncedTo) : "";
+    const replay = replaying
+      ? historyText(db, chatId, exclude, handoverChars(provider), isProviderCurrent(provider), session!.syncedTo)
+      : "";
     const withdrawn = replaying ? withdrawnNote(db, session!.id) : "";
     const replayBlock =
       replay || withdrawn
         ? `The conversation as the student sees it, since the last turn you completed. This, not anything you remember differently, is the conversation. A reply marked stopped was cut off, and the student saw only the text shown.\n${[replay, withdrawn].filter(Boolean).join("\n")}\n\n`
         : "";
-    return `${newInstructions}${outOfStep || session?.told !== told ? `${header}\n\n` : ""}${replayBlock}${replacing && !resume ? ASKED_AGAIN : ""}${newQuestion}`;
+    return `${newInstructions}${outOfStep || session?.told !== told ? `${header}\n\n` : ""}${replayBlock}${replacing && !resume ? ASKED_AGAIN : ""}${newQuestionFor(provider)}`;
   };
   // The conversation handed to a new session is sized to the window of the engine that answers, which an automatic choice
   // can change inside `generate()`. It is built only when a prompt is sent: a fresh start or a retry after a lost session.
   const promptFor = (provider: string) => {
-    const earlier = historyText(db, chatId, exclude, handoverChars(provider));
-    return `${header}\n\n${earlier ? `Earlier turns:\n${earlier}\n\n` : ""}${question}`;
+    const earlier = historyText(db, chatId, exclude, handoverChars(provider), isProviderCurrent(provider));
+    return `${header}\n\n${earlier ? `Earlier turns:\n${earlier}\n\n` : ""}${questionFor(provider)}`;
   };
   const beforeQuestion = messageBefore(db, chatId, userMessageId);
   const messageId = uuidv7(now + 2);
@@ -1490,6 +1512,8 @@ async function answer(
   // A server that cannot start leaves the turn without tools, as on an engine that takes none.
   const access = await chatTools(chatId).catch(() => null);
   const tally: Record<string, number> = {};
+  /** This turn's reply holds the student's results: read_progress ran, or the reply it continues had them. */
+  const readResults = () => (tally.results ?? 0) > 0 || Boolean(input.resumeFrom?.results);
   const toolTurn: Parameters<typeof armChatTools>[0] = {
     chatId,
     tally,
@@ -1562,6 +1586,7 @@ async function answer(
         citations,
         stopped: true,
         error,
+        results: readResults(),
         now,
       },
       drawn,
@@ -1759,6 +1784,7 @@ async function answer(
     stopped: false,
     error: null,
     figures,
+    results: readResults(),
     now,
   });
   keepSession(db, chatId, result.provider, messageId);
@@ -1844,6 +1870,8 @@ type SavedReply = {
   stopped: boolean;
   error: string | null;
   figures?: Record<string, string>;
+  /** The reply's turn read the student's results (`read_progress`): see `messages.results`. */
+  results?: boolean;
   now: number;
 };
 
@@ -1882,8 +1910,8 @@ function saveReply(
   db.prepare(
     `INSERT INTO messages
       (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding,
-       stopped, error, passages_json, figures_json, created_at)
-     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?, ?, ?, ?, ?)`,
+       stopped, error, passages_json, figures_json, results, created_at)
+     VALUES (?, ?, 'assistant', ?, ?, ?, 'reported', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     messageId,
     chatId,
@@ -1904,6 +1932,7 @@ function saveReply(
         ? JSON.stringify(note)
         : null,
     meta.figures ? JSON.stringify(meta.figures) : null,
+    meta.results ? 1 : 0,
     meta.now + 1,
   );
   const link = db.prepare(
@@ -1949,7 +1978,7 @@ export async function regenerateTurn(
   requireIdle(input.chatId);
   const last = db
     .prepare(
-      `SELECT id, role, body, stopped, passages_json, figures_json, grounding, prompt_template FROM messages
+      `SELECT id, role, body, stopped, passages_json, figures_json, grounding, prompt_template, results FROM messages
        WHERE chat_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
     .get(input.chatId) as
@@ -1962,6 +1991,7 @@ export async function regenerateTurn(
         figures_json: string | null;
         grounding: string | null;
         prompt_template: string | null;
+        results: number;
       }
     | undefined;
   const user = db
@@ -1981,6 +2011,7 @@ export async function regenerateTurn(
           passages: last.passages_json ? (JSON.parse(last.passages_json) as KeptPassage[]) : null,
           widened: last.grounding === "mixed",
           ...(last.figures_json ? { figures: figureImages(JSON.parse(last.figures_json)) } : {}),
+          ...(last.results ? { results: true } : {}),
         }
       : undefined;
   // An answer given again replaces the earlier one with what its tools did: the cards it created leave the deck before the
