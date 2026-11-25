@@ -1,4 +1,4 @@
-/* The outline of a conversation: marks at mid height, just outside the answer column. */
+/* The outline of a conversation: marks at mid height along the left edge of the chat pane, beside the sidebar. */
 .ask-outline {
   position: fixed;
   top: 46%;
@@ -24,12 +24,12 @@
 }
 .ask-outline button {
   display: grid;
-  justify-items: end;
+  justify-items: start;
   align-items: center;
   width: 34px;
   height: min(22px, calc(64vh / var(--marks, 1)));
   min-height: 8px;
-  padding: 0 4px 0 0;
+  padding: 0 0 0 4px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -58,10 +58,10 @@
   width: 22px;
   background: var(--ink);
 }
-/* The card grows out of the mark it belongs to. */
+/* The card opens to the right of the marks and grows out of the mark it belongs to. */
 .ask-outline-card {
   position: absolute;
-  right: calc(100% + 4px);
+  left: calc(100% + 4px);
   z-index: 7;
   width: 300px;
   box-sizing: border-box;
@@ -103,7 +103,7 @@
 @media (prefers-reduced-motion: no-preference) {
   .ask-outline-card {
     animation: ask-outline-card 150ms var(--ease-out);
-    transform-origin: 100% 50%;
+    transform-origin: 0 50%;
   }
 }
 @keyframes ask-outline-card {
