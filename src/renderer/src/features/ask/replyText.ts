@@ -5,15 +5,20 @@ import {
   stripPassageRefsOutsideCode,
 } from "../../../../shared/smart-text";
 import { stripToolBlocks } from "../../../../shared/tool-blocks";
+import { CHAT_BLOCK_TEXT, chatBlocksAsText } from "../../../../shared/chat-blocks";
 
 /**
- * A reply as a person reads it: no check blocks, no tool blocks, no [P3] passage markers, and a figure's caption instead
- * of its code.
+ * A reply as a person reads it: no check blocks, no tool blocks, no [P3] passage markers, a figure's caption instead
+ * of its code, a chart as its table and a practice question with its options and, from `picks`, the student's answer.
  * Copy and the screen-reader announcement use it.
  */
-export function replyPlainText(body: string): string {
-  const text = mapFigureBlocks(stripToolBlocks(body), (figure) =>
-    figure ? `*${figure.caption}*` : "",
+export function replyPlainText(body: string, language = "it", picks: Record<string, number> = {}): string {
+  const lang = language.startsWith("en") ? "en" : "it";
+  const text = chatBlocksAsText(
+    mapFigureBlocks(stripToolBlocks(body), (figure) => (figure ? `*${figure.caption}*` : "")),
+    CHAT_BLOCK_TEXT[lang],
+    lang,
+    picks,
   );
   return stripPassageRefsOutsideCode(stripCheckFences(text))
     .replace(/\n{3,}/g, "\n\n")

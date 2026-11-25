@@ -25,7 +25,7 @@ import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MathText } from "../../components/math/MathText";
 import { ContextBlock } from "../../components/ContextBlock";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
-import { MarkdownView } from "../../components/MarkdownView";
+import { MarkdownView, type ChatBlocks } from "../../components/MarkdownView";
 import { ToolResult } from "./ToolResult";
 import { savedToolLine } from "@shared/tool-blocks";
 import { Notice } from "../../components/Notice";
@@ -156,6 +156,8 @@ const Reply = memo(function Reply({
   onSuggest,
   onReact,
   onMakeCards,
+  onAnswer,
+  onPicking,
 }: {
   chatId: string;
   row: ChatRow;
@@ -167,6 +169,8 @@ const Reply = memo(function Reply({
   onSuggest: (text: string) => void;
   onReact: (messageId: string, reaction: "up" | "down") => void;
   onMakeCards: (row: ChatRow) => void;
+  onAnswer: (messageId: string, questionId: string, pick: number) => Promise<number>;
+  onPicking: (questionId: string, picking: boolean) => void;
 }) {
   const describeEngineError = useEngineError();
   const engineNames = useEngineNames();
@@ -197,6 +201,18 @@ const Reply = memo(function Reply({
     [row.citations],
   );
   const makeCards = useCallback(() => onMakeCards(row), [onMakeCards, row]);
+  const { t, i18n } = useTranslation();
+  // The reply's practice questions: «Controlla» keeps the pick with the reply, «Un'altra domanda» asks for one more
+  // while no other answer is being written.
+  const blocks = useMemo<ChatBlocks>(
+    () => ({
+      answers: row.answers,
+      onCheck: (questionId, pick) => onAnswer(row.id, questionId, pick),
+      onAnother: busy ? undefined : () => onSuggest(t("components.question.anotherMessage")),
+      onPicking,
+    }),
+    [row.answers, row.id, onAnswer, busy, onSuggest, t, onPicking],
+  );
   // A saved reply never has a tool at work: a `pending:` block in it is drawn as nothing (`savedToolLine`).
   const toolBlock = useCallback((line: string) => {
     const saved = savedToolLine(line);
@@ -212,7 +228,7 @@ const Reply = memo(function Reply({
       failure={failure?.text}
       failureAction={failure?.action}
       checking={row.checking}
-      text={replyPlainText(row.body)}
+      text={replyPlainText(row.body, i18n.language, row.answers)}
       onMakeCards={makeCards}
       reaction={row.reaction}
       regenerateDisabled={busy}
@@ -228,12 +244,16 @@ const Reply = memo(function Reply({
         citationResolver={citationResolver}
         onCitationClick={onCitationClick}
         toolBlock={toolBlock}
+        blocks={blocks}
       >
         {row.body}
       </MarkdownView>
     </ChatMessage>
   );
 });
+
+/** A reply being written draws its chart and question blocks, and no question can be answered until it is saved. */
+const STREAMING_BLOCKS: ChatBlocks = {};
 
 /** The question just sent, until the chat as read holds it. Core names a reused question only once the reply has begun. */
 function PendingQuestion({ turn, last }: { turn: Turn; last: ChatRow | undefined }) {
@@ -271,7 +291,7 @@ function StreamingReply({
   useEffect(() => onGrow(), [text, onGrow]);
   return text ? (
     <ChatMessage role="tutor" streaming>
-      <MarkdownView drawing figures={figures} citationResolver={citationResolver} toolBlock={toolBlock}>
+      <MarkdownView drawing figures={figures} citationResolver={citationResolver} toolBlock={toolBlock} blocks={STREAMING_BLOCKS}>
         {text}
       </MarkdownView>
     </ChatMessage>
@@ -881,6 +901,32 @@ export function AskPage() {
     }),
   );
   const suggest = useStable((text: string) => void send(text, { textOnly: true }));
+  const answer = useStable(async (messageId: string, questionId: string, pick: number) => {
+    const kept = (await invoke("chats.answerQuestion", { chatId: chatId ?? "", messageId, questionId, pick })).pick;
+    // The chat as read carries the answer at once, so the reply shows it again after leaving the chat and coming back.
+    client.setQueryData<typeof thread.data>(["chat", chatId], (data) =>
+      data
+        ? {
+            ...data,
+            messages: data.messages.map((message) =>
+              message.id === messageId ? { ...message, answers: { ...message.answers, [questionId]: kept } } : message,
+            ),
+          }
+        : data,
+    );
+    return kept;
+  });
+  // The practice questions with an option picked and not checked: while there is one, Invia is quiet.
+  const [picking, setPicking] = useState<ReadonlySet<string>>(() => new Set());
+  const pickingChanged = useStable((questionId: string, on: boolean) =>
+    setPicking((current) => {
+      if (current.has(questionId) === on) return current;
+      const next = new Set(current);
+      if (on) next.add(questionId);
+      else next.delete(questionId);
+      return next;
+    }),
+  );
   const react = useStable((messageId: string, reaction: "up" | "down") => {
     void invoke("chats.rate", { messageId, reaction }).then(
       () => client.invalidateQueries({ queryKey: ["chat", chatId] }),
@@ -1048,6 +1094,8 @@ export function AskPage() {
                 onAnswerStronger={chatId ? strongerNow : undefined}
                 onSuggest={suggest}
                 onReact={react}
+                onAnswer={answer}
+                onPicking={pickingChanged}
                 onMakeCards={makeCards}
               />
             ),
@@ -1240,6 +1288,7 @@ export function AskPage() {
           }}
           streaming={busy}
           waiting={reading > 0 ? t("ask.attach.waiting", { count: reading }) : undefined}
+          quiet={picking.size > 0 && !draft.trim()}
           onStop={() => turns.get()?.stop()}
           onContinue={chatId && canContinue(messages, busy) ? continueNow : undefined}
           onSend={() => void send(draft)}

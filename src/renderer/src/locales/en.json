@@ -3100,7 +3100,40 @@
       "undone_one": "{{count}} flashcard undone: it’s no longer in the deck.",
       "undone_other": "{{count}} flashcards undone: they’re no longer in the deck.",
       "restore": "Restore",
-      "failed": "That didn’t work. Try again."
+      "failed": "That didn’t work. Try again.",
+      "reading": "Looking at your results…"
+    },
+    "chart": {
+      "drawing": "Drawing the chart…",
+      "failed": "The chart could not be drawn.",
+      "menu": "More on the chart",
+      "zoom": "Enlarge",
+      "asTable": "Show as a table",
+      "asChart": "Show as a chart",
+      "download": "Download PNG",
+      "copy": "Copy image",
+      "viewer": "Enlarged chart",
+      "fileName": "chart",
+      "legend": "Legend",
+      "category": "Item",
+      "value": "Value",
+      "note": "Detail",
+      "missing": "no data"
+    },
+    "question": {
+      "label": "Question",
+      "options": "Answers",
+      "check": "Check",
+      "right": "The right one",
+      "yours": "Your answer",
+      "correct": "Right.",
+      "notQuite": "Not quite.",
+      "another": "Another question",
+      "anotherMessage": "Ask me another question on the same topic.",
+      "practice": "It's just practice: it doesn't count toward your grades.",
+      "saveFailed": "Your answer couldn't be saved. Try again.",
+      "writing": "Writing the question…",
+      "failed": "The question could not be shown."
     }
   },
   "math": {

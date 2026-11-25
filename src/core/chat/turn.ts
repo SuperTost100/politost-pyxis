@@ -1,6 +1,7 @@
 import { activeSimulation } from "../study/simulation";
 import { keepsFirstSystemPrompt, toolsAttach } from "../engine/funnel";
 import { checkSelection, needsSolverChecks, splitChecks, solverChecks } from "./checks";
+import { chatAnswers } from "./questions";
 import { stripCheckFences, type AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
@@ -116,6 +117,8 @@ export type ChatMessageView = {
   figures?: Record<string, string>;
   /** What the reply's tool calls did, by the result id its ```pyxis-tool blocks name. */
   tools?: Record<string, ToolResultView>;
+  /** The student's answers to the reply's practice questions, by question id: the option's place in the block. */
+  answers?: Record<string, number>;
   /** The math check for this reply is still running; its badges arrive with a `chats.checks` broadcast. */
   checking: boolean;
   /**
@@ -2058,6 +2061,7 @@ export function readChat(
     passages_json: string | null;
   }>;
   const chips = readProfile(db)?.followups !== false;
+  const answers = chatAnswers(db, chatId);
   // Every message's citations in one read, in the primary key's order, which one read per message also had.
   const links = new Map<string, ChatCitation[]>();
   for (const link of db
@@ -2161,6 +2165,7 @@ export function readChat(
         ? { figures: figureImages(JSON.parse(row.figures_json)) }
         : {}),
       ...toolsOf(db, chatId, row.role === "assistant" ? parsed.body : ""),
+      ...(answers.has(row.id) ? { answers: answers.get(row.id) } : {}),
       checking: runningChecks.has(row.id),
     };
   });

@@ -104,6 +104,11 @@
   --staple: #6c7380;
   --spiral: #9aa1ad;
   --shadow-cover: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
+  /* Chart series in fixed order, checked for colour-blind separation and contrast on --surface (chat charts). */
+  --chart-1: #2fae9f;
+  --chart-2: #c4902a;
+  --chart-3: #6f8fe6;
+  --chart-4: #de76a0;
   --shadow-raised:
     0 0 0 1px rgba(255, 255, 255, 0.035), 0 16px 36px -16px rgba(0, 0, 0, 0.8);
 }
@@ -169,6 +174,10 @@
   --staple: #8d939d;
   --spiral: #5f6675;
   --shadow-cover: drop-shadow(0 1px 1px rgba(21, 24, 30, 0.16)) drop-shadow(0 3px 6px rgba(21, 24, 30, 0.1));
+  --chart-1: #008a7a;
+  --chart-2: #9a6400;
+  --chart-3: #3f5fc4;
+  --chart-4: #b8406f;
   --shadow-raised:
     0 2px 4px rgba(21, 24, 30, 0.05), 0 12px 32px -12px rgba(21, 24, 30, 0.18);
 }

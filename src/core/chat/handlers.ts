@@ -13,6 +13,7 @@ import { searchChats } from "./search";
 import { chatUsage } from "../engine/usage";
 import { removeBlobLeftovers } from "../share/usage";
 import { sessionsOpened } from "./sessions";
+import { answerQuestion } from "./questions";
 import { chatToolList } from "../tools/registry";
 import { restoreToolResult, undoToolResult } from "../tools/results";
 import { revokeChatTools, setTools } from "../tools/server";
@@ -211,6 +212,9 @@ export function chatHandlers(
     restoreTool(input: { chatId: string; resultId: string }) {
       return restoreToolResult(db, input.chatId, input.resultId);
     },
+    answerQuestion(input: { chatId: string; messageId: string; questionId: string; pick: number }) {
+      return { pick: answerQuestion(db, input) };
+    },
     rate(input: { messageId: string; reaction: "up" | "down" }) {
       return { reaction: rateMessage(db, input.messageId, input.reaction) };
     },
@@ -229,8 +233,8 @@ export function chatHandlers(
     search(input: { query: string; subject?: string }) {
       return searchChats(db, input.query, input.subject);
     },
-    exportChat(input: { chatId: string; language: ChatExportLanguage }) {
-      return exportChat(db, input.chatId, input.language);
+    exportChat(input: { chatId: string; language: ChatExportLanguage; charts?: "table" | "drawn" }) {
+      return exportChat(db, input.chatId, input.language, input.charts);
     },
     regenerate(input: {
       chatId: string;

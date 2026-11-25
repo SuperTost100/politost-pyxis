@@ -39,7 +39,7 @@ import { radialFixtures, storedGraph } from "../fixtures/maps";
 import type Database from "better-sqlite3";
 import { partMarkdown, seedOutline, type SeedPart } from "../../src/core/study/test-parts";
 import { figureKey } from "../../src/shared/smart-text";
-import { seedFigureChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat, seedToolChat, writeBlob } from "./chat-look-seed";
+import { seedBlocksChat, seedFigureChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat, seedToolChat, writeBlob } from "./chat-look-seed";
 import { photoPng } from "./pictures";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
@@ -446,6 +446,14 @@ const routes = [
   ["ask-tool-working", "/ask/look-tool-working"],
   ["ask-tool-done", "/ask/look-tool-done"],
   ["ask-tool-undone", "/ask/look-tool-undone"],
+  // The chat's own blocks: a chart of quiz grades with a bar's value on hover, the same as a table, a line chart, and a
+  // practice question new, with an option picked, and checked.
+  ["ask-chart", "/ask/look-chart"],
+  ["ask-chart-table", "/ask/look-chart"],
+  ["ask-chart-line", "/ask/look-line"],
+  ["ask-question", "/ask/look-question"],
+  ["ask-question-picked", "/ask/look-question"],
+  ["ask-question-done", "/ask/look-question-done"],
   ["ask-photo-viewer", "/ask/look-files"],
   // The chat panel and search; the subject chip's menu on a chat with a very long subject, and on a new chat's first page.
   ["ask-panel", "/ask/audit-chat"],
@@ -3607,6 +3615,33 @@ async function openState(page: Page, name: string) {
     case "ask-tool-undone":
       await expect(page.getByRole("button", { name: both("Ripristina", "Restore") })).toBeVisible();
       break;
+    case "ask-chart": {
+      const bar = page.locator(".px-chart-hit").nth(1);
+      await expect(bar).toBeVisible();
+      await bar.hover();
+      await expect(page.locator(".px-chart-tip")).toBeVisible();
+      break;
+    }
+    case "ask-chart-table": {
+      await page.locator(".px-chart").hover();
+      await page.getByRole("button", { name: both("Altro sul grafico", "More on the chart") }).click();
+      await page.getByRole("menuitem", { name: both("Mostra come tabella", "Show as a table") }).click();
+      await expect(page.locator(".px-chart-table")).toBeVisible();
+      break;
+    }
+    case "ask-chart-line":
+      await expect(page.locator(".px-chart-line")).toBeVisible();
+      break;
+    case "ask-question":
+      await expect(page.getByRole("radiogroup", { name: both("Risposte", "Answers") })).toBeVisible();
+      break;
+    case "ask-question-picked":
+      await page.getByRole("radio").nth(1).click();
+      await expect(page.getByRole("button", { name: both("Controlla", "Check") })).toBeEnabled();
+      break;
+    case "ask-question-done":
+      await expect(page.getByText(both("Quella giusta", "The right one"))).toBeVisible();
+      break;
     case "ask-stopped":
       await expect(page.getByText(both("Interrotta", "Stopped"))).toBeVisible();
       await expect(page.locator(".px-composer-bar").getByRole("button", { name: both("Continua", "Continue") })).toBeVisible();
@@ -5876,6 +5911,7 @@ function lookChats(name: string) {
   const db = new DatabaseSync(join(auditUserData, "workspace", "pyxis.db"), { timeout: 10000 });
   try {
     db.exec(`DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE chat_id LIKE 'look-%');
+      DELETE FROM chat_question_answers WHERE message_id IN (SELECT id FROM messages WHERE chat_id LIKE 'look-%');
       DELETE FROM messages WHERE chat_id LIKE 'look-%';
       DELETE FROM chats WHERE id LIKE 'look-%';
       DELETE FROM sources WHERE id LIKE 'look-%';
@@ -5883,6 +5919,10 @@ function lookChats(name: string) {
       DELETE FROM subjects WHERE id LIKE 'look-%';`);
     if (name === "ask-figure" || name === "ask-viewer") seedFigureChat(db);
     else if (name.startsWith("ask-tool-")) seedToolChat(db, name.slice("ask-tool-".length) as "working" | "done" | "undone");
+    else if (name === "ask-chart" || name === "ask-chart-table") seedBlocksChat(db, "chart");
+    else if (name === "ask-chart-line") seedBlocksChat(db, "line");
+    else if (name === "ask-question" || name === "ask-question-picked") seedBlocksChat(db, "question");
+    else if (name === "ask-question-done") seedBlocksChat(db, "question", 0);
     else if (name === "ask-outline") seedOutlineChat(db);
     else if (name === "ask-stopped") seedStoppedChat(db);
     else if (name === "ask-photo-viewer") seedSentFilesChat(db, auditUserData);

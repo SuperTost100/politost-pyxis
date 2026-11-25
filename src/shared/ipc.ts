@@ -3170,7 +3170,8 @@ export const requests = {
     }),
   },
   "chats.export": {
-    input: z.object({ chatId: z.string(), language: z.enum(["en", "it"]) }),
+    /** `charts: "drawn"` keeps valid chart blocks for the PDF, whose page draws them; a Markdown file gets tables. */
+    input: z.object({ chatId: z.string(), language: z.enum(["en", "it"]), charts: z.enum(["table", "drawn"]).optional() }),
     output: z.object({ filename: z.string(), markdown: z.string() }),
   },
   "chats.regenerate": {
@@ -3239,6 +3240,8 @@ export const requests = {
           figures: z.record(z.string(), z.string()).optional(),
           /** What the reply's tool calls did, by the result id its ```pyxis-tool blocks name. */
           tools: z.record(z.string(), toolResultView).optional(),
+          /** The student's answers to the reply's practice questions, by question id: the option's place in the block. */
+          answers: z.record(z.string(), z.number().int()).optional(),
           body: z.string(),
           /** The files this question carried, in the order they were attached. */
           files: z.array(messageFile).optional(),
@@ -3309,6 +3312,19 @@ export const requests = {
   "chats.restoreTool": {
     input: z.object({ chatId: z.string(), resultId: z.string() }),
     output: toolResultView,
+  },
+  /**
+   * «Controlla» on a practice question in a reply (```pyxis-question): keeps the pick with the reply, given as the
+   * option's place in the block. It counts nowhere: no grade, mistake, mastery, review or study time.
+   */
+  "chats.answerQuestion": {
+    input: z.object({
+      chatId: z.string(),
+      messageId: z.string(),
+      questionId: z.string().max(64),
+      pick: z.number().int().min(0).max(4),
+    }),
+    output: z.object({ pick: z.number().int() }),
   },
   "chats.ask": {
     input: z.object({

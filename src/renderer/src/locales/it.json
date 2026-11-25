@@ -3100,7 +3100,40 @@
       "undone_one": "{{count}} flashcard annullata: non è più nel mazzo.",
       "undone_other": "{{count}} flashcard annullate: non sono più nel mazzo.",
       "restore": "Ripristina",
-      "failed": "Non ha funzionato. Riprova."
+      "failed": "Non ha funzionato. Riprova.",
+      "reading": "Guardo i tuoi risultati…"
+    },
+    "chart": {
+      "drawing": "Disegno il grafico…",
+      "failed": "Non è stato possibile disegnare il grafico.",
+      "menu": "Altro sul grafico",
+      "zoom": "Ingrandisci",
+      "asTable": "Mostra come tabella",
+      "asChart": "Mostra come grafico",
+      "download": "Scarica PNG",
+      "copy": "Copia immagine",
+      "viewer": "Grafico ingrandito",
+      "fileName": "grafico",
+      "legend": "Legenda",
+      "category": "Voce",
+      "value": "Valore",
+      "note": "Dettaglio",
+      "missing": "nessun dato"
+    },
+    "question": {
+      "label": "Domanda",
+      "options": "Risposte",
+      "check": "Controlla",
+      "right": "Quella giusta",
+      "yours": "La tua risposta",
+      "correct": "Giusto.",
+      "notQuite": "Non proprio.",
+      "another": "Un'altra domanda",
+      "anotherMessage": "Fammi un'altra domanda sullo stesso argomento.",
+      "practice": "È solo per provare: non conta nei voti.",
+      "saveFailed": "Non è stato possibile salvare la risposta. Riprova.",
+      "writing": "Preparo la domanda…",
+      "failed": "Non è stato possibile mostrare la domanda."
     }
   },
   "math": {

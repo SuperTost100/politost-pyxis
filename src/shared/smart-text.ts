@@ -108,7 +108,7 @@ type BlockData = SmartBlock extends infer B
   : never;
 
 /** The question with its options in a fixed order that only its id decides: the same on every render and reload. */
-function arranged(question: CheckData, id: string): CheckData & { order: number[] } {
+export function arranged(question: CheckData, id: string): CheckData & { order: number[] } {
   const { options, correct, order } = shuffleChoices(
     question.options,
     question.answer,
@@ -124,7 +124,7 @@ export type SmartSegment =
   | { type: "pending"; kind: SmartBlockKind | null };
 
 /** A stable short hash, so an answer stays attached to the same block until the block's content changes. */
-function hash(text: string): string {
+export function hash(text: string): string {
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
   for (let i = 0; i < text.length; i++) {
@@ -392,6 +392,18 @@ export function mapFigureBlocks(
   markdown: string,
   replace: (figure: FigureData | null) => string | null,
 ): string {
+  return mapFencedBlocks(markdown, ["pyxis-figure"], (_, body) => replace(parseFigure(body)));
+}
+
+/**
+ * `mapFigureBlocks` for any of the fence languages in `languages` (lower case): `replace` gets the language and the
+ * block's body, outdented, and returns the text to put in its place, or null to keep the block.
+ */
+export function mapFencedBlocks(
+  markdown: string,
+  languages: readonly string[],
+  replace: (language: string, body: string) => string | null,
+): string {
   const text = markdown.replace(/\r\n?/g, "\n");
   const lines = text.split("\n");
   const out: string[] = [];
@@ -416,8 +428,11 @@ export function mapFigureBlocks(
     let above = i - 1;
     while (above >= 0 && !lines[above]!.trim()) above--;
     const listed = width > 0 && above >= 0 && inListItem(text, lines.slice(0, above).join("\n").length + (above > 0 ? 1 : 0));
-    const figure = close < lines.length && open[3]!.toLowerCase() === "pyxis-figure" && (width < 4 || listed);
-    const next = figure ? replace(parseFigure(block.slice(1, -1).map((line) => outdent(line, width)).join("\n"))) : null;
+    const language = open[3]!.toLowerCase();
+    const figure = close < lines.length && languages.includes(language) && (width < 4 || listed);
+    const next = figure
+      ? replace(language, block.slice(1, -1).map((line) => outdent(line, width)).join("\n"))
+      : null;
     // A block in a list item is three columns in, where it reads as a figure block in that item.
     if (figure && listed && width > 3) block = block.map((line) => outdent(line, width - 3));
     if (figure && listed && width < 3) block = block.map((line) => (line.trim() ? " ".repeat(3 - width) + line : line));
