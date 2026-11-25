@@ -224,6 +224,16 @@ describe("propose_path_change", () => {
     expect(db.prepare("SELECT count(*) FROM chat_tool_results").pluck().get()).toBe(0);
   });
 
+  it("tells the model what it asked for and is already so", async () => {
+    const { db, planId } = fixture();
+    const out = await proposePathTool(db).run(
+      turn({ planId, subject: null }),
+      pathInput.parse({ exam_date: `${NEXT_YEAR}-01-22`, remove_topics: ["Fluidi"] }),
+    );
+    expect(out.text).toMatch(new RegExp(`Left out because the exam is already on ${NEXT_YEAR}-01-22\\.`));
+    expect(toolView(db, "chat", out.shown!.resultId)).toMatchObject({ date: null, changed: 1 });
+  });
+
   it("allows one proposal of the path per answer", async () => {
     const { db, planId } = fixture();
     const tool = proposePathTool(db);

@@ -336,8 +336,13 @@ export function proposePathTool(db: Database.Database): Tool {
       turn.tally[PATH_TOOL] = 1;
       const proposal: PathProposal = { planId: exam.id, exam: exam.title, date, hours, topics };
       const resultId = storeProposal(db, turn.chatId, PATH_TOOL, proposal, fingerprint(db, proposal)!, now);
+      // What was asked and is already so is left out of the card, and the model hears why.
+      const already = [
+        args.exam_date && !date ? `the exam is already on ${args.exam_date}` : "",
+        args.weekly_hours !== undefined && !hours ? `the weekly hours are already ${args.weekly_hours}` : "",
+      ].filter(Boolean);
       return {
-        text: `Shown to the student as a card to confirm: ${summary(proposal)}. They have not decided yet and nothing has changed. In one short sentence say what you prepared and that nothing changes until they apply it; do not list the changes again and never say they are done.`,
+        text: `Shown to the student as a card to confirm: ${summary(proposal)}.${already.length ? ` Left out because ${already.join(" and ")}.` : ""} They have not decided yet and nothing has changed. In one short sentence say what you prepared and that nothing changes until they apply it; do not list the changes again and never say they are done.`,
         shown: { resultId },
       };
     },
