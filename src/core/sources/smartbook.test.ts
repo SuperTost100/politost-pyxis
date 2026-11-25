@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { strToU8, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { importSmartbook, passagesAround, smartbookMeta } from "./smartbook";
+import { importSmartbook, passagePlaces, passagesAround, smartbookMeta } from "./smartbook";
 import { uuidv7 } from "../../shared/ids";
 import { retrieve } from "./retrieve";
 
@@ -124,6 +124,61 @@ describe("importSmartbook", () => {
     const rows = passagesAround(db, cited);
     expect(rows.map((row) => row.id).sort()).toEqual([cited, sibling].sort());
     expect(rows.find((row) => row.id === cited)?.current).toBe(true);
+  });
+
+  it("quotes the cited passage itself when it is merged with the one before it on its page", () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      `INSERT INTO sources (id, kind, title, status, created_at, updated_at)
+       VALUES ('s', 'pdf', 'Note', 'ready', 1, 1)`,
+    ).run();
+    const first = uuidv7();
+    const cited = uuidv7();
+    const insert = db.prepare(
+      `INSERT INTO passages (id, source_id, text, locator_json, char_start, created_at) VALUES (?, 's', ?, ?, ?, 1)`,
+    );
+    insert.run(first, "L'inizio della pagina parla d'altro.", JSON.stringify({ page: 4 }), 10);
+    insert.run(cited, "Il brano citato è questo.", JSON.stringify({ page: 4 }), 60);
+    const rows = passagesAround(db, cited);
+    const current = rows.find((row) => row.current);
+    // The source viewer reads the page as one paragraph; the card quotes only the cited words.
+    expect(current?.text).toContain("L'inizio della pagina");
+    expect(current?.quote).toBe("Il brano citato è questo.");
+    expect(rows.filter((row) => row.quote !== undefined)).toHaveLength(1);
+  });
+
+  it("names the source and place of each passage asked for, without its text, also for a file that left the Library", () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      `INSERT INTO sources (id, kind, title, status, created_at, updated_at)
+       VALUES ('s', 'pdf', 'Note', 'removed', 1, 1)`,
+    ).run();
+    const first = uuidv7();
+    const second = uuidv7();
+    const insert = db.prepare(
+      `INSERT INTO passages (id, source_id, text, locator_json, section_path, created_at) VALUES (?, 's', ?, ?, ?, 1)`,
+    );
+    insert.run(first, "Un capitolo intero di testo.", JSON.stringify({ page: 4 }), null);
+    insert.run(second, "Altro testo.", null, "2.1 Moto");
+    expect(passagePlaces(db, [second, "gone", first])).toEqual([
+      { passageId: second, sourceId: "s", sourceTitle: "Note", locator: {}, sectionPath: "2.1 Moto" },
+      { passageId: first, sourceId: "s", sourceTitle: "Note", locator: { page: 4 }, sectionPath: null },
+    ]);
+  });
+
+  it("names the version of the file each passage was read from", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('s', 'pdf', 'Note', 'ready', 1, 1);
+      INSERT INTO source_documents (id, source_id, version, tree_json, created_at) VALUES ('d1', 's', 1, '{}', 1), ('d2', 's', 2, '{}', 2);`);
+    const insert = db.prepare(
+      `INSERT INTO passages (id, source_id, document_id, text, locator_json, created_at) VALUES (?, 's', ?, 'Testo.', '{"page":4}', 1)`,
+    );
+    insert.run("old", "d1");
+    insert.run("new", "d2");
+    expect(passagePlaces(db, ["old", "new"]).map((place) => [place.passageId, place.version])).toEqual([
+      ["old", 1],
+      ["new", 2],
+    ]);
   });
 
   it("refuses an encrypted package", () => {

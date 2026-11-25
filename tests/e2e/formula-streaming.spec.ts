@@ -145,12 +145,17 @@ test("prices stay text and a list keeps its check and figure blocks", async () =
     await expect(reply.locator("p").first().locator(".katex")).toHaveCount(1);
     await expect(reply.locator("p").nth(1)).toHaveText(/^Costa 12 \$ e lo sconto è del 10 %, quindi paghi .* euro\.$/);
     await expect(reply.locator("p").nth(1).locator(".katex annotation")).toHaveText("10{,}8");
-    // One list of three steps, with bold and formulas drawn, the check as a badge in its step and the figure in its own.
+    // One list of three steps, with bold and formulas drawn, the check beside its step and the figure in its own. The
+    // grey check shows while the row under the answer, which counts it, is pressed or open.
     await expect(reply.locator("ol")).toHaveCount(1);
     await expect(reply.locator("ol > li")).toHaveCount(3);
     await expect(reply.locator("ol strong")).toHaveCount(3);
-    await expect(reply.locator("ol > li > p .katex")).toHaveCount(4);
-    await expect(reply.locator("ol > li").nth(0).locator(".px-check-badge.is-verified")).toBeVisible({ timeout: 90_000 });
+    await expect(reply.locator("ol > li p .katex")).toHaveCount(4);
+    const check = reply.locator("ol > li").nth(0).locator(".px-check-badge.is-verified");
+    await expect(check).toBeAttached({ timeout: 90_000 });
+    await expect(check).toBeHidden();
+    await page.locator(".px-msg:not(.px-msg-user)").last().locator(".px-sources-bar button").first().click();
+    await expect(check).toBeVisible();
     await expect(reply.locator("ol > li").nth(1).locator("figure.px-figure img").first()).toBeVisible({ timeout: 90_000 });
     await expect(reply.locator("pre, code, .px-formula-source, .katex-error")).toHaveCount(0);
     // No block source or Markdown mark is left as text (the formulas carry their LaTeX in hidden annotations).

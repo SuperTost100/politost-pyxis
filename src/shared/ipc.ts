@@ -550,6 +550,8 @@ const LessonSources = z.array(
         slide: z.number().optional(),
         chapter: z.number().optional(),
         section: z.string().optional(),
+        /** The version of the file the passage was read from. */
+        version: z.number().optional(),
       }),
     ),
   }),
@@ -573,7 +575,7 @@ const LessonOutput = z.object({
   figures: z.record(z.string(), z.string()).optional(),
   /** Saved picks of the lesson's quick checks and recap, by question id. */
   answers: SmartAnswers,
-  /** The sources and places the lesson was given, for its "Sources used" footer. */
+  /** The sources and places of the passages the lesson was given, one place per passage, for its sources row. */
   sources: LessonSources,
   /** The label of each [Pn] chip, by passage order, as Ask labels its citations. */
   citations: z.array(z.string()),
@@ -3268,6 +3270,8 @@ export const requests = {
               sourceTitle: z.string().optional(),
               subject: z.string().nullable().optional(),
               attached: z.boolean().optional(),
+              /** The version of the file the passage was read from. */
+              version: z.number().optional(),
             }),
           ),
         }),
@@ -3684,6 +3688,23 @@ export const requests = {
         sectionPath: z.string().nullable(),
         locator: locatorSchema,
         current: z.boolean(),
+        /** On the current row: the cited passage's own words, which `text` may merge with its neighbours on the page. */
+        quote: z.string().optional(),
+      }),
+    ),
+  },
+  // Where passages sit, without their text: the sources row under a text that cites them.
+  "sources.places": {
+    input: z.object({ passageIds: z.array(z.string()).max(200) }),
+    output: z.array(
+      z.object({
+        passageId: z.string(),
+        sourceId: z.string(),
+        sourceTitle: z.string(),
+        locator: locatorSchema,
+        sectionPath: z.string().nullable(),
+        /** The version of the file the passage was read from. */
+        version: z.number().optional(),
       }),
     ),
   },

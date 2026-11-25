@@ -86,6 +86,7 @@ const replayable = new Set([
   "sources.meta",
   "sources.details",
   "sources.passage",
+  "sources.places",
   "sources.chapter",
   "sources.viewerDocument",
   "chats.list",

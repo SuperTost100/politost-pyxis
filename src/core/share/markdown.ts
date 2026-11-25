@@ -3,7 +3,7 @@ import type { Grade } from "../study/grade";
 import { readLesson } from "../study/openLesson";
 import { partsMarkdown } from "../study/parts";
 import { planLanguage } from "../engine/prompts";
-import { smartLabels, smartTextToMarkdown } from "../../shared/smart-text";
+import { smartLabels, smartTextToMarkdown, stripPassageRefsOutsideCode } from "../../shared/smart-text";
 import { safeFileName } from "../../shared/file-name";
 
 export type ExportLabels = {
@@ -24,6 +24,7 @@ export function planExportLabels(db: Database.Database, planId: string): ExportL
   return planLanguage(db, planId) === "Italian" ? exportLabels.it : exportLabels.en;
 }
 
+/** A lesson as a file: its text without citation marks, and the sources it was written from listed at the end. */
 export function lessonMarkdown(
   title: string,
   body: string,
@@ -37,7 +38,7 @@ export function lessonMarkdown(
     unique.length === 0
       ? ""
       : `\n\n## ${labels.sources}\n\n${unique.map((source) => `- ${source}`).join("\n")}`;
-  return `# ${title}\n\n${body}${cites}\n`;
+  return `# ${title}\n\n${stripPassageRefsOutsideCode(body)}${cites}\n`;
 }
 
 export function cardsMarkdown(

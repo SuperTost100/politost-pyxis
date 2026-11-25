@@ -22,6 +22,26 @@ export function codeRanges(input: string): Array<[number, number]> {
 }
 
 /**
+ * Where a Markdown text is not prose, as the parser reads it: code, formulas, links (their label and their destination),
+ * images, definitions and raw HTML. A citation mark is prose; a `[P1]` inside any of these is part of what it is.
+ */
+export function notProseRanges(input: string): Array<[number, number]> {
+  const ranges = codeRanges(input);
+  walk(parseMarkdown(input), (node) => {
+    if (["code", "inlineCode"].includes(node.type)) return false;
+    if (!["math", "inlineMath", "link", "linkReference", "image", "imageReference", "definition", "html"].includes(node.type)) return;
+    ranges.push([start(node), end(node)]);
+    return false;
+  });
+  return ranges.sort((a, b) => a[0] - b[0]);
+}
+
+/** Whether `at` lies in one of `ranges`. */
+export function inRanges(ranges: ReadonlyArray<readonly [number, number]>, at: number): boolean {
+  return ranges.some(([from, to]) => at >= from && at < to);
+}
+
+/**
  * Applies `map` to Markdown outside code blocks and code spans. `map` also gets the chunk's `start` and `end` offsets in
  * `input`, for callers that must know whether a chunk edge is a real line edge.
  */

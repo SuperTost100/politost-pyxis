@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import type { MenuProps } from "antd";
 import { Clock, Download, Network } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useNavigationType } from "react-router";
 import { parseSmartText, partQuestions } from "@shared/smart-text";
@@ -15,7 +15,6 @@ import { Notice } from "../../components/Notice";
 import { Popover } from "../../components/Popover";
 import { SelectionMenu } from "../../components/SelectionMenu";
 import { SmartText } from "../../components/SmartText";
-import { openSourceViewer } from "../../components/SourceViewer";
 import { Tag } from "../../components/Tag";
 import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
@@ -32,7 +31,10 @@ import { usePartRewrites, useRewriteArrival } from "./PartRewrite";
 import { unfinishedQuery } from "../plans/Unfinished";
 import { startedQuizSize } from "./lessonQuiz";
 import { lessonNext } from "./lessonNext";
-import { ReaderEnd, ReaderLayout, ReaderLoading, SourcesFooter, useOpenNext } from "./Reader";
+import { ReaderEnd, ReaderLayout, ReaderLoading, useOpenNext } from "./Reader";
+import { SourcesRow } from "../../components/SourcesRow";
+import { lessonPlaces } from "../../lib/sourcePlaces";
+import { smartClaims } from "../../lib/mathChecks";
 import "./PartPage.css";
 
 const NARROW = "(max-width: 1099px)";
@@ -137,6 +139,14 @@ export function PartPage({
   const topicTitle = topic?.title ?? t("lesson.title");
   const lesson = data.lesson;
   const written = data.state === "written" && lesson !== null;
+  // The passages the part cites, for the row at its end. [Pn] is the lesson's n-th passage; a mark for any other is left out.
+  const cited = useMemo(
+    () => lessonPlaces(lesson?.markdown ?? "", lesson?.passageIds ?? [], lesson?.sources ?? []),
+    [lesson?.markdown, lesson?.passageIds, lesson?.sources],
+  );
+  const claims = useMemo(() => smartClaims(lesson?.markdown ?? ""), [lesson?.markdown]);
+  const passageCount = lesson?.passageIds.length ?? 0;
+  const knownPassage = useCallback((number: number) => number >= 1 && number <= passageCount, [passageCount]);
   const href = (position: number) => `/plans/${planId}/lesson/${topicId}?part=${position}`;
   // "Torna al percorso" goes back the way the bar does when the bar leads to the exam, and opens the exam otherwise.
   const toPath = () => returnTo(back, `/plans/${planId}`, navigate);
@@ -408,19 +418,6 @@ export function PartPage({
   };
   const headMenu = useItemMenu({ menu, region: t("lesson.more") });
 
-  // Above the title, what the part was written from: its first two sources and how many more.
-  const sourceTitles = (lesson?.sources ?? []).map((source) => source.title);
-  const sourceLine = written
-    ? sourceTitles.length
-      ? t("lesson.fromSources", {
-          list:
-            sourceTitles.length > 2
-              ? t("lesson.sourcesMore", { first: sourceTitles.slice(0, 2).join(", "), count: sourceTitles.length - 2 })
-              : sourceTitles.join(t("lesson.sourcesAnd")),
-        })
-      : undefined
-    : undefined;
-
   const title = !outline
     ? topicTitle
     : recap
@@ -502,7 +499,6 @@ export function PartPage({
 
   return (
     <ReaderLayout
-      eyebrow={sourceLine}
       title={<InlineMarkdown>{title}</InlineMarkdown>}
       titleFocusable
       meta={meta}
@@ -589,7 +585,7 @@ export function PartPage({
           </div>
         ) : null}
         {(written || data.state === "book") && lesson ? (
-          <div className={arriving?.position === data.position || rewriteArrived ? "px-part-text is-arriving" : "px-part-text"}>
+          <div data-cited-host className={arriving?.position === data.position || rewriteArrived ? "px-part-text is-arriving" : "px-part-text"}>
             <SelectionMenu
               planId={planId}
               topicId={topicId}
@@ -601,15 +597,18 @@ export function PartPage({
                 answers={lesson.answers}
                 onAnswer={written && lesson.itemId && !rewriting && !query.isPlaceholderData ? answer : undefined}
                 final={written ? { label: t("lesson.finalCheck"), keys: true } : undefined}
-                onCitationClick={(number) => {
-                  const passageId = lesson.passageIds[number - 1];
-                  if (passageId) openSourceViewer({ passageId });
-                }}
-                citationResolver={(number) => lesson.citations[number - 1]}
+                knownPassage={knownPassage}
               >
                 {lesson.markdown}
               </SmartText>
             </SelectionMenu>
+            <SourcesRow
+              places={cited.places}
+              order={cited.order}
+              claims={claims}
+              variant="lesson"
+              arriving={arriving?.position === data.position || rewriteArrived}
+            />
             {outline ? (
               <PartFoot
                 heading={footHeading}
@@ -649,7 +648,6 @@ export function PartPage({
                 onContinue={() => markRead.mutate("continue")}
               />
             )}
-            <SourcesFooter sources={lesson.sources} />
           </div>
         ) : null}
       </div>
