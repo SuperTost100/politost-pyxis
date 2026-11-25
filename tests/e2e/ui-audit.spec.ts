@@ -46,6 +46,9 @@ import {
   seedBlocksChat,
   seedFigureChat,
   seedMadeChat,
+  seedProposalChat,
+  PROPOSAL_CALLS,
+  PROPOSAL_QUESTIONS,
   seedOutlineChat,
   seedSentFilesChat,
   seedSourcesChats,
@@ -471,6 +474,14 @@ const routes = [
   ["ask-quiz-working", "/ask/look-quiz-working"],
   ["ask-quiz-done", "/ask/look-quiz-done"],
   ["ask-quiz-undone", "/ask/look-quiz-undone"],
+  // The "ask first" tools: a change to the path, a new exam and a deletion waiting for the student, a path change applied
+  // and one declined, and one whose path changed before the student decided.
+  ["ask-propose-path", "/ask/look-propose-path"],
+  ["ask-propose-exam", "/ask/look-propose-exam"],
+  ["ask-propose-delete", "/ask/look-propose-delete"],
+  ["ask-propose-applied", "/ask/look-propose-applied"],
+  ["ask-propose-declined", "/ask/look-propose-declined"],
+  ["ask-propose-stale", "/ask/look-propose-stale"],
   // The chat's own blocks: a chart of quiz grades with a bar's value on hover, the same as a table, a line chart, and a
   // practice question new, with an option picked, and checked.
   ["ask-chart", "/ask/look-chart"],
@@ -2454,10 +2465,15 @@ async function stopHeldTurn(page: Page) {
 const toolTurnFile = (userData: string) => join(userData, "tool-turn");
 /** The held call goes on once this file exists, which only a Stop that failed creates (`stopHeldTurn`). */
 const toolGoFile = (userData: string) => join(userData, "tool-go");
+/** While this file exists, a question sent in Chiedi gets a reply that calls that proposal tool (`ask-propose-<kind>`). */
+const proposeTurnFile = (userData: string, kind: keyof typeof PROPOSAL_CALLS) => join(userData, `propose-${kind}-turn`);
 function prepareToolTurn(name: string) {
   if (name === "ask-tool-working") writeFileSync(toolTurnFile(auditUserData), "");
   else rmSync(toolTurnFile(auditUserData), { force: true });
   rmSync(toolGoFile(auditUserData), { force: true });
+  for (const kind of Object.keys(PROPOSAL_CALLS) as Array<keyof typeof PROPOSAL_CALLS>)
+    if (name === `ask-propose-${kind}`) writeFileSync(proposeTurnFile(auditUserData, kind), "");
+    else rmSync(proposeTurnFile(auditUserData, kind), { force: true });
 }
 
 /** Pyxis stays at work on the new-flashcard dialog until this file exists; every other state finds it there. */
@@ -3765,6 +3781,29 @@ async function openState(page: Page, name: string) {
     case "ask-quiz-done":
       await expect(page.getByText(both("Dinamica, 10 domande", "Dinamica, 10 questions"))).toBeVisible();
       await expect(page.getByRole("button", { name: both("Annulla", "Undo") })).toBeVisible();
+      break;
+    case "ask-propose-path":
+    case "ask-propose-exam":
+    case "ask-propose-delete": {
+      // A proposal's fingerprint is the app's own, so the state asks and the recorded reply proposes through the server.
+      await expect(page.getByText("La dinamica studia il moto dei corpi a partire dalle forze che lo causano.")).toBeVisible();
+      const box = page.getByRole("textbox", { name: both("Messaggio", "Message") });
+      await box.fill(PROPOSAL_QUESTIONS[name.slice("ask-propose-".length) as keyof typeof PROPOSAL_QUESTIONS]);
+      await box.press("Enter");
+      const card = page.getByRole("region", { name: /^(Da confermare|To confirm): / });
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator(".px-composer-bar").getByRole("button", { name: both("Interrompi", "Stop") })).toHaveCount(0, { timeout: 30_000 });
+      await expect(card.locator("button.px-ask-safe")).toBeFocused();
+      break;
+    }
+    case "ask-propose-applied":
+      await expect(page.getByRole("button", { name: both("Apri il percorso", "Open the path") })).toBeVisible();
+      break;
+    case "ask-propose-declined":
+      await expect(page.getByRole("button", { name: both("Rivedi la proposta", "Review the proposal") })).toBeVisible();
+      break;
+    case "ask-propose-stale":
+      await expect(page.getByText(both("Il percorso è cambiato nel frattempo, quindi non ho applicato niente.", "The path changed in the meantime, so I applied nothing."))).toBeVisible();
       break;
     case "ask-chart": {
       const bar = page.locator(".px-chart-hit").nth(1);
@@ -6013,6 +6052,10 @@ test.beforeAll(async () => {
         title: "sui tre principi della dinamica",
         cards: TOOL_CARDS,
       })}`,
+      ...Object.entries(PROPOSAL_CALLS).map(
+        ([kind, call]) =>
+          `@@tool ${call.tool} ${JSON.stringify({ _when: proposeTurnFile(userData, kind as keyof typeof PROPOSAL_CALLS), ...call.args })}`,
+      ),
       "La forza è $F=ma$ [P1].",
     ].join("\n"),
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
@@ -6168,6 +6211,8 @@ function lookChats(name: string) {
       const [, tool, state] = name.split("-") as [string, "map" | "quiz", "working" | "done" | "undone"];
       seedMadeChat(db, tool, state);
     }
+    else if (name.startsWith("ask-propose-"))
+      seedProposalChat(db, name.slice("ask-propose-".length) as Parameters<typeof seedProposalChat>[1]);
     else if (name === "ask-chart" || name === "ask-chart-table") seedBlocksChat(db, "chart");
     else if (name === "ask-chart-line") seedBlocksChat(db, "line");
     else if (name === "ask-question" || name === "ask-question-picked") seedBlocksChat(db, "question");
