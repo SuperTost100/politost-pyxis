@@ -290,27 +290,40 @@ export async function proposeCards(
 /**
  * Files the cards the student kept, under an exam's topic or, with no exam, under a subject. They start like any new
  * card: no review yet, so they are due at once. A front already in the same place (the topic, or the subject's cards
- * with no exam) is skipped, so saving twice adds nothing.
+ * with no exam) is skipped, so saving twice adds nothing. `topicId: null` files them under the exam with no topic, as a
+ * chat that belongs to an exam does; a front anywhere in that exam counts as already there.
  */
 export function saveProposedCards(
   db: Database.Database,
+  input: Parameters<typeof saveProposedCardIds>[1],
+): { saved: number; skipped: number } {
+  const { saved, skipped } = saveProposedCardIds(db, input);
+  return { saved, skipped };
+}
+
+/** `saveProposedCards` that also returns the new cards' ids, in the order they were given. */
+export function saveProposedCardIds(
+  db: Database.Database,
   input: {
     planId?: string;
-    topicId?: string;
+    topicId?: string | null;
     subjectId?: string;
     cards: ProposedCard[];
     provider: string;
     model: string;
-    /** The prompt that wrote them: a text's (the default) or a subject's, from the Flashcard page. */
-    prompt?: "cards.text" | "cards.subject";
+    /** The prompt that wrote them: a text's (the default), a subject's from the Flashcard page, or a chat reply's. */
+    prompt?: "cards.text" | "cards.subject" | "chat.tutor";
   },
-): { saved: number; skipped: number } {
+): { saved: number; skipped: number; ids: string[] } {
   const template = input.prompt ?? TEMPLATE;
   const planId = input.planId ?? null;
-  const topicId = planId ? (input.topicId ?? "") : null;
+  const wholeExam = Boolean(planId) && input.topicId === null;
+  const topicId = planId && !wholeExam ? (input.topicId ?? "") : null;
   const subjectId = planId ? null : (input.subjectId ?? "");
-  if (planId) requireTopic(db, planId, topicId!);
-  else if (!db.prepare("SELECT 1 FROM subjects WHERE id = ?").get(subjectId))
+  if (planId && !wholeExam) requireTopic(db, planId, topicId!);
+  else if (planId) {
+    if (!db.prepare("SELECT 1 FROM plans WHERE id = ?").get(planId)) throw new Error("plan-missing");
+  } else if (!db.prepare("SELECT 1 FROM subjects WHERE id = ?").get(subjectId))
     throw new Error("subject-missing");
   return db.transaction(() => {
     // Same comparison as the proposal check and seed_key: case and spacing do not make a new front.
@@ -318,11 +331,13 @@ export function saveProposedCards(
       (
         db
           .prepare(
-            planId
-              ? `SELECT front FROM cards WHERE plan_id = ? AND topic_id = ? AND removed = 0`
-              : `SELECT front FROM cards WHERE plan_id IS NULL AND subject_id = ? AND removed = 0`,
+            wholeExam
+              ? `SELECT front FROM cards WHERE plan_id = ? AND removed = 0`
+              : planId
+                ? `SELECT front FROM cards WHERE plan_id = ? AND topic_id = ? AND removed = 0`
+                : `SELECT front FROM cards WHERE plan_id IS NULL AND subject_id = ? AND removed = 0`,
           )
-          .all(...(planId ? [planId, topicId] : [subjectId])) as Array<{ front: string }>
+          .all(...(wholeExam ? [planId] : planId ? [planId, topicId] : [subjectId])) as Array<{ front: string }>
       ).map((row) => norm(row.front)),
     );
     const passage = db.prepare("SELECT 1 FROM passages WHERE id = ?");
@@ -332,7 +347,7 @@ export function saveProposedCards(
          prompt_template, prompt_version, grounding, passage_id, seed_key, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'reported', ?, ?, ?, ?, ?, ?)`,
     );
-    let saved = 0;
+    const ids: string[] = [];
     for (const row of input.cards) {
       const front = row.front.trim();
       const back = row.back.trim();
@@ -342,8 +357,9 @@ export function saveProposedCards(
       const linked =
         row.passageId && passage.get(row.passageId) ? row.passageId : null;
       const now = Date.now();
+      const id = uuidv7(now);
       insert.run(
-        uuidv7(now),
+        id,
         planId,
         topicId,
         subjectId,
@@ -358,8 +374,8 @@ export function saveProposedCards(
         `text:${norm(front).slice(0, 160)}`,
         now,
       );
-      saved += 1;
+      ids.push(id);
     }
-    return { saved, skipped: input.cards.length - saved };
+    return { saved: ids.length, skipped: input.cards.length - ids.length, ids };
   })();
 }

@@ -569,6 +569,23 @@ CREATE TRIGGER attempts_drop_sessions AFTER DELETE ON attempts BEGIN
   DELETE FROM tool_sessions WHERE owner = 'quiz:' || OLD.id;
 END;`,
   },
+  // What a Pyxis tool did during a chat reply (`src/core/tools`), shown in the reply where the model called it. The reply
+  // names the row in a ```pyxis-tool block; `message_id` is set once the reply is saved. `data_json` is the tool's own
+  // record (for flashcards: the ids of the cards it created). `undone_json` lists what «Annulla» took away, so «Ripristina»
+  // brings back exactly those; null while the result stands. The cards themselves stay in `cards`.
+  {
+    version: 38,
+    sql: `CREATE TABLE chat_tool_results (
+  id TEXT PRIMARY KEY,
+  chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  message_id TEXT,
+  tool TEXT NOT NULL,
+  data_json TEXT NOT NULL CHECK (json_valid(data_json)),
+  undone_json TEXT CHECK (undone_json IS NULL OR json_valid(undone_json)),
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX chat_tool_results_message ON chat_tool_results(chat_id, message_id);`,
+  },
 ] satisfies Array<{
   version: number;
   sql: string;

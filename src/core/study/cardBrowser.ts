@@ -1,3 +1,4 @@
+import { toolResultCards } from "../tools/results";
 import type Database from "better-sqlite3";
 import { foldText } from "../../shared/fold-text";
 import { clozeAnswer } from "./cloze";
@@ -121,6 +122,8 @@ export function browseCards(
     perSubject?: number;
     expand?: Array<string | null>;
     keep?: string[];
+    /** Only the cards a chat tool created: the result's id (`chat_tool_results`). */
+    made?: string;
   },
   now: number,
 ): BrowseResult {
@@ -129,6 +132,7 @@ export function browseCards(
     .split(/\s+/)
     .filter(Boolean);
   fillSearchText(db);
+  const made = input.made === undefined ? null : JSON.stringify(toolResultCards(db, input.made));
   const latest = latestReview("state_json");
   // The status filter runs in SQL on the latest review's saved state, so only the page's rows are read and parsed.
   // A card never rated has no review: it is new, and due. A review without a due time keeps the card scheduled.
@@ -150,6 +154,7 @@ export function browseCards(
          AND (? = 0 OR c.plan_id IS NULL)
          AND (? IS NULL OR c.topic_id = ?)
          AND NOT EXISTS (SELECT 1 FROM json_each(?) w WHERE instr(c.search_text, w.value) = 0)
+         AND (? IS NULL OR c.id IN (SELECT value FROM json_each(?)))
          AND ${byStatus[status]}`;
   const subjectOrder = "s.id IS NULL, s.position, s.name COLLATE NOCASE, s.id";
   const params = [
@@ -159,6 +164,8 @@ export function browseCards(
     input.topicId ?? null,
     input.topicId ?? null,
     JSON.stringify(words),
+    made,
+    made ?? "[]",
     ...(status === "due" ? [now] : []),
   ];
   const groups = db

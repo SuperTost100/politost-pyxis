@@ -20,7 +20,10 @@ import {
   noSandbox,
   type FigureRunner,
 } from "../math/figures";
-import { isAbort, IpcError, toIpcError, type AttachmentError, type MessageFile } from "../../shared/ipc";
+import { isAbort, IpcError, toIpcError, type AttachmentError, type MessageFile, type ToolResultView } from "../../shared/ipc";
+import { armChatTools, chatTools } from "../tools/server";
+import { describeToolBlocks, linkToolResults, spliceToolBlocks, toolNote, toolViews } from "../tools/results";
+import { toolBlockIds } from "../../shared/tool-blocks";
 import { generate, type GenerateInput } from "../engine/generate";
 import { engineSeesImages } from "../engine/capabilities";
 import { LOCAL_PROVIDER } from "../engine/local";
@@ -102,6 +105,8 @@ export type ChatMessageView = {
   checks: AnchoredCheck[];
   /** Images of the answer's figure blocks, by `figureKey`. */
   figures?: Record<string, string>;
+  /** What the reply's tool calls did, by the result id its ```pyxis-tool blocks name. */
+  tools?: Record<string, ToolResultView>;
   /** The math check for this reply is still running; its badges arrive with a `chats.checks` broadcast. */
   checking: boolean;
   /**
@@ -148,6 +153,8 @@ type AskInput = {
   onPassages?: (passages: Array<{ index: number; label: string }>) => void;
   /** The stored message that is this turn's question, new or reused, and its chat (new for a first question), before the reply streams. */
   onQuestion?: (messageId: string, chatId: string) => void;
+  /** Hears each result of a Pyxis tool the model called, as it is stored, before the reply's text names it. */
+  onTool?: (view: ToolResultView) => void;
   run?: Parameters<typeof generate>[0]["run"];
   /** Runs figure code; null turns figures off. Defaults to the Pyodide sandbox when its runtime is downloaded. */
   python?: FigureRunner | null;
@@ -377,10 +384,11 @@ function historyText(
   let used = 0;
   let cut = false;
   for (const row of rows) {
+    // What a tool did reads as the line its result would have given the model.
     const body =
       row.role === "assistant"
         ? figureCaptions(
-            stripCheckFences(splitFollowups(splitChecks(row.body).body).body),
+            stripCheckFences(splitFollowups(splitChecks(describeToolBlocks(db, chatId, row.body, toolNote)).body).body),
             "Figure",
           ).trim()
         : [row.body, ...storedNotes(db, row.id)].join("\n\n");
@@ -1304,6 +1312,58 @@ async function answer(
   let answering: { provider: string; model: string; effort?: string } = selection;
   let streamed = resume;
   let result;
+  // Pyxis's tools (src/core/tools). A call takes its place in the reply where the model made it: `raw` is the text this
+  // attempt streamed, and each mark is an offset into it. A mark appears when the engine reports the call starting, or
+  // when the call reaches Pyxis's server if the engine did not say so first; it shows the tool's working state until the
+  // server stores the result, and goes if the call fails, since the model reads why and answers on.
+  type Mark = { offset: number; tool: string; callId?: string; server?: boolean; resultId?: string };
+  const marks: Mark[] = [];
+  let raw = "";
+  /** The reply with its tool blocks: the finished ones only (what is saved), or with the running ones (what is shown). */
+  const withTools = (text: string, running: boolean) =>
+    spliceToolBlocks(
+      text,
+      marks.flatMap((mark) =>
+        mark.resultId
+          ? [{ offset: mark.offset, body: mark.resultId }]
+          : running
+            ? [{ offset: mark.offset, body: `pending:${mark.tool}` }]
+            : [],
+      ),
+    );
+  const tell = () => {
+    streamed = resume + withTools(raw, false);
+    input.onDelta?.((resume + withTools(raw, true)).replace(/<followups>[\s\S]*$/, "").trim());
+  };
+  // A server that cannot start leaves the turn without tools, as on an engine that takes none.
+  const access = await chatTools(chatId).catch(() => null);
+  const tally: Record<string, number> = {};
+  const toolTurn: Parameters<typeof armChatTools>[0] = {
+    chatId,
+    tally,
+    place: () => ({ planId: planId ?? null, subject: subject || picked || null }),
+    engine: () => ({ provider: answering.provider, model: answering.model }),
+    started: (tool) => {
+      let mark = marks.find((entry) => entry.tool === tool && !entry.server && entry.callId !== undefined);
+      if (mark) mark.server = true;
+      else {
+        mark = { offset: raw.length, tool, server: true };
+        marks.push(mark);
+      }
+      tell();
+      return mark;
+    },
+    finished: (call, shown) => {
+      const mark = call as Mark;
+      const view = shown ? toolViews(db, chatId, [shown.resultId])[shown.resultId] : undefined;
+      if (view) {
+        mark.resultId = view.id;
+        input.onTool?.(view);
+      } else if (marks.includes(mark)) marks.splice(marks.indexOf(mark), 1);
+      tell();
+    },
+  };
+  let disarm = () => undefined as void;
   // Fitting a saved photo can take seconds, so it runs in the extract worker. A photo left out is reported, not dropped silently.
   const saved =
     input.workspace && engineSeesImages(selection)
@@ -1358,6 +1418,8 @@ async function answer(
       ? images.flatMap((image) => (image.copy ? [{ type: "image" as const, mediaType: image.mediaType, data: image.copy }] : []))
       : [];
   try {
+    // From here until the engine is done, the chat's token may act, and only on this chat (tools/server.ts).
+    if (access) disarm = armChatTools(toolTurn);
     result = await generate({
       prompt: "",
       promptFor,
@@ -1397,9 +1459,25 @@ async function answer(
       onEngine: (engine) => (answering = engine),
       onDelta: (text) => {
         requireTutorAvailable(db);
-        streamed = resume + text;
-        input.onDelta?.(streamed.replace(/<followups>[\s\S]*$/, "").trim());
+        raw = text;
+        tell();
       },
+      tools: access ? {
+        ...access,
+        onTool: (event) => {
+          if (event.phase === "start") {
+            // The server may have heard the call first; otherwise this is where it shows its working state.
+            const early = marks.find((mark) => mark.tool === event.tool && mark.server && mark.callId === undefined);
+            if (early) early.callId = event.id;
+            else marks.push({ offset: raw.length, tool: event.tool, callId: event.id });
+          } else {
+            // A call that ended without reaching Pyxis's server failed on the way: its place goes.
+            const mark = marks.find((entry) => entry.callId === event.id);
+            if (mark && !mark.server) marks.splice(marks.indexOf(mark), 1);
+          }
+          tell();
+        },
+      } : undefined,
     });
     // The turn's session is stored for the next one. A turn that did not continue it (another tool answered, or the
     // tool started a new session) ends it and opens the new one.
@@ -1443,12 +1521,19 @@ async function answer(
     if (kept && (aborted || !replacing || resume))
       return stopReply(streamed, aborted ? null : toIpcError(err).messageKey);
     throw err;
+  } finally {
+    disarm();
   }
+  // The reply with each finished tool call in its place. With tools the streamed text is the whole reply, since a CLI's
+  // final text can be only what it wrote after the last call; text the model wrote as a tool block never counts as one.
+  const replyText = marks.some((mark) => mark.resultId)
+    ? withTools(raw.trim() ? raw : result.text, false)
+    : spliceToolBlocks(result.text, []);
   // The prompts no longer ask for it, but a model or an older prompt can still answer NOT_COVERED: nothing is stored.
-  if (!resume && result.text.trim().startsWith("NOT_COVERED")) {
+  if (!resume && replyText.trim().startsWith("NOT_COVERED")) {
     return { chatId, covered: false, message: null };
   }
-  const parsed = splitFollowups(resume + result.text);
+  const parsed = splitFollowups(resume + replyText);
   if (profile?.followups === false) parsed.followups = [];
   // A figure that fails is left out. The math check runs after the reply is saved (startChecks), on the final text.
   // The figures are drawn together and each is told as it is drawn (`onFigure`), so the page shows it in its place without
@@ -1471,12 +1556,12 @@ async function answer(
   } catch (err) {
     requireTutorAvailable(db);
     if (isAbort(err) || (err instanceof Error && err.name === "AbortError"))
-      return stopReply(resume + result.text, null, undefined, true);
+      return stopReply(resume + replyText, null, undefined, true);
     throw err;
   }
   if (drawn.stopped) {
     requireTutorAvailable(db);
-    return stopReply(resume + result.text, null, drawn, true);
+    return stopReply(resume + replyText, null, drawn, true);
   }
   parsed.body = drawn.markdown;
   const figures = Object.keys(drawn.figures).length ? drawn.figures : undefined;
@@ -1649,6 +1734,8 @@ function saveReply(
   );
   for (const cite of linked)
     link.run(messageId, cite.passageId, `P${cite.index}`);
+  // What the reply's tool calls did is now the reply's, so the chat shows it when read again.
+  linkToolResults(db, chatId, messageId, toolBlockIds(parsed.body));
   return {
     chatId,
     covered: true,
@@ -1668,6 +1755,7 @@ function saveReply(
       checking: false,
       ...(note ? { searched: note } : {}),
       ...(meta.figures ? { figures: meta.figures } : {}),
+      ...toolsOf(db, chatId, parsed.body),
     },
   };
 }
@@ -2022,7 +2110,16 @@ export function readChat(
       ...(row.figures_json
         ? { figures: figureImages(JSON.parse(row.figures_json)) }
         : {}),
+      ...toolsOf(db, chatId, row.role === "assistant" ? parsed.body : ""),
       checking: runningChecks.has(row.id),
     };
   });
+}
+
+/** The results a reply's tool blocks name, as the message carries them; nothing for a reply without tool blocks. */
+function toolsOf(db: Database.Database, chatId: string, body: string): { tools?: Record<string, ToolResultView> } {
+  const ids = toolBlockIds(body);
+  if (ids.length === 0) return {};
+  const tools = toolViews(db, chatId, ids);
+  return Object.keys(tools).length ? { tools } : {};
 }
