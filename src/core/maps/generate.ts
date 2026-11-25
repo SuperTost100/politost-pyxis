@@ -239,10 +239,12 @@ async function buildPart(
   // A request with an instruction may find nothing for it in this part, so its answer is either a (possibly small) map
   // or an explicit "nothing". The answer sits under `result` because a strict structured-output schema needs an object
   // at its root. A request without one keeps the plain schema: every part must give a map of at least eight concepts.
+  // `kind` comes first in the map's shape: Codex and the OpenAI API decode a strict schema in its key order, and a model
+  // that opens with {"kind": could otherwise only go on as "nothing", so every focused request came back empty there.
   const schema = params.instruction
     ? z.object({
         result: z.discriminatedUnion("kind", [
-          mapShape(2).extend({ kind: z.literal("map") }).superRefine(check),
+          z.object({ kind: z.literal("map"), ...mapShape(2).shape }).superRefine(check),
           z.object({ kind: z.literal("nothing") }),
         ]),
       })

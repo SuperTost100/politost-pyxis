@@ -208,7 +208,15 @@ export function takeBackToolResults(db: Database.Database, chatId: string, ids: 
 
 /** Puts back what `takeBackToolResults` undid, when the reply it was taken from stays on screen. */
 export function restoreToolResults(db: Database.Database, chatId: string, ids: readonly string[]): void {
-  for (const id of ids) restoreToolResult(db, chatId, id);
+  for (const id of ids) {
+    try {
+      restoreToolResult(db, chatId, id);
+    } catch (err) {
+      // A map or a quiz whose job is still settling the stop the new answer gave it cannot go on yet. It stays undone,
+      // and its line in the reply offers «Ripristina»; the earlier answer must still come back.
+      if (!(err instanceof Error && ["tool-busy", "tool-restore-gone"].includes(err.message))) throw err;
+    }
+  }
 }
 
 /**

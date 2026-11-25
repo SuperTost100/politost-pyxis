@@ -109,10 +109,11 @@ async function generateMaps(
   db: ReturnType<typeof openDatabase>,
   input: MapScope,
   model: GenerateInput["run"],
+  instruction?: string,
 ) {
   const runner = createRunner(db, () => {});
   registerMapJobs(db, runner, model);
-  enqueueMaps(db, runner, input);
+  enqueueMaps(db, runner, input, instruction);
   await until(db, input, "succeeded");
 }
 describe("M10 model maps", () => {
@@ -875,6 +876,23 @@ describe("reading a build by its job, and the map it made", () => {
     expect(maps.map((map) => map.instruction)).toEqual(["hold B", "hold A"]);
     expect(mapBuild(db, input, a.jobId)!.mapId).toBe(maps[1]!.id);
     expect(mapBuild(db, input, b.jobId)!.mapId).toBe(maps[0]!.id);
+    db.close();
+  });
+});
+
+describe("map requests with an instruction", () => {
+  it("asks for the answer's kind before the map, so a strict decoder that writes `kind` first can still write a map", async () => {
+    // Codex and the OpenAI API decode a strict schema in its key order. With `kind` after `nodes`, a model that opened
+    // with {"kind": could only continue as "nothing", and every map asked for with words came back empty on Codex.
+    const { db, input } = fixture(4);
+    let sent: { properties: { result: { anyOf: Array<{ properties: Record<string, unknown> }> } } } | undefined;
+    await generateMaps(db, input, async (call) => {
+      sent ??= call.responseSchema?.schema as typeof sent;
+      return response(generated(call.prompt));
+    }, "solo i principi");
+    const shapes = sent!.properties.result.anyOf.map((shape) => Object.keys(shape.properties));
+    expect(shapes.map((keys) => keys[0])).toEqual(["kind", "kind"]);
+    expect(shapes[0]).toEqual(["kind", "nodes", "edges"]);
     db.close();
   });
 });

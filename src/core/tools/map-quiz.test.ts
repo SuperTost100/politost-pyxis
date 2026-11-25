@@ -15,6 +15,7 @@ import { quizInput, quizTool, quizTopic } from "./quiz";
 import {
   dropStrayToolResults,
   restoreToolResult,
+  restoreToolResults,
   retryToolResult,
   takeBackToolResults,
   toolNote,
@@ -270,6 +271,24 @@ describe("create_map", () => {
     resumeToolJobs(db);
     expect(jobOf(db, first.jobId).state).toBe("queued");
     expect(jobOf(db, secondJob).state).toBe("interrupted");
+    db.close();
+  });
+
+  it("an answer given again stops a map still being built, and one that fails gives it back, or leaves it undone while the stop settles", async () => {
+    const db = fixture();
+    const gate = held(mapRun!);
+    jobs(db, { map: gate.run });
+    const { id, jobId } = await makeMap(db);
+    await until(() => jobOf(db, jobId).state === "running", () => jobOf(db, jobId));
+    expect(takeBackToolResults(db, "chat", [id])).toEqual([id]);
+    // The build has not finished its stop yet: the earlier answer comes back, with the map undone and «Ripristina».
+    expect(jobOf(db, jobId).state).toBe("running");
+    expect(() => restoreToolResults(db, "chat", [id])).not.toThrow();
+    expect(mapOf(db, id).undone).toBe(true);
+    await until(() => jobOf(db, jobId).state === "cancelled", () => jobOf(db, jobId));
+    gate.release();
+    restoreToolResults(db, "chat", [id]);
+    expect(mapOf(db, id)).toMatchObject({ undone: false, job: "working" });
     db.close();
   });
 

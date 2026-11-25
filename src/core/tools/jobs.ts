@@ -4,8 +4,9 @@ import type { MapResultView } from "../../shared/ipc";
 
 /**
  * What the chat's map and quiz tools share: the job runner, and how a result follows the background job that makes its
- * map or quiz. The tool call only starts the job and returns, since a map or a quiz takes from seconds to minutes and a
- * CLI gives up on a tool call long before that (Codex after 60 seconds by default, Antigravity takes no longer limit).
+ * map or quiz. The tool call only starts the job and returns, since a map or a quiz takes from seconds to minutes and each
+ * CLI ends a tool call at its own limit (Claude Code's default for an HTTP server is 5 minutes; Antigravity refuses the
+ * per-tool timeout cli-funnel could raise).
  * The result row names the job, so the chat reads how it is going whenever the reply is shown, after a restart too.
  */
 
