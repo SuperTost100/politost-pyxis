@@ -22,7 +22,16 @@ import {
 } from "../math/figures";
 import { isAbort, IpcError, toIpcError, type AttachmentError, type MessageFile, type ToolResultView } from "../../shared/ipc";
 import { armChatTools, chatTools } from "../tools/server";
-import { describeToolBlocks, linkToolResults, spliceToolBlocks, toolNote, toolViews } from "../tools/results";
+import {
+  describeToolBlocks,
+  dropStrayToolResults,
+  linkToolResults,
+  restoreToolResults,
+  spliceToolBlocks,
+  takeBackToolResults,
+  toolNote,
+  toolViews,
+} from "../tools/results";
 import { toolBlockIds } from "../../shared/tool-blocks";
 import { generate, type GenerateInput } from "../engine/generate";
 import { engineSeesImages } from "../engine/capabilities";
@@ -1817,11 +1826,18 @@ export async function regenerateTurn(
           ...(last.figures_json ? { figures: figureImages(JSON.parse(last.figures_json)) } : {}),
         }
       : undefined;
+  // An answer given again replaces the earlier one with what its tools did: the cards it created leave the deck before the
+  // new answer runs, so the new answer's cards are not taken for duplicates of them. A Continue keeps the reply.
+  const replaced = last?.role === "assistant" && !resumeFrom ? toolBlockIds(last.body) : [];
+  const taken = takeBackToolResults(db, input.chatId, replaced);
   // The tool's session was told this question is answered again and the earlier answer discarded. When the new answer
   // fails or is stopped, the earlier one stays on screen: the session holds the conversation only up to the message before
-  // that question's earlier replies, so the next message replays the question and the answer the student sees.
+  // that question's earlier replies, so the next message replays the question and the answer the student sees. Its cards
+  // come back, and whatever the discarded answer's tools made goes.
   const keepsEarlier = () => {
     if (last?.role === "assistant" && !resumeFrom) rewindSession(db, input.chatId, user.id);
+    restoreToolResults(db, input.chatId, taken);
+    dropStrayToolResults(db, input.chatId);
   };
   const result = await askTurn(
     db,
@@ -1846,6 +1862,17 @@ export async function regenerateTurn(
       last.id,
       input.chatId,
     );
+    // The earlier answer's cards stay out of the deck. When the new answer made none, the line that says so, with
+    // «Ripristina», heads the new answer, so the student can still bring them back. Otherwise the new answer's own result
+    // stands in its place, and the earlier record goes with the earlier answer.
+    if (replaced.length > 0 && toolBlockIds(result.message.body).length === 0) {
+      const lead = replaced.map((id) => `\`\`\`pyxis-tool\n${id}\n\`\`\`\n\n`).join("");
+      db.prepare(`UPDATE messages SET body = ? || body WHERE id = ? AND chat_id = ?`).run(lead, result.message.id, input.chatId);
+      linkToolResults(db, input.chatId, result.message.id, replaced);
+      const body = `${lead}${result.message.body}`;
+      result.message = { ...result.message, body, ...toolsOf(db, input.chatId, body) };
+    }
+    dropStrayToolResults(db, input.chatId);
   }
   return result;
 }

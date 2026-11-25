@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { EngineResult, TurnInput } from "../engine/funnel";
-import { askTurn, readChat } from "../chat/turn";
+import { askTurn, deleteChat, readChat, regenerateTurn } from "../chat/turn";
+import { undoToolResult } from "./results";
 import { toolBlockIds } from "../../shared/tool-blocks";
 import { chatToolList } from "./registry";
 import { setTools, stopToolServer } from "./server";
@@ -162,5 +163,147 @@ describe("a chat turn with tools", () => {
     // The new session began with them, so the next turn resumes it.
     await askTurn(db, { chatId: first.chatId, text: "Grazie.", run: answer("new", true) });
     expect(seen[2]).toMatchObject({ provider: "antigravity", id: "new" });
+  });
+});
+
+/** A reply on Claude that calls create_flashcards with `made`, or none, and says `text`. */
+function replying(text: string, made?: typeof cards) {
+  return async (input: TurnInput): Promise<EngineResult> => {
+    if (made) {
+      const answer = await callTool(input.tools!, "create_flashcards", { cards: made });
+      expect(answer.result.isError).toBeUndefined();
+    }
+    input.onDelta?.(text);
+    return { text, model: "claude-sonnet-5", provider: "claude", inputTokens: 1 };
+  };
+}
+
+const removed = (db: ReturnType<typeof setup>) =>
+  db.prepare("SELECT front, removed FROM cards ORDER BY rowid").all() as Array<{ front: string; removed: number }>;
+
+/** No result points at a message that is gone, and none is left without a reply. */
+function noStrayResults(db: ReturnType<typeof setup>) {
+  expect(
+    db
+      .prepare(
+        `SELECT COUNT(*) FROM chat_tool_results r
+         WHERE r.message_id IS NULL OR NOT EXISTS (SELECT 1 FROM messages m WHERE m.id = r.message_id AND m.chat_id = r.chat_id)`,
+      )
+      .pluck()
+      .get(),
+  ).toBe(0);
+}
+
+describe("regenerating a reply that created cards", () => {
+  async function firstReply(db: ReturnType<typeof setup>) {
+    const first = await askTurn(db, { text: "Fammi 2 flashcard.", subject: "Fisica 1", run: replying("Fatto.", cards) });
+    const [resultId] = toolBlockIds(first.message!.body);
+    return { chatId: first.chatId, resultId: resultId!, replyId: first.message!.id };
+  }
+
+  it("takes the old cards out before the new answer runs, so the same cards are new again", async () => {
+    const db = setup();
+    const { chatId, resultId } = await firstReply(db);
+    const again = await regenerateTurn(db, { chatId, run: replying("Eccole di nuovo.", cards) });
+    const [newId] = toolBlockIds(again.message!.body);
+    expect(newId).not.toBe(resultId);
+    expect(again.message!.tools?.[newId!]).toMatchObject({ count: 2, duplicates: 0, undone: null });
+    expect(toolBlockIds(again.message!.body)).toEqual([newId]);
+    // The old cards stay out of the deck, with their reviews; only the new ones are in it.
+    expect(removed(db).map((card) => card.removed)).toEqual([1, 1, 0, 0]);
+    noStrayResults(db);
+  });
+
+  it("shows the undone line above a new answer that creates none, with Ripristina still working", async () => {
+    const db = setup();
+    const { chatId, resultId } = await firstReply(db);
+    const again = await regenerateTurn(db, { chatId, run: replying("Ecco una spiegazione senza flashcard.") });
+    expect(again.message!.body).toBe(`\`\`\`pyxis-tool\n${resultId}\n\`\`\`\n\nEcco una spiegazione senza flashcard.`);
+    expect(again.message!.tools?.[resultId]).toMatchObject({ count: 2, undone: 2 });
+    expect(readChat(db, chatId).at(-1)!.tools?.[resultId]).toMatchObject({ undone: 2 });
+    expect(removed(db).map((card) => card.removed)).toEqual([1, 1]);
+    noStrayResults(db);
+  });
+
+  it("keeps an earlier Annulla: the line moves to the new answer, and nothing comes back", async () => {
+    const db = setup();
+    const { chatId, resultId } = await firstReply(db);
+    undoToolResult(db, chatId, resultId);
+    const again = await regenerateTurn(db, { chatId, run: replying("Senza flashcard.") });
+    expect(again.message!.tools?.[resultId]).toMatchObject({ undone: 2 });
+    expect(removed(db).map((card) => card.removed)).toEqual([1, 1]);
+    noStrayResults(db);
+  });
+
+  it("puts the old cards back when the new answer is stopped while its tool runs, and drops the new ones", async () => {
+    const db = setup();
+    const { chatId, resultId, replyId } = await firstReply(db);
+    const stop = new AbortController();
+    await expect(
+      regenerateTurn(db, {
+        chatId,
+        signal: stop.signal,
+        run: async (input) => {
+          const call = callTool(input.tools!, "create_flashcards", { cards: [{ front: "Terzo principio?", back: "Azione e reazione." }] });
+          stop.abort();
+          await call;
+          throw new DOMException("Engine turn cancelled", "AbortError");
+        },
+      }),
+    ).rejects.toThrow();
+    const last = readChat(db, chatId).at(-1)!;
+    expect(last.id).toBe(replyId);
+    expect(last.tools?.[resultId]).toMatchObject({ count: 2, undone: null });
+    expect(removed(db)).toEqual([
+      { front: cards[0]!.front, removed: 0 },
+      { front: cards[1]!.front, removed: 0 },
+      { front: "Terzo principio?", removed: 1 },
+    ]);
+    noStrayResults(db);
+  });
+
+  it("puts the old cards back when the new answer is stopped halfway through its text", async () => {
+    const db = setup();
+    const { chatId, resultId } = await firstReply(db);
+    const stop = new AbortController();
+    await expect(
+      regenerateTurn(db, {
+        chatId,
+        signal: stop.signal,
+        run: async (input) => {
+          await callTool(input.tools!, "create_flashcards", { cards });
+          input.onDelta?.("Ecco le flash");
+          stop.abort();
+          throw new DOMException("Engine turn cancelled", "AbortError");
+        },
+      }),
+    ).rejects.toThrow();
+    expect(readChat(db, chatId).at(-1)!.tools?.[resultId]).toMatchObject({ undone: null });
+    // The old cards are back; the copies the stopped answer made are out of the deck again.
+    expect(removed(db).map((card) => card.removed)).toEqual([0, 0, 1, 1]);
+    noStrayResults(db);
+  });
+
+  it("puts the old cards back when the new answer fails, and leaves an undone result undone", async () => {
+    const db = setup();
+    const { chatId, resultId } = await firstReply(db);
+    const fail = async (): Promise<EngineResult> => {
+      throw new Error("engine-down");
+    };
+    await expect(regenerateTurn(db, { chatId, run: fail })).rejects.toThrow();
+    expect(removed(db).map((card) => card.removed)).toEqual([0, 0]);
+    undoToolResult(db, chatId, resultId);
+    await expect(regenerateTurn(db, { chatId, run: fail })).rejects.toThrow();
+    expect(readChat(db, chatId).at(-1)!.tools?.[resultId]).toMatchObject({ undone: 2 });
+    expect(removed(db).map((card) => card.removed)).toEqual([1, 1]);
+    noStrayResults(db);
+  });
+
+  it("deletes a chat's results with the chat and keeps the cards", async () => {
+    const db = setup();
+    const { chatId } = await firstReply(db);
+    deleteChat(db, "", chatId);
+    expect(db.prepare("SELECT COUNT(*) FROM chat_tool_results").pluck().get()).toBe(0);
+    expect(removed(db).map((card) => card.removed)).toEqual([0, 0]);
   });
 });

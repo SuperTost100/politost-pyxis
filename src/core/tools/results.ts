@@ -143,6 +143,48 @@ export function restoreToolResult(db: Database.Database, chatId: string, id: str
   })();
 }
 
+/**
+ * A reply that is answered again takes what its tools did with it: each of `ids` that still stands is undone as «Annulla»
+ * does it, before the new answer runs, so the new answer's cards are not taken for duplicates of the old ones. Returns
+ * the ids it undid, which `restoreToolResults` puts back if the old reply stays after all.
+ */
+export function takeBackToolResults(db: Database.Database, chatId: string, ids: readonly string[]): string[] {
+  return ids.filter((id) => {
+    const row = db.prepare(`SELECT undone_json FROM chat_tool_results WHERE id = ? AND chat_id = ?`).get(id, chatId) as
+      | { undone_json: string | null }
+      | undefined;
+    if (!row || row.undone_json !== null) return false;
+    undoToolResult(db, chatId, id);
+    return true;
+  });
+}
+
+/** Puts back what `takeBackToolResults` undid, when the reply it was taken from stays on screen. */
+export function restoreToolResults(db: Database.Database, chatId: string, ids: readonly string[]): void {
+  for (const id of ids) restoreToolResult(db, chatId, id);
+}
+
+/**
+ * The results of the chat that no reply shows: a reply that was answered again, stopped or failed was discarded with them.
+ * Their cards leave the deck as «Annulla» takes them, reviews kept, and the rows go, so none points at a message that is
+ * gone. `keep` are rows to leave alone.
+ */
+export function dropStrayToolResults(db: Database.Database, chatId: string, keep: readonly string[] = []): void {
+  db.transaction(() => {
+    const stray = db
+      .prepare(
+        `SELECT id, data_json, undone_json FROM chat_tool_results r
+         WHERE r.chat_id = ? AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.id = r.message_id AND m.chat_id = r.chat_id)`,
+      )
+      .all(chatId) as Array<{ id: string; data_json: string; undone_json: string | null }>;
+    for (const row of stray) {
+      if (keep.includes(row.id)) continue;
+      if (row.undone_json === null) removeCards(db, (JSON.parse(row.data_json) as FlashcardsData).cardIds);
+      db.prepare(`DELETE FROM chat_tool_results WHERE id = ?`).run(row.id);
+    }
+  })();
+}
+
 /** The cards a result created, for «Apri», which lists them in the card browser. Empty for an unknown id. */
 export function toolResultCards(db: Database.Database, id: string): string[] {
   const row = db.prepare(`SELECT tool, data_json FROM chat_tool_results WHERE id = ?`).get(id) as
