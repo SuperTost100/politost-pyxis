@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentMark, firstLine, jumpRange, MARKS_FROM, outlineMarks, pinnedMark, plainReading, type OutlineRow } from "./outline";
+import { currentMark, firstLine, jumpRange, MARKS_FROM, outlineLeft, outlineMarks, pinnedMark, plainReading, type OutlineRow } from "./outline";
 
 const rows = (count: number): OutlineRow[] =>
   Array.from({ length: count }, (_, i) => [
@@ -154,5 +154,21 @@ describe("jumpRange", () => {
   it("leaves the range alone when the question is rendered", () => {
     expect(jumpRange(10, 10)).toBe(10);
     expect(jumpRange(10, 14)).toBe(10);
+  });
+});
+
+describe("outlineLeft", () => {
+  it("sits 6 px past the chat pane's left edge when there is room left of the message column", () => {
+    expect(outlineLeft(260, 410)).toBe(266);
+    expect(outlineLeft(76, 158)).toBe(82);
+    expect(outlineLeft(92, 166)).toBe(98);
+    expect(outlineLeft(260, 300)).toBe(266);
+  });
+
+  it("hides when fewer than 40 px separate the pane edge from the message column, or when either is missing", () => {
+    expect(outlineLeft(260, 299)).toBeNull();
+    expect(outlineLeft(260, 284)).toBeNull();
+    expect(outlineLeft(undefined, 410)).toBeNull();
+    expect(outlineLeft(260, undefined)).toBeNull();
   });
 });

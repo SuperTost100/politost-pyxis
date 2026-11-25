@@ -3653,9 +3653,16 @@ async function openState(page: Page, name: string) {
       await page.waitForTimeout(400);
       break;
     }
-    case "ask-outline":
-      await expect(page.getByRole("navigation", { name: both("Indice della conversazione", "Conversation outline") })).toBeVisible();
+    case "ask-outline": {
+      const outline = page.getByRole("navigation", { name: both("Indice della conversazione", "Conversation outline") });
+      await expect(outline).toBeVisible();
+      const box = await outline.boundingBox();
+      const pane = await page.locator(".ask-page").boundingBox();
+      const msg = await page.locator(".px-msg-text").last().boundingBox();
+      expect(box!.x).toBeCloseTo(pane!.x + 6, 0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(msg!.x);
       break;
+    }
     case "ask-stopped":
       await expect(page.getByText(both("Interrotta", "Stopped"))).toBeVisible();
       await expect(page.locator(".px-composer-bar").getByRole("button", { name: both("Continua", "Continue") })).toBeVisible();
