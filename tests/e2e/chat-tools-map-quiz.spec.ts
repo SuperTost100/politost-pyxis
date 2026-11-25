@@ -78,6 +78,12 @@ const mapCount = (userData: string) =>
     0,
   );
 
+/** The ids of every map in Mappe, in the order their rows hold them. */
+const mapIds = (userData: string) =>
+  query<{ graph_json: string }>(userData, "SELECT graph_json FROM maps").flatMap(
+    (row) => (JSON.parse(row.graph_json) as { maps: Array<{ id: string }> }).maps.map((map) => map.id),
+  );
+
 const openChat = async (page: Page) => {
   await page.evaluate(() => {
     location.hash = "/ask/tool-chat";
@@ -100,7 +106,19 @@ async function shots(page: Page, name: string) {
 }
 
 async function start(userData: string, env: Record<string, string>, chat: { planId: string | null }) {
-  const app = await launchPyxis({ userData, env });
+  // The profile is this test's from here: a launch that fails removes it, as `setUp` does for a failed setup, and the
+  // launch's own error is what the test reports.
+  let app: Awaited<ReturnType<typeof launchPyxis>>;
+  try {
+    app = await launchPyxis({ userData, env });
+  } catch (error) {
+    try {
+      removeTestFolder(userData);
+    } catch (leftover) {
+      console.error(`start: ${userData} was not removed: ${(leftover as Error).message}`);
+    }
+    throw error;
+  }
   const page = await setUp(app, userData, async () => {
     const first = await app.firstWindow();
     await first.getByRole("button", { name: "Salta" }).click();
@@ -186,13 +204,17 @@ test("a chat answer creates a map: at work after the reply, across a restart, do
     await expect(page).toHaveURL(/#\/maps\/phys\?from=maps&map=/);
     await expect(page.getByText("Tre principi").first()).toBeVisible({ timeout: 30000 });
 
-    // Answered again: the new answer's map replaces the earlier one, which leaves Mappe with it.
+    // Answered again: the new answer's map replaces the earlier one, which leaves Mappe with it, and its result goes too.
     await openChat(page);
+    const [earlierMap] = mapIds(userData);
+    const [earlierResult] = query<{ id: string }>(userData, "SELECT id FROM chat_tool_results").map((row) => row.id);
     await page.getByRole("button", { name: "Rigenera" }).last().click();
-    await expect(page.getByRole("region", { name: "Mappa creata" })).toBeVisible({ timeout: 60000 });
-    await expect(page.getByRole("button", { name: "Interrompi", exact: true })).toHaveCount(0, { timeout: 30000 });
-    expect(mapCount(userData)).toBe(1);
-    expect(query(userData, "SELECT id FROM chat_tool_results")).toHaveLength(1);
+    await expect(page.getByRole("button", { name: "Interrompi", exact: true })).toHaveCount(0, { timeout: 60000 });
+    await expect.poll(() => mapIds(userData), { timeout: 30000 }).toEqual([expect.not.stringMatching(`^${earlierMap}$`)]);
+    const results = query<{ id: string }>(userData, "SELECT id FROM chat_tool_results").map((row) => row.id);
+    expect(results).toHaveLength(1);
+    expect(results[0]).not.toBe(earlierResult);
+    await expect(page.getByRole("region", { name: "Mappa creata" })).toBeVisible();
   } finally {
     await app.close().catch(() => undefined);
     removeTestFolder(userData);
@@ -277,7 +299,15 @@ test("an exam chat creates a quiz and a map in one answer: Ferma, a failed build
 test("a chat opened from an exam's topic belongs to that exam, so its quiz goes there when the subject has two exams", async () => {
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-chat-topic-"));
-  const { app, page } = await start(userData, {}, { planId: null });
+  const env = {
+    PYXIS_E2E_REPLY: [
+      "Ti preparo un quiz sulla dinamica.",
+      `@@tool create_quiz ${JSON.stringify({ topic: "Dinamica", questions: 5 })}`,
+      "Lo trovi tra le cose da finire.",
+    ].join("\n"),
+    PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ quizQuestions: [{ questions: QUESTIONS }] }),
+  };
+  const { app, page } = await start(userData, env, { planId: null });
   try {
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     try {
@@ -295,6 +325,12 @@ test("a chat opened from an exam's topic belongs to that exam, so its quiz goes 
     const [chat] = query<{ scope_json: string; subject: string }>(userData, `SELECT scope_json, subject FROM chats WHERE id = '${chatId}'`);
     expect(JSON.parse(chat!.scope_json)).toMatchObject({ planId: "p-mech" });
     expect(chat!.subject).toBe("Fisica 1");
+    // A quiz asked for there goes in that exam, though the subject has another.
+    await ask(page, "Preparami un quiz sulla dinamica.");
+    await expect(page.getByRole("region", { name: "Quiz creato" })).toBeVisible({ timeout: 60000 });
+    expect(query<{ plan_id: string }>(userData, "SELECT plan_id FROM attempts").map((row) => row.plan_id)).toEqual(["p-mech"]);
+    expect(await page.evaluate(() => window.pyxis.invoke("plans.unfinished", { planId: "p-mech" }))).toHaveLength(1);
+    expect(await page.evaluate(() => window.pyxis.invoke("plans.unfinished", { planId: "p-opt" }))).toEqual([]);
   } finally {
     await app.close().catch(() => undefined);
     removeTestFolder(userData);

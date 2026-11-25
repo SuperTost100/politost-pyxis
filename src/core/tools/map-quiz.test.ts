@@ -396,6 +396,16 @@ describe("create_quiz", () => {
     db.close();
   });
 
+  it("matches a topic's title as whole words only, so a longer word that holds it spans the exam instead", () => {
+    const db = fixture();
+    db.prepare("INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('fric', 'mech', 'Attrito', 2, 1)").run();
+    // "Termodinamica" holds "dinamica" but is not the topic Dinamica: the quiz spans the exam with the word as its focus.
+    expect(quizTopic(db, "mech", "Termodinamica")).toBeNull();
+    expect(quizTopic(db, "mech", "Attrito statico")).toEqual({ id: "fric", title: "Attrito", exact: false });
+    expect(quizTopic(db, "mech", "l'attrito")).toEqual({ id: "fric", title: "Attrito", exact: false });
+    db.close();
+  });
+
   it("writes a quiz whose words name two topics across the exam, with the words as its focus", async () => {
     const db = fixture();
     jobs(db);
@@ -502,6 +512,47 @@ describe("create_quiz", () => {
     expect(restoreToolResult(db, "chat", id)).toMatchObject({ undone: false, job: "working" });
     await until(() => quizOf(db, id).job === "done", () => quizOf(db, id));
     expect(readQuiz(db, attemptId).questions).toHaveLength(10);
+    db.close();
+  });
+
+  it("a passage deleted while the quiz was undone leaves its build, which finishes from the passages left", async () => {
+    const db = fixture();
+    let calls = 0;
+    const gate = held(quizRun!);
+    jobs(db, { quiz: async (input) => (++calls === 1 ? quizRun!(input) : gate.run!(input)) });
+    const { id } = await makeQuiz(db);
+    const { attemptId } = quizOf(db, id);
+    await until(() => readQuiz(db, attemptId).questions.length > 0, () => readQuiz(db, attemptId));
+    undoToolResult(db, "chat", id);
+    const build = db.prepare("SELECT id FROM jobs WHERE kind = 'quiz-build'").pluck().get() as string;
+    await until(() => jobOf(db, build).state === "cancelled", () => jobOf(db, build));
+    // The student removes the notes' passage on the second principle while the quiz is out of the exam.
+    db.prepare("DELETE FROM topic_passages WHERE passage_id = 'p3'").run();
+    db.prepare("DELETE FROM passages WHERE id = 'p3'").run();
+    gate.release();
+    expect(restoreToolResult(db, "chat", id)).toMatchObject({ undone: false, job: "working" });
+    await until(() => ["succeeded", "failed"].includes(jobOf(db, build).state), () => jobOf(db, build));
+    expect(jobOf(db, build).state).toBe("succeeded");
+    expect(readQuiz(db, attemptId).questions).toHaveLength(10);
+    expect(db.prepare("SELECT passage_id FROM item_passages ORDER BY passage_id").pluck().all()).toEqual(["p2"]);
+    const params = JSON.parse(db.prepare("SELECT params_json FROM jobs WHERE id = ?").pluck().get(build) as string) as {
+      snapshot: { passages: Array<{ id: string }> };
+    };
+    expect(params.snapshot.passages.map((passage) => passage.id)).toEqual(["p2"]);
+    db.close();
+  });
+
+  it("a quiz whose every passage was deleted while it was undone cannot be restored, and says so", async () => {
+    const db = fixture();
+    jobs(db);
+    const { id } = await makeQuiz(db, "Dinamica", undefined, 2);
+    await until(() => quizOf(db, id).job === "done", () => quizOf(db, id));
+    undoToolResult(db, "chat", id);
+    db.prepare("DELETE FROM topic_passages WHERE topic_id = 'dyn'").run();
+    db.prepare("DELETE FROM passages WHERE id IN ('p2', 'p3')").run();
+    expect(quizOf(db, id)).toMatchObject({ undone: true, restorable: false });
+    expect(() => restoreToolResult(db, "chat", id)).toThrow("tool-restore-gone");
+    expect(db.prepare("SELECT COUNT(*) FROM items").pluck().get()).toBe(0);
     db.close();
   });
 

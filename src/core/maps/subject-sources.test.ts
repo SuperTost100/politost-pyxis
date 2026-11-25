@@ -113,6 +113,22 @@ describe("subjectPassages for a map on one topic", () => {
     return db;
   }
 
+  it("sends the part of a passage where the topic is named, when that part lies past the opening excerpt", () => {
+    const db = sections();
+    // Passages are written once, as the full-text index expects: the first section's is replaced whole.
+    db.prepare("DELETE FROM passages WHERE id = 's0'").run();
+    db.prepare("INSERT INTO passages(id,source_id,version,text,section_path,created_at) VALUES('s0','book',1,?,'Sezione 0',1)").run(
+      `${"Premessa generale sul moto. ".repeat(40)}Qui si spiega l'attrito radente tra le superfici.`,
+    );
+    const opening = subjectPassages(db, "phys").find((passage) => passage.id === "s0");
+    // Without words the passage opens as before, and its explanation of friction is cut off.
+    expect(opening?.text).not.toContain("attrito");
+    const focused = subjectPassages(db, "phys", "attrito").find((passage) => passage.id === "s0")!;
+    expect(focused.text).toContain("Qui si spiega l'attrito radente tra le superfici.");
+    expect(focused.text.length).toBeLessThanOrEqual(SUBJECT_MAP.chars + 1);
+    db.close();
+  });
+
   it("takes the passages on the topic before the even sample, which can miss the topic's only section", () => {
     const db = sections();
     // The whole-subject sample of 24 out of 50 skips the second section.

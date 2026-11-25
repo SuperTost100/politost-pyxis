@@ -106,19 +106,30 @@ function quizExam(db: Database.Database, place: ReturnType<ToolTurn["place"]>): 
  * The exam's topic the words name: the one whose title is those words, else the only one whose title holds them or is
  * held in them. Null when none does, or when several do: the quiz then spans the exam and asks about the words.
  */
-export function quizTopic(db: Database.Database, planId: string, words: string): { id: string; title: string; exact: boolean } | null {
+export function quizTopic(db: Database.Database, planId: string, asked: string): { id: string; title: string; exact: boolean } | null {
   const topics = db
     .prepare(`SELECT id, title FROM topics WHERE plan_id = ? AND archived_at IS NULL ORDER BY position, id`)
     .all(planId) as Array<{ id: string; title: string }>;
-  const want = foldText(words).replace(/\s+/g, " ").trim();
+  const want = foldText(asked).replace(/\s+/g, " ").trim();
   const exact = topics.find((topic) => foldText(topic.title).trim() === want);
   if (exact) return { ...exact, exact: true };
+  // Whole words only: "Attrito statico" holds the topic Attrito, but "Termodinamica" does not hold Dinamica.
+  const askedWords = wordsOf(asked);
   const near = topics.filter((topic) => {
-    const title = foldText(topic.title).trim();
-    return title.length >= 4 && want.length >= 4 && (title.includes(want) || want.includes(title));
+    const title = wordsOf(topic.title);
+    return title.join(" ").length >= 4 && askedWords.join(" ").length >= 4 && (holds(askedWords, title) || holds(title, askedWords));
   });
   // Words that name two topics ("Cinematica e dinamica") are no one topic: the quiz spans the exam on them.
   return near.length === 1 ? { ...near[0]!, exact: false } : null;
+}
+
+/** The words of a text, folded: "L’attrito statico" is ["l", "attrito", "statico"]. */
+const wordsOf = (text: string) => foldText(text).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+
+/** Whether `outer` holds the words of `inner` one after another. */
+function holds(outer: string[], inner: string[]): boolean {
+  if (!inner.length || inner.length > outer.length) return false;
+  return outer.some((_, start) => inner.every((word, index) => outer[start + index] === word));
 }
 
 const asTitle = (text: string) => text.charAt(0).toLocaleUpperCase() + text.slice(1);
@@ -293,22 +304,76 @@ export function undoQuiz(db: Database.Database, stored: QuizData): QuizUndone {
  * this one (after a downgrade). The card says so plainly otherwise, with no button.
  */
 function restorableQuiz(db: Database.Database, stored: QuizData, undone: QuizUndone): boolean {
-  return !!db.prepare("SELECT 1 FROM plans WHERE id = ?").get(stored.planId) && (undone.schema ?? 0) <= SCHEMA_VERSION;
+  if (!db.prepare("SELECT 1 FROM plans WHERE id = ?").get(stored.planId) || (undone.schema ?? 0) > SCHEMA_VERSION) return false;
+  // A quiz written from the student's material whose every passage was deleted since has nothing left to stand on.
+  const cited = quizPassages(db, stored, undone);
+  return cited.length === 0 || cited.some((id) => passageExists(db, id));
+}
+
+const passageExists = (db: Database.Database, id: string) => !!db.prepare("SELECT 1 FROM passages WHERE id = ?").get(id);
+
+/** The passages the undone quiz stands on: the ones it cites and the ones its builds read. */
+function quizPassages(db: Database.Database, stored: QuizData, undone: QuizUndone): string[] {
+  const ids = new Set(undone.rows.item_passages.map((row) => row.passage_id as string));
+  for (const params of buildParams(db, stored)) for (const passage of params.snapshot?.passages ?? []) ids.add(passage.id);
+  return [...ids];
+}
+
+type BuildParams = {
+  snapshot?: {
+    passages?: Array<{ id: string }>;
+    passageTopics?: Record<string, string>;
+    questions?: Array<{ sourceIds?: string[] }>;
+  };
+};
+
+/** The quiz's build jobs with their stored params. */
+function buildParams(db: Database.Database, stored: QuizData): Array<BuildParams & { jobId: string }> {
+  return (
+    db
+      .prepare("SELECT id, params_json FROM jobs WHERE kind = 'quiz-build' AND json_extract(params_json, '$.attemptId') = ?")
+      .all(stored.attemptId) as Array<{ id: string; params_json: string }>
+  ).map((row) => ({ ...(JSON.parse(row.params_json) as BuildParams), jobId: row.id }));
+}
+
+/**
+ * Takes the passages deleted while the quiz was undone out of its questions and out of its builds' snapshots, so a
+ * resumed build never saves a link to a passage that is gone. A question already written from one stays as it is,
+ * without that link.
+ */
+function dropGonePassages(db: Database.Database, stored: QuizData, undone: QuizUndone): QuizUndone["rows"]["items"] {
+  const alive = (ids: string[] | undefined) => ids?.filter((id) => passageExists(db, id));
+  for (const { jobId, ...params } of buildParams(db, stored)) {
+    const snapshot = params.snapshot;
+    if (!snapshot) continue;
+    snapshot.passages = snapshot.passages?.filter((passage) => passageExists(db, passage.id));
+    if (snapshot.passageTopics)
+      snapshot.passageTopics = Object.fromEntries(Object.entries(snapshot.passageTopics).filter(([id]) => passageExists(db, id)));
+    for (const question of snapshot.questions ?? []) if (question.sourceIds) question.sourceIds = alive(question.sourceIds);
+    db.prepare("UPDATE jobs SET params_json = ? WHERE id = ?").run(JSON.stringify(params), jobId);
+  }
+  return undone.rows.items.map((row) => {
+    const body = JSON.parse(row.body_json as string) as { questions?: Array<{ sourceIds?: string[] }> };
+    for (const question of body.questions ?? []) if (question.sourceIds) question.sourceIds = alive(question.sourceIds);
+    return { ...row, body_json: JSON.stringify(body) };
+  });
 }
 
 /**
  * «Ripristina»: the quiz's rows go back as they were, with the answers given so far, and the build that «Ferma» stopped
- * goes on writing. A passage deleted since is left out of the quiz's sources, a topic deleted since leaves the quiz on the
- * whole exam, and an exam deleted since has nowhere to take it back (`tool-restore-gone`). It runs in the caller's
+ * goes on writing. A passage deleted since is left out of the quiz's sources, its questions and its builds
+ * (`dropGonePassages`), and a topic deleted since leaves the quiz on the whole exam. An exam deleted since, or every
+ * passage the quiz stood on, leaves nothing to take it back to (`tool-restore-gone`). It runs in the caller's
  * transaction: a row that cannot go back takes the others with it, so a restore is whole or does nothing.
  */
 export function restoreQuiz(db: Database.Database, stored: QuizData, undone: QuizUndone): void {
   if (!restorableQuiz(db, stored, undone)) throw new Error("tool-restore-gone");
   const exists = (table: string, id: unknown) => !!db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id);
+  const items = dropGonePassages(db, stored, undone);
   insertRows(
     db,
     "items",
-    undone.rows.items.map((row) => (row.topic_id && !exists("topics", row.topic_id) ? { ...row, topic_id: null } : row)),
+    items.map((row) => (row.topic_id && !exists("topics", row.topic_id) ? { ...row, topic_id: null } : row)),
   );
   insertRows(db, "item_passages", undone.rows.item_passages.filter((row) => exists("passages", row.passage_id)));
   insertRows(db, "attempts", undone.rows.attempts);

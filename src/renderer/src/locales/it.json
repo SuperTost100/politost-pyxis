@@ -3127,7 +3127,7 @@
         "failed": "Il quiz non è stato creato.",
         "stopped": "La scrittura del quiz si è fermata.",
         "gone": "Il quiz non c’è più: è stato eliminato dall’esame.",
-        "unrestorable": "Quiz annullato: l’esame non c’è più, quindi non si può ripristinare."
+        "unrestorable": "Quiz annullato: l’esame o il materiale da cui è stato scritto non c’è più, quindi non si può ripristinare."
       },
       "reading": "Guardo i tuoi risultati…"
     },

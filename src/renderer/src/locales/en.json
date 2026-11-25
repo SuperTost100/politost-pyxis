@@ -3127,7 +3127,7 @@
         "failed": "The quiz wasn’t created.",
         "stopped": "The quiz stopped before it was finished.",
         "gone": "The quiz is gone: it was deleted from the exam.",
-        "unrestorable": "Quiz undone: its exam is gone, so it can’t be restored."
+        "unrestorable": "Quiz undone: its exam or the material it was written from is gone, so it can’t be restored."
       },
       "reading": "Looking at your results…"
     },

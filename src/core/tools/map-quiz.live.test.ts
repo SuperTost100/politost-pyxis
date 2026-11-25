@@ -191,5 +191,13 @@ describe.skipIf(!live)("map and quiz tools, live", () => {
     await stopToolServer();
     setToolRunner(undefined);
     expect(report.length).toBeGreaterThan(0);
+    // The report is written whatever happened; the run passes only when each map and quiz asked for was made and
+    // finished, and the plain question and the figure made nothing.
+    const wrong = report.flatMap(({ scenario, run, turn }) => {
+      const made = turn.made.map((entry) => `${entry.tool}:${entry.view?.job ?? "?"}`);
+      const expected = scenario === "map" ? ["create_map:done"] : scenario === "quiz" ? ["create_quiz:done"] : [];
+      return JSON.stringify(made) === JSON.stringify(expected) ? [] : [`${scenario} ${run}: made ${JSON.stringify(made)}`];
+    });
+    expect(wrong).toEqual([]);
   });
 });

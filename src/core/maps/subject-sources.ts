@@ -66,30 +66,50 @@ export function subjectPassages(db: Database.Database, subjectId: string, focus?
     const before = rows[index - 1];
     if (!before || before.source_id !== row.source_id || before.section_path !== row.section_path) opens.add(index);
   });
-  const named = focus ? naming(db, rows, focus) : [];
+  const words = focus ? stemsOf(focus) : [];
+  const named = words.length ? naming(db, rows, words) : [];
   const picked = new Set(spread(named, SUBJECT_MAP.passages));
   const heads = [...opens].filter((index) => !picked.has(index));
   for (const index of spread(heads, SUBJECT_MAP.passages - picked.size)) picked.add(index);
   const rest = rows.map((_, index) => index).filter((index) => !opens.has(index) && !picked.has(index));
   for (const index of spread(rest, SUBJECT_MAP.passages - picked.size)) picked.add(index);
   const chosen = [...picked].sort((a, b) => a - b).map((index) => rows[index]!);
-  const text = db.prepare(`SELECT substr(text, 1, ${SUBJECT_MAP.chars}) FROM passages WHERE id = ?`).pluck();
+  const opening = db.prepare(`SELECT substr(text, 1, ${SUBJECT_MAP.chars}) FROM passages WHERE id = ?`).pluck();
+  const whole = db.prepare(`SELECT text FROM passages WHERE id = ?`).pluck();
+  const namedIds = new Set(named.map((index) => rows[index]!.id));
   return chosen.map((row) => ({
     id: row.id,
-    text: text.get(row.id) as string,
+    // A passage taken for the request's words is sent around where they first appear, which may be past the opening.
+    text: namedIds.has(row.id) ? excerpt(whole.get(row.id) as string, words) : (opening.get(row.id) as string),
     section: row.section_path ? `${row.title} › ${row.section_path}` : row.title,
   }));
+}
+
+/** The words of `focus` of four letters or more, folded, without their last letter from five on: "attrito" finds "attriti". */
+function stemsOf(focus: string): string[] {
+  return [...new Set(foldText(focus).split(/[^\p{L}\p{N}]+/u).filter((word) => word.length >= 4))].map((word) =>
+    word.length >= 5 ? word.slice(0, -1) : word,
+  );
+}
+
+/**
+ * At most `SUBJECT_MAP.chars` characters of `text` around the first place one of `stems` appears: a little before it,
+ * so the sentence that names it is whole, and the rest after. The opening when no stem is in the text (the passage was
+ * taken for its section's name). Folding keeps one character per character, so the place found is the text's own.
+ */
+function excerpt(text: string, stems: string[]): string {
+  const folded = foldText(text);
+  const at = Math.min(...stems.map((stem) => folded.indexOf(stem)).filter((index) => index >= 0));
+  if (!Number.isFinite(at) || at + 200 < SUBJECT_MAP.chars) return text.slice(0, SUBJECT_MAP.chars);
+  const start = Math.max(0, Math.min(at - 150, text.length - SUBJECT_MAP.chars));
+  return `…${text.slice(start, start + SUBJECT_MAP.chars)}`;
 }
 
 /**
  * The indexes of `rows` whose passage holds a word of `focus` (four letters or more, any ending: "attrito" finds
  * "attriti"), or whose section's name does, in their order.
  */
-function naming(db: Database.Database, rows: Row[], focus: string): number[] {
-  const stems = [...new Set(foldText(focus).split(/[^\p{L}\p{N}]+/u).filter((word) => word.length >= 4))].map((word) =>
-    word.length >= 5 ? word.slice(0, -1) : word,
-  );
-  if (!stems.length) return [];
+function naming(db: Database.Database, rows: Row[], stems: string[]): number[] {
   const query = stems.map((stem) => `"${stem}"*`).join(" OR ");
   const hits = new Set(db.prepare("SELECT rowid FROM passages_fts WHERE passages_fts MATCH ?").pluck().all(query) as number[]);
   return rows.flatMap((row, index) => {
