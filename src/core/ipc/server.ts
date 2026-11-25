@@ -494,6 +494,7 @@ const routes = {
   "sources.embedState": ["sources", "embedState", "bare"],
   "sources.embed": ["sources", "embed"],
   "sources.passage": ["sources", "passage"],
+  "sources.places": ["sources", "places"],
   "sources.viewerDocument": ["sources", "viewerDocument"],
   "sources.chapter": ["sources", "chapter"],
   "sources.panel": ["sources", "panel"],

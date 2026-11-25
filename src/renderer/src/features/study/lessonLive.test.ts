@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shownFigures, showsLiveText } from "./lessonLive";
+import { lessonRowText, shownFigures, showsLiveText } from "./lessonLive";
 
 describe("showsLiveText", () => {
   it("shows the saved lesson while a regenerate has not streamed yet", () => {
@@ -77,5 +77,15 @@ describe("shownFigures", () => {
   it("shows the saved lesson's figures when the saved lesson is what shows", () => {
     expect(shownFigures({ fromLive: false, live: { "figure-a": "data:image/png;base64,NEW" }, saved: old })).toEqual(old);
     expect(shownFigures({ fromLive: false, live: {}, saved: undefined })).toEqual({});
+  });
+});
+
+describe("lessonRowText", () => {
+  it("names the sources of the text on screen once it is no longer being written", () => {
+    expect(lessonRowText({ writing: false, fromLive: false, saved: true })).toBe("saved");
+    // A first lesson stopped after cited text arrived has no saved lesson: its row comes from the text kept.
+    expect(lessonRowText({ writing: false, fromLive: true, saved: false })).toBe("live");
+    expect(lessonRowText({ writing: true, fromLive: true, saved: false })).toBeNull();
+    expect(lessonRowText({ writing: false, fromLive: false, saved: false })).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { usedLine } from "./usedLine";
+import { noteLine, usedLine } from "./usedLine";
 
 const cite = (sourceId: string, subject: string | null, attached = false) => ({ sourceId, subject, attached });
 
@@ -77,5 +77,17 @@ describe("the line that says what an answer used", () => {
     expect(usedLine({ ...none, searched: { found: true, where: "files" } })).toEqual({ key: "ask.used.generalUnused", values: {} });
     // A reply saved without the note, or stopped, only says what is known: it cites no source.
     expect(usedLine(none)).toEqual({ key: "ask.used.generalNoSource", values: {} });
+  });
+});
+
+describe("noteLine", () => {
+  it("keeps only the warnings above an answer: general knowledge, or a subject that had nothing", () => {
+    expect(noteLine({ grounding: "general", citations: [] })).toEqual({ key: "ask.used.generalNoSource", values: {} });
+    expect(noteLine({ grounding: "wider", citations: [cite("a", "Analisi 1")] })).toEqual({
+      key: "ask.used.subject",
+      values: { count: 1, subject: "Analisi 1", context: "wider" },
+    });
+    expect(noteLine({ grounding: "sources", citations: [cite("a", "Fisica 2")] })).toBeNull();
+    expect(noteLine({ grounding: null, citations: [] })).toBeNull();
   });
 });

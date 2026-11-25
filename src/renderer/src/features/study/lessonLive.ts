@@ -24,3 +24,13 @@ export function shownFigures(input: {
 }): Record<string, string> {
   return input.fromLive ? input.live : (input.saved ?? {});
 }
+
+/**
+ * Which text the lesson's sources row names once nothing is being written: the saved lesson's, or the text a first
+ * lesson stopped after its cited words arrived keeps on screen (`fromLive`), which has no saved lesson yet.
+ */
+export function lessonRowText(input: { writing: boolean; fromLive: boolean; saved: boolean }): "saved" | "live" | null {
+  if (input.writing) return null;
+  if (input.fromLive) return "live";
+  return input.saved ? "saved" : null;
+}

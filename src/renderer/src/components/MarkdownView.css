@@ -77,3 +77,9 @@
   background: var(--surface-raised);
   overflow-x: auto;
 }
+
+/* A paragraph that held only citation marks, such as a mark the model put on its own line after a formula. Its marks
+   stay in the page for the sources row, and the paragraph leaves no gap. */
+.px-markdown p.px-cite-only {
+  display: none;
+}

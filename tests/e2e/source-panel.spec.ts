@@ -282,8 +282,10 @@ test("a citation in a chat opens the panel at the cited page with the passage ma
       location.hash = "/ask/sp-chat";
     });
     const reply = page.locator(".px-msg:not(.px-msg-user)").last();
-    await expect(reply.locator(".px-cite")).toHaveCount(2);
-    const first = reply.locator(".px-cite").first();
+    // No marks in the text: the row under the answer opens into its two sources, each with its place.
+    await expect(reply.locator(".px-cite-mark")).toHaveCount(2);
+    await reply.getByRole("button", { name: "2 fonti" }).click();
+    const first = reply.getByRole("button", { name: `Fisica I · Mazzoldi, Nigro, Voci, p. ${CITED_PAGE}` });
     await first.click();
     const sheet = panel(page);
     await expect(sheet.getByRole("group", { name: `Pagina ${CITED_PAGE} di ${BOOK_PAGES}` })).toBeVisible();
@@ -306,7 +308,7 @@ test("a citation in a chat opens the panel at the cited page with the passage ma
     // The page behind stays usable: the second citation moves the panel, it does not stack. Below 1180 pixels the panel
     // lies over the page's right side (a Windows runner's window is 1024 wide) and can cover the citation, which the
     // keyboard still reaches, so the citation is opened from the keyboard.
-    const second = reply.locator(".px-cite").nth(1);
+    const second = reply.locator(".px-sources-place").filter({ hasText: "Lezione 9" });
     await second.focus();
     await page.keyboard.press("Enter");
     await expect(sheet).toHaveCount(1);
@@ -316,15 +318,6 @@ test("a citation in a chat opens the panel at the cited page with the passage ma
     await sheet.getByRole("button", { name: "Chiudi" }).click();
     await expect(sheet).toHaveCount(0);
     await expect(second).toBeFocused();
-    // The list of what the answer used opens the same panel, at the same place.
-    await page.locator(".ask-used-line").last().click();
-    const used = page.locator(".ask-used-item").first();
-    await used.click();
-    await expect(sheet).toHaveCount(1);
-    await expect(sheet.getByRole("group", { name: `Pagina ${CITED_PAGE} di ${BOOK_PAGES}` })).toBeVisible();
-    await expect(sheet.locator(".source-cite-mark")).toBeVisible();
-    await sheet.getByRole("button", { name: "Chiudi" }).click();
-    await expect(used).toBeFocused();
     // A citation to a page the file no longer has: the last page, a line that says so, and the cited words.
     await page.evaluate(() => window.dispatchEvent(new CustomEvent("pyxis:source-viewer", { detail: { passageId: "sp-book-gone" } })));
     await expect(sheet.getByText(`Il file non ha più la pagina ${BOOK_PAGES + 40}: ora ne ha ${BOOK_PAGES}. Ti mostro l'ultima.`)).toBeVisible();

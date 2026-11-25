@@ -1,27 +1,24 @@
-import { useQuery } from "@tanstack/react-query";
-import { invoke } from "../lib/ipc";
-import {
-  anchoredChecks,
-  fencedChecks,
-  stripCheckFences,
-  type AnchoredCheck,
-  type MathCheck,
-} from "@shared/math-check";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { stripCheckFences, type AnchoredCheck, type MathCheck } from "@shared/math-check";
 import { createContext, isValidElement, memo, useContext, useMemo, type ReactNode } from "react";
-import { useTranslation } from "react-i18next";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
-import { citedPassage, type CitationResolver } from "../markdown/citations";
+import { checkQuery, textClaims } from "../lib/mathChecks";
+import { citedPassage, type KnownPassage } from "../markdown/citations";
+import { KnownPassages } from "../markdown/knownPassages";
+import { rehypeMarks } from "../markdown/marks";
 import { rehypePlugins, remarkPlugins } from "../markdown/plugins";
 import { markdownSource } from "../markdown/source";
 import { CheckBadge } from "./CheckBadge";
-import { CitationChip } from "./CitationChip";
 import { PythonBlock, RunnablePython } from "./PythonBlock";
 import { Figure } from "./Figure";
 import { darkFigureKey, figureKey, parseFigure } from "@shared/smart-text";
 import { TOOL_FENCE } from "@shared/tool-blocks";
 import "./MarkdownView.css";
 
-export type { CitationResolver };
+export type { KnownPassage };
+
+/** After KaTeX: each check beside its step, and paragraphs of nothing but marks hidden. */
+const viewRehypePlugins = [...rehypePlugins, rehypeMarks];
 
 const urlTransform = (url: string) =>
   /^(?:cite:p|mathcheck:)\d+$/.test(url) || HELD_MATH.test(url) ? url : defaultUrlTransform(url);
@@ -33,17 +30,17 @@ const HELD_MATH = /^pyxis-math:(inline|display):(\d+)$/;
 type MarkdownScope = {
   claims: MathCheck[];
   canRun: boolean;
-  onCitationClick?: (passageId: number) => void;
-  citationResolver?: CitationResolver;
+  knownPassage?: KnownPassage;
   figures?: Record<string, string>;
   drawing: boolean;
   toolBlock?: (line: string) => ReactNode;
 };
 const Scope = createContext<MarkdownScope>({ claims: [], canRun: false, drawing: false });
 
+
 const components: Components = {
   a: function Link({ href, children: linkChildren, node: _node, ...rest }) {
-    const { claims, onCitationClick, citationResolver } = useContext(Scope);
+    const { claims, knownPassage } = useContext(Scope);
     const held = href?.match(HELD_MATH);
     if (held) return <FormulaPending display={held[1] === "display"} size={Number(held[2])} />;
     const check = href?.match(/^mathcheck:(\d+)$/);
@@ -51,21 +48,29 @@ const components: Components = {
       const claim = claims[Number(check[1])];
       return claim ? <AsyncCheck claim={claim} /> : null;
     }
-    const id = citedPassage(href, citationResolver);
-    if (id !== null) {
-      return (
-        <CitationChip onClick={() => onCitationClick?.(id)}>
-          {linkChildren}
-        </CitationChip>
-      );
-    }
-    // A cite: link the reply wrote for a passage it was never given: its text, not a chip and not a link.
+    // A citation mark: nothing to read or click in the text, only the place the sources row tints the words before.
+    const id = knownPassage ? citedPassage(href, knownPassage) : null;
+    if (id !== null) return <span className="px-cite-mark" data-cite={id} />;
+    // A cite: link the reply wrote for a passage it was never given: its text, not a mark and not a link.
     if (href?.startsWith("cite:")) return <>{linkChildren}</>;
     return (
       <a href={href} {...rest} rel="noreferrer" target="_blank">
         {linkChildren}
       </a>
     );
+  },
+  // The checks of one step (`rehypeMarks`): its failures each say so, and its passes share one mark.
+  div: function Div({ node, children: divChildren, ...rest }) {
+    const classes = node?.properties?.["className"];
+    if (Array.isArray(classes) && classes.includes("px-check-slot")) {
+      const indexes = (node?.children ?? []).flatMap((child) => {
+        const href = child.type === "element" ? String(child.properties?.["href"] ?? "") : "";
+        const index = href.match(/^mathcheck:(\d+)$/)?.[1];
+        return index === undefined ? [] : [Number(index)];
+      });
+      return <CheckSlot indexes={indexes} />;
+    }
+    return <div {...rest}>{divChildren}</div>;
   },
   // A wide table scrolls in its own box instead of pushing the page sideways.
   table: ({ children: tableChildren, node: _node, ...rest }) => (
@@ -113,8 +118,7 @@ const components: Components = {
 export const MarkdownView = memo(function MarkdownView({
   children,
   variant = "reading",
-  citationResolver,
-  onCitationClick,
+  knownPassage,
   runnable,
   checks,
   figures,
@@ -131,39 +135,41 @@ export const MarkdownView = memo(function MarkdownView({
    */
   drawing?: boolean;
   variant?: "reading" | "body";
-  citationResolver?: CitationResolver;
-  onCitationClick?: (passageId: number) => void;
+  /**
+   * Which [Pn] marks name a passage the page knows: those become anchors for the sources row, and a mark for any other is
+   * left out. Without it (or `KnownPassages` around the view) the text's [Pn] is shown as it is stored.
+   */
+  knownPassage?: KnownPassage;
   /** Python blocks get an editor and a Run button; defaults to on inside tutor messages. */
   runnable?: boolean;
   /** Draws a ```pyxis-tool block from its one line (a tool result's id, or `pending:<tool>`). Without it they show nothing. */
   toolBlock?: (line: string) => ReactNode;
 }) {
   const inherited = useContext(RunnablePython);
+  const pageKnows = useContext(KnownPassages);
+  const known = knownPassage ?? pageKnows;
   const canRun = runnable ?? inherited;
-  const claims = useMemo(
-    () => anchoredChecks(children, checks ?? fencedChecks(children)),
-    [children, checks],
-  );
+  const claims = useMemo(() => textClaims(children, checks), [children, checks]);
   const source = useMemo(
     () =>
       markdownSource(
         stripCheckFences(children),
-        citationResolver,
+        known,
         drawing,
         claims.map((claim) => claim.step),
       ),
-    [children, citationResolver, claims, drawing],
+    [children, known, claims, drawing],
   );
   const scope = useMemo(
-    () => ({ claims, canRun, onCitationClick, citationResolver, figures, drawing, toolBlock }),
-    [claims, canRun, onCitationClick, citationResolver, figures, drawing, toolBlock],
+    () => ({ claims, canRun, knownPassage: known, figures, drawing, toolBlock }),
+    [claims, canRun, known, figures, drawing, toolBlock],
   );
   // The same element for the same text, so React skips the parse; the renderers read a changed scope from context.
   const tree = useMemo(
     () => (
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
-        rehypePlugins={rehypePlugins}
+        rehypePlugins={viewRehypePlugins}
         skipHtml
         urlTransform={urlTransform}
         components={components}
@@ -192,26 +198,28 @@ function FormulaPending({ display, size }: { display: boolean; size: number }) {
   );
 }
 
+/** A step's check, run when the step is drawn. While it runs nothing shows: the sources row says the checks are running. */
 function AsyncCheck({ claim }: { claim: MathCheck }) {
-  const { t } = useTranslation();
-  const { kind, expr, claimed, vars } = claim;
-  const input = { kind, expr, claimed, vars };
-  const result = useQuery({
-    queryKey: ["math-check", input],
-    queryFn: () => invoke("tools.check", input),
-    retry: false,
-    staleTime: 60000,
-  });
-  return result.data || result.isError ? (
-    <CheckBadge
-      state={result.data?.state ?? "none"}
-      reason={result.data?.reason}
-      verifiedLabel={t("components.markdown.verified")}
-      failedLabel={t("components.markdown.failed")}
-    />
-  ) : (
-    <span className="meta" role="status">
-      {t("components.markdown.checking")}
-    </span>
+  const result = useQuery(checkQuery(claim));
+  return result.data || result.isError ? <CheckBadge state={result.data?.state ?? "none"} reason={result.data?.reason} /> : null;
+}
+
+/**
+ * The checks of one step, run when the step is drawn: each failure under the step with its reason, and one mark beside it
+ * for the ones that passed, however many, so the student sees one icon and the keyboard stops once. While they run
+ * nothing shows: the sources row says the checks are running.
+ */
+function CheckSlot({ indexes }: { indexes: number[] }) {
+  const { claims } = useContext(Scope);
+  const own = indexes.map((index) => claims[index]).filter((claim): claim is MathCheck => claim !== undefined);
+  const results = useQueries({ queries: own.map(checkQuery) });
+  const passed = results.filter((result) => result.data?.state === "verified").length;
+  return (
+    <div className="px-check-slot">
+      {results.map((result, index) =>
+        result.data?.state === "failed" ? <CheckBadge key={index} state="failed" reason={result.data.reason} /> : null,
+      )}
+      {passed > 0 ? <CheckBadge state="verified" count={passed} /> : null}
+    </div>
   );
 }

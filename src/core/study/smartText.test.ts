@@ -168,8 +168,12 @@ describe("smart lessons", () => {
     expect(completed(db)).toBe(before);
     expect(learn()).toBe(false);
     expect(lesson.answers).toEqual({});
+    // One place per passage, both in chapter 1: the sources row lists the chapter once.
     expect(lesson.sources).toEqual([
-      expect.objectContaining({ title: "Fisica", places: [expect.objectContaining({ chapter: 1 })] }),
+      expect.objectContaining({
+        title: "Fisica",
+        places: lesson.passageIds.map((passageId) => expect.objectContaining({ passageId, chapter: 1 })),
+      }),
     ]);
 
     const segments = parseSmartText(lesson.markdown);
@@ -559,7 +563,7 @@ describe("smart lessons", () => {
     expect(exported).toContain("**Verifica rapida.** Che cos'è la velocità?");
     expect(exported).toContain("### Ripasso finale");
     expect(exported).not.toContain("pyxis-");
-    expect(smartSources(db, lesson.passageIds)[0]?.places).toHaveLength(1);
+    expect(smartSources(db, lesson.passageIds)[0]?.places).toHaveLength(lesson.passageIds.length);
     db.close();
   });
   it("labels lesson citations by section path, then paragraph, then Pn, in passage order", async () => {

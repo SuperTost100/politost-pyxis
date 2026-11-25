@@ -1,6 +1,7 @@
 import type { MenuProps } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { stripPassageRefs } from "@shared/smart-text";
 import { copyImage, saveImage } from "../lib/imageActions";
 import { plainReading } from "../features/ask/outline";
 import { imageFileName } from "../lib/imageName";
@@ -45,7 +46,7 @@ export function figureMenu(
  * there, and every other figure keeps its white card in both themes.
  */
 export function Figure({
-  caption,
+  caption: written,
   image,
   darkImage,
   drawing = false,
@@ -56,6 +57,8 @@ export function Figure({
   drawing?: boolean;
 }) {
   const { t } = useTranslation();
+  // A caption carries no citation marks: the sources are named by the row under the text.
+  const caption = stripPassageRefs(written);
   const [open, setOpen] = useState(false);
   const [said, setSaid] = useState<"copied" | "saved" | "failed" | null>(null);
   const opener = useRef<HTMLButtonElement>(null);

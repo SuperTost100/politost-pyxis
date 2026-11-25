@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type MenuProps } from "antd";
 import dayjs from "dayjs";
@@ -17,6 +17,7 @@ import { MathText } from "../../components/math/MathText";
 import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import { MarkdownView } from "../../components/MarkdownView";
+import { CitedText } from "../../components/CitedText";
 import { Notice } from "../../components/Notice";
 import { SourceDetails } from "../../components/SourceDetails";
 import { openSourceViewer } from "../../components/SourceViewer";
@@ -185,6 +186,10 @@ function ExamPage({ planId }: { planId: string }) {
         navigate(`/ask/${thread.chatId}`);
       });
   }
+  const previewPassages = useMemo(
+    () => (itemPreview?.passageIds ?? []).map((passageId) => ({ passageId })),
+    [itemPreview],
+  );
   const previewBody = itemPreview
     ? (JSON.parse(itemPreview.bodyJson) as {
         markdown?: string;
@@ -412,17 +417,12 @@ function ExamPage({ planId }: { planId: string }) {
         onClose={() => setPreviewOpen(false)}
         onClosed={() => setItemPreview(null)}
       >
-        <MarkdownView
-          onCitationClick={(number) => {
-            const passageId = itemPreview?.passageIds[number - 1];
-            if (passageId) openSourceViewer({ passageId });
-          }}
-        >
+        <CitedText variant="reading" citations={previewPassages}>
           {smartTextToMarkdown(
             previewBody?.markdown ?? "",
             i18n.language.startsWith("it") ? smartLabels.it : smartLabels.en,
           )}
-        </MarkdownView>
+        </CitedText>
         {previewBody?.questions?.map((question, index) => (
           <section key={index}>
             <MarkdownView>{question.stem}</MarkdownView>

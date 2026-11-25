@@ -522,8 +522,9 @@ test("diagnostic: answered then handed in, where to start, source chips and a re
     // The wrong answer is the one listed to review, open with its cited explanation.
     const second = page.locator(".px-res-q:not(.is-correct)").first();
     await expect(second.locator(".px-res-n")).toHaveText("2");
-    await expect(second.locator(".px-cite")).toHaveCount(1);
-    expect(await second.innerText()).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+    await expect(second.locator(".px-cite-mark")).toHaveCount(1);
+    await expect(second.locator(".px-sources-row")).toHaveCount(1);
+    expect(await second.innerText()).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-|\[P\d/);
     // A new question takes the reported one's place in the next diagnostic.
     await expect
       .poll(

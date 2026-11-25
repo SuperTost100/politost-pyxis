@@ -1,0 +1,273 @@
+/* The row that ends an answer or a lesson part: "3 fonti · 2 risultati verificati", which opens into the sources. */
+.px-sources {
+  --sources-size: calc(13.5px * var(--text-scale, 1));
+  margin-top: 6px;
+  font: 400 var(--sources-size) / 1.4 var(--font-sans);
+}
+.px-sources.is-lesson {
+  --sources-size: calc(14px * var(--text-scale, 1));
+  margin-top: 18px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.px-sources.is-body {
+  --sources-size: calc(13px * var(--text-scale, 1));
+  margin-top: 4px;
+}
+/* A new answer's row grows out of the end of its text. */
+.px-sources.is-arriving {
+  animation: px-sources-in var(--duration-small) var(--ease-out);
+  transform-origin: 0 0;
+}
+@keyframes px-sources-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.px-sources-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 2px;
+  margin-inline-start: -8px;
+}
+.px-sources-row,
+.px-sources-stat {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 7px;
+  min-height: 30px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 500 var(--sources-size) / 1.35 var(--font-sans);
+  text-align: start;
+  transition:
+    background-color var(--duration-micro) ease-out,
+    color var(--duration-micro) ease-out;
+}
+.px-sources-row,
+.px-sources-stat.is-toggle {
+  cursor: pointer;
+}
+.px-sources-row:hover,
+.px-sources-row[aria-expanded="true"],
+.px-sources-row.is-on,
+.px-sources-stat.is-toggle:hover,
+.px-sources-stat.is-toggle[aria-pressed="true"] {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-sources-row b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.px-sources-row .px-chevron {
+  margin-inline-start: 2px;
+}
+.px-sources-sep {
+  color: var(--ink-subtle);
+}
+.px-sources-bar > .px-sources-sep {
+  margin-inline-start: 2px;
+}
+.px-sources-bar > .px-sources-sep + .px-sources-stat {
+  padding-inline-start: 6px;
+}
+.px-sources-stat svg {
+  flex: none;
+  color: var(--ink-subtle);
+}
+
+/* The list opens in place, out of the row. */
+.px-sources-fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-small) var(--ease-out);
+}
+/* The fold clips while it grows; its box reaches 8px past the list on each side, where a place's fill ends. */
+.px-sources-fold > div {
+  min-height: 0;
+  margin-inline: -8px;
+  padding-inline: 8px;
+  overflow: hidden;
+}
+.px-sources-fold.is-open {
+  grid-template-rows: 1fr;
+}
+.px-sources-list {
+  display: block;
+  margin: 0;
+  padding: 2px 0 4px;
+  list-style: none;
+}
+.px-sources-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 16px;
+}
+.px-sources-name {
+  flex: 1 1 250px;
+  min-width: 0;
+  padding: 5px 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: 600 var(--sources-size) / 1.4 var(--font-sans);
+  text-align: start;
+  cursor: pointer;
+}
+.px-sources-name:hover,
+.px-sources-name:focus-visible {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.px-sources-places {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2px;
+  min-width: 0;
+  max-width: calc(100% + 16px);
+  margin: 0 -8px;
+}
+.px-sources-place {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-muted);
+  font: 500 var(--sources-size) / 28px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-micro) ease-out,
+    color var(--duration-micro) ease-out;
+}
+/* A section's name can be long: it wraps inside the list instead of running past it. */
+.px-sources-place.is-section {
+  height: auto;
+  min-height: 28px;
+  padding-block: 4px;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+.px-sources-place:hover,
+.px-sources-place:focus-visible {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-sources :focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* The passage of a place: over the place, growing out of it. */
+.px-passage-card {
+  position: fixed;
+  z-index: 1150;
+  width: min(340px, calc(100vw - 32px));
+  padding: 12px 14px 11px;
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-overlay);
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  pointer-events: none;
+  animation: px-passage-in 170ms var(--ease-out);
+}
+@keyframes px-passage-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+.px-passage-card small {
+  display: block;
+  color: var(--ink-subtle);
+  font: 600 12px/1.3 var(--font-sans);
+}
+.px-passage-card p {
+  margin: 5px 0 0;
+  color: var(--ink);
+  font: 400 calc(13.5px * var(--text-scale, 1)) / 1.5 var(--font-sans);
+}
+/* A place that stands for several passages: each quote, introduced by the sentence it supports. */
+.px-passage-quote + .px-passage-quote {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.px-passage-for {
+  display: block;
+  margin-top: 5px;
+  color: var(--ink-muted);
+  font: 500 12.5px/1.4 var(--font-sans);
+}
+.px-passage-for + p {
+  margin-top: 3px;
+}
+.px-passage-card p.is-reading {
+  color: var(--ink-subtle);
+}
+/* A card taller than the room beside its place scrolls inside itself: the wheel reaches it, and the hint says how to
+   read it from the keyboard. */
+.px-passage-card[data-overflow] {
+  pointer-events: auto;
+}
+.px-passage-card:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.px-passage-hint.is-scroll {
+  display: none;
+}
+.px-passage-card[data-overflow] .px-passage-hint.is-scroll {
+  display: block;
+  margin-top: 2px;
+}
+.px-passage-hint {
+  display: block;
+  margin-top: 8px;
+  color: var(--ink-subtle);
+  font: 500 12px/1.3 var(--font-sans);
+}
+
+/* The words a pointed-at passage supports. The passage's card names it too, so the colour is not the only sign. */
+:root {
+  --cited-tint: color-mix(in srgb, var(--primary) 15%, transparent);
+}
+[data-theme="dark"] {
+  --cited-tint: color-mix(in srgb, var(--primary-text) 24%, transparent);
+}
+::highlight(px-cited) {
+  background-color: var(--cited-tint);
+}
+
+@media (max-width: 760px) {
+  .px-sources-name {
+    flex-basis: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .px-sources.is-arriving,
+  .px-passage-card {
+    animation: none;
+  }
+  .px-sources-fold {
+    transition: none;
+  }
+}

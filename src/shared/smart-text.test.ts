@@ -473,3 +473,13 @@ describe("figure blocks", () => {
     );
   });
 });
+
+describe("stripPassageRefs and neighbouring marks", () => {
+  it("drops a run of marks with the punctuation between them, and keeps the sentence's own", () => {
+    expect(stripPassageRefs("Vale [P1], [P2]. Poi [P3]; [P4], e basta.")).toBe("Vale. Poi, e basta.");
+  });
+
+  it("keeps the indentation of a line that held only a mark", () => {
+    expect(stripPassageRefs("1. Primo.\n\n   [P1]\n\n   Ancora.")).toBe("1. Primo.\n\n   \n\n   Ancora.");
+  });
+});
