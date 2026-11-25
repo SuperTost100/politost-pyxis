@@ -10,7 +10,7 @@ import { savePlanSettings } from "../plans/settings";
 import { editPlanTopics, PATH_TOPICS_MAX, TOPIC_TITLE_MAX } from "../plans/topicsEdit";
 import { queueSyllabusChecks } from "../sources/syllabus";
 import { toolRunner } from "./jobs";
-import { digest, registerProposalKind, storeProposal, type ProposalKind } from "./proposals";
+import { plainName, propose, ProposalStale, registerProposalKind, type ProposalContext, type ProposalKind } from "./proposals";
 import { quizTopic } from "./quiz";
 import type { Tool, ToolTurn } from "./server";
 
@@ -75,13 +75,27 @@ export const PATH_DESCRIPTION = [
 
 type TopicAfter = { id: string | null; title: string; added: boolean; restored: boolean; movedFrom: number | null };
 
+/** What a path request resolves to: the exact change, with everything its card shows. */
 export type PathProposal = {
   planId: string;
   exam: string;
-  date: { sessionId: string | null; from: number | null; to: number; label: string | null } | null;
+  date: {
+    sessionId: string | null;
+    from: number | null;
+    to: number;
+    label: string | null;
+    /** The exam's sessions as they are, so any change to one makes the card stale. */
+    sessions: unknown[];
+    /** The next session once this one moves, when it is another one. */
+    next: { date: number; label: string | null } | null;
+  } | null;
   hours: { from: number | null; to: number } | null;
   topics: { before: Array<{ id: string; title: string }>; after: TopicAfter[] } | null;
+  /** What the request asked that is already so, for the model. */
+  already: string[];
 };
+
+export type PathRequest = z.infer<typeof pathInput>;
 
 type PathOutcome = { date: number | null; hours: number | null; changed: number };
 
@@ -93,9 +107,16 @@ export function chatExam(
   where: ReturnType<ToolTurn["place"]>,
 ): Exam | { refused: string } {
   const live = "archived_at IS NULL AND status != 'building'";
+  // A chat of an exam acts on that exam or on none: never on another exam of its subject.
   if (where.planId) {
-    const plan = db.prepare(`SELECT id, title, target FROM plans WHERE id = ? AND ${live}`).get(where.planId) as Exam | undefined;
-    if (plan) return plan;
+    const plan = db.prepare(`SELECT id, title, target, ${live} AS live FROM plans WHERE id = ?`).get(where.planId) as
+      | (Exam & { live: number })
+      | undefined;
+    if (plan?.live) return { id: plan.id, title: plan.title, target: plan.target };
+    if (plan)
+      return {
+        refused: `This chat's exam, ${plan.title}, is archived or still being built, so nothing was proposed. Tell the student in one sentence: they can bring it back from Esami, or wait until it is ready.`,
+      };
   }
   const exams = where.subject
     ? (db
@@ -136,21 +157,6 @@ function nextSession(db: Database.Database, planId: string, now: number) {
   return next === null ? null : (sessions.find((session) => session.date === next) ?? null);
 }
 
-function fingerprint(db: Database.Database, proposal: PathProposal): string | null {
-  const plan = db.prepare("SELECT title, status, archived_at AS archivedAt FROM plans WHERE id = ?").get(proposal.planId) as
-    | { title: string; status: string; archivedAt: number | null }
-    | undefined;
-  if (!plan) return null;
-  return digest({
-    plan,
-    sessions: proposal.date ? readSessions(db, proposal.planId) : null,
-    hours: proposal.hours ? readPlannerSettings(db).weeklyHours : null,
-    topics: proposal.topics
-      ? db.prepare("SELECT id, title, position, archived_at FROM topics WHERE plan_id = ? ORDER BY id").all(proposal.planId)
-      : null,
-  });
-}
-
 function planTopics(
   db: Database.Database,
   planId: string,
@@ -180,27 +186,48 @@ function planTopics(
     if (index < 0) return unknown(title);
     work.splice(index, 1);
   }
+  const archived = db
+    .prepare("SELECT id, title FROM topics WHERE plan_id = ? AND archived_at IS NOT NULL ORDER BY archived_at DESC")
+    .all(planId) as Array<{ id: string; title: string }>;
   for (const move of args.move_topics ?? []) {
     if (!move.after && !move.first)
       return { refused: `Moving "${move.title}" needs \`after\` (a topic's title) or \`first\`. Nothing was proposed.` };
     const match = existing(move.title);
-    const index = match ? work.findIndex((topic) => topic.id === match.id) : -1;
-    if (index < 0) return unknown(move.title);
-    const [moving] = work.splice(index, 1);
-    const at = slot(move);
-    if (typeof at !== "number") return at;
-    work.splice(at, 0, { ...moving!, movedFrom: before.findIndex((topic) => topic.id === moving!.id) + 1 });
+    if (!match || !work.some((topic) => topic.id === match.id)) return unknown(move.title);
   }
-  const archived = db
-    .prepare("SELECT id, title FROM topics WHERE plan_id = ? AND archived_at IS NOT NULL ORDER BY archived_at DESC")
-    .all(planId) as Array<{ id: string; title: string }>;
-  for (const add of args.add_topics ?? []) {
+  for (const add of args.add_topics ?? [])
     if (work.some((topic) => folded(topic.title) === folded(add.title)) || before.some((topic) => folded(topic.title) === folded(add.title)))
       return { refused: `The path already has a topic called "${add.title}", so nothing was proposed. To move it, use move_topics.` };
-    const at = slot(add);
-    if (typeof at !== "number") return at;
-    const back = archived.find((topic) => folded(topic.title) === folded(add.title));
-    work.splice(at, 0, { id: back?.id ?? null, title: back?.title ?? add.title, added: true, restored: !!back, movedFrom: null });
+  // Moves, then additions, each placed once the topic it goes after is in the list: a move may name a topic the same
+  // call adds, and an addition one it moves.
+  type Step = { move: true; title: string; after?: string; first?: boolean } | { move: false; title: string; after?: string; first?: boolean };
+  let waiting: Step[] = [
+    ...(args.move_topics ?? []).map((move) => ({ ...move, move: true as const })),
+    ...(args.add_topics ?? []).map((add) => ({ ...add, move: false as const })),
+  ];
+  const placed = (step: Step) => {
+    if (step.first || !step.after) return true;
+    const after = step.after;
+    if (work.some((topic) => folded(topic.title) === folded(after))) return true;
+    const match = existing(after);
+    return !!match && match.id !== (step.move ? existing(step.title)?.id : undefined) && work.some((topic) => topic.id === match.id);
+  };
+  while (waiting.length) {
+    const ready = waiting.find(placed);
+    if (!ready) return unknown(waiting[0]!.after ?? waiting[0]!.title);
+    waiting = waiting.filter((step) => step !== ready);
+    if (ready.move) {
+      const id = existing(ready.title)!.id;
+      const [moving] = work.splice(work.findIndex((topic) => topic.id === id), 1);
+      const at = slot(ready);
+      if (typeof at !== "number") return at;
+      work.splice(at, 0, { ...moving!, movedFrom: before.findIndex((topic) => topic.id === moving!.id) + 1 });
+    } else {
+      const at = slot(ready);
+      if (typeof at !== "number") return at;
+      const back = archived.find((topic) => folded(topic.title) === folded(ready.title));
+      work.splice(at, 0, { id: back?.id ?? null, title: back?.title ?? ready.title, added: true, restored: !!back, movedFrom: null });
+    }
   }
   if (work.length === 0) return { refused: "That would leave the path with no topics, so nothing was proposed. Tell the student a path needs at least one topic." };
   if (work.length > PATH_TOPICS_MAX) return { refused: `A path holds at most ${PATH_TOPICS_MAX} topics, so nothing was proposed.` };
@@ -218,7 +245,10 @@ const changedTopics = (topics: PathProposal["topics"]) =>
 
 function summary(proposal: PathProposal): string {
   const parts: string[] = [];
-  if (proposal.date) parts.push(`exam date from ${proposal.date.from === null ? "none" : dayKey(proposal.date.from)} to ${dayKey(proposal.date.to)}`);
+  if (proposal.date)
+    parts.push(
+      `exam date from ${proposal.date.from === null ? "none" : dayKey(proposal.date.from)} to ${dayKey(proposal.date.to)}${proposal.date.next ? ` (the next session would then be another one, on ${dayKey(proposal.date.next.date)})` : ""}`,
+    );
   if (proposal.hours) parts.push(`weekly study hours, for all exams, from ${proposal.hours.from ?? "not set"} to ${proposal.hours.to}`);
   if (proposal.topics) {
     const removed = proposal.topics.before.filter((topic) => !proposal.topics!.after.some((next) => next.id === topic.id));
@@ -242,54 +272,106 @@ export function pathNote(view: PathProposalView): string {
   return `[Pyxis tool ${PATH_TOOL}: you proposed ${what}; it is shown to the student, who has not decided yet, and nothing has changed.]`;
 }
 
-const kind: ProposalKind<PathProposal> = {
-  tool: PATH_TOOL,
-  fingerprint,
-  apply(db, proposal) {
-    const plan = db.prepare("SELECT title, target FROM plans WHERE id = ?").get(proposal.planId) as { title: string; target: number };
-    if (proposal.date) {
-      const sessions = readSessions(db, proposal.planId);
-      const moved = proposal.date.sessionId ? sessions.find((session) => session.id === proposal.date!.sessionId) : undefined;
-      const next = moved
-        ? sessions.map((session) => (session.id === moved.id ? { ...session, date: proposal.date!.to } : session))
-        : [...sessions, { date: proposal.date.to, time: null, place: null, label: null }];
-      savePlanSettings(db, { planId: proposal.planId, title: plan.title, target: plan.target, sessions: next });
+/** What a path request means now, in the chat's place: the change it would make, or why there is none. */
+function resolve(db: Database.Database, args: PathRequest, ctx: Omit<ProposalContext, "resultId">): PathProposal | { refused: string } {
+  const exam = chatExam(db, ctx.place);
+  if ("refused" in exam) return exam;
+  const already: string[] = [];
+  let date: PathProposal["date"] = null;
+  if (args.exam_date) {
+    const to = noonOf(args.exam_date);
+    if (to === null || to > SESSION_DATE_MAX)
+      return { refused: `${args.exam_date} is not a valid date, so nothing was proposed. Give the date as YYYY-MM-DD.` };
+    if (to < startOfDay(ctx.now)) return { refused: `${args.exam_date} is already past, so nothing was proposed. Ask the student for the new date.` };
+    const sessions = readSessions(db, exam.id);
+    const session = nextSession(db, exam.id, ctx.now);
+    if (session?.date === to) already.push(`the exam is already on ${args.exam_date}`);
+    else {
+      const after = session ? sessions.map((entry) => (entry.id === session.id ? { ...entry, date: to } : entry)) : [...sessions, { id: "", date: to, label: null }];
+      const nextDate = nextExamDate(after.map((entry) => entry.date), ctx.now);
+      const nextEntry = after.find((entry) => entry.date === nextDate);
+      date = {
+        sessionId: session?.id ?? null,
+        from: session?.date ?? null,
+        to,
+        label: session?.label ?? null,
+        sessions,
+        next: nextDate !== null && nextDate !== to ? { date: nextDate, label: nextEntry?.label ?? null } : null,
+      };
     }
-    if (proposal.topics)
+  }
+  let hours: PathProposal["hours"] = null;
+  if (args.weekly_hours !== undefined) {
+    const to = Math.round(args.weekly_hours * 2) / 2;
+    const from = readPlannerSettings(db).weeklyHours;
+    if (from !== to) hours = { from, to };
+    else already.push(`the weekly hours are already ${args.weekly_hours}`);
+  }
+  const topics = planTopics(db, exam.id, args);
+  if (topics && "refused" in topics) return topics;
+  if (!date && !hours && !topics)
+    return { refused: "That is already how the path is (or the call named no change), so nothing was proposed. Tell the student in one sentence." };
+  return { planId: exam.id, exam: plainName(exam.title), date, hours, topics, already };
+}
+
+const kind: ProposalKind<PathRequest, PathProposal> = {
+  tool: PATH_TOOL,
+  resolve,
+  apply(db, action) {
+    const plan = db.prepare("SELECT title, target, status, archived_at AS archivedAt FROM plans WHERE id = ?").get(action.planId) as
+      | { title: string; target: number; status: string; archivedAt: number | null }
+      | undefined;
+    if (!plan || plan.status === "building" || plan.archivedAt !== null) throw new ProposalStale();
+    if (action.date) {
+      const sessions = readSessions(db, action.planId);
+      const moved = action.date.sessionId ? sessions.find((session) => session.id === action.date!.sessionId) : undefined;
+      if (action.date.sessionId && !moved) throw new ProposalStale();
+      const next = moved
+        ? sessions.map((session) => (session.id === moved.id ? { ...session, date: action.date!.to } : session))
+        : [...sessions, { date: action.date.to, time: null, place: null, label: null }];
+      savePlanSettings(db, { planId: action.planId, title: plan.title, target: plan.target, sessions: next });
+    }
+    if (action.topics)
       editPlanTopics(
         db,
-        proposal.planId,
-        proposal.topics.after.map((topic) => (topic.id && !topic.added ? { id: topic.id } : { title: topic.title })),
+        action.planId,
+        action.topics.after.map((topic) =>
+          topic.restored && topic.id ? { restore: topic.id } : topic.id && !topic.added ? { id: topic.id } : { title: topic.title },
+        ),
       );
-    if (proposal.hours) savePlannerHours(db, { hours: proposal.hours.to });
+    if (action.hours) savePlannerHours(db, { hours: action.hours.to });
     // What a plan edit changes is what the stored source comparison depends on, as after the exam's own settings.
     try {
-      queueSyllabusChecks(db, toolRunner(), proposal.planId);
+      queueSyllabusChecks(db, toolRunner(), action.planId);
     } catch (err) {
       if (!(err instanceof Error && err.message === "tool-runner-missing")) throw err;
     }
     return {
-      date: proposal.date?.to ?? null,
-      hours: proposal.hours?.to ?? null,
-      changed: changedTopics(proposal.topics),
+      // The exam's next session after the change, which is what the exam page counts down to.
+      date: action.date ? (action.date.next?.date ?? action.date.to) : null,
+      hours: action.hours?.to ?? null,
+      changed: changedTopics(action.topics),
     } satisfies PathOutcome;
   },
-  view(db, base, proposal): PathProposalView {
-    const gone = !db.prepare("SELECT 1 FROM plans WHERE id = ?").get(proposal.planId);
-    const after = proposal.topics?.after ?? [];
+  view(db, base, action, decision): PathProposalView {
+    const gone = !db.prepare("SELECT 1 FROM plans WHERE id = ?").get(action.planId);
+    const after = action.topics?.after ?? [];
+    const outcome = decision?.state === "applied" ? (decision.outcome as PathOutcome) : null;
     return {
       ...base,
       tool: PATH_TOOL,
-      planId: proposal.planId,
-      exam: proposal.exam,
+      planId: action.planId,
+      exam: action.exam,
       gone,
-      date: proposal.date ? { from: proposal.date.from, to: proposal.date.to, label: proposal.date.label } : null,
-      hours: proposal.hours
-        ? { ...proposal.hours, exams: db.prepare("SELECT count(*) FROM plans WHERE archived_at IS NULL").pluck().get() as number }
+      date: action.date ? { from: action.date.from, to: action.date.to, label: action.date.label, next: action.date.next } : null,
+      datePast: action.date !== null && action.date.to < startOfDay(Date.now()),
+      hours: action.hours
+        ? { ...action.hours, exams: db.prepare("SELECT count(*) FROM plans WHERE archived_at IS NULL").pluck().get() as number }
         : null,
-      before: (proposal.topics?.before ?? []).map((topic) => ({ title: topic.title, removed: !after.some((next) => next.id === topic.id) })),
-      after: after.map(({ title, added, restored, movedFrom }) => ({ title, added, restored, movedFrom })),
-      changed: changedTopics(proposal.topics),
+      before: (action.topics?.before ?? []).map((topic) => ({ title: plainName(topic.title), removed: !after.some((next) => next.id === topic.id) })),
+      after: after.map(({ title, added, restored, movedFrom }) => ({ title: plainName(title), added, restored, movedFrom })),
+      changed: changedTopics(action.topics),
+      appliedDate: outcome?.date ?? null,
     };
   },
 };
@@ -301,49 +383,18 @@ export function proposePathTool(db: Database.Database): Tool {
     description: PATH_DESCRIPTION,
     input: pathInput,
     run(turn, raw) {
-      const args = raw as z.infer<typeof pathInput>;
       if ((turn.tally[PATH_TOOL] ?? 0) >= 1)
         return {
           isError: true,
           text: "This answer already proposed a change to the path, and one answer may propose one. Nothing more was proposed: put everything in one call next time.",
         };
-      const exam = chatExam(db, turn.place());
-      if ("refused" in exam) return { isError: true, text: exam.refused };
-      const now = Date.now();
-      let date: PathProposal["date"] = null;
-      if (args.exam_date) {
-        const to = noonOf(args.exam_date);
-        if (to === null || to > SESSION_DATE_MAX)
-          return { isError: true, text: `${args.exam_date} is not a valid date, so nothing was proposed. Give the date as YYYY-MM-DD.` };
-        if (to < startOfDay(now))
-          return { isError: true, text: `${args.exam_date} is already past, so nothing was proposed. Ask the student for the new date.` };
-        const session = nextSession(db, exam.id, now);
-        if (session?.date !== to) date = { sessionId: session?.id ?? null, from: session?.date ?? null, to, label: session?.label ?? null };
-      }
-      let hours: PathProposal["hours"] = null;
-      if (args.weekly_hours !== undefined) {
-        const to = Math.round(args.weekly_hours * 2) / 2;
-        const from = readPlannerSettings(db).weeklyHours;
-        if (from !== to) hours = { from, to };
-      }
-      const topics = planTopics(db, exam.id, args);
-      if (topics && "refused" in topics) return { isError: true, text: topics.refused };
-      if (!date && !hours && !topics)
-        return {
-          isError: true,
-          text: "That is already how the path is (or the call named no change), so nothing was proposed. Tell the student in one sentence.",
-        };
+      const made = propose<PathRequest, PathProposal>(db, turn, PATH_TOOL, raw as PathRequest);
+      if ("refused" in made) return { isError: true, text: made.refused };
       turn.tally[PATH_TOOL] = 1;
-      const proposal: PathProposal = { planId: exam.id, exam: exam.title, date, hours, topics };
-      const resultId = storeProposal(db, turn.chatId, PATH_TOOL, proposal, fingerprint(db, proposal)!, now);
-      // What was asked and is already so is left out of the card, and the model hears why.
-      const already = [
-        args.exam_date && !date ? `the exam is already on ${args.exam_date}` : "",
-        args.weekly_hours !== undefined && !hours ? `the weekly hours are already ${args.weekly_hours}` : "",
-      ].filter(Boolean);
+      const { action } = made;
       return {
-        text: `Shown to the student as a card to confirm: ${summary(proposal)}.${already.length ? ` Left out because ${already.join(" and ")}.` : ""} They have not decided yet and nothing has changed. In one short sentence say what you prepared and that nothing changes until they apply it; do not list the changes again and never say they are done.`,
-        shown: { resultId },
+        text: `Shown to the student as a card to confirm: ${summary(action)}.${action.already.length ? ` Left out because ${action.already.join(" and ")}.` : ""} They have not decided yet and nothing has changed. In one short sentence say what you prepared and that nothing changes until they apply it; do not list the changes again and never say they are done.`,
+        shown: { resultId: made.resultId },
       };
     },
   };

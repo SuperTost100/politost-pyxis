@@ -590,7 +590,19 @@ const pathProposalView = z.object({
   planId: z.string(),
   exam: z.string(),
   gone: z.boolean(),
-  date: z.object({ from: z.number().nullable(), to: z.number(), label: z.string().nullable() }).nullable(),
+  date: z
+    .object({
+      from: z.number().nullable(),
+      to: z.number(),
+      label: z.string().nullable(),
+      /** The exam's next session once this one moves, when that is another session. */
+      next: z.object({ date: z.number(), label: z.string().nullable() }).nullable(),
+    })
+    .nullable(),
+  /** The new date is a day already past, which no confirm can write. */
+  datePast: z.boolean(),
+  /** Once applied: the exam's next session date after the change. */
+  appliedDate: z.number().nullable(),
   hours: z.object({ from: z.number().nullable(), to: z.number(), exams: z.number().int() }).nullable(),
   before: z.array(z.object({ title: z.string(), removed: z.boolean() })),
   after: z.array(
@@ -611,6 +623,8 @@ const examProposalView = z.object({
   date: z.number().nullable(),
   sources: z.array(z.object({ id: z.string(), title: z.string() })),
   existing: z.string().nullable(),
+  /** The exam's date is a day already past, which no confirm can write. */
+  datePast: z.boolean(),
   created: z
     .object({
       planId: z.string(),
@@ -640,8 +654,10 @@ const deleteProposalView = z.object({
   handMade: z.number().int(),
   others: z.number().int(),
   answered: z.number().int(),
-  /** False once what it went into is gone, so «Annulla» can no longer bring it back. */
+  /** False once «Annulla» can no longer bring it back: what it went into is gone, or it is in its place again. */
   restorable: z.boolean(),
+  /** After «Annulla»: how many came back (flashcards the student restored or removed again since do not). */
+  back: z.number().int().nullable(),
 });
 /**
  * `ask_stronger_model`: the chat's model handed an exercise to a stronger model, which solved it. It shows nothing where

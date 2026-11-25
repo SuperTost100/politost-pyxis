@@ -8,7 +8,7 @@ import { PLAN_TITLE_MAX } from "../../shared/plan-file";
 import { activityOf } from "../jobs/activity";
 import { enqueuePlan } from "../plans/jobs";
 import { jobRow, jobState, toolRunner } from "./jobs";
-import { digest, registerProposalKind, storeProposal, type ProposalKind } from "./proposals";
+import { plainName, propose, registerProposalKind, type ProposalContext, type ProposalKind } from "./proposals";
 import type { Tool } from "./server";
 
 /**
@@ -62,7 +62,7 @@ export type ExamProposal = {
 type ExamOutcome = { planId: string; jobId: string };
 
 /** The statuses a source cannot be built from, as the exam form refuses them. */
-const UNUSABLE = "('failed', 'needs-ocr', 'cancelled', 'interrupted')";
+const UNUSABLE = "('failed', 'needs-ocr', 'cancelled', 'interrupted', 'removed')";
 
 /** The Library's sources of a subject, by name, that an exam can be built from. */
 function subjectSources(db: Database.Database, subject: string | null): Array<{ id: string; title: string; status: string }> {
@@ -86,11 +86,6 @@ function sameExam(db: Database.Database, title: string): string | null {
   return plans.find((plan) => foldText(plan.title).replace(/\s+/g, " ").trim() === want)?.id ?? null;
 }
 
-function fingerprint(db: Database.Database, proposal: ExamProposal): string {
-  // A source still being read stays the same source: only which sources there are counts.
-  return digest({ sources: subjectSources(db, proposal.subject).map((source) => source.id), same: sameExam(db, proposal.title) });
-}
-
 /** A YYYY-MM-DD day as local noon; null for a day that does not exist. */
 function noonOf(text: string): number | null {
   const [year, month, day] = text.split("-").map(Number) as [number, number, number];
@@ -110,12 +105,40 @@ export function examNote(view: ExamProposalView): string {
   return `[Pyxis tool ${EXAM_TOOL}: you proposed ${what}; it is shown to the student, who has not decided yet, and it does not exist.]`;
 }
 
-const kind: ProposalKind<ExamProposal> = {
+export type ExamRequest = z.infer<typeof examInput>;
+
+/**
+ * What an exam request means now: the exam the form would create, with the Library's usable sources of its subject by
+ * id and title, or why there is none (an exam of that name exists, the date is not a day to come).
+ */
+function resolve(db: Database.Database, args: ExamRequest, ctx: Omit<ProposalContext, "resultId">): ExamProposal | { refused: string } {
+  if (sameExam(db, args.title))
+    return {
+      refused: `The student already has an exam called "${args.title}" in Pyxis, so nothing was proposed. Tell them in one sentence; you can offer to change its path instead.`,
+    };
+  let date: number | null = null;
+  if (args.exam_date) {
+    date = noonOf(args.exam_date);
+    if (date === null || date > SESSION_DATE_MAX)
+      return { refused: `${args.exam_date} is not a valid date, so nothing was proposed. Give it as YYYY-MM-DD.` };
+    if (date < startOfDay(ctx.now)) return { refused: `${args.exam_date} is already past, so nothing was proposed. Ask the student for the date.` };
+  }
+  const subject = args.subject ?? args.title;
+  return {
+    title: plainName(args.title),
+    subject: plainName(subject),
+    date,
+    language: language(db),
+    sources: subjectSources(db, subject).map(({ id, title }) => ({ id, title: plainName(title) })),
+  };
+}
+
+const kind: ProposalKind<ExamRequest, ExamProposal> = {
   tool: EXAM_TOOL,
-  fingerprint,
+  resolve,
   apply(db, proposal) {
-    // The draft is applied as the exam form sends it: the material is the subject's sources as they are now, which the
-    // fingerprint has just found unchanged. A draft without material has no button that applies it.
+    // The exam is created as the exam form sends it, from the material just resolved. A draft without material has no
+    // button that applies it.
     if (proposal.sources.length === 0) throw new Error("exam-no-material");
     const created = enqueuePlan(db, toolRunner(), {
       title: proposal.title,
@@ -128,8 +151,8 @@ const kind: ProposalKind<ExamProposal> = {
     });
     return { planId: created.planId, jobId: created.jobId } satisfies ExamOutcome;
   },
-  view(db, base, proposal, outcome): ExamProposalView {
-    const made = outcome as ExamOutcome | null;
+  view(db, base, proposal, decision): ExamProposalView {
+    const made = decision?.state === "applied" ? (decision.outcome as ExamOutcome) : null;
     const exists = !!made && !!db.prepare("SELECT 1 FROM plans WHERE id = ?").get(made.planId);
     const job = made ? jobRow(db, made.jobId) : undefined;
     const state = jobState(job);
@@ -141,6 +164,7 @@ const kind: ProposalKind<ExamProposal> = {
       date: proposal.date,
       sources: proposal.sources,
       existing: base.state === "stale" ? sameExam(db, proposal.title) : null,
+      datePast: proposal.date !== null && proposal.date < startOfDay(Date.now()),
       created: made
         ? {
             planId: made.planId,
@@ -168,37 +192,16 @@ export function proposeExamTool(db: Database.Database): Tool {
     description: EXAM_DESCRIPTION,
     input: examInput,
     run(turn, raw) {
-      const args = raw as z.infer<typeof examInput>;
       if ((turn.tally[EXAM_TOOL] ?? 0) >= 1)
         return {
           isError: true,
           text: "This answer already proposed an exam, and one answer may propose one. Nothing more was proposed: the student can ask for another in their next message.",
         };
-      const existing = sameExam(db, args.title);
-      if (existing)
-        return {
-          isError: true,
-          text: `The student already has an exam called "${args.title}" in Pyxis, so nothing was proposed. Tell them in one sentence; you can offer to change its path instead.`,
-        };
-      const now = Date.now();
-      let date: number | null = null;
-      if (args.exam_date) {
-        date = noonOf(args.exam_date);
-        if (date === null || date > SESSION_DATE_MAX)
-          return { isError: true, text: `${args.exam_date} is not a valid date, so nothing was proposed. Give it as YYYY-MM-DD.` };
-        if (date < startOfDay(now))
-          return { isError: true, text: `${args.exam_date} is already past, so nothing was proposed. Ask the student for the date.` };
-      }
+      const made = propose<ExamRequest, ExamProposal>(db, turn, EXAM_TOOL, raw as ExamRequest);
+      if ("refused" in made) return { isError: true, text: made.refused };
       turn.tally[EXAM_TOOL] = 1;
-      const subject = args.subject ?? args.title;
-      const proposal: ExamProposal = {
-        title: args.title,
-        subject,
-        date,
-        language: language(db),
-        sources: subjectSources(db, subject).map(({ id, title }) => ({ id, title })),
-      };
-      const resultId = storeProposal(db, turn.chatId, EXAM_TOOL, proposal, fingerprint(db, proposal), now);
+      const { action: proposal, resultId } = made;
+      const { subject, date } = proposal;
       const material = proposal.sources.length
         ? `built from ${proposal.sources.length} source${proposal.sources.length === 1 ? "" : "s"} of the student's Library on ${subject}`
         : `with no material: the Library has nothing on ${subject}, so the student can choose sources or build the path with a few questions from the card`;

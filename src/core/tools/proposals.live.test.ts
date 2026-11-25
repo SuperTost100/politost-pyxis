@@ -183,5 +183,8 @@ describe.skipIf(!live)("proposal tools, live", () => {
     endConversations();
     await stopToolServer();
     expect(report.length).toBeGreaterThan(0);
+    // The report above is for reading; the run fails when a scenario failed, or when a turn changed the workspace before
+    // anything was confirmed.
+    expect(report.filter((entry) => !entry.unchanged || entry.turns.some((turn) => turn.question === "(failed)")).map((entry) => entry.scenario)).toEqual([]);
   });
 });

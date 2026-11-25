@@ -81,9 +81,16 @@ type Exam = { planId: string; title: string };
  */
 function quizExam(db: Database.Database, place: ReturnType<ToolTurn["place"]>): Exam | { refused: string } {
   const live = `archived_at IS NULL AND EXISTS (SELECT 1 FROM topics t WHERE t.plan_id = plans.id AND t.archived_at IS NULL)`;
+  // A chat of an exam makes its quiz there or nowhere: never in another exam of its subject.
   if (place.planId) {
-    const plan = db.prepare(`SELECT id AS planId, title FROM plans WHERE id = ? AND ${live}`).get(place.planId) as Exam | undefined;
-    if (plan) return plan;
+    const plan = db.prepare(`SELECT id AS planId, title, ${live} AS live FROM plans WHERE id = ?`).get(place.planId) as
+      | (Exam & { live: number })
+      | undefined;
+    if (plan?.live) return { planId: plan.planId, title: plan.title };
+    if (plan)
+      return {
+        refused: `This chat's exam, ${plan.title}, is archived, still being built or has no topics, so no quiz was created. Tell the student in one sentence, and offer to ask them a few questions here instead.`,
+      };
   }
   const exams = place.subject
     ? (db
@@ -311,7 +318,7 @@ export function undoQuiz(db: Database.Database, stored: QuizData): QuizUndone {
  * Whether «Ripristina» can bring the quiz back: its exam is still there, and the rows are not from a newer Pyxis than
  * this one (after a downgrade). The card says so plainly otherwise, with no button.
  */
-function restorableQuiz(db: Database.Database, stored: QuizData, undone: QuizUndone): boolean {
+export function restorableQuiz(db: Database.Database, stored: QuizData, undone: QuizUndone): boolean {
   if (!db.prepare("SELECT 1 FROM plans WHERE id = ?").get(stored.planId) || (undone.schema ?? 0) > SCHEMA_VERSION) return false;
   // A quiz written from the student's material whose every passage was deleted since has nothing left to stand on.
   const cited = quizPassages(db, stored, undone);

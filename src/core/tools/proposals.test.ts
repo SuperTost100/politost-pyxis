@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createRunner } from "../jobs/runner";
-import { listMaps, storeMap } from "../maps/store";
+import { deleteMap, listMaps, storeMap } from "../maps/store";
 import { createPlan } from "../plans/create";
 import { readPlannerSettings, savePlannerHours } from "../plans/planner";
-import { readSessions } from "../plans/sessions";
+import { readSessions, saveSessions } from "../plans/sessions";
+import { setPlanArchived } from "../plans/settings";
 import { editPlanTopics } from "../plans/topicsEdit";
 import type { DeleteProposalView, ExamProposalView, PathProposalView } from "../../shared/ipc";
 import { setToolRunner } from "./jobs";
 import { decidedSince, decideProposal } from "./proposals";
-import { deleteInput, proposeDeleteTool } from "./proposeDelete";
+import { CARDS_PER_DELETION, deleteInput, proposeDeleteTool } from "./proposeDelete";
 import { examInput, proposeExamTool } from "./proposeExam";
 import { pathInput, proposePathTool } from "./proposePath";
 import { chatToolList } from "./registry";
@@ -67,6 +68,7 @@ function fixture() {
   run("INSERT INTO subjects (id, name, created_at) VALUES ('chem', 'Chimica generale', 1)");
   run("INSERT INTO sources (id, kind, title, status, subject_id, created_at, updated_at) VALUES ('disp', 'pdf', 'Dispense di Chimica', 'ready', 'chem', 1, 1)");
   run("INSERT INTO chats (id, title, created_at, updated_at) VALUES ('chat', 'Fisica', 1, 1), ('other', 'Altro', 1, 1)");
+  current = db;
   return { db, planId, topic, subjectId };
 }
 
@@ -83,7 +85,13 @@ function record(db: Db) {
   };
 }
 
+/** The fixture's database, so a turn can put its chat where the turn says it is, as a chat's own turn would find it. */
+let current: Db | undefined;
+
 function turn(place: { planId: string | null; subject: string | null }, chatId = "chat"): ToolTurn {
+  current
+    ?.prepare("UPDATE chats SET scope_json = ?, subject = ? WHERE id = ?")
+    .run(JSON.stringify({ planId: place.planId, ids: [], subjectBy: "student" }), place.subject, chatId);
   return { chatId, tally: {}, kept: {}, place: () => place, engine: () => ({ provider: "claude", model: "s" }), started: () => undefined, finished: () => undefined };
 }
 
@@ -178,7 +186,8 @@ describe("propose_path_change", () => {
       .prepare(`SELECT COALESCE(t.title, n.kind) FROM path_nodes n LEFT JOIN topics t ON t.id = n.topic_id WHERE n.plan_id = ? ORDER BY n.position`)
       .pluck()
       .all(planId) as string[];
-    expect([...new Set(order)]).toEqual([
+    // Each topic's steps stay together: a step out of its block would show as one more run here.
+    expect(order.filter((title, i) => i === 0 || order[i - 1] !== title)).toEqual([
       "intro",
       "diagnostic",
       "Cinematica",
@@ -392,6 +401,224 @@ describe("propose_delete", () => {
     expect(deleteInput.safeParse({ kind: "exam" }).success).toBe(false);
     expect(deleteInput.safeParse({ kind: "flashcards", topic: "x", planId }).success).toBe(false);
     expect(db.prepare("SELECT count(*) FROM chat_tool_results").pluck().get()).toBe(0);
+  });
+});
+
+/** A day `days` from today, at local noon, as sessions store it, and as YYYY-MM-DD. */
+const fromToday = (days: number) => {
+  const at = new Date();
+  at.setHours(12, 0, 0, 0);
+  at.setDate(at.getDate() + days);
+  const key = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
+  return { at: at.getTime(), key };
+};
+const DAY = 86_400_000;
+
+describe("a proposal whose data moved on is never applied, and its card can always be cleared", () => {
+  it("reads a map proposal whose map was deleted as stale, and lets the student decline it", async () => {
+    const { db, planId, subjectId } = fixture();
+    jobs(db);
+    const id = (await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "map", topic: "Dinamica" }))).shown!.resultId;
+    save(db, "chat", id);
+    const seen = (toolView(db, "chat", id) as DeleteProposalView).seen;
+    deleteMap(db, { subjectId }, "map-dyn");
+    expect(toolView(db, "chat", id)).toMatchObject({ state: "stale" });
+    expect(decideProposal(db, "chat", id, "apply", seen).state).toBe("stale");
+    expect(decideProposal(db, "chat", id, "decline", undefined).state).toBe("declined");
+  });
+
+  it("does not move a session that is no longer the next one when the student confirms", async () => {
+    const { db, planId } = fixture();
+    const soon = fromToday(1);
+    const later = fromToday(30);
+    saveSessions(db, planId, [{ date: soon.at, label: "Scritto" }, { date: later.at, label: "Orale" }]);
+    const id = (await proposePathTool(db).run(turn({ planId, subject: null }), pathInput.parse({ exam_date: fromToday(10).key }))).shown!.resultId;
+    save(db, "chat", id);
+    const view = toolView(db, "chat", id) as PathProposalView;
+    expect(view.date).toMatchObject({ from: soon.at, label: "Scritto" });
+    // Two days later the written part is over: the next session is the oral one.
+    expect(decideProposal(db, "chat", id, "apply", view.seen, Date.now() + 2 * DAY).state).toBe("stale");
+    expect(readSessions(db, planId).map((session) => session.date)).toEqual([soon.at, later.at]);
+  });
+
+  it("does not write a date that became past before the click, for a path or a new exam", async () => {
+    const { db, planId } = fixture();
+    jobs(db);
+    const tomorrow = fromToday(1);
+    const path = (await proposePathTool(db).run(turn({ planId, subject: null }), pathInput.parse({ exam_date: tomorrow.key }))).shown!.resultId;
+    const exam = (await proposeExamTool(db).run(turn({ planId: null, subject: null }), examInput.parse({ title: "Chimica generale", exam_date: tomorrow.key }))).shown!.resultId;
+    save(db, "chat", path);
+    save(db, "chat", exam);
+    const later = Date.now() + 3 * DAY;
+    expect(decideProposal(db, "chat", path, "apply", (toolView(db, "chat", path) as PathProposalView).seen, later).state).toBe("stale");
+    expect(decideProposal(db, "chat", exam, "apply", (toolView(db, "chat", exam) as ExamProposalView).seen, later).state).toBe("stale");
+    expect(readSessions(db, planId).map((session) => session.date)).toEqual([day(NEXT_YEAR, 1, 22)]);
+    expect(db.prepare("SELECT count(*) FROM plans WHERE title = 'Chimica generale'").pluck().get()).toBe(0);
+  });
+
+  it("goes stale for flashcards whose topic was archived or whose text changed, and for a quiz whose draft answers changed", async () => {
+    const { db, planId, topic } = fixture();
+    jobs(db);
+    const tool = proposeDeleteTool(db);
+    const propose = async (args: unknown) => {
+      const id = (await tool.run(turn({ planId, subject: null }), deleteInput.parse(args))).shown!.resultId;
+      save(db, "chat", id);
+      return id;
+    };
+    const archived = await propose({ kind: "flashcards", topic: "Cinematica" });
+    db.prepare("UPDATE topics SET archived_at = 9 WHERE id = ?").run(topic("Cinematica"));
+    expect(toolView(db, "chat", archived)).toMatchObject({ state: "stale" });
+    db.prepare("UPDATE topics SET archived_at = NULL WHERE id = ?").run(topic("Cinematica"));
+    const edited = await propose({ kind: "flashcards", topic: "Cinematica" });
+    db.prepare("UPDATE cards SET front = 'Altro testo' WHERE id = 'c2'").run();
+    expect(toolView(db, "chat", edited)).toMatchObject({ state: "stale" });
+    const quiz = await propose({ kind: "quiz", topic: "Termodinamica" });
+    const seen = (toolView(db, "chat", quiz) as DeleteProposalView).seen;
+    db.prepare(`UPDATE attempt_answers SET payload_json = '{"draft":{"picks":{"q1":"B"}}}' WHERE id = 'open-aa'`).run();
+    expect(decideProposal(db, "chat", quiz, "apply", seen).state).toBe("stale");
+    expect(db.prepare("SELECT count(*) FROM items WHERE id = 'open'").pluck().get()).toBe(1);
+    expect(db.prepare("SELECT count(*) FROM cards WHERE removed = 1").pluck().get()).toBe(0);
+  });
+});
+
+describe("what a proposal is about is found without guessing", () => {
+  it("refuses a map title two maps share, and sends the student to Mappe", async () => {
+    const { db, planId, subjectId } = fixture();
+    jobs(db);
+    storeMap(db, { subjectId }, { id: "map-dyn-2", title: "Dinamica", passageIds: [], graph: { nodes: [{ id: "r", label: "Dinamica", parent: null, sources: [] }], edges: [] } } as never);
+    const out = await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "map", topic: "Dinamica" }));
+    expect(out.isError).toBe(true);
+    expect(out.text).toMatch(/2 maps of Fisica are called "Dinamica".*Mappe/);
+  });
+
+  it("takes the quiz whose topic is the words exactly over one that only holds them", async () => {
+    const { db, planId } = fixture();
+    jobs(db);
+    db.prepare("INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('gas', ?, 'Termodinamica dei gas', 9, 1)").run(planId);
+    db.prepare(`INSERT INTO items (id, plan_id, topic_id, kind, body_json, created_at) VALUES ('gas-quiz', ?, 'gas', 'quiz', '{"complete":true,"questions":[{"id":"q1"}]}', 8)`).run(planId);
+    db.prepare("INSERT INTO attempts (id, plan_id, item_id, started_at) VALUES ('gas-a', ?, 'gas-quiz', 8)").run(planId);
+    const out = await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "quiz", topic: "Termodinamica" }));
+    expect(out.isError).toBeUndefined();
+    expect(toolView(db, "chat", out.shown!.resultId)).toMatchObject({ name: "Termodinamica", count: 2 });
+  });
+
+  it("refuses a chat whose own exam is archived instead of taking the subject's other exam", async () => {
+    const { db, planId } = fixture();
+    createPlan(db, { title: "Fisica 2", subject: "Fisica", sourceIds: [], draftTopics: [{ title: "Ottica" }] });
+    setPlanArchived(db, planId, true);
+    const out = await proposePathTool(db).run(turn({ planId, subject: "Fisica" }), pathInput.parse({ weekly_hours: 9 }));
+    expect(out.isError).toBe(true);
+    expect(out.text).toMatch(/archived/);
+    expect(db.prepare("SELECT count(*) FROM chat_tool_results").pluck().get()).toBe(0);
+  });
+
+  it("moves a topic after one the same call adds", async () => {
+    const { db, planId } = fixture();
+    const out = await proposePathTool(db).run(
+      turn({ planId, subject: null }),
+      pathInput.parse({ add_topics: [{ title: "Urti", after: "Lavoro ed energia" }], move_topics: [{ title: "Cinematica", after: "Urti" }] }),
+    );
+    expect(out.isError).toBeUndefined();
+    expect((toolView(db, "chat", out.shown!.resultId) as PathProposalView).after.map((entry) => entry.title)).toEqual([
+      "Dinamica",
+      "Lavoro ed energia",
+      "Urti",
+      "Cinematica",
+      "Fluidi",
+      "Termodinamica",
+      "Oscillazioni",
+    ]);
+  });
+});
+
+describe("what the security read asked for", () => {
+  it("brings back on «Annulla» only the cards this deletion removed and nobody restored or removed again", async () => {
+    const { db, planId } = fixture();
+    jobs(db);
+    const id = (await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "flashcards", topic: "Cinematica" }))).shown!.resultId;
+    save(db, "chat", id);
+    decideProposal(db, "chat", id, "apply", (toolView(db, "chat", id) as DeleteProposalView).seen);
+    // The student restores c2 from Removed in Flashcard, then removes it there again.
+    db.prepare("UPDATE cards SET removed = 0 WHERE id = 'c2'").run();
+    db.prepare("UPDATE cards SET removed = 1 WHERE id = 'c2'").run();
+    const back = decideProposal(db, "chat", id, "undo", undefined) as DeleteProposalView;
+    expect(back).toMatchObject({ state: "restored", back: 2 });
+    expect(db.prepare("SELECT id FROM cards WHERE removed = 1").pluck().all()).toEqual(["c2"]);
+  });
+
+  it("does not put a map back over a map that holds its id again, and says it can no longer", async () => {
+    const { db, planId, subjectId } = fixture();
+    jobs(db);
+    const id = (await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "map", topic: "Dinamica" }))).shown!.resultId;
+    save(db, "chat", id);
+    decideProposal(db, "chat", id, "apply", (toolView(db, "chat", id) as DeleteProposalView).seen);
+    storeMap(db, { subjectId }, { id: "map-dyn", title: "Nuova", passageIds: [], graph: { nodes: [{ id: "r", label: "Nuova", parent: null, sources: [] }], edges: [] } } as never);
+    expect(toolView(db, "chat", id)).toMatchObject({ state: "applied", restorable: false });
+    expect(decideProposal(db, "chat", id, "undo", undefined).state).toBe("applied");
+    expect(listMaps(db, { subjectId }).map((map) => map.title)).toEqual(["Nuova"]);
+  });
+
+  it("says a quiz deleted mid-build can no longer come back once its build was given up", async () => {
+    const { db, planId } = fixture();
+    const runner = jobs(db);
+    runner.register("quiz-build", { jobClass: "local", steps: [] });
+    const job = runner.start("quiz-build", { attemptId: "open-a" });
+    const id = (await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "quiz", topic: "Termodinamica" }))).shown!.resultId;
+    save(db, "chat", id);
+    decideProposal(db, "chat", id, "apply", (toolView(db, "chat", id) as DeleteProposalView).seen);
+    runner.discard(job);
+    expect(toolView(db, "chat", id)).toMatchObject({ state: "applied", restorable: false });
+    expect(decideProposal(db, "chat", id, "undo", undefined).state).toBe("applied");
+  });
+
+  it("keeps an expired proposal expired when the reply that replaced it goes", async () => {
+    const { db, planId } = fixture();
+    const tool = proposePathTool(db);
+    const a = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 9 }))).shown!.resultId;
+    save(db, "chat", a);
+    const seen = (toolView(db, "chat", a) as PathProposalView).seen;
+    // A later turn proposes again, but fails before its reply is saved: the first card is untouched.
+    const failed = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 10 }))).shown!.resultId;
+    expect(toolView(db, "chat", a)).toMatchObject({ state: "pending" });
+    dropStrayToolResults(db, "chat");
+    expect(toolView(db, "chat", failed)).toBeNull();
+    const b = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 11 }))).shown!.resultId;
+    save(db, "chat", b);
+    expect(toolView(db, "chat", a)).toMatchObject({ state: "expired" });
+    // B's reply is answered again with no proposal: B goes, and A stays expired.
+    db.prepare("DELETE FROM messages WHERE body LIKE ?").run(`%${b}%`);
+    dropStrayToolResults(db, "chat");
+    expect(toolView(db, "chat", a)).toMatchObject({ state: "expired" });
+    expect(decideProposal(db, "chat", a, "apply", seen).state).toBe("expired");
+    expect(readPlannerSettings(db).weeklyHours).toBe(6);
+  });
+
+  it("limits the cards made in the chat to the chat's exam or subject now, and goes stale when the chat moves", async () => {
+    const { db, planId } = fixture();
+    jobs(db);
+    db.prepare(`INSERT INTO cards (id, subject_id, front, back, seed_key, created_at) VALUES ('chem-card', 'chem', 'Atomo?', 'Sì', 'x', 1)`).run();
+    db.prepare(
+      `INSERT INTO chat_tool_results (id, chat_id, message_id, tool, data_json, created_at) VALUES ('made', 'chat', NULL, 'create_flashcards', ?, 1)`,
+    ).run(JSON.stringify({ cardIds: ["c1", "chem-card"], duplicates: 0, title: null, deck: "x", fronts: [] }));
+    const id = (await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "flashcards", made_in_chat: true }))).shown!.resultId;
+    save(db, "chat", id);
+    expect(toolView(db, "chat", id)).toMatchObject({ state: "pending", count: 1, place: "Fisica 1" });
+    // The student moves the chat to Chimica generale: the card no longer says what would go.
+    db.prepare("UPDATE chats SET scope_json = ?, subject = 'Chimica generale' WHERE id = 'chat'").run(JSON.stringify({ planId: null, ids: [] }));
+    expect(toolView(db, "chat", id)).toMatchObject({ state: "stale" });
+  });
+
+  it("refuses more cards than one deletion may take, and strips the controls that reorder a name on screen", async () => {
+    const { db, planId, topic } = fixture();
+    jobs(db);
+    const insert = db.prepare("INSERT INTO cards (id, plan_id, topic_id, front, back, seed_key, created_at) VALUES (?, ?, ?, 'f', 'b', ?, 1)");
+    for (let i = 0; i <= CARDS_PER_DELETION; i++) insert.run(`many${i}`, planId, topic("Oscillazioni"), `m${i}`);
+    expect((await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "flashcards", topic: "Oscillazioni" }))).text).toMatch(
+      /more than the 200/,
+    );
+    db.prepare("UPDATE topics SET title = ? WHERE id = ?").run("Ciner‮amatica", topic("Cinematica"));
+    const id = (await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "flashcards", topic: "Ciner‮amatica" }))).shown!.resultId;
+    expect((toolView(db, "chat", id) as DeleteProposalView).name).toBe("Cineramatica");
   });
 });
 

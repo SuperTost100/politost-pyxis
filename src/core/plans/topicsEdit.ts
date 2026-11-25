@@ -8,14 +8,14 @@ export const PATH_TOPICS_MAX = 40;
 /** Characters of a topic's title, as the guided flow's limit. */
 export const TOPIC_TITLE_MAX = 160;
 
-/** A topic of the new list: one the path has, by its id, or a new one by its title. */
-export type TopicSlot = { id: string } | { title: string };
+/** A topic of the new list: one the path has, by its id, one this plan archived, by its id, or a new one by its title. */
+export type TopicSlot = { id: string } | { restore: string } | { title: string };
 
 const folded = (title: string) => foldText(title).replace(/\s+/g, " ").trim();
 
 /**
  * The path's topics changed by hand: `order` is the new list of the path's topics. A topic the path has keeps its id, its
- * lessons, cards, gaps and grades, and only moves. A topic left out is archived, as a rebuild archives a topic its
+ * lessons, cards, gaps and grades, and only moves. One this plan archived comes back by its id. A topic left out is archived, as a rebuild archives a topic its
  * sources no longer hold: nothing of it is deleted, and the steps done on it stay in the path's history. A new title
  * that names a topic this plan archived brings that topic back with all it had; any other new title is a new topic
  * without material (grounding `general`), whose lesson is written from the model's own knowledge, as in an exam built
@@ -48,6 +48,14 @@ export function editPlanTopics(
       if ("id" in slot) {
         if (!active.has(slot.id) || ids.includes(slot.id)) throw new Error("topic-missing");
         ids.push(slot.id);
+        continue;
+      }
+      if ("restore" in slot) {
+        const topic = topics.find((entry) => entry.id === slot.restore);
+        if (!topic || topic.archivedAt === null || ids.includes(topic.id)) throw new Error("topic-missing");
+        db.prepare("UPDATE topics SET archived_at = NULL WHERE id = ?").run(topic.id);
+        ids.push(topic.id);
+        restored += 1;
         continue;
       }
       const title = slot.title.replace(/\s+/g, " ").trim().slice(0, TOPIC_TITLE_MAX);

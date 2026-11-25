@@ -579,7 +579,7 @@ describe("flashcards by subject", () => {
       ).toBe(1);
       const after = snapshot(again);
       // Every column of every card is unchanged, rowid included, and only the subject is new.
-      expect(after.cards.map(({ subject_id: _, ...card }) => card)).toEqual(before.cards);
+      expect(after.cards.map(({ subject_id: _, removed_by: __, ...card }) => card)).toEqual(before.cards);
       expect(Object.fromEntries(after.cards.map((card) => [card.id, card.subject_id]))).toEqual({
         c1: "phys",
         c2: null,
@@ -601,6 +601,7 @@ describe("flashcards by subject", () => {
         "cards_follow_plan",
         "cards_passage",
         "cards_plan",
+        "cards_removed_by_clear",
         "cards_search_pending",
         "cards_search_stale",
         "cards_subject",
@@ -657,7 +658,7 @@ describe("flashcards by subject", () => {
     expect(again.pragma("foreign_keys", { simple: true })).toBe(1);
     // Every card and review is still there, unchanged but for the new subject column; the old references are untouched.
     const after = snapshot(again);
-    expect(after.cards.map(({ subject_id: _, ...card }) => card)).toEqual(before.cards);
+    expect(after.cards.map(({ subject_id: _, removed_by: __, ...card }) => card)).toEqual(before.cards);
     expect(after.reviews).toEqual(before.reviews);
     expect(after.events).toEqual(before.events);
     expect(again.prepare("SELECT passage_id FROM cards WHERE id = 'c1'").pluck().get()).toBe("ghost");
@@ -865,7 +866,9 @@ const lessonSnapshot = (db: Database.Database) =>
           .prepare(
             `SELECT ${table === "card_reviews" ? "id, card_id, rating, state_json, reviewed_at" : "*"} FROM ${table} ORDER BY rowid`,
           )
-          .all() as Array<Record<string, unknown>>,
+          .all()
+          // Without `removed_by`, which migration 41 adds, for the same reason.
+          .map((row) => (table === "cards" ? (({ removed_by: _, ...card }) => card)(row as Record<string, unknown>) : row)) as Array<Record<string, unknown>>,
       ],
     ),
   );

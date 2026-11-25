@@ -6,7 +6,7 @@ import { mapToolBlocks, TOOL_FENCE, toolBlockIds } from "../../shared/tool-block
 import { resumeToolJobs } from "./jobs";
 import { dropMap, mapView, restoreMap, retryMap, undoMap, type MapData, type MapUndone } from "./map";
 import { dropQuiz, quizView, restoreQuiz, retryQuiz, undoQuiz, type QuizData, type QuizUndone } from "./quiz";
-import { isProposal, proposalView, unwithdrawProposal, withdrawProposal } from "./proposals";
+import { expireOlderProposals, isProposal, proposalView, unwithdrawProposal, withdrawProposal } from "./proposals";
 import { deleteNote } from "./proposeDelete";
 import { examNote } from "./proposeExam";
 import { pathNote } from "./proposePath";
@@ -127,6 +127,8 @@ export function linkToolResults(db: Database.Database, chatId: string, messageId
   db.prepare(
     `UPDATE chat_tool_results SET message_id = ? WHERE chat_id = ? AND id IN (SELECT value FROM json_each(?))`,
   ).run(messageId, chatId, JSON.stringify(ids));
+  // A proposal saved with the reply replaces, for good, the earlier ones of its kind still waiting.
+  expireOlderProposals(db, chatId, ids);
 }
 
 function resultRow(db: Database.Database, chatId: string, id: string): Row {

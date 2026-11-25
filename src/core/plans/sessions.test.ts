@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
+import { SCHEMA_VERSION } from "../db/migrate";
 import { uuidv7 } from "../../shared/ids";
 import { nextExamDate, SESSION_DATE_MAX } from "../../shared/exam-sessions";
 import { requests } from "../../shared/ipc";
@@ -178,7 +179,7 @@ describe("migration 22", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(40);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
     expect(readSessions(again, "dated")).toEqual([
       { id: "dated", date: noon(2026, 11, 20), time: null, place: null, label: null },
     ]);

@@ -27,7 +27,7 @@ describe("editPlanTopics", () => {
       .prepare("SELECT t.title FROM path_nodes n JOIN topics t ON t.id = n.topic_id WHERE n.plan_id = ? ORDER BY n.position")
       .pluck()
       .all(planId) as string[];
-    expect([...new Set(kinds)]).toEqual(["Forze", "Fluidi", "Moto"]);
+    expect(kinds).toEqual([...Array(4).fill("Forze"), ...Array(4).fill("Fluidi"), ...Array(4).fill("Moto")]);
   });
 
   it("adds a new topic with its steps and refuses a list it cannot apply", () => {
