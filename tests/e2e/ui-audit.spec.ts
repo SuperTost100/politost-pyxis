@@ -48,6 +48,7 @@ import {
   seedSentFilesChat,
   seedSourcesChats,
   seedStoppedChat,
+  seedToolChat,
   writeBlob,
 } from "./chat-look-seed";
 import { photoPng } from "./pictures";
@@ -454,6 +455,10 @@ const routes = [
   ["ask-viewer", "/ask/look-figure-one"],
   ["ask-outline", "/ask/look-outline"],
   ["ask-stopped", "/ask/look-stopped"],
+  // What the chat's flashcard tool did, in the reply: at work, the card of what it made, and the line after «Annulla».
+  ["ask-tool-working", "/ask/look-tool-working"],
+  ["ask-tool-done", "/ask/look-tool-done"],
+  ["ask-tool-undone", "/ask/look-tool-undone"],
   ["ask-photo-viewer", "/ask/look-files"],
   // The sources row under an answer: closed, open, a page pointed at with its passage and the sentence it supports
   // tinted, one passage of one source, an answer from general knowledge with a checked result, and a failed check.
@@ -3669,6 +3674,16 @@ async function openState(page: Page, name: string) {
       expect(box!.x + box!.width).toBeLessThanOrEqual(msg!.x);
       break;
     }
+    case "ask-tool-working":
+      await expect(page.getByText(both("Creo le flashcard…", "Creating the flashcards…"))).toBeVisible();
+      break;
+    case "ask-tool-done":
+      await expect(page.getByText(both("8 flashcard sui tre principi della dinamica", "8 flashcards sui tre principi della dinamica"))).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Annulla", "Undo") })).toBeVisible();
+      break;
+    case "ask-tool-undone":
+      await expect(page.getByRole("button", { name: both("Ripristina", "Restore") })).toBeVisible();
+      break;
     case "ask-stopped":
       await expect(page.getByText(both("Interrotta", "Stopped"))).toBeVisible();
       await expect(page.locator(".px-composer-bar").getByRole("button", { name: both("Continua", "Continue") })).toBeVisible();
@@ -5982,7 +5997,9 @@ function lookChats(name: string) {
       DELETE FROM chats WHERE id LIKE 'look-%';
       DELETE FROM passages WHERE source_id LIKE 'look-%';
       DELETE FROM source_documents WHERE source_id LIKE 'look-%';
-      DELETE FROM sources WHERE id LIKE 'look-%';`);
+      DELETE FROM sources WHERE id LIKE 'look-%';
+      DELETE FROM cards WHERE id LIKE 'look-%';
+      DELETE FROM subjects WHERE id LIKE 'look-%';`);
     if (name.startsWith("ask-sources") || name === "lesson-part-sources") {
       seedSourcesChats(db);
       // The checks of the formulas run in the Python pack, which these states find installed when the fixture is there.
@@ -5993,6 +6010,7 @@ function lookChats(name: string) {
       }
     }
     if (name === "ask-figure" || name === "ask-viewer") seedFigureChat(db);
+    else if (name.startsWith("ask-tool-")) seedToolChat(db, name.slice("ask-tool-".length) as "working" | "done" | "undone");
     else if (name === "ask-outline") seedOutlineChat(db);
     else if (name === "ask-stopped") seedStoppedChat(db);
     else if (name === "ask-photo-viewer") seedSentFilesChat(db, auditUserData);

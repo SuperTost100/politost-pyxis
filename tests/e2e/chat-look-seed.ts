@@ -253,3 +253,65 @@ const fence = (claim: object) => `\n\n\`\`\`check\n${JSON.stringify(claim)}\n\`\
 export const SOURCES_LESSON = SOURCES_ANSWER(MEAN)
   .replace(POLAR, () => POLAR + fence({ kind: "equal", expr: "2*pi*(2*2**2 - 2**4/4)", claimed: "8*pi" }))
   .replace(MEAN, () => MEAN + fence({ kind: "equal", expr: "8*pi/(4*pi)", claimed: "2" }));
+
+/** The cards a chat's flashcard tool made in the fixture chats and specs: eight on the three principles of dynamics. */
+export const TOOL_CARDS = [
+  { front: "Che cosa afferma il primo principio della dinamica?", back: "Un corpo con forza risultante nulla resta in quiete o in moto rettilineo uniforme." },
+  { front: "Che cos'è un sistema di riferimento inerziale?", back: "Un sistema in cui vale il primo principio." },
+  { front: "Scrivi il secondo principio della dinamica.", back: "$\\vec F = m\\vec a$" },
+  { front: "In che unità si misura la forza nel SI?", back: "In newton: $1\\,\\mathrm{N} = 1\\,\\mathrm{kg\\,m/s^2}$." },
+  { front: "Che cosa afferma il terzo principio della dinamica?", back: "$\\vec F_{AB} = -\\vec F_{BA}$: forze uguali e opposte su corpi diversi." },
+  { front: "Perché azione e reazione non si annullano?", back: "Agiscono su due corpi diversi." },
+  { front: "Che differenza c'è tra massa e peso?", back: "La massa misura l'inerzia; il peso è la forza $\\vec P = m\\vec g$." },
+  { front: "Quanto vale $g$ sulla Terra?", back: "Circa $9{,}81\\,\\mathrm{m/s^2}$." },
+];
+
+/**
+ * A chat whose answer created flashcards with the chat's tool, in one of the three states the reply shows: the tool at
+ * work (`working`, a block still pending), the card of what it made (`done`) and the line after «Annulla» (`undone`).
+ */
+export function seedToolChat(db: DatabaseSync, state: "working" | "done" | "undone", id = `look-tool-${state}`) {
+  if (!db.prepare("SELECT 1 FROM subjects WHERE id = 'look-phys'").get())
+    db.prepare("INSERT INTO subjects(id,name,created_at) VALUES('look-phys','Fisica 1',1)").run();
+  db.prepare("INSERT INTO chats(id,title,subject,created_at,updated_at) VALUES(?,?,?,1,2)").run(id, "I tre principi della dinamica", "Fisica 1");
+  db.prepare("INSERT INTO messages(id,chat_id,role,body,created_at) VALUES(?,?,?,?,1)").run(
+    `${id}-q`,
+    id,
+    "user",
+    "Fammi 8 flashcard sui tre principi della dinamica.",
+  );
+  const resultId = `0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a${state === "working" ? "50" : state === "done" ? "51" : "52"}`;
+  const ids = TOOL_CARDS.map((_, index) => `${id}-card-${index}`);
+  const insertCard = db.prepare(
+    "INSERT INTO cards(id,subject_id,front,back,seed_key,removed,prompt_template,created_at) VALUES(?,?,?,?,?,?,'chat.tutor',?)",
+  );
+  if (state !== "working") {
+    TOOL_CARDS.forEach((card, index) =>
+      insertCard.run(ids[index]!, "look-phys", card.front, card.back, `text:${id}-${index}`, state === "undone" ? 1 : 0, 2),
+    );
+    db.prepare("INSERT INTO chat_tool_results(id,chat_id,message_id,tool,data_json,undone_json,created_at) VALUES(?,?,?,?,?,?,2)").run(
+      resultId,
+      id,
+      `${id}-a`,
+      "create_flashcards",
+      JSON.stringify({
+        cardIds: ids,
+        duplicates: 0,
+        title: "sui tre principi della dinamica",
+        deck: "Fisica 1",
+        fronts: TOOL_CARDS.slice(0, 3).map((card) => card.front),
+      }),
+      state === "undone" ? JSON.stringify(ids) : null,
+    );
+  }
+  const block = "```pyxis-tool\n" + (state === "working" ? "pending:create_flashcards" : resultId) + "\n```";
+  db.prepare("INSERT INTO messages(id,chat_id,role,body,engine_provider,model_id,model_source,created_at) VALUES(?,?,?,?,?,?,?,2)").run(
+    `${id}-a`,
+    id,
+    "assistant",
+    `Ecco le flashcard che mi hai chiesto.\n\n${block}${state === "working" ? "" : "\n\nLe trovi nel mazzo di Fisica 1: ripassale domani."}`,
+    "claude",
+    "claude-sonnet-5-5",
+    "reported",
+  );
+}

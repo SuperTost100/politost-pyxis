@@ -23,15 +23,21 @@ type Seen = {
   selection: { provider: string; model: string };
   attachments?: unknown[];
   conversation?: { followUp: string; session?: { provider: string; id: string } | null };
+  /** Pyxis's tools, which every chat turn offers. */
+  tools?: unknown;
 };
 
-/** An answer of the tool in the chat's session: it names the session and says whether it continued the stored one. */
+/**
+ * An answer of the tool in the chat's session: it names the session, says whether it continued the stored one, and
+ * reports the run's tools as a CLI that takes them does.
+ */
 const inSession = (input: Seen, model = "claude-sonnet-5-5"): EngineResult => ({
   ...base,
   model,
   sessionId: "s1",
   cwd: "/scratch",
   continued: input.conversation?.session?.id === "s1",
+  ...(input.tools ? { tools: true } : {}),
 });
 const down = async (): Promise<EngineResult> => {
   throw new Error("engine-down");

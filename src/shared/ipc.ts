@@ -484,6 +484,24 @@ export const AttachmentView = z.object({
 export type AttachmentView = z.infer<typeof AttachmentView>;
 
 /** A file a sent message carried. `sourceId` is the hidden copy of a document; a photo has `sha` and `mime` to show it again. */
+/**
+ * What a Pyxis tool did in a chat reply, shown where the model called it (a ```pyxis-tool block names it by `id`). For
+ * `create_flashcards`: the cards created, those skipped as already in the deck, the few words the model gave that
+ * complete "8 flashcard …", the subject's or exam's name, the first fronts, and after «Annulla» how many it removed.
+ */
+export const toolResultView = z.object({
+  id: z.string(),
+  tool: z.literal("create_flashcards"),
+  count: z.number().int(),
+  duplicates: z.number().int(),
+  title: z.string().nullable(),
+  deck: z.string(),
+  fronts: z.array(z.string()),
+  /** Cards «Annulla» took out of the deck; null while the result stands. */
+  undone: z.number().int().nullable(),
+});
+export type ToolResultView = z.infer<typeof toolResultView>;
+
 const messageFile = z.object({
   id: z.string(),
   /** Null for a photo sent before names were kept. */
@@ -1748,6 +1766,8 @@ export const requests = {
       expand: z.array(z.string().nullable()).max(500).optional(),
       // Cards that stay in the result wherever they rank, when they match: the one being edited.
       keep: z.array(z.string()).max(20).optional(),
+      // Only the cards a chat tool created («Apri» on its result in a reply), by the result's id.
+      made: z.string().max(64).optional(),
     }),
     output: z.object({
       total: z.number().int(),
@@ -3217,6 +3237,8 @@ export const requests = {
           checks: z.array(anchoredCheckSchema).optional(),
           /** Images of the answer's figure blocks, by figure key. */
           figures: z.record(z.string(), z.string()).optional(),
+          /** What the reply's tool calls did, by the result id its ```pyxis-tool blocks name. */
+          tools: z.record(z.string(), toolResultView).optional(),
           body: z.string(),
           /** The files this question carried, in the order they were attached. */
           files: z.array(messageFile).optional(),
@@ -3279,6 +3301,15 @@ export const requests = {
     }),
     output: z.object({ ok: z.literal(true) }),
   },
+  /** «Annulla» on a tool's result in a reply: what it created leaves the deck, and can come back with «Ripristina». */
+  "chats.undoTool": {
+    input: z.object({ chatId: z.string(), resultId: z.string() }),
+    output: toolResultView,
+  },
+  "chats.restoreTool": {
+    input: z.object({ chatId: z.string(), resultId: z.string() }),
+    output: toolResultView,
+  },
   "chats.ask": {
     input: z.object({
       chatId: z.string().optional(),
@@ -3304,6 +3335,8 @@ export const requests = {
           checks: z.array(anchoredCheckSchema).optional(),
           /** Images of the answer's figure blocks, by figure key. */
           figures: z.record(z.string(), z.string()).optional(),
+          /** What the reply's tool calls did, by the result id its ```pyxis-tool blocks name. */
+          tools: z.record(z.string(), toolResultView).optional(),
           body: z.string(),
           modelId: z.string().nullable(),
           provider: z.string().nullable(),

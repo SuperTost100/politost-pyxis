@@ -1236,7 +1236,9 @@
     "rewrite": "Riscrivi",
     "openSource": "Apri la fonte",
     "leechHintNoSource_one": "Dimenticata {{count}} volta. Riscrivila o sospendila.",
-    "leechHintNoSource_other": "Dimenticata {{count}} volte. Riscrivila o sospendila."
+    "leechHintNoSource_other": "Dimenticata {{count}} volte. Riscrivila o sospendila.",
+    "made": "Solo le flashcard create nella chat.",
+    "madeAll": "Mostra tutte"
   },
   "listToolbar": {
     "clearSearch": "Cancella la ricerca"
@@ -3064,6 +3066,24 @@
       "saved": "Salvata",
       "saveFailed": "Non è stato possibile salvare l'immagine.",
       "stage": "Immagine: scorrila con le frecce"
+    },
+    "toolResult": {
+      "working": "Creo le flashcard…",
+      "title": "Flashcard create",
+      "titled_one": "{{count}} flashcard {{title}}",
+      "titled_other": "{{count}} flashcard {{title}}",
+      "inDeck_one": "{{count}} flashcard in {{deck}}",
+      "inDeck_other": "{{count}} flashcard in {{deck}}",
+      "more_one": "e un’altra",
+      "more_other": "e altre {{count}}",
+      "duplicates_one": "{{count}} era già nel mazzo e non è stata aggiunta.",
+      "duplicates_other": "{{count}} erano già nel mazzo e non sono state aggiunte.",
+      "open": "Apri",
+      "undo": "Annulla",
+      "undone_one": "{{count}} flashcard annullata: non è più nel mazzo.",
+      "undone_other": "{{count}} flashcard annullate: non sono più nel mazzo.",
+      "restore": "Ripristina",
+      "failed": "Non ha funzionato. Riprova."
     }
   },
   "math": {

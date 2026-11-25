@@ -25,6 +25,8 @@ import { MathText } from "../../components/math/MathText";
 import { ContextBlock } from "../../components/ContextBlock";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView } from "../../components/MarkdownView";
+import { ToolResult } from "./ToolResult";
+import { savedToolLine } from "@shared/tool-blocks";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import { isOcrRefusal } from "../../components/ocrErrors";
@@ -150,6 +152,7 @@ const Question = memo(function Question({ id, body, files }: { id?: string; body
  * new message or a streamed piece leaves this one alone instead of parsing its Markdown and math again.
  */
 const Reply = memo(function Reply({
+  chatId,
   row,
   last,
   busy,
@@ -159,6 +162,7 @@ const Reply = memo(function Reply({
   onReact,
   onMakeCards,
 }: {
+  chatId: string;
   row: ChatRow;
   /** The reply that ends the chat: it carries Regenerate and the suggestions. */
   last: boolean;
@@ -196,6 +200,11 @@ const Reply = memo(function Reply({
   // Only the reply that has just been written grows its row out of the text; the ones already there are drawn as they are.
   const [arriving] = useState(() => arrivedReplies.delete(row.id));
   const makeCards = useCallback(() => onMakeCards(row), [onMakeCards, row]);
+  // A saved reply never has a tool at work: a `pending:` block in it is drawn as nothing (`savedToolLine`).
+  const toolBlock = useCallback((line: string) => {
+    const saved = savedToolLine(line);
+    return saved ? <ToolResult chatId={chatId} line={saved} view={row.tools?.[saved]} /> : null;
+  }, [chatId, row.tools]);
   return (
     <ChatMessage
       engine={
@@ -217,7 +226,7 @@ const Reply = memo(function Reply({
       onSuggest={onSuggest}
       onReact={(reaction) => onReact(row.id, reaction)}
     >
-      <MarkdownView checks={row.checks} figures={row.figures} knownPassage={knownPassage}>
+      <MarkdownView checks={row.checks} figures={row.figures} knownPassage={knownPassage} toolBlock={toolBlock}>
         {row.body}
       </MarkdownView>
     </ChatMessage>
@@ -243,12 +252,21 @@ function StreamingReply({
   const text = useSyncExternalStore(turn.live.subscribe, turn.live.get);
   const passages = useSyncExternalStore(turn.passages.subscribe, turn.passages.get);
   const figures = useSyncExternalStore(turn.figures.subscribe, turn.figures.get);
+  const tools = useSyncExternalStore(turn.tools.subscribe, turn.tools.get);
+  const chatId = useSyncExternalStore(turn.chat.subscribe, turn.chat.get);
+  // «Annulla» pressed while the reply is written goes into the turn, so a page that mounts the reply again shows it.
+  const toolBlock = useCallback(
+    (line: string) => (
+      <ToolResult chatId={chatId} line={line} view={tools[line]} onView={(view) => turns.toolChanged(turn, view)} />
+    ),
+    [chatId, tools, turn],
+  );
   // Only the marks of the passages retrieved for this turn stay as anchors; the row comes with the saved reply.
   const knownPassage = useCallback((index: number) => passages.some((passage) => passage.index === index), [passages]);
   useEffect(() => onGrow(), [text, onGrow]);
   return text ? (
     <ChatMessage role="tutor" streaming>
-      <MarkdownView drawing figures={figures} knownPassage={knownPassage}>
+      <MarkdownView drawing figures={figures} knownPassage={knownPassage} toolBlock={toolBlock}>
         {text}
       </MarkdownView>
     </ChatMessage>
@@ -710,10 +728,7 @@ export function AskPage() {
     setAnnouncement("");
     // Continue keeps the saved part on screen, with its citation chips: the cut-off reply is hidden while it runs, core
     // adds to this text, and it answers from the same passages in the same numbering.
-    if (options.resume && lastTutor) {
-      turn.live.set(lastTutor.body);
-      turn.passages.set(lastTutor.citations.map(({ index, label }) => ({ index, label })));
-    }
+    if (options.resume && lastTutor) turns.continueFrom(turn, lastTutor);
     following.current = true;
     const question = messages.filter((message) => message.role === "user").at(-1)?.body ?? "";
     const handle = window.pyxis.stream(
@@ -1021,6 +1036,7 @@ export function AskPage() {
             ) : (
               <Reply
                 key={row.id}
+                chatId={chatId ?? ""}
                 row={row}
                 last={row.id === lastTutorId}
                 busy={row.id === lastTutorId && busy}

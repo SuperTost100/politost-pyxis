@@ -1236,7 +1236,9 @@
     "rewrite": "Rewrite",
     "openSource": "Open source",
     "leechHintNoSource_one": "Forgotten {{count}} time. Rewrite it or suspend it.",
-    "leechHintNoSource_other": "Forgotten {{count}} times. Rewrite it or suspend it."
+    "leechHintNoSource_other": "Forgotten {{count}} times. Rewrite it or suspend it.",
+    "made": "Only the flashcards created in the chat.",
+    "madeAll": "Show all"
   },
   "listToolbar": {
     "clearSearch": "Clear search"
@@ -3064,6 +3066,24 @@
       "saved": "Saved",
       "saveFailed": "The picture couldn't be saved.",
       "stage": "Picture: scroll it with the arrow keys"
+    },
+    "toolResult": {
+      "working": "Creating the flashcards…",
+      "title": "Flashcards created",
+      "titled_one": "{{count}} flashcard {{title}}",
+      "titled_other": "{{count}} flashcards {{title}}",
+      "inDeck_one": "{{count}} flashcard in {{deck}}",
+      "inDeck_other": "{{count}} flashcards in {{deck}}",
+      "more_one": "and one more",
+      "more_other": "and {{count}} more",
+      "duplicates_one": "{{count}} was already in the deck and wasn’t added.",
+      "duplicates_other": "{{count}} were already in the deck and weren’t added.",
+      "open": "Open",
+      "undo": "Undo",
+      "undone_one": "{{count}} flashcard undone: it’s no longer in the deck.",
+      "undone_other": "{{count}} flashcards undone: they’re no longer in the deck.",
+      "restore": "Restore",
+      "failed": "That didn’t work. Try again."
     }
   },
   "math": {
