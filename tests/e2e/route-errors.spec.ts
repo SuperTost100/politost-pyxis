@@ -18,7 +18,7 @@ test("route failure shows a plain recovery page without stack details", async ()
     await page.getByRole("button", { name: "Salta" }).click();
     await fromChiediToExams(page);
     await page.evaluate(() => { window.location.hash = "/missing-route"; });
-    await expect(page.getByRole("heading", { name: "Non è stato possibile aprire questa pagina" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Non sono riuscito ad aprire questa pagina" })).toBeVisible();
     // The message sits inside the shell's page column, with the sidebar around it.
     const shellColumn = await page.locator(".shell-page").boundingBox();
     const message = await page.getByRole("alert").boundingBox();
@@ -38,7 +38,7 @@ test("route failure shows a plain recovery page without stack details", async ()
     await expect(page.getByRole("banner").getByRole("button", { name: "Torna a Esami" })).toHaveCount(0);
     await page.getByRole("alert").getByRole("button", { name: "Torna a Esami" }).click();
     await expect(page).toHaveURL(/#\/exams$/);
-    await expect(page.getByRole("heading", { name: "Non è stato possibile aprire questa pagina" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Non sono riuscito ad aprire questa pagina" })).toHaveCount(0);
   } finally {
     await app.close();
     removeTestFolder(userData);

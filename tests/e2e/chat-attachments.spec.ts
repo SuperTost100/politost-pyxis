@@ -118,7 +118,7 @@ test("a file Pyxis cannot take says so on its own chip, which goes away with it,
     await pick(app, huge);
     await attach(page);
     const chip = page.locator(".ask-attachments li").filter({ hasText: "enorme.pdf" });
-    await expect(chip).toContainText("Il file supera i 256 MB che Pyxis legge per un documento.");
+    await expect(chip).toContainText("Il file supera il limite di 256 MB per un documento.");
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menuitem", { name: "Allega file o immagine" })).toHaveCount(0);
     await saveShot(page, "chat-attachments/2-large-file-says-why-on-its-chip.png");

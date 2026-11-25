@@ -334,7 +334,7 @@ test("When a change takes the last file out of a filtered or searched list, the 
     await makeHandout("IMG_2041");
     await expect(page.getByRole("button", { name: "IMG_2041", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Azioni sulla materia Analisi Matematica 1" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Aggiungi file" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Aggiungi fonti" })).toBeFocused();
 
     // The only one left leaves too, so the list gives way to the message, and the focus goes to the type filter, whose
     // change brings the files back.
@@ -438,7 +438,7 @@ test("The focus stays in the page when the file that held it is renamed out of a
     }, "u-ex");
     await page.reload();
     await remove("Esercizi misti");
-    await expect(page.getByText(/^Qui compariranno i tuoi file/)).toBeVisible();
+    await expect(page.getByText(/^Qui troverai i tuoi file/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Collega una cartella", exact: true })).toBeFocused();
   } finally {
     await app.close();

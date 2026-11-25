@@ -328,7 +328,7 @@ test("Ask: an answer with nothing in the Library says it comes from general know
     await ask(page, "Ricetta della carbonara");
     await expect(
       lastReply(page).getByText(
-        "Non ho trovato niente su questa domanda nella tua Libreria, quindi ti rispondo con quello che so in generale.",
+        "Non ho trovato nulla su questa domanda nella tua Libreria, quindi ti rispondo in base a quello che so.",
       ),
     ).toBeVisible();
     await expect(lastReply(page).getByRole("button", { name: /^Ho usato/ })).toHaveCount(0);

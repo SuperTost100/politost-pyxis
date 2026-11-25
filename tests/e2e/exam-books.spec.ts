@@ -326,7 +326,7 @@ test("A download that fails keeps the form, the tick and the exam not made, with
     await expect(row(page)).toBeVisible({ timeout: 30_000 });
     rmSync(join(site, "books"), { recursive: true, force: true });
     await page.getByRole("button", { name: "Crea l'esame" }).click();
-    await expect(page.getByRole("alert").filter({ hasText: "Non riesco a raggiungere books.politost.it" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("alert").filter({ hasText: "Non sono riuscito a raggiungere books.politost.it" })).toBeVisible({ timeout: 30_000 });
     await expect(row(page).getByRole("checkbox")).toBeChecked();
     await expect(page.getByRole("button", { name: "Crea l'esame" })).toBeEnabled();
     expect(db(userData, "SELECT id FROM plans")).toEqual([]);

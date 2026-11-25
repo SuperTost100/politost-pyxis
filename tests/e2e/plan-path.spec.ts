@@ -485,7 +485,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page).toHaveURL(new RegExp(`practice/${topic.id}\\?review=1$`));
     await expect(page.getByText("Hai già finito questi esercizi.", { exact: false })).toBeVisible();
     await expect(page.getByText("Quanto vale la forza", { exact: false })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Segna come fatto" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Segna come completata" })).toHaveCount(0);
     await expectNoAxeViolations(page);
     await shoot(page, `plan-path/practice-review-it-light.png`);
     await expect(page.getByRole("button", { name: "Torna al percorso" })).toHaveCount(0);
@@ -512,7 +512,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page).toHaveURL(new RegExp(`cards/${topic.id}\\?review=1$`));
     await expect(page.getByText("Hai già fatto queste flashcard.", { exact: false })).toBeVisible();
     await expect(page.getByText("Nessuna flashcard in scadenza.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Segna come fatto" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Segna come completata" })).toHaveCount(0);
     await expectNoAxeViolations(page);
     await shoot(page, `plan-path/cards-review-it-light.png`);
     // The study bar's way back to the exam is the only way out of a card session.
