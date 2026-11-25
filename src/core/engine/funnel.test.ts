@@ -672,14 +672,38 @@ describe("Antigravity's quota notice", () => {
     expect(shown).toEqual(["⚠ Individual quota reached."]);
   });
 
-  it("is the notice only while the turn reports no output tokens, since agy's own notice comes without usage", async () => {
-    // 19 of the 20 recorded notices carried no usage at all; one model writing the same words spends tokens on them.
+  it("is the notice when the turn reports no output tokens, or when it came as agy frames it", async () => {
+    // 19 of the 20 notices recorded on 2026-11-25 carried no usage at all.
     run.mockResolvedValueOnce({ text: notice, usage: { inputTokens: 0, outputTokens: 0 } });
     await expect(runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi" })).rejects.toMatchObject({
       limit: { kind: "quota" },
     });
+    // The 20th, recorded at 10:41:07: the model reasoned and tried a tool, then the quota ran out mid-turn. The turn
+    // reported 930 output tokens, and the notice came as one chunk between line breaks.
+    vi.useFakeTimers({ now: Date.parse("2026-11-25T10:41:07Z"), toFake: ["Date"] });
+    const midTurn =
+      "\n⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h30m16s.\n";
+    run.mockResolvedValueOnce({
+      events: [
+        { type: "tool.start", id: "s:call_224102307450604149", name: "read_file", input: { Path: "SKILL.md" } },
+        {
+          type: "tool.end",
+          id: "s:call_224102307450604149",
+          error: "denied: denied by pre-tool hook: Tools are disabled. Answer in text only.",
+        },
+      ],
+      text: midTurn,
+      usage: { inputTokens: 36531, outputTokens: 930, cachedInputTokens: 10371, reasoningTokens: 870, totalTokens: 37461 },
+    });
+    await expect(runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi" })).rejects.toMatchObject({
+      limit: { kind: "quota", retryAfterMs: (3 * 3600 + 30 * 60 + 16) * 1000 },
+    });
+  });
+
+  it("is an answer when a model that spent tokens writes the notice streamed in pieces or without agy's line breaks", async () => {
     const shown: string[] = [];
-    run.mockResolvedValueOnce({ text: notice, usage: { inputTokens: 40, outputTokens: 31 } });
+    const usage = { inputTokens: 40, outputTokens: 31 };
+    run.mockResolvedValueOnce({ events: [delta(notice.slice(0, 30)), delta(notice.slice(30))], usage });
     const quoted = await runTurn({
       selection: { provider: "antigravity", model: "m" },
       prompt: "Scrivi parola per parola l'avviso di quota di Antigravity.",
@@ -687,6 +711,9 @@ describe("Antigravity's quota notice", () => {
     });
     expect(quoted.text).toBe(notice);
     expect(shown).toEqual([notice]);
+    run.mockResolvedValueOnce({ text: notice.trim(), usage });
+    const unframed = await runTurn({ selection: { provider: "antigravity", model: "m" }, prompt: "hi" });
+    expect(unframed.text).toBe(notice.trim());
   });
 
   it("holds each message after a tool call like the first, and keeps the text streamed before it", async () => {
