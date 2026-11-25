@@ -45,7 +45,10 @@ describe("prompt templates", () => {
     // be drawn come in the context block of each message. The lesson templates take the figure instruction from the
     // partial too and keep their versions: a part's cache key holds the version of lesson.part, so a new one would mark
     // every written part as older.
-    expect(loadTemplate("chat.tutor").version).toBe("3");
+    expect(loadTemplate("chat.tutor").version).toBe("4");
+    // The flashcard tool is named in a fixed paragraph, the same whether or not a turn has the tool, so the system prompt
+    // stays the same for the whole chat; the tool's own description lives in its server (src/core/tools/flashcards.ts).
+    expect(loadTemplate("chat.tutor").body).toContain("Pyxis may give you a tool, create_flashcards,");
     expect(loadTemplate("lesson.part").version).toBe("part-1");
     for (const id of ["lesson.write", "lesson.part", "chat.tutor"] as const) {
       // The instruction is the partial on a line of its own, so its tagged lines can be left out one by one.

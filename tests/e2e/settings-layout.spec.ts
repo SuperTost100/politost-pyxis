@@ -248,7 +248,7 @@ test("Studio: one choice is radio rows, on or off a switch, the text size a segm
     await expect.poll(() => page.evaluate(() => window.pyxis.invoke("study.cardSettings", {} as never))).toEqual(
       expect.objectContaining({ newPerDay: 7 }),
     );
-    await expect(page.getByText(/^Con 7 e tre esami, ogni giorno ne iniziano fino a 21\./)).toBeVisible();
+    await expect(page.getByText(/^Il limite vale per ogni esame: con 7 flashcard nuove e tre esami, ogni giorno ne iniziano fino a 21\./)).toBeVisible();
   } finally {
     await app.close();
     removeTestFolder(userData);

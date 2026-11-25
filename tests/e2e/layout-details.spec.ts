@@ -369,7 +369,7 @@ test("LAYOUT-05 a reading page keeps the jobs entry, also with no job to show, a
           await page.setViewportSize(size);
           await expect(page.locator(".px-empty p")).toHaveText(
             language === "it"
-              ? "Qui compariranno i tuoi esami, ognuno con un percorso di lezioni e quiz fino alla data. Ti basta il nome e il materiale del corso."
+              ? "Qui troverai i tuoi esami, ognuno con un percorso di lezioni e quiz fino alla data dell'esame. Ti bastano il nome e il materiale del corso."
               : "Your exams will appear here, each with a path of lessons and quizzes up to its date. All you need is the name and the course material.",
           );
           const primary = page.getByRole("main").locator(".ant-btn-primary");

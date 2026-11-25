@@ -528,7 +528,7 @@ test("Da finire says when its list cannot be read, and Riprova reads it again", 
     ).run(planId);
     await openExam(page, planId);
     const block = page.locator(".px-unf");
-    await expect(block).toContainText("Non riesco a leggere le attività da finire.");
+    await expect(block).toContainText("Non sono riuscito a leggere le attività da finire.");
     await expectNoAxeViolations(page);
     // Mended, Riprova shows what was there.
     db.prepare("DELETE FROM attempts WHERE id = 'broken-attempt'").run();
@@ -536,7 +536,7 @@ test("Da finire says when its list cannot be read, and Riprova reads it again", 
     db.close();
     await block.getByRole("button", { name: "Riprova" }).click();
     await expect(block.getByRole("button", { name: /^Riprendi: Quiz su Limiti/ })).toBeVisible();
-    await expect(block).not.toContainText("Non riesco a leggere");
+    await expect(block).not.toContainText("Non sono riuscito a leggere");
   } finally {
     await done();
   }
@@ -563,7 +563,7 @@ test("Elimina on a row whose activity is already gone drops the row, with no fai
         .getByRole("button", { name: "Elimina l'attività", exact: true }),
     );
     await expect(page.locator(".px-unf")).toHaveCount(0);
-    await expect(page.getByText("Non riesco a eliminare")).toHaveCount(0);
+    await expect(page.getByText("Non sono riuscito a eliminare")).toHaveCount(0);
   } finally {
     await done();
   }

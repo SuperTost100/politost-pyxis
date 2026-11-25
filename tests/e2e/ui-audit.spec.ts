@@ -39,7 +39,7 @@ import { radialFixtures, storedGraph } from "../fixtures/maps";
 import type Database from "better-sqlite3";
 import { partMarkdown, seedOutline, type SeedPart } from "../../src/core/study/test-parts";
 import { figureKey } from "../../src/shared/smart-text";
-import { seedFigureChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat, writeBlob } from "./chat-look-seed";
+import { seedFigureChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat, seedToolChat, writeBlob } from "./chat-look-seed";
 import { photoPng } from "./pictures";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
@@ -442,6 +442,10 @@ const routes = [
   ["ask-viewer", "/ask/look-figure-one"],
   ["ask-outline", "/ask/look-outline"],
   ["ask-stopped", "/ask/look-stopped"],
+  // What the chat's flashcard tool did, in the reply: at work, the card of what it made, and the line after «Annulla».
+  ["ask-tool-working", "/ask/look-tool-working"],
+  ["ask-tool-done", "/ask/look-tool-done"],
+  ["ask-tool-undone", "/ask/look-tool-undone"],
   ["ask-photo-viewer", "/ask/look-files"],
   // The chat panel and search; the subject chip's menu on a chat with a very long subject, and on a new chat's first page.
   ["ask-panel", "/ask/audit-chat"],
@@ -1232,7 +1236,7 @@ async function connectedTools(page: Page) {
 
 async function openAddSources(page: Page, tab?: RegExp) {
   await page
-    .getByRole("button", { name: both("Aggiungi file", "Add files") })
+    .getByRole("button", { name: both("Aggiungi fonti", "Add sources") })
     .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
@@ -3156,7 +3160,7 @@ async function openState(page: Page, name: string) {
       await page.getByRole("button", { name: both("Continua", "Continue") }).click();
       // The engines are signed out here, so the AI step's footer says it is done later.
       await page.getByRole("button", { name: /^(Lo faccio dopo|Continua|I'll do it later|Continue)$/ }).click();
-      await expect(title).toHaveText(/^(Come tieni il materiale per studiare\?|How do you keep your study material\?)$/);
+      await expect(title).toHaveText(/^(Dove tieni il materiale di studio\?|Where do you keep your study material\?)$/);
       if (name === "onboarding-material") break;
       await page
         .getByRole("button", { name: both("Una cartella con tutto lo studio", "One folder with all my studies") })
@@ -3583,8 +3587,25 @@ async function openState(page: Page, name: string) {
       await page.waitForTimeout(400);
       break;
     }
-    case "ask-outline":
-      await expect(page.getByRole("navigation", { name: both("Indice della conversazione", "Conversation outline") })).toBeVisible();
+    case "ask-outline": {
+      const outline = page.getByRole("navigation", { name: both("Indice della conversazione", "Conversation outline") });
+      await expect(outline).toBeVisible();
+      const box = await outline.boundingBox();
+      const pane = await page.locator(".ask-page").boundingBox();
+      const msg = await page.locator(".px-msg-text").last().boundingBox();
+      expect(box!.x).toBeCloseTo(pane!.x + 6, 0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(msg!.x);
+      break;
+    }
+    case "ask-tool-working":
+      await expect(page.getByText(both("Creo le flashcard…", "Creating the flashcards…"))).toBeVisible();
+      break;
+    case "ask-tool-done":
+      await expect(page.getByText(both("8 flashcard sui tre principi della dinamica", "8 flashcards sui tre principi della dinamica"))).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Annulla", "Undo") })).toBeVisible();
+      break;
+    case "ask-tool-undone":
+      await expect(page.getByRole("button", { name: both("Ripristina", "Restore") })).toBeVisible();
       break;
     case "ask-stopped":
       await expect(page.getByText(both("Interrotta", "Stopped"))).toBeVisible();
@@ -4252,7 +4273,7 @@ async function openState(page: Page, name: string) {
         .click();
       await expect(
         page.getByText(
-          /Per leggere questo file Pyxis ha bisogno|Pyxis needs its scan-reading data/,
+          /Per leggere questo file devo prima scaricare i dati per riconoscere il testo nelle scansioni\.|To read this file, I need to download the text-recognition data for scans first\./,
         ),
       ).toBeVisible();
       await expect(
@@ -4363,7 +4384,7 @@ async function openState(page: Page, name: string) {
       await page.getByRole("button", { name: both("Invia", "Send") }).click();
       await expect(
         page.getByText(
-          /Per leggere questo file Pyxis ha bisogno|Pyxis needs its scan-reading data/,
+          /Per leggere questo file devo prima scaricare i dati per riconoscere il testo nelle scansioni\.|To read this file, I need to download the text-recognition data for scans first\./,
         ),
       ).toBeVisible();
       // The message and the photo are still in the composer, and nothing was sent.
@@ -4553,7 +4574,7 @@ async function openState(page: Page, name: string) {
       await expect(page.locator(".px-empty").getByRole("button")).toHaveCount(0);
       break;
     case "library-empty":
-      await expect(page.locator(".px-empty").getByText(/^(Qui compariranno i tuoi file|Your files will appear here)/)).toBeVisible();
+      await expect(page.locator(".px-empty").getByText(/^(Qui troverai i tuoi file|Your files will appear here)/)).toBeVisible();
       await expect(page.locator(".px-empty").getByRole("button", { name: both("Collega una cartella", "Link a folder") })).toBeVisible();
       // The subject the audit has stays on the page, with no file in it, so the student can still act on it.
       await expect(page.getByRole("region", { name: /^Fisica (nessun file|no files)$/ })).toBeVisible();
@@ -4679,7 +4700,7 @@ async function openState(page: Page, name: string) {
         .fill("zzzz");
       await expect(
         page.getByText(
-          both("Nessuna mappa corrisponde.", "No map matches."),
+          both("Nessuna mappa trovata.", "No map matches."),
         ),
       ).toBeVisible();
       break;
@@ -5242,7 +5263,7 @@ async function openState(page: Page, name: string) {
       break;
     case "flashcards-empty":
       // One line on what will appear and the one button that writes the first flashcard.
-      await expect(page.getByText(/^(Qui compariranno le tue flashcard|Your flashcards will appear here)/)).toBeVisible();
+      await expect(page.getByText(/^(Qui troverai le tue flashcard|Your flashcards will appear here)/)).toBeVisible();
       await expect(page.getByRole("button", { name: both("Nuova flashcard", "New flashcard") })).toBeVisible();
       break;
     case "flashcards-new-hand":
@@ -5857,8 +5878,11 @@ function lookChats(name: string) {
     db.exec(`DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE chat_id LIKE 'look-%');
       DELETE FROM messages WHERE chat_id LIKE 'look-%';
       DELETE FROM chats WHERE id LIKE 'look-%';
-      DELETE FROM sources WHERE id LIKE 'look-%';`);
+      DELETE FROM sources WHERE id LIKE 'look-%';
+      DELETE FROM cards WHERE id LIKE 'look-%';
+      DELETE FROM subjects WHERE id LIKE 'look-%';`);
     if (name === "ask-figure" || name === "ask-viewer") seedFigureChat(db);
+    else if (name.startsWith("ask-tool-")) seedToolChat(db, name.slice("ask-tool-".length) as "working" | "done" | "undone");
     else if (name === "ask-outline") seedOutlineChat(db);
     else if (name === "ask-stopped") seedStoppedChat(db);
     else if (name === "ask-photo-viewer") seedSentFilesChat(db, auditUserData);
@@ -5916,7 +5940,7 @@ async function walk(slice: typeof auditRoutes) {
               if (name === "library-import") {
                 await page
                   .getByRole("button", {
-                    name: /Aggiungi file|Add files/,
+                    name: /Aggiungi fonti|Add sources/,
                     exact: true,
                   })
                   .click();

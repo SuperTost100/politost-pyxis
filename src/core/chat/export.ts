@@ -6,6 +6,8 @@ import {
 import { chatContext, chatTitle, heldSources, readChat } from "./turn";
 import { visibleText } from "./visible";
 import { safeFileName } from "../../shared/file-name";
+import { mapToolBlocks } from "../../shared/tool-blocks";
+import type { ToolResultView } from "../../shared/ipc";
 
 export type ChatExportLanguage = "en" | "it";
 
@@ -33,6 +35,22 @@ const labels = {
     stopped: "Questa risposta è stata interrotta.",
   },
 } as const;
+
+/** What a chat tool made, in the export's language, where the reply showed its card. */
+function toolLine(view: ToolResultView, language: ChatExportLanguage): string {
+  const one = view.count === 1;
+  const what = view.title ? ` ${view.title}` : "";
+  if (language === "it") {
+    const made = `Pyxis ha creato ${view.count} flashcard${what} nel mazzo di ${view.deck}`;
+    return view.undone === null
+      ? `${made}.`
+      : `${made}, poi ${one ? "annullata: non è più nel mazzo" : "annullate: non sono più nel mazzo"}.`;
+  }
+  const made = `Pyxis created ${view.count} flashcard${one ? "" : "s"}${what} in the ${view.deck} deck`;
+  return view.undone === null
+    ? `${made}.`
+    : `${made}, then undone: ${one ? "it is" : "they are"} no longer in the deck.`;
+}
 
 export type ChatExport = {
   title: string | null;
@@ -167,7 +185,16 @@ export function exportChat(
         });
       return {
         role: message.role,
-        text: visibleText(message.role, message.body),
+        // In a reply, a tool's card becomes one line on what it made. A student's own message stays as typed.
+        text: visibleText(
+          message.role,
+          message.role === "assistant"
+            ? mapToolBlocks(message.body, (id) => {
+                const view = message.tools?.[id];
+                return view ? `*${toolLine(view, language)}*` : "";
+              })
+            : message.body,
+        ),
         stopped: message.stopped,
         photos: photos.get(message.id) ?? 0,
         sources,

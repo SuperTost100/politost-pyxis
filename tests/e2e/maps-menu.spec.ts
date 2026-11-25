@@ -343,7 +343,7 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
       return dialog;
     };
     let dialog = await askDelete();
-    await expect(dialog).toContainText("Le flashcard che hai creato da questa mappa restano tra le tue flashcard.");
+    await expect(dialog).toContainText("ma le flashcard create da questa mappa restano al loro posto.");
     await expect(dialog.getByRole("button", { name: "Annulla" })).toBeFocused();
     await expectNoAxeViolations(page);
     await saveShot(page, "maps-menu/confirm.png");
@@ -519,7 +519,7 @@ test("a delete that fails says so on the tile, which stays", async () => {
     await card.getByRole("button", { name: "Altro su Successioni" }).click();
     await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la mappa…" }));
     await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }));
-    await expect(card.getByRole("alert")).toHaveText("Non riesco a eliminare la mappa. Riprova.");
+    await expect(card.getByRole("alert")).toHaveText("Non sono riuscito a eliminare la mappa. Riprova.");
     await expect(card).toHaveCount(1);
     const back = db();
     back.exec("ALTER TABLE maps_away RENAME TO maps");
@@ -1013,7 +1013,7 @@ test("Riprendi keeps following the resumed build when the read right after it fa
     expect((await buildOf(page))?.state).toBe("running");
     await expect(working).toBeVisible();
     await expect(page.locator(".react-flow__node")).toHaveCount(0);
-    await expect(page.getByText("Non riesco a creare la mappa")).toHaveCount(0);
+    await expect(page.getByText("Non sono riuscito a creare la mappa")).toHaveCount(0);
     writeFileSync(hold, "");
     await expect(page.locator(".react-flow__node", { hasText: "Permanenza del segno" })).toBeVisible({ timeout: 30_000 });
     await expect(working).toHaveCount(0);

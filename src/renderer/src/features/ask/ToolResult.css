@@ -1,0 +1,133 @@
+/* What a Pyxis tool did, in the reply where the model called it (ToolResult.tsx). The working shape, the card and the
+   undone line take the same place and the same width, so one becomes the next where it stands. */
+.px-toolres {
+  box-sizing: border-box;
+  width: min(520px, 100%);
+  margin: var(--space-4) 0;
+}
+
+/* At work: a quiet line over a grey card shape. */
+.px-toolres-working-line {
+  display: block;
+  margin-bottom: var(--space-2);
+  color: var(--ink-subtle);
+}
+.px-toolres-ghost {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+.px-toolres-ghost-bar {
+  display: block;
+  height: 10px;
+  width: 72%;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
+}
+.px-toolres-ghost-bar.is-title {
+  width: 38%;
+  height: 12px;
+}
+.px-toolres-ghost-bar.is-short {
+  width: 54%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .px-toolres.is-working .px-toolres-working-line,
+  .px-toolres-ghost-bar {
+    animation: px-toolres-pulse 1.6s ease-in-out infinite;
+  }
+}
+@keyframes px-toolres-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Done: a card with what was made, the first fronts and the two actions. */
+.px-toolres.is-done {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+.px-toolres-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-toolres-line {
+  margin: 0;
+  color: var(--ink);
+}
+.px-toolres-fronts {
+  display: grid;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.px-toolres-front {
+  overflow: hidden;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.px-toolres-more {
+  margin: 0;
+  color: var(--ink-subtle);
+}
+.px-toolres-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: 6px;
+}
+.px-toolres-failed {
+  margin: 0;
+  color: var(--danger);
+}
+
+/* Undone: one line in the card's place, with «Ripristina». */
+.px-toolres.is-undone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--space-2);
+  padding: 6px 8px 6px 16px;
+  border: 1px dashed var(--border-control);
+  border-radius: var(--radius-md);
+}
+.px-toolres-undone-line {
+  flex: 1 1 16em;
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-toolres.is-undone .px-toolres-failed {
+  flex-basis: 100%;
+}
+
+/* A state reached while the card is on screen grows out of the one it replaces, from its top edge. */
+@media (prefers-reduced-motion: no-preference) {
+  .px-toolres.is-arriving {
+    transform-origin: top left;
+    animation: px-toolres-arrive var(--duration-small) var(--ease-out);
+  }
+}
+@keyframes px-toolres-arrive {
+  from {
+    opacity: 0.4;
+    transform: scale(0.97, 0.9);
+  }
+}

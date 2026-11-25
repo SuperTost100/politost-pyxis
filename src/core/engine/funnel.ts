@@ -48,6 +48,8 @@ export type EngineResult = {
   cwd?: string;
   /** The turn went on in the stored session. False when it started a new one (another tool, a folder that changed, a session the tool no longer knew). */
   continued?: boolean;
+  /** Pyxis's tools went with the run that answered (`TurnInput.tools`). */
+  tools?: boolean;
 };
 
 type Keys = { anthropic?: string; openai?: string };
@@ -355,7 +357,8 @@ export type TurnInput = {
      * process tracked for the key.
      */
     session?: { provider: string; id: string; cwd: string } | null;
-    onSession?: (sessionId: string, provider: string, cwd: string) => void;
+    /** `tools`: the run that reported the session has Pyxis's tools attached. */
+    onSession?: (sessionId: string, provider: string, cwd: string, tools?: boolean) => void;
     /**
      * Only a subscription CLI keeps this conversation. An API or local provider answers each call on its own, with the
      * whole prompt, because their history lives in this process, which a local model's small window cannot hold. A
@@ -365,7 +368,62 @@ export type TurnInput = {
   };
   /** Mark the system prompt and the conversation so far for the provider's prompt cache, where it has one. */
   cache?: boolean;
+  /**
+   * Pyxis's tools for this turn (`src/core/tools/server.ts`): the server's address and the chat's bearer token. They are
+   * attached only where `toolsAttach` says the answering tool takes them, and the turn otherwise runs as before, with no
+   * tools. `onTool` hears each call to them as the tool reports it starting and ending, which the chat shows in place.
+   */
+  tools?: {
+    url: string;
+    token: string;
+    onTool?: (event: { phase: "start" | "end"; id: string; tool: string; failed?: boolean }) => void;
+  };
 };
+
+/**
+ * The name Pyxis's server goes by in a run; the tools reach the model as `mcp__pyxis_tools__…` and the like. Codex refuses
+ * a run whose server name its own config already has, so the name is one a user's config is unlikely to hold. No stored
+ * session depends on it: a resumed session is handed the server again, under this name, on every turn.
+ */
+export const TOOL_SERVER = "pyxis_tools";
+
+/**
+ * The tools that refused Pyxis's server since core started (a `pyxis_tools` server already in the user's Codex config, a
+ * transport without servers). They are not offered it again until the next start, so each question resumes its session
+ * on one run instead of a refused attempt and a new session without tools.
+ */
+const refusedTools = new Set<string>();
+
+/** This tool refused Pyxis's server: it is not offered it again until core restarts. */
+export function markToolsRefused(provider: string): void {
+  refusedTools.add(provider);
+}
+
+/**
+ * Whether a run on this provider takes Pyxis's tools: the provider must accept an HTTP MCP server at access `none`
+ * (`capabilities.mcpServersAtNone`), where the server's tools are the only ones the model can call. Claude Code, Codex
+ * and Antigravity over ACP do; Cursor Agent, the API providers and Ollama do not. Antigravity refuses them on Windows
+ * until a live run there shows its hook denying the other tools, and cli-funnel's capability does not vary by platform,
+ * so the platform is checked here.
+ */
+export function toolsAttach(provider: string, platform: NodeJS.Platform = process.platform): boolean {
+  if (refusedTools.has(provider)) return false;
+  const capabilities = getFunnel().providers[provider as ProviderId]?.capabilities;
+  if (!capabilities?.mcpServersAtNone?.includes("http")) return false;
+  return !(provider === "antigravity" && platform === "win32");
+}
+
+/**
+ * A run that failed because of the tools it was given, before it answered: a server name the user's Codex config already
+ * has (`invalid-selection`), a transport that refuses servers (`unsupported`), or a CLI that could not start the server.
+ * The turn then runs again without tools, as it would on a tool that takes none, but only when the attempt wrote nothing
+ * and called none of Pyxis's tools: a call may already have saved cards, which a second attempt would make again.
+ */
+function toolsRefused(err: unknown): boolean {
+  const code = err && typeof err === "object" && "code" in err ? String((err as { code: unknown }).code) : "";
+  const message = err instanceof Error ? err.message : String(err);
+  return code === "invalid-selection" || code === "unsupported" || /\bmcp\b/i.test(message);
+}
 
 export async function runTurn(input: TurnInput): Promise<EngineResult> {
   disclosure?.ensure(input.selection.provider, input.signal);
@@ -429,6 +487,18 @@ async function turn(input: TurnInput): Promise<EngineResult> {
   const scope = currentUsageScope();
   const access = selection.provider === "ollama" ? "local" : selection.provider.endsWith("-api") ? "api-key" : "subscription";
   let text = "";
+  // Pyxis's tools go with the run when the answering tool takes them. They are the same for every turn of the chat (one
+  // token per chat, see `tools/server.ts`), so the live process cli-funnel keeps between questions is reused.
+  let servers =
+    input.tools && toolsAttach(selection.provider)
+      ? {
+          [TOOL_SERVER]: {
+            type: "http" as const,
+            url: input.tools.url,
+            headers: { Authorization: `Bearer ${input.tools.token}` },
+          },
+        }
+      : undefined;
   try {
     for (;;) {
       const continuing = Boolean(resumeId) && Boolean(conversation);
@@ -442,6 +512,8 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         ...(input.system ? { system: input.system } : {}),
       });
       text = "";
+      // A call reached Pyxis's server in this attempt (see `toolsRefused`).
+      let reached = false;
       const following = trackCall(scope?.jobId);
       try {
         const stream = engine.stream({
@@ -456,16 +528,26 @@ async function turn(input: TurnInput): Promise<EngineResult> {
           ...(continuing ? { sessionId: resumeId } : {}),
           ...(cache ? { cache: true } : {}),
           ...(log ? { verbose: true } : {}),
+          ...(servers ? { mcpServers: servers } : {}),
         });
+        // The calls to Pyxis's own server, by the id the tool gave them, so their end is told with their name.
+        const ours = new Map<string, string>();
         for await (const event of stream) {
           log?.event(event);
           following.event(event.type);
+          if (event.type === "tool.start" && event.mcp?.server === TOOL_SERVER) reached = true;
+          if (event.type === "tool.start" && event.mcp?.server === TOOL_SERVER && !event.parentId) {
+            ours.set(event.id, event.mcp.tool);
+            input.tools?.onTool?.({ phase: "start", id: event.id, tool: event.mcp.tool });
+          }
+          if (event.type === "tool.end" && ours.has(event.id))
+            input.tools?.onTool?.({ phase: "end", id: event.id, tool: ours.get(event.id)!, ...(event.error ? { failed: true } : {}) });
           if (event.type === "session") {
             // A tool that resumes reports the id it was given. Another id means it started a new session, and this turn
             // would answer without the conversation: stop it and send the whole prompt instead.
             if (continuing && tool && event.sessionId !== resumeId) throw new SessionReplaced();
             sessionId = event.sessionId;
-            if (tool) conversation!.onSession?.(event.sessionId, selection.provider, selection.cwd);
+            if (tool) conversation!.onSession?.(event.sessionId, selection.provider, selection.cwd, Boolean(servers));
           }
           if (event.type !== "text.delta") continue;
           text += event.text;
@@ -522,6 +604,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
                 continued,
               }
             : {}),
+          ...(servers ? { tools: true } : {}),
         };
       } catch (err) {
         following.end();
@@ -531,6 +614,13 @@ async function turn(input: TurnInput): Promise<EngineResult> {
         if (continuing && tool && !text && !input.signal?.aborted && (err instanceof SessionReplaced || isSessionGone(err))) {
           resumeId = undefined;
           sessionId = undefined;
+          continue;
+        }
+        // The tools were refused before anything was written or called: the same turn runs again without them, and this
+        // tool is not offered them again until core restarts.
+        if (servers && !text && !reached && !input.signal?.aborted && toolsRefused(err)) {
+          servers = undefined;
+          markToolsRefused(selection.provider);
           continue;
         }
         throw err;

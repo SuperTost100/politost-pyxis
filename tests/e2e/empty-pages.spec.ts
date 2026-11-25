@@ -64,7 +64,7 @@ test("Esami with no exam says what will appear, keeps the dots in its head and h
   const { page, open, finish } = await start("exams");
   try {
     const lines = {
-      it: /^Qui compariranno i tuoi esami, ognuno con un percorso di lezioni e quiz fino alla data\. Ti basta il nome e il materiale del corso\.$/,
+      it: /^Qui troverai i tuoi esami, ognuno con un percorso di lezioni e quiz fino alla data dell'esame\. Ti bastano il nome e il materiale del corso\.$/,
       en: /^Your exams will appear here, each with a path of lessons and quizzes up to its date\. All you need is the name and the course material\.$/,
     };
     const names = { it: ["Altro su Esami", "Nuovo esame"], en: ["More for Exams", "New exam"] };
@@ -105,7 +105,7 @@ test("Esami with no exam but flashcards due keeps its small block under the due 
       await show(page, look, "/exams");
       await expect(page.getByText(look.language === "it" ? "Oggi hai 2 flashcard da ripassare" : "You have 2 flashcards to review today")).toBeVisible();
       await expectEmptyPage(page, {
-        line: look.language === "it" ? /^Qui compariranno i tuoi esami/ : /^Your exams will appear here/,
+        line: look.language === "it" ? /^Qui troverai i tuoi esami/ : /^Your exams will appear here/,
         action: look.language === "it" ? "Nuovo esame" : "New exam",
         small: true,
       });
@@ -151,7 +151,7 @@ test("Mappe with subjects and no map says what will appear, and its one button m
     seedSubjects(db, [{ id: "phys", name: "Fisica I" }]);
     db.close();
     const lines = {
-      it: /^Qui compariranno le mappe che crei, divise per materia\. Ne fai una da un argomento\.$/,
+      it: /^Qui compariranno le mappe che crei, divise per materia\. Parti da un argomento per crearne una\.$/,
       en: /^The maps you make will appear here, by subject\. You make one from a topic\.$/,
     };
     const actions = { it: "Nuova mappa", en: "New map" };
@@ -196,7 +196,7 @@ test("Flashcard with no flashcard says what will appear, keeps the dots in its h
   const { page, open, finish } = await start("flashcards");
   try {
     const lines = {
-      it: /^Qui compariranno le tue flashcard, divise per materia\. Le scrivi tu, oppure le fa Pyxis dal tuo materiale\.$/,
+      it: /^Qui troverai le tue flashcard, divise per materia\. Puoi scriverle tu o farle creare a Pyxis dal tuo materiale\.$/,
       en: /^Your flashcards will appear here, by subject\. You write them, or Pyxis makes them from your material\.$/,
     };
     const names = { it: ["Altro sulle flashcard", "Nuova flashcard"], en: ["More for flashcards", "New flashcard"] };
@@ -314,12 +314,12 @@ test("The Library with no file says what will appear, keeps the free books in it
   try {
     await toLibrary(page);
     const lines = {
-      it: /^Qui compariranno i tuoi file, divisi per materia\. Collega la cartella dove tieni il materiale e Pyxis li legge da lì\.$/,
+      it: /^Qui troverai i tuoi file, divisi per materia\. Collega la cartella dove tieni il materiale e Pyxis li legge da lì\.$/,
       en: /^Your files will appear here, by subject\. Link the folder where you keep your material and Pyxis reads them from there\.$/,
     };
     const names = {
-      it: ["Altro sulla Libreria", "Collega una cartella", "Aggiungi file"],
-      en: ["More for the Library", "Link a folder", "Add files"],
+      it: ["Altro sulla Libreria", "Collega una cartella", "Aggiungi fonti"],
+      en: ["More for the Library", "Link a folder", "Add sources"],
     };
     for (const look of looks) {
       const language = look.language;
@@ -336,8 +336,8 @@ test("The Library with no file says what will appear, keeps the free books in it
     await expect(page.getByRole("menuitem")).toHaveText(["Free PoliTost books"]);
     await page.keyboard.press("Escape");
 
-    // "Add files" opens the dialog that adds loose files, on its File tab.
-    await page.getByRole("button", { name: "Add files", exact: true }).click();
+    // "Add sources" opens the dialog that adds loose files, on its File tab.
+    await page.getByRole("button", { name: "Add sources", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Add sources" });
     await expect(dialog.getByRole("radio", { name: "File" })).toBeChecked();
     await page.keyboard.press("Escape");
@@ -358,7 +358,7 @@ test("The Library with no file says what will appear, keeps the free books in it
     seedSource(db, { id: "src", title: "Mazzoldi", subjectId: "phys", document: { id: "doc" }, passages: [{ id: "pa", text: "La velocità media.", section: "Cinematica" }] });
     db.close();
     await page.reload();
-    await expect(page.getByRole("button", { name: "Add files", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add sources", exact: true })).toBeVisible();
     await expect(page.locator(".px-empty")).toHaveCount(0);
     expect(await headBox(page.locator(".px-library-head"))).toEqual(empty);
   } finally {
@@ -378,7 +378,7 @@ test("The Library with subjects and no file keeps its subjects under a small lin
       await expectEmptyPage(page, {
         line:
           look.language === "it"
-            ? /^Qui compariranno i tuoi file, divisi per materia\./
+            ? /^Qui troverai i tuoi file, divisi per materia\./
             : /^Your files will appear here, by subject\./,
         action: look.language === "it" ? "Collega una cartella" : "Link a folder",
         small: true,

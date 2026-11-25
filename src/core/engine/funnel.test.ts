@@ -10,8 +10,11 @@ type Request = {
   cache?: boolean;
   signal?: AbortSignal;
   verbose?: boolean;
+  mcpServers?: Record<string, unknown>;
 };
 type Outcome = {
+  /** Events the tool reports after it names its session, before it fails or writes. */
+  events?: unknown[];
   text?: string;
   usage?: Record<string, number>;
   finishReason?: string;
@@ -33,8 +36,8 @@ function fakeFunnel(options: { providers?: Record<string, unknown> }) {
   const caps = (cache: boolean, ephemeral?: true) => ({ access: ["none"], cache, ephemeral });
   return {
     providers: {
-      claude: { capabilities: caps(false, true), openSession: () => undefined },
-      codex: { capabilities: caps(false, true), openSession: () => undefined },
+      claude: { capabilities: { ...caps(false, true), mcpServersAtNone: ["http"] }, openSession: () => undefined },
+      codex: { capabilities: { ...caps(false, true), mcpServersAtNone: ["http"] }, openSession: () => undefined },
       antigravity: { capabilities: caps(false) },
       ...options.providers,
     },
@@ -56,6 +59,7 @@ function fakeFunnel(options: { providers?: Record<string, unknown> }) {
           const sessionId =
             outcome.sessionId ?? request.sessionId ?? `s-${run.mock.calls.length}`;
           yield { type: "session", sessionId };
+          for (const event of outcome.events ?? []) yield event;
           if (outcome.error) {
             fail(outcome.error);
             throw outcome.error;
@@ -104,6 +108,7 @@ const {
   runTurn,
   setApiKeys,
   setScratch,
+  toolsAttach,
   CONVERSATION_IDLE_MS,
 } = await import("./funnel");
 
@@ -515,6 +520,35 @@ describe("chat conversations", () => {
     getFunnel();
     closeFunnel();
     expect(close).toHaveBeenCalled();
+  });
+});
+
+describe("Pyxis's tools in a run", () => {
+  const tools = { url: "http://127.0.0.1:1/mcp", token: "t".repeat(43) };
+  const refused = () => Object.assign(new Error("A server named pyxis_tools is already in your config"), { code: "invalid-selection" });
+
+  it("runs again without the tools when they are refused, and offers them to that tool no more", async () => {
+    run.mockResolvedValueOnce({ error: refused() }).mockResolvedValue({ text: "ok" });
+    const first = await runTurn({ selection: { provider: "codex", model: "m" }, prompt: "uno", tools });
+    expect(run.mock.calls.map((call) => Boolean(call[0].mcpServers))).toEqual([true, false]);
+    expect(first.tools).toBeUndefined();
+    expect(toolsAttach("codex")).toBe(false);
+    // The next question makes no doomed first attempt, and another tool still gets them.
+    await runTurn({ selection: { provider: "codex", model: "m" }, prompt: "due", tools });
+    expect(run.mock.calls.map((call) => Boolean(call[0].mcpServers))).toEqual([true, false, false]);
+    expect(toolsAttach("claude")).toBe(true);
+    const other = await runTurn({ selection: { provider: "claude", model: "m" }, prompt: "tre", tools });
+    expect(other.tools).toBe(true);
+  });
+
+  it("does not run again without the tools once a call reached Pyxis's server, whatever the failure says", async () => {
+    run.mockResolvedValueOnce({
+      events: [{ type: "tool.start", id: "c1", name: "mcp__pyxis_tools__create_flashcards", mcp: { server: "pyxis_tools", tool: "create_flashcards" } }],
+      error: new Error("mcp transport closed"),
+    });
+    await expect(runTurn({ selection: { provider: "claude", model: "m" }, prompt: "uno", tools })).rejects.toThrow("mcp transport closed");
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(toolsAttach("claude")).toBe(true);
   });
 });
 

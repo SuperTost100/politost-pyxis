@@ -1,5 +1,5 @@
 import { activeSimulation } from "../study/simulation";
-import { keepsFirstSystemPrompt } from "../engine/funnel";
+import { keepsFirstSystemPrompt, toolsAttach } from "../engine/funnel";
 import { checkSelection, needsSolverChecks, splitChecks, solverChecks } from "./checks";
 import { stripCheckFences, type AnchoredCheck } from "../../shared/math-check";
 import type Database from "better-sqlite3";
@@ -20,7 +20,19 @@ import {
   noSandbox,
   type FigureRunner,
 } from "../math/figures";
-import { isAbort, IpcError, toIpcError, type AttachmentError, type MessageFile } from "../../shared/ipc";
+import { isAbort, IpcError, toIpcError, type AttachmentError, type MessageFile, type ToolResultView } from "../../shared/ipc";
+import { armChatTools, chatTools, revokeChatTools } from "../tools/server";
+import {
+  describeToolBlocks,
+  dropStrayToolResults,
+  linkToolResults,
+  restoreToolResults,
+  spliceToolBlocks,
+  takeBackToolResults,
+  toolNote,
+  toolViews,
+} from "../tools/results";
+import { toolBlockIds } from "../../shared/tool-blocks";
 import { generate, type GenerateInput } from "../engine/generate";
 import { engineSeesImages } from "../engine/capabilities";
 import { LOCAL_PROVIDER } from "../engine/local";
@@ -102,6 +114,8 @@ export type ChatMessageView = {
   checks: AnchoredCheck[];
   /** Images of the answer's figure blocks, by `figureKey`. */
   figures?: Record<string, string>;
+  /** What the reply's tool calls did, by the result id its ```pyxis-tool blocks name. */
+  tools?: Record<string, ToolResultView>;
   /** The math check for this reply is still running; its badges arrive with a `chats.checks` broadcast. */
   checking: boolean;
   /**
@@ -148,6 +162,8 @@ type AskInput = {
   onPassages?: (passages: Array<{ index: number; label: string }>) => void;
   /** The stored message that is this turn's question, new or reused, and its chat (new for a first question), before the reply streams. */
   onQuestion?: (messageId: string, chatId: string) => void;
+  /** Hears each result of a Pyxis tool the model called, as it is stored, before the reply's text names it. */
+  onTool?: (view: ToolResultView) => void;
   run?: Parameters<typeof generate>[0]["run"];
   /** Runs figure code; null turns figures off. Defaults to the Pyodide sandbox when its runtime is downloaded. */
   python?: FigureRunner | null;
@@ -377,10 +393,11 @@ function historyText(
   let used = 0;
   let cut = false;
   for (const row of rows) {
+    // What a tool did reads as the line its result would have given the model.
     const body =
       row.role === "assistant"
         ? figureCaptions(
-            stripCheckFences(splitFollowups(splitChecks(row.body).body).body),
+            stripCheckFences(splitFollowups(splitChecks(describeToolBlocks(db, chatId, row.body, toolNote)).body).body),
             "Figure",
           ).trim()
         : [row.body, ...storedNotes(db, row.id)].join("\n\n");
@@ -1304,6 +1321,70 @@ async function answer(
   let answering: { provider: string; model: string; effort?: string } = selection;
   let streamed = resume;
   let result;
+  // Pyxis's tools (src/core/tools). A call takes its place in the reply where the model made it: `raw` is the text this
+  // attempt streamed, and each mark is an offset into it. A mark appears when the engine reports the call starting, or
+  // when the call reaches Pyxis's server if the engine did not say so first; it shows the tool's working state until the
+  // server stores the result, and goes if the call fails, since the model reads why and answers on.
+  type Mark = { offset: number; tool: string; callId?: string; server?: boolean; resultId?: string };
+  const marks: Mark[] = [];
+  let raw = "";
+  /** The reply with its tool blocks: the finished ones only (what is saved), or with the running ones (what is shown). */
+  const withTools = (text: string, running: boolean) =>
+    spliceToolBlocks(
+      text,
+      marks.flatMap((mark) =>
+        mark.resultId
+          ? [{ offset: mark.offset, body: mark.resultId }]
+          : running
+            ? [{ offset: mark.offset, body: `pending:${mark.tool}` }]
+            : [],
+      ),
+    );
+  const tell = () => {
+    streamed = resume + withTools(raw, false);
+    input.onDelta?.((resume + withTools(raw, true)).replace(/<followups>[\s\S]*$/, "").trim());
+  };
+  // A server that cannot start leaves the turn without tools, as on an engine that takes none.
+  const access = await chatTools(chatId).catch(() => null);
+  const tally: Record<string, number> = {};
+  const toolTurn: Parameters<typeof armChatTools>[0] = {
+    chatId,
+    tally,
+    kept: {},
+    place: () => ({ planId: planId ?? null, subject: subject || picked || null }),
+    engine: () => ({ provider: answering.provider, model: answering.model }),
+    started: (tool) => {
+      let mark = marks.find((entry) => entry.tool === tool && !entry.server && entry.callId !== undefined);
+      if (mark) mark.server = true;
+      else {
+        mark = { offset: raw.length, tool, server: true };
+        marks.push(mark);
+      }
+      tell();
+      return mark;
+    },
+    finished: (call, shown) => {
+      const mark = call as Mark;
+      const view = shown ? toolViews(db, chatId, [shown.resultId])[shown.resultId] : undefined;
+      // A call that added to a result an earlier call of this reply shows gives its place up to that one.
+      const shownAlready = view && marks.some((entry) => entry !== mark && entry.resultId === view.id);
+      if (view) input.onTool?.(view);
+      if (view && !shownAlready) mark.resultId = view.id;
+      else if (marks.includes(mark)) marks.splice(marks.indexOf(mark), 1);
+      tell();
+    },
+  };
+  let disarm = () => undefined as void;
+  /** Every engine this turn ran on or planned to: the selection, and each one a fallback moved to. */
+  const tried = new Set<string>([selection.provider]);
+  // A stored session that began without Pyxis's tools is not resumed when the tools would attach now: a new session starts
+  // with the whole conversation. Checked on agy 1.5.17 with gemini-3.8-flash: such a session never used the tools (the
+  // server was listed, and the model said it had no such tool and wrote the cards as text). Codex took them in four runs of
+  // five and wrote text in the fifth; Claude Code took them in four of four. This happens once for each chat opened before
+  // the tools. A tool that refused them is not offered them again while core runs (`toolsAttach`), so its sessions resume. A session that began with them takes a new address and token after a restart
+  // on all three.
+  const withoutTools = (stored: NonNullable<typeof session>) =>
+    !stored.tools && access !== null && toolsAttach(stored.provider);
   // Fitting a saved photo can take seconds, so it runs in the extract worker. A photo left out is reported, not dropped silently.
   const saved =
     input.workspace && engineSeesImages(selection)
@@ -1358,6 +1439,8 @@ async function answer(
       ? images.flatMap((image) => (image.copy ? [{ type: "image" as const, mediaType: image.mediaType, data: image.copy }] : []))
       : [];
   try {
+    // From here until the engine is done, the chat's token may act, and only on this chat (tools/server.ts).
+    if (access) disarm = armChatTools(toolTurn);
     result = await generate({
       prompt: "",
       promptFor,
@@ -1384,22 +1467,41 @@ async function answer(
       conversation: {
         key: chatId,
         followUp: "",
-        session: session ? { provider: session.provider, id: session.sessionId, cwd: session.cwd } : null,
+        session: session && !withoutTools(session) ? { provider: session.provider, id: session.sessionId, cwd: session.cwd } : null,
         // A tool keeps what it was sent, a turn the student stops too, so the session is stored when the turn begins.
-        onSession: (sessionId, provider, cwd) => {
+        onSession: (sessionId, provider, cwd, tools) => {
           const open = currentSession(db, chatId);
           if (open?.provider === provider && open.sessionId === sessionId) return;
-          recordSession(db, chatId, open, { provider, sessionId, cwd, model: answering.model, effort: answering.effort ?? null, told: "", instructions, chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion }, "gone");
+          recordSession(db, chatId, open, { provider, sessionId, cwd, model: answering.model, effort: answering.effort ?? null, told: "", instructions, chars: 0, now: Date.now(), finished: false, syncedTo: beforeQuestion, tools }, "gone");
         },
       },
       cache: true,
       usage: { chatId, messageId, kind: "chat" },
-      onEngine: (engine) => (answering = engine),
+      onEngine: (engine) => {
+        answering = engine;
+        tried.add(engine.provider);
+      },
       onDelta: (text) => {
         requireTutorAvailable(db);
-        streamed = resume + text;
-        input.onDelta?.(streamed.replace(/<followups>[\s\S]*$/, "").trim());
+        raw = text;
+        tell();
       },
+      tools: access ? {
+        ...access,
+        onTool: (event) => {
+          if (event.phase === "start") {
+            // The server may have heard the call first; otherwise this is where it shows its working state.
+            const early = marks.find((mark) => mark.tool === event.tool && mark.server && mark.callId === undefined);
+            if (early) early.callId = event.id;
+            else marks.push({ offset: raw.length, tool: event.tool, callId: event.id });
+          } else {
+            // A call that ended without reaching Pyxis's server failed on the way: its place goes.
+            const mark = marks.find((entry) => entry.callId === event.id);
+            if (mark && !mark.server) marks.splice(marks.indexOf(mark), 1);
+          }
+          tell();
+        },
+      } : undefined,
     });
     // The turn's session is stored for the next one. A turn that did not continue it (another tool answered, or the
     // tool started a new session) ends it and opens the new one.
@@ -1420,6 +1522,7 @@ async function answer(
           chars: (result.continued ? followUpFor(result.provider) : promptFor(result.provider)).length + result.text.length,
           now: Date.now(),
           finished: true,
+          tools: result.tools,
           syncedTo: beforeQuestion,
         },
         "gone",
@@ -1443,12 +1546,26 @@ async function answer(
     if (kept && (aborted || !replacing || resume))
       return stopReply(streamed, aborted ? null : toIpcError(err).messageKey);
     throw err;
+  } finally {
+    disarm();
+    // Antigravity keeps the server's headers, the token included, in its conversation store on disk. A turn that tried it
+    // (planned on it, moved to it, or answered by it, even when another tool answered after it failed) ends that token,
+    // and the chat's next turn gets a new one. agy keeps no process between questions, so nothing is restarted for it.
+    // Claude Code and Codex write no token to disk (checked in their session files).
+    if (tried.has("antigravity") || result?.provider === "antigravity") revokeChatTools(chatId);
   }
+  // The reply with each finished tool call in its place. With tools the streamed text is the whole reply, since a CLI's
+  // final text can be only what it wrote after the last call; text the model wrote as a tool block never counts as one.
+  // A reply that made something keeps it even when the model also answered NOT_COVERED: the student asked, the cards are in
+  // the deck, and the reply is where they can be undone. Only the sentinel's own lines go.
+  const replyText = marks.some((mark) => mark.resultId)
+    ? withTools(raw.trim() ? raw : result.text, false).replace(/^[ \t]*NOT_COVERED[ \t]*(?:\n|$)/gm, "")
+    : spliceToolBlocks(result.text, []);
   // The prompts no longer ask for it, but a model or an older prompt can still answer NOT_COVERED: nothing is stored.
-  if (!resume && result.text.trim().startsWith("NOT_COVERED")) {
+  if (!resume && replyText.trim().startsWith("NOT_COVERED")) {
     return { chatId, covered: false, message: null };
   }
-  const parsed = splitFollowups(resume + result.text);
+  const parsed = splitFollowups(resume + replyText);
   if (profile?.followups === false) parsed.followups = [];
   // A figure that fails is left out. The math check runs after the reply is saved (startChecks), on the final text.
   // The figures are drawn together and each is told as it is drawn (`onFigure`), so the page shows it in its place without
@@ -1471,12 +1588,12 @@ async function answer(
   } catch (err) {
     requireTutorAvailable(db);
     if (isAbort(err) || (err instanceof Error && err.name === "AbortError"))
-      return stopReply(resume + result.text, null, undefined, true);
+      return stopReply(resume + replyText, null, undefined, true);
     throw err;
   }
   if (drawn.stopped) {
     requireTutorAvailable(db);
-    return stopReply(resume + result.text, null, drawn, true);
+    return stopReply(resume + replyText, null, drawn, true);
   }
   parsed.body = drawn.markdown;
   const figures = Object.keys(drawn.figures).length ? drawn.figures : undefined;
@@ -1649,6 +1766,8 @@ function saveReply(
   );
   for (const cite of linked)
     link.run(messageId, cite.passageId, `P${cite.index}`);
+  // What the reply's tool calls did is now the reply's, so the chat shows it when read again.
+  linkToolResults(db, chatId, messageId, toolBlockIds(parsed.body));
   return {
     chatId,
     covered: true,
@@ -1668,6 +1787,7 @@ function saveReply(
       checking: false,
       ...(note ? { searched: note } : {}),
       ...(meta.figures ? { figures: meta.figures } : {}),
+      ...toolsOf(db, chatId, parsed.body),
     },
   };
 }
@@ -1718,11 +1838,18 @@ export async function regenerateTurn(
           ...(last.figures_json ? { figures: figureImages(JSON.parse(last.figures_json)) } : {}),
         }
       : undefined;
+  // An answer given again replaces the earlier one with what its tools did: the cards it created leave the deck before the
+  // new answer runs, so the new answer's cards are not taken for duplicates of them. A Continue keeps the reply.
+  const replaced = last?.role === "assistant" && !resumeFrom ? toolBlockIds(last.body) : [];
+  const taken = takeBackToolResults(db, input.chatId, replaced);
   // The tool's session was told this question is answered again and the earlier answer discarded. When the new answer
   // fails or is stopped, the earlier one stays on screen: the session holds the conversation only up to the message before
-  // that question's earlier replies, so the next message replays the question and the answer the student sees.
+  // that question's earlier replies, so the next message replays the question and the answer the student sees. Its cards
+  // come back, and whatever the discarded answer's tools made goes.
   const keepsEarlier = () => {
     if (last?.role === "assistant" && !resumeFrom) rewindSession(db, input.chatId, user.id);
+    restoreToolResults(db, input.chatId, taken);
+    dropStrayToolResults(db, input.chatId);
   };
   const result = await askTurn(
     db,
@@ -1747,6 +1874,17 @@ export async function regenerateTurn(
       last.id,
       input.chatId,
     );
+    // The earlier answer's cards stay out of the deck. When the new answer made none, the line that says so, with
+    // «Ripristina», heads the new answer, so the student can still bring them back. Otherwise the new answer's own result
+    // stands in its place, and the earlier record goes with the earlier answer.
+    if (replaced.length > 0 && toolBlockIds(result.message.body).length === 0) {
+      const lead = replaced.map((id) => `\`\`\`pyxis-tool\n${id}\n\`\`\`\n\n`).join("");
+      db.prepare(`UPDATE messages SET body = ? || body WHERE id = ? AND chat_id = ?`).run(lead, result.message.id, input.chatId);
+      linkToolResults(db, input.chatId, result.message.id, replaced);
+      const body = `${lead}${result.message.body}`;
+      result.message = { ...result.message, body, ...toolsOf(db, input.chatId, body) };
+    }
+    dropStrayToolResults(db, input.chatId);
   }
   return result;
 }
@@ -2022,7 +2160,16 @@ export function readChat(
       ...(row.figures_json
         ? { figures: figureImages(JSON.parse(row.figures_json)) }
         : {}),
+      ...toolsOf(db, chatId, row.role === "assistant" ? parsed.body : ""),
       checking: runningChecks.has(row.id),
     };
   });
+}
+
+/** The results a reply's tool blocks name, as the message carries them; nothing for a reply without tool blocks. */
+function toolsOf(db: Database.Database, chatId: string, body: string): { tools?: Record<string, ToolResultView> } {
+  const ids = toolBlockIds(body);
+  if (ids.length === 0) return {};
+  const tools = toolViews(db, chatId, ids);
+  return Object.keys(tools).length ? { tools } : {};
 }

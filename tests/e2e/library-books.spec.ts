@@ -413,7 +413,7 @@ test("Offline, no offer shows and nothing looks broken; the list says it could n
     await page.getByRole("button", { name: "Altro sulla Libreria" }).click();
     await clickSettled(page, page.getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true }));
     const dialog = page.getByRole("dialog", { name: "Libri PoliTost gratuiti" });
-    await expect(dialog.getByText("Non riesco a raggiungere books.politost.it")).toBeVisible({ timeout: 30_000 });
+    await expect(dialog.getByText("Non sono riuscito a raggiungere books.politost.it")).toBeVisible({ timeout: 30_000 });
     await expect(dialog.getByRole("button", { name: "Riprova" })).toBeVisible();
   } finally {
     await finish(run);

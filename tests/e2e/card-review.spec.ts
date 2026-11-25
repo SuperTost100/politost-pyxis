@@ -829,10 +829,10 @@ test("session end: a card still to learn counts down, and the answers sit under 
     // The countdown is not a live region: a screen reader hears the state once, in the status.
     await expect(timer).toHaveAttribute("aria-live", "off");
     await expect(page.locator(".px-end .visually-hidden[role=status]")).toHaveText(
-      "A flashcard you are learning comes back in 1 minute. Stay here and I'll show it.",
+      "You are still learning 2 flashcards: if you stay here, each one will appear when its time is up, the first in 1 minute.",
     );
     await expect(page.locator(".px-end-text")).toHaveText(
-      "You are still learning them, so I'll show them again as soon as they are due. You can stay here.",
+      "You are still learning them: if you stay here, each one will appear on its own when its time is up.",
     );
     // The four answers as bars with their counts; the two cards still to come are listed on their own, then the rest.
     await expect(answers(page)).toHaveText(["Didn't know it1", "Hard1", "Knew it0", "Easy2"]);
@@ -984,7 +984,7 @@ test("session end: the card shows by itself when its time comes", async () => {
     await expect(page.getByRole("timer")).toBeVisible();
     await expect(page.locator(".px-end-kicker")).toHaveText("A flashcard comes back in");
     await expect(page.locator(".px-end-text")).toHaveText(
-      "You are still learning it, so I'll show it again as soon as it is due. You can stay here.",
+      "You are still learning it: if you stay here, it will appear on its own when the timer ends.",
     );
     db.prepare("UPDATE card_reviews SET state_json = json_set(state_json, '$.dueAt', ?) WHERE card_id = 'c1'").run(Date.now() - 1000);
     await page.clock.fastForward("01:05");

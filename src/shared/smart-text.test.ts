@@ -20,6 +20,7 @@ import {
   stripPassageRefsOutsideCode,
   writtenSections,
 } from "./smart-text";
+import { repairLatexInProse } from "./math-delimiters";
 
 const check = {
   question: "Quanto vale $F$ se $m=2$ e $a=3$?",
@@ -87,6 +88,17 @@ describe("smart text", () => {
       // \ne and \nuovo stay line breaks: only whole LaTeX names after \n count as commands.
       a: "\\times \\rho \ne \nuovo",
     });
+  });
+
+  it("keeps the id and option order of a block whose formulas open with a line break before e, u or i", () => {
+    // Real line breaks inside the JSON strings, as a model writes them. The block is read as before, so an answer saved
+    // under its id stays; only the drawing of its formulas changed, which keeps those line breaks.
+    const body = '{"question": "Quale vale?", "options": ["$$\ne^{x}\n$$", "$$\nu(t)\n$$", "$$\ni_{k}\n$$"], "answer": 1, "explanation": "Quindi\n$$\nu(t)=e^{t}\n$$"}';
+    const [segment] = parseSmartText(`\`\`\`pyxis-check\n${body}\n\`\`\``);
+    if (segment?.type !== "block" || segment.block.kind !== "check") throw new Error("not a check");
+    // The id, order and answer 0.5.0-dev.13 gave this block.
+    expect(segment.block).toMatchObject({ id: "check-o49o0rs94p", order: [1, 0, 2], answer: 0 });
+    for (const text of [...segment.block.options, segment.block.explanation!]) expect(repairLatexInProse(text)).toBe(text);
   });
 
   it("drops invalid and unknown blocks instead of showing raw JSON", () => {
