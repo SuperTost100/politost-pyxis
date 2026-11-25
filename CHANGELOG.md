@@ -10,7 +10,7 @@ Pyxis 0.4.3 fixes two problems of 0.4.2. Your workspace stays as it is, so 0.4.2
 
 #### Fixed
 
-- After your computer's network connection dropped, even briefly, Pyxis stopped answering: a search in the flashcard list never returned, and a new subject wasn't saved. These reads and saves happen on your computer, so they no longer wait for the network.
+- While your computer had no network connection, Pyxis didn't answer: a search in the flashcard list didn't return and a new subject wasn't saved until the connection came back. These reads and saves happen on your computer, so they no longer wait for the network.
 - On Windows and Linux, if you closed the window after Pyxis had run Python code, Pyxis kept running without a window. Closing the window now quits Pyxis.
 - On macOS, in the same case, clicking Pyxis in the Dock opened no window. It now opens one.
 
@@ -20,7 +20,7 @@ Pyxis 0.4.3 corregge due problemi della 0.4.2. Il tuo spazio di lavoro resta com
 
 #### Corretti
 
-- Dopo un calo della connessione di rete, anche breve, Pyxis smetteva di rispondere: una ricerca nell'elenco delle flashcard non dava mai risultati e una nuova materia non veniva salvata. Queste letture e questi salvataggi avvengono sul tuo computer, quindi non aspettano più la rete.
+- Quando il computer era senza connessione di rete, Pyxis non rispondeva: una ricerca nell'elenco delle flashcard non dava risultati e una nuova materia non veniva salvata finché la connessione non tornava. Queste letture e questi salvataggi avvengono sul tuo computer, quindi non aspettano più la rete.
 - Su Windows e Linux, se chiudevi la finestra dopo che Pyxis aveva eseguito codice Python, Pyxis restava in esecuzione senza finestra. Ora chiudere la finestra chiude anche Pyxis.
 - Su macOS, nello stesso caso, un clic su Pyxis nel Dock non apriva nessuna finestra. Ora ne apre una.
 
