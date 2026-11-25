@@ -829,10 +829,10 @@ test("session end: a card still to learn counts down, and the answers sit under 
     // The countdown is not a live region: a screen reader hears the state once, in the status.
     await expect(timer).toHaveAttribute("aria-live", "off");
     await expect(page.locator(".px-end .visually-hidden[role=status]")).toHaveText(
-      "A flashcard you are still learning will appear in 1 minute if you stay here.",
+      "You are still learning 2 flashcards: if you stay here, each one will appear when its time is up, the first in 1 minute.",
     );
     await expect(page.locator(".px-end-text")).toHaveText(
-      "You are still learning them: if you stay here, they will appear on their own when the timer ends.",
+      "You are still learning them: if you stay here, each one will appear on its own when its time is up.",
     );
     // The four answers as bars with their counts; the two cards still to come are listed on their own, then the rest.
     await expect(answers(page)).toHaveText(["Didn't know it1", "Hard1", "Knew it0", "Easy2"]);

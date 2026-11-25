@@ -595,7 +595,7 @@ test("a gap drill whose read fails says so and offers to read it again, instead 
     await expect.poll(() => drillJob()?.params.includes(JSON.stringify(EXPLANATION).slice(1, -1))).toBe(true);
     gaps(true);
     // The page says it cannot tell whether the review is ready, and the controls are free again.
-    const failed = page.getByRole("alert").filter({ hasText: "non riesco a controllare" });
+    const failed = page.getByRole("alert").filter({ hasText: "non sono riuscito a controllare" });
     await expect(failed).toBeVisible();
     await expect(fill.first()).toBeEnabled();
     await expect(page.getByText("Preparo il ripasso")).toHaveCount(0);

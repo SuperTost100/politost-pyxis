@@ -81,7 +81,7 @@ test("a document is read when it is attached, the question lists it, and it open
     await expect(page.locator(".ask-attachments")).toHaveCount(0);
     // The reply cites the attached file, and the line above it says so instead of claiming general knowledge.
     await expect(page.getByText("Ho usato il file che hai allegato")).toBeVisible();
-    await expect(page.getByText(/quello che so in generale/)).toHaveCount(0);
+    await expect(page.getByText(/quello che so/)).toHaveCount(0);
     await saveShot(page, "chat-attachments/3-sent-message-lists-its-file.png");
     // It stays after the reply, and after the page is read again from core.
     await expect(page.getByText("Gli appunti dicono che il calore si trasmette per conduzione")).toBeVisible();

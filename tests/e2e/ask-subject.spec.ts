@@ -407,7 +407,7 @@ test("Ask: an answer that cites no source says so when passages were found, and 
     await expect(
       lastReply(page).getByText("Nelle tue fonti ho trovato qualcosa, ma questa risposta non ne cita nessuna, quindi viene da quello che so in generale."),
     ).toBeVisible();
-    await expect(page.getByText("Non ho trovato niente su questa domanda")).toHaveCount(0);
+    await expect(page.getByText("Non ho trovato nulla su questa domanda")).toHaveCount(0);
     await saveShot(page, "ask-subject/general-unused.png");
     await expectNoAxeViolations(page);
     // The saved reply says the same after a reload.
