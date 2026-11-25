@@ -51,14 +51,12 @@ describe("the corpus of recorded AI answers", () => {
 });
 
 describe("the corpus and the line breaks before a formula", () => {
-  // A line break the repair took for the backslash of `\ne` draws ≠ where the formula had `e`. A relation never opens a display
-  // formula or one of its rows, and never takes an exponent or an index, so no drawn formula of the corpus may show one there.
+  // A line break the repair took for the backslash of `\ne` draws ≠ where the formula had `e`. A display formula never opens
+  // with ≠ or ∋ that takes an exponent or an index, so no drawn formula of the corpus may show one there.
   it.each(entries.map((entry) => [entry.id, entry] as const))("%s draws no relation where the text had a line break", (_id, entry) => {
     const html = render(entry.text, entry.inline);
     const display = [...html.matchAll(/<span class="katex-display">[\s\S]*?<annotation encoding="application\/x-tex">([^<]*)<\/annotation>/g)].map((m) => m[1]!);
-    const all = [...html.matchAll(/<annotation encoding="application\/x-tex">([^<]*)<\/annotation>/g)].map((m) => m[1]!);
-    expect(display.filter((latex) => /^\s*\\(?:ne|ni)(?![A-Za-z])/.test(latex))).toEqual([]);
-    expect(all.filter((latex) => /\\(?:ne|neq|ni|notin)(?![A-Za-z])\s*[\^_]/.test(latex))).toEqual([]);
+    expect(display.filter((latex) => /^\s*\\(?:ne|ni)[\^_]/.test(latex))).toEqual([]);
   });
 });
 

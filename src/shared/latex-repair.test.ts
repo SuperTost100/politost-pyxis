@@ -45,7 +45,7 @@ describe("repairLatexEscapes", () => {
   });
 });
 
-describe("a line break or a tab that the text around it shows is real", () => {
+describe("a line break before e, u or i that the formula around it shows is real", () => {
   // From a lesson of dev.13: the display formula opened on its own line, and the line break before `e^{-st}` was drawn as ≠.
   it("keeps the line break that opens a display formula laid out on lines of its own", () => {
     for (const text of [
@@ -63,10 +63,15 @@ describe("a line break or a tab that the text around it shows is real", () => {
     expect(repairLatexEscapes(text)).toBe(text);
   });
 
-  it("keeps a line break before a relation with nothing on its left, or with an exponent", () => {
-    for (const text of ["$$\ne^{-st} e^{2t} = e^{(2-s)t}.$$", "$$ \ne = 1$$", "$$f = 1 +\ne^{t}$$", "$$a\ne_1$$"]) {
+  it("keeps a line break before e or i with nothing on its left in its row and an exponent or index after it", () => {
+    for (const text of ["$$\ne^{-st} e^{2t} = e^{(2-s)t}.$$", "$$ \ni_{k} = 1$$", "$$a = 1 \\\\ \ne^{x} = 2$$"]) {
       expect(repairLatexEscapes(text), JSON.stringify(text)).toBe(text);
     }
+  });
+
+  it("restores ≠ and ∋ with something on their left, with or without an index, and with nothing after them", () => {
+    expect(repairLatexEscapes("$$A \ne_{p} B$$ e $a \ne^{*} b$ e $x \ni_{k} y$")).toBe("$$A \\ne_{p} B$$ e $a \\ne^{*} b$ e $x \\ni_{k} y$");
+    expect(repairLatexEscapes("$$ \ne = 1$$")).toBe("$$ \\ne = 1$$");
   });
 
   it("still restores the commands where the text around them needs them", () => {
@@ -74,17 +79,14 @@ describe("a line break or a tab that the text around it shows is real", () => {
     expect(repairLatexEscapes("$$a \ne b$$ e $x\ni y$ e $\ne$")).toBe("$$a \\ne b$$ e $x\\ni y$ e $\\ne$");
     expect(repairLatexEscapes("$$\nabla f\n$$")).toBe("$$\\nabla f\n$$");
     expect(repairLatexEscapes("$$\n\nu = 1\n$$")).toBe("$$\n\\nu = 1\n$$");
-    expect(repairLatexEscapes("$x \to 0$ e $$\theta = 1\n$$")).toBe("$x \\to 0$ e $$\\theta = 1\n$$");
   });
 
-  it("reads a tab before o, and a line break before more than one letter, as the command: that text is never a formula's", () => {
-    expect(repairLatexEscapes("$$\to 1$$")).toBe("$$\\to 1$$");
-    expect(repairLatexEscapes("$$a \\\\\n\to b$$")).toBe("$$a \\\\\n\\to b$$");
+  it("reads a line break before more than one letter as the command: that text is never a formula's", () => {
     expect(repairLatexEscapes("$$\notin$$")).toBe("$$\\notin$$");
     expect(repairLatexEscapes("$$a \\\\\neq z$$")).toBe("$$a \\\\\\neq z$$");
   });
 
-  it("leaves a command that was written out alone, even where a lost backslash would be no relation", () => {
+  it("leaves a command that was written out, unless it is \\ne or \\ni with nothing on its left and an exponent after it", () => {
     for (const text of [
       "$$\\notin$$",
       "$\\notin$",
@@ -94,35 +96,15 @@ describe("a line break or a tab that the text around it shows is real", () => {
       "$$\\begin{aligned}\na &= b \\\\\n\\neq z\n\\end{aligned}$$",
       "$$a = b \\\\ \\neq z$$",
       "$$a &\\neq b$$",
-      "$$\\begin{aligned}a &\\to b \\\\\n\\to c\\end{aligned}$$",
+      "$A \\ne_{p} B$",
+      "$a \\ne^{*} b$",
+      "$x \\ni_{k} y$",
+      "il simbolo $\\ne$",
+      "$$\\nu = 1\n$$",
     ]) {
       expect(repairLatexEscapes(text), JSON.stringify(text)).toBe(text);
     }
-  });
-
-  it("reads \\ne written out with an exponent after it as a line break, and nothing else written out", () => {
     expect(repairLatexEscapes("$$\\ne^{-st} e^{2t} = e^{(2-s)t}.$$")).toBe("$$\ne^{-st} e^{2t} = e^{(2-s)t}.$$");
-    // A real ≠ written as a symbol, or between two sides, stays.
-    for (const text of ["il simbolo $\\ne$", "$a \\ne b$", "$$\\nu = 1\n$$"]) {
-      expect(repairLatexEscapes(text), JSON.stringify(text)).toBe(text);
-    }
-  });
-
-  it("restores a command that opens a string of a structured answer, which the parser would take for indented code", () => {
-    expect(repairModelStrings(["\theta", "\times 2", "\tPrimo", "\theta è l'angolo", "\text{ciao}"])).toEqual([
-      "\\theta",
-      "\\times 2",
-      "\tPrimo",
-      "\\theta è l'angolo",
-      "\\text{ciao}",
-    ]);
-  });
-
-  it("leaves code indented by a tab at the start of a structured string as code", () => {
-    // A tab, then a line of Python whose first word, after a t, would spell a command: `ext`, `an`, `heta`, `imes`.
-    for (const code of ["\text = input()\n\tprint(text)", "\text = input()", "\tan(x)", "\theta.append(1)", "\times\n\tprint(times)"]) {
-      expect(repairModelStrings(code), JSON.stringify(code)).toBe(code);
-    }
   });
 
   it("is the same in a structured answer", () => {

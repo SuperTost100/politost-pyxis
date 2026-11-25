@@ -1,4 +1,4 @@
-import { codeRanges, mapOutsideCode } from "./outside-code";
+import { mapOutsideCode } from "./outside-code";
 
 /**
  * A model that writes LaTeX with one backslash inside a JSON string loses it: `\theta` becomes a tab and "heta", `\frac` a
@@ -32,8 +32,8 @@ const DOUBLED_OK = new Set([
 ]);
 // What a model's JSON makes of a line break it wrote as `\n` once the string is read: a backslash and an n.
 const AFTER_N = new Set(BY_LETTER.n);
-// The relations whose name is n and one letter, ≠ and ∋: what is left of them without the backslash can be a variable.
-const RELATIONS = new Set(["ne", "ni"]);
+// The commands whose name is n and one letter: without the backslash, what is left (e, u, i) can be a variable.
+const ONE_LETTER = new Set(["ne", "nu", "ni"]);
 const CONTROL: Record<string, string> = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v" };
 
 /**
@@ -63,23 +63,21 @@ function insideMath(text: string, index: number): boolean {
 const ROW_START = /(?:\$\$|\\\[|(?<!\\)\\\\|\\begin\{[^{}]*\}(?:\{[^{}]*\})*)$/;
 
 /**
- * Whether the tab or line break at `at`, followed by the rest of the name `name` up to `end`, is really a tab or a line
- * break inside a formula, although `\name` is a LaTeX command too. It can be only when what is left after it makes sense
- * on its own, which is one letter that can be a variable: `\ne` leaves e, `\nu` u, `\ni` i. "otin", "eq" and "abla" are
- * never a formula's text, and o is too rare a variable to outweigh `\to`. Then the text around it decides:
- * - `\ne` and `\ni` stand between two sides and never take an exponent or an index: either right after them means e or i.
- * - `\ne` or `\ni` with nothing on its left in its row of a display formula is e or i. Inline, `$\ne$` alone is the symbol.
+ * Whether the n at `at` (a line break, or with `written` a backslash and an n written out), followed by the rest of the
+ * name `name` up to `end`, is a line break inside a formula although `\name` is a LaTeX command too. It can be only when
+ * what is left of the name is one letter that can be a variable: `\ne` leaves e, `\nu` u, `\ni` i. Then:
+ * - `\ne` or `\ni` with nothing on its left in its row of a display formula and an exponent or an index right after it is
+ *   no relation, so it is e or i: `$$` and a line break before `e^{-st}` is `e^{-st}`. With something on its left,
+ *   `A \ne_{p} B` is the relation with an index.
  * - A line break where a formula laid out on lines has a line end is a line break: right after its opening `$$` or `\[`
- *   when its closing delimiter starts a line too, right after a `\\` row break, or after `\begin{…}`.
- * `written` is a backslash and an n written out, which a structured answer that escaped its line breaks twice has: it is
- * a real command far more often than such a line break, so only the exponent or the index after `\ne` or `\ni` counts.
+ *   when its closing delimiter starts a line too, right after a `\\` row break, or right after `\begin{…}`.
+ * A backslash and an n written out, as a structured answer that escaped its line breaks twice has them, is a real command
+ * far more often than such a line break, so only the first rule applies to it.
  */
-function textBreak(text: string, at: number, end: number, name: string, written: boolean): boolean {
-  if (name.length !== 2) return false;
-  const relation = RELATIONS.has(name);
-  if (relation && /[\^_]/.test(text[end] ?? "")) return true;
-  if (written || text[at] !== "\n") return false;
-  if (relation && ROW_START.test(text.slice(0, at).trimEnd())) return true;
+function lineBreakInFormula(text: string, at: number, end: number, name: string, written: boolean): boolean {
+  if (!ONE_LETTER.has(name)) return false;
+  if (name !== "nu" && /[\^_]/.test(text[end] ?? "") && ROW_START.test(text.slice(0, at).trimEnd())) return true;
+  if (written) return false;
   const line = text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
   if (/(?<!\\)\\\\$|\\begin\{[^{}]*\}(?:\{[^{}]*\})*$/.test(line)) return true;
   const open = /(\$\$|\\\[)[ \t]*$/.exec(line)?.[1];
@@ -90,28 +88,12 @@ function textBreak(text: string, at: number, end: number, name: string, written:
 }
 
 /**
- * For the JSON text repair: reads the `\n` and `\t` escapes of one string, which `text` holds read with every such escape
- * as the control character it says. The returned function tells whether the escape at `at` is a real line break or tab
- * although the letters `name` (the escape's letter and those after it) could be a LaTeX command. Inside a formula
- * `textBreak` decides. Outside one:
- * - a tab that indents a line after a line break is a tab, in code or in prose;
- * - anything else in code is what it says;
- * - in prose a tab is a tab when no command of that name is known (`\tPrimo`); a `\text…` command counts as known. A
- *   line break before a whole command name is the command, as before.
- * A tab that opens the string is no indentation, although the parser would read the line as code because of it. The
- * string's code is found once, on the first escape that needs it, since parsing the Markdown is the costly part.
+ * For the JSON text repair: the `\n` escapes of one string, which `text` holds read with every `\n` as a line break.
+ * The returned function tells whether the escape at `at`, before the letters `name` (the n and those after it), is a
+ * line break inside a formula by `lineBreakInFormula`, although `\name` is a LaTeX command too.
  */
-export function escapeReader(text: string): (at: number, name: string) => boolean {
-  let code: Array<[number, number]> | undefined;
-  return (at, name) => {
-    const before = text.slice(0, at);
-    const tab = text[at] === "\t";
-    const opensLine = tab && /(?:^|\n)[ \t]*$/.test(before);
-    if (!opensLine && (code ??= codeRanges(text)).some(([from, to]) => at >= from && at < to)) return true;
-    if (insideMath(text, at)) return textBreak(text, at, at + name.length, name, false);
-    if (!tab) return false;
-    return /\n[ \t]*$/.test(before) || !(BY_LETTER.t!.includes(name) || name.startsWith("text"));
-  };
+export function lineBreakReader(text: string): (at: number, name: string) => boolean {
+  return (at, name) => insideMath(text, at) && lineBreakInFormula(text, at, at + name.length, name, false);
 }
 
 const PATTERNS = Object.entries(BY_LETTER).map(([letter, rest]) => ({
@@ -142,9 +124,9 @@ function literalBreaks(text: string): string {
   if (!text.includes("\\n")) return text;
   return text.replace(/(?<!\\)\\n([A-Za-z]*)/g, (match, tail: string, offset: number, whole: string) => {
     const name = `n${tail}`;
-    if (!AFTER_N.has(name)) return `\n${tail}`;
-    const command = insideMath(whole, offset) ? !textBreak(whole, offset, offset + match.length, name, true) : tail.length > 1;
-    return command ? match : `\n${tail}`;
+    const inMath = insideMath(whole, offset);
+    const command = AFTER_N.has(name) && (inMath || tail.length > 1);
+    return command && !(inMath && lineBreakInFormula(whole, offset, offset + match.length, name, true)) ? match : `\n${tail}`;
   });
 }
 
@@ -165,7 +147,7 @@ export function repairLatexEscapes(text: string, atLineStart = true): string {
       if (letter === "n" && whole[offset - 1] === "\r") return match;
       const guarded = GUARDED.has(name) || letter === "n";
       if (guarded && !inMath) return match;
-      if (inMath && (letter === "n" || letter === "t") && textBreak(whole, offset, offset + name.length, name, false)) return match;
+      if (letter === "n" && inMath && lineBreakInFormula(whole, offset, offset + name.length, name, false)) return match;
       return `\\${name}`;
     });
   }
@@ -181,20 +163,7 @@ export function repairLatexOutsideCode(text: string): string {
 
 /** The value with every string in it repaired by `repairLatexOutsideCode`. */
 export function repairModelStrings<T>(value: T): T {
-  if (typeof value === "string") {
-    // A tab that opens a string before a command name is that command, although the parser would read the line as
-    // indented code because of the tab, unless the string reads as code: an assignment, a call or an attribute after the
-    // name, or another indented line. `\text…` and the other commands that take an argument need its brace.
-    const opening = /^\t([A-Za-z]+)/.exec(value)?.[1] ?? "";
-    const name = `t${opening}`;
-    const after = value.slice(1 + opening.length);
-    const command =
-      BY_LETTER.t!.includes(name) &&
-      !/^\s*=(?!=)|^[(.[]/.test(after) &&
-      !/\n(?:\t| {4})/.test(value) &&
-      (!/^(?:text|tilde|tfrac|tbinom|tag)/.test(name) || after.startsWith("{"));
-    return repairLatexOutsideCode(command ? `\\${name}${after}` : value) as T;
-  }
+  if (typeof value === "string") return repairLatexOutsideCode(value) as T;
   if (Array.isArray(value)) return value.map(repairModelStrings) as T;
   if (value && typeof value === "object")
     return Object.fromEntries(

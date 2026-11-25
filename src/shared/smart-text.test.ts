@@ -90,7 +90,7 @@ describe("smart text", () => {
   });
 
   it("reads a single-backslash escape in block JSON by the text around it", () => {
-    // Raw model text, as a block body holds it: in String.raw, `\n` and `\t` are the two characters of a JSON escape.
+    // Raw model text, as a block body holds it: in String.raw, `\n` is the two characters of a JSON escape.
     const read = (json: string) => (parseLooseJson(json) as { body: string }).body;
     // A display formula laid out on lines of its own: the line breaks are line breaks, not \nu or \ne.
     expect(read(String.raw`{"body": "$$\nu(t) = e^{t}\n$$"}`)).toBe("$$\nu(t) = e^{t}\n$$");
@@ -99,11 +99,6 @@ describe("smart text", () => {
     expect(read(String.raw`{"body": "$$\nu = \frac{1}{T}$$ e $a \neq b$ e $x \to 0$"}`)).toBe(
       "$$\\nu = \\frac{1}{T}$$ e $a \\neq b$ e $x \\to 0$",
     );
-    // In code a tab is a tab, and a tab that opens a line of prose is indentation.
-    expect(read(String.raw`{"body": "Codice:\n\n${"```"}python\nfor i in x:\n\tprint(i)\n${"```"}"}`)).toBe(
-      "Codice:\n\n```python\nfor i in x:\n\tprint(i)\n```",
-    );
-    expect(read(String.raw`{"body": "Elenco:\n\tPrimo punto"}`)).toBe("Elenco:\n\tPrimo punto");
   });
 
   it("keeps the id and the option order a block had in 0.5.0-dev.13, whose reading of an escape this build changed", () => {
@@ -121,6 +116,21 @@ describe("smart text", () => {
     expect(trySegment.block.id).toBe("try-280okot5c8f");
     // Every string of an array is a value, the later ones too.
     expect(trySegment.block.steps).toEqual(["Primo:\n$$\nu(t)=e^t\n$$", "Secondo:\n$$\nu(t)=e^t\n$$"]);
+  });
+
+  it("keeps every question of a recap, its id, place, option order and saved pick, when the new reading drops one", () => {
+    // The first question's option writes `\\nu` and its answer `\nu`, in display maths laid out on lines. dev.13 read both as
+    // ν; the new reading takes the answer's `\n` for a line break, so the answer names no option and the question fails.
+    const body = String.raw`{"questions": [{"question": "Quale soluzione?", "options": ["$$\\nu\n$$", "$$x\n$$", "$$y\n$$"], "answer": "$$\nu\n$$"}, {"question": "Seconda?", "options": ["a", "b", "c"], "answer": 2}, {"question": "Terza?", "options": ["d", "e", "f"], "answer": 1}]}`;
+    const [segment] = parseSmartText(`\`\`\`pyxis-recap\n${body}\n\`\`\``);
+    if (segment?.type !== "block" || segment.block.kind !== "recap") throw new Error("not a recap");
+    // The ids, options in their shown order and answers dev.13 gave these questions. A saved pick is an id and a shown
+    // option's index, so the same options at the same indexes keep every pick on the option the student chose.
+    expect(segment.block.questions.map(({ id, options, answer, order }) => ({ id, options, answer, order }))).toEqual([
+      { id: "recap-uyn63lqd5g.1", options: ["$$x\n$$", "$$y\n$$", "$$\\nu\n$$"], answer: 2, order: [1, 2, 0] },
+      { id: "recap-uyn63lqd5g.2", options: ["b", "c", "a"], answer: 1, order: [1, 2, 0] },
+      { id: "recap-uyn63lqd5g.3", options: ["d", "f", "e"], answer: 2, order: [0, 2, 1] },
+    ]);
   });
 
   it("drops invalid and unknown blocks instead of showing raw JSON", () => {
