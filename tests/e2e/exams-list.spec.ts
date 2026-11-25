@@ -212,7 +212,7 @@ test("Esami with no exam says what will appear and keeps New exam and the import
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     await fromChiediToExams(page);
-    await expect(page.getByText(/^Qui compariranno i tuoi esami/)).toBeVisible();
+    await expect(page.getByText(/^Qui troverai i tuoi esami/)).toBeVisible();
     await expect(page.getByRole("list", { name: "I tuoi esami" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Archiviati" })).toHaveCount(0);
     // The Esami menu holds importing and the mistakes notebook; every flashcard lives under Flashcard.

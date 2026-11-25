@@ -146,7 +146,12 @@ export function SessionEnd({
   const announcement = !ready
     ? ""
     : phase === "waiting"
-      ? t("cards.learningWait", { count: minutesLeft(soonest! - now) })
+      ? waiting.length > 1
+        ? t("cards.learningWaitMany", {
+            cards: waiting.length,
+            count: minutesLeft(soonest! - now),
+          })
+        : t("cards.learningWait", { count: minutesLeft(soonest! - now) })
       : `${title}. ${text}`;
   const [said, setSaid] = useState("");
   const sayWhen = ready ? phase : "";

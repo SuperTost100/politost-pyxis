@@ -427,7 +427,7 @@ test("A folder says how many of its files could not be read, and a list that can
     writeFileSync(lose, "x");
     await page.reload();
     const failed = page.locator(".px-library-head").getByRole("alert");
-    await expect(failed).toHaveText(/Non riesco a leggere le cartelle collegate\./);
+    await expect(failed).toHaveText(/Non sono riuscito a leggere le cartelle collegate\./);
     await animationsSettled(page);
     await expectNoAxeViolations(page);
     await saveShot(page, "linked-folders-manage/6-failed.png");

@@ -118,8 +118,8 @@ test("ENG-10 tool details, the key dialog and the secure key-storage notice in b
             page.getByRole("button", {
               name:
                 language === "en"
-                  ? "Everything back to Automatic"
-                  : "Torna tutto ad Automatico",
+                  ? "Reset all to Automatic"
+                  : "Riporta tutto su Automatico",
             }),
           ).toHaveCount(0);
           await expect(
@@ -299,7 +299,7 @@ test("Automatic engines: the page says it in one sentence, and Advanced can pin 
       page.getByText("1 feature is pinned by hand under Advanced."),
     ).toBeVisible();
     const back = page.getByRole("button", {
-      name: "Everything back to Automatic",
+      name: "Reset all to Automatic",
     });
     await expect(back).toBeEnabled();
     await back.click();
@@ -623,7 +623,7 @@ test("Settings: a tool's row says its three roles with the model each one runs, 
         await expect(note).toHaveText(
           language === "en"
             ? "Each tool uses only its maker's models, and Pyxis picks among three: fast for flashcards and maps, balanced for chat, lessons and grading, strong for the study plan."
-            : "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: veloce per flashcard e mappe, equilibrato per chat, lezioni e correzione, forte per il piano di studio.",
+            : "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: veloce per le flashcard e le mappe, equilibrato per la chat, le lezioni e la correzione, forte per il piano di studio.",
         );
         for (const id of ["claude", "codex"]) await expect(tool(page, id)).not.toContainText(/Qui «Chat»|Here “Chat”/);
         await expect(
@@ -700,8 +700,8 @@ test("Settings: a tool's row says its three roles with the model each one runs, 
           .getByRole("button", {
             name:
               language === "en"
-                ? "Everything back to Automatic"
-                : "Torna tutto ad Automatico",
+                ? "Reset all to Automatic"
+                : "Riporta tutto su Automatico",
           })
           .click();
         await expect(chat).not.toHaveClass(/is-pinned/);
@@ -714,7 +714,7 @@ test("Settings: a tool's row says its three roles with the model each one runs, 
         await expect(page.locator(".engines-feature-work small").first()).toHaveText(words.mid);
         await expect(
           page.getByRole("button", {
-            name: language === "en" ? "Everything back to Automatic" : "Torna tutto ad Automatico",
+            name: language === "en" ? "Reset all to Automatic" : "Riporta tutto su Automatico",
           }),
         ).toHaveCount(0);
       }
@@ -932,7 +932,7 @@ test("Settings: the line under the list says what is true of every tool, with th
       await expect(page.locator(".engines-roles-note")).toHaveText(
         language === "en"
           ? "Each tool uses only its maker's models, and Pyxis picks among three: fast for flashcards and maps, balanced for lessons and grading, strong for the study plan. For chat: the balanced model of Claude and ChatGPT, the fast one of Gemini."
-          : "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: veloce per flashcard e mappe, equilibrato per lezioni e correzione, forte per il piano di studio. Per chat: il modello equilibrato di Claude e ChatGPT, quello veloce di Gemini.",
+          : "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: veloce per le flashcard e le mappe, equilibrato per le lezioni e la correzione, forte per il piano di studio. Per la chat usa il modello equilibrato di Claude e ChatGPT, quello veloce di Gemini.",
         { timeout: 30000 },
       );
       // The word under "Chat" in Avanzate is the role on the tool that runs it today: the automatic choice gives the chat

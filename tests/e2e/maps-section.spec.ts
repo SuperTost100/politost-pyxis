@@ -124,7 +124,7 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
       page.getByRole("heading", { level: 3, name: "Struttura dell’atomo" }),
     ).toHaveCount(0);
     await search.fill("zzzz");
-    await expect(page.getByText("Nessuna mappa corrisponde.")).toBeVisible();
+    await expect(page.getByText("Nessuna mappa trovata.")).toBeVisible();
     await search.fill("");
 
     // A map opens inside the shell under Mappe, at its subject and topic, says which exam it belongs to, and Mappe leads
