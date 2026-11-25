@@ -27,7 +27,7 @@ import { LOCAL_PROVIDER } from "../engine/local";
 import { selectionFor, selectionOn, strongestSelection, type StoredSelection } from "../engine/selection";
 import { withUsageScope } from "../engine/usage";
 import type { Embedder, PassageHit } from "../sources/retrieve";
-import { contentWords, hitOf, queryEmbedder, retrieveWithModel, type PassageRow } from "../sources/retrieve";
+import { contentWords, hitOf, queryEmbedder, retrieveWithModel, topicWords, type PassageRow } from "../sources/retrieve";
 import { readingOrder } from "../sources/smartbook";
 import { commitStaged, recognisePhoto, savedImages, stagePhoto, type PreparedFiles, type SkippedImage, type StagedBlob } from "./attach";
 import type { HeldFiles, TakenFiles } from "./held-files";
@@ -194,6 +194,16 @@ const CHAT_PASSAGES = 12;
 const ATTACHED_PASSAGES = 4;
 /** At most this many passages are added for this turn's documents, on top of the ones retrieval found. */
 const ATTACHED_TOTAL = 12;
+/** How much of the files' text joins the question in the Library search of a message with files. */
+const FILES_QUERY_CHARS = 1_000;
+/**
+ * The vector distance at which a Library passage counts as on the topic of a message with files, stricter than the usual
+ * 0.6. Measured with the pinned multilingual-e5-small on short Italian study notes (2026-11-25): organic chemistry notes
+ * and questions sat at 0.59-0.65 from every passage of maths notes, and notes on power series at 0.50 from the passage on
+ * power series. Passages that share the files' terms still count through the lexical bar.
+ * shortcut: measured on one pair of subjects; check again if a larger Library brings related material in or out.
+ */
+const FILES_NEAR_DISTANCE = 0.5;
 /**
  * Characters of the earlier conversation handed to a new tool session, whole messages newest first. The smallest window
  * among the tools' models today is 200,000 tokens (Claude Haiku), and 200,000 characters are about 55,000 tokens: a
@@ -405,7 +415,7 @@ function historyText(
 /**
  * Passages of the documents attached to this turn, so a question like "summarise this" sees the file even when its
  * words match nothing in it: the best matches retrieval found, then the best matches within each document, then its
- * opening passages, up to ATTACHED_PASSAGES each.
+ * opening passages. ATTACHED_TOTAL is shared among the documents, at least ATTACHED_PASSAGES each.
  */
 async function attachedPassages(
   db: Database.Database,
@@ -421,19 +431,30 @@ async function attachedPassages(
   );
   const taken = new Set(found.map((hit) => hit.id));
   const added: PassageHit[] = [];
+  const each = Math.max(ATTACHED_PASSAGES, Math.floor(ATTACHED_TOTAL / Math.max(1, sourceIds.length)));
   for (const sourceId of sourceIds) {
-    const within = await retrieveWithModel(db, text, { sourceIds: [sourceId], embed, limit: ATTACHED_PASSAGES });
-    const first = (opening.all(sourceId, ATTACHED_PASSAGES) as PassageRow[]).map(hitOf);
+    const within = await retrieveWithModel(db, text, { sourceIds: [sourceId], embed, limit: each });
+    const first = (opening.all(sourceId, each) as PassageRow[]).map(hitOf);
     let have = found.filter((hit) => hit.sourceId === sourceId).length;
     for (const hit of [...within.hits, ...first]) {
-      if (have >= ATTACHED_PASSAGES || added.length >= ATTACHED_TOTAL) break;
+      if (have >= each || added.length >= ATTACHED_TOTAL) break;
       if (taken.has(hit.id)) continue;
       taken.add(hit.id);
       added.push(hit);
       have += 1;
     }
   }
-  return added;
+  // Each document's passages go in the order they have in it, file by file, so the model reads the file as it is written.
+  const ids = added.map((hit) => hit.id);
+  const order = ids.length
+    ? (db
+        .prepare(`SELECT p.id FROM passages p WHERE p.id IN (${ids.map(() => "?").join(", ")}) ORDER BY ${readingOrder("p")}`)
+        .pluck()
+        .all(...ids) as string[])
+    : [];
+  return sourceIds.flatMap((sourceId) =>
+    order.flatMap((id) => added.filter((hit) => hit.id === id && hit.sourceId === sourceId)),
+  );
 }
 
 const FOLLOW = new Set([
@@ -453,6 +474,94 @@ const FOLLOW = new Set([
 function isFollowUp(text: string): boolean {
   const words = contentWords(text).map((word) => word.toLocaleLowerCase("it"));
   return words.length === 0 || words.every((word) => FOLLOW.has(word));
+}
+
+/**
+ * Words that, in a message with files, point at the files or say what the student does with them, and name no topic:
+ * "sto studiando questo", "riassumi questi appunti", "help me understand this". A Library passage that shares only
+ * such words with the question is not about it.
+ */
+const POINTING = new Set([
+  "questo", "questa", "questi", "queste", "quello", "quella", "quelli", "quelle", "qui", "qua",
+  "sto", "stai", "sta", "stiamo", "studiando", "studio", "studiare", "ripassando", "ripassare", "leggendo", "leggere",
+  "aiutami", "aiuto", "capire", "capisco", "spiegami", "riassumi", "riassunto", "dimmi", "parlami",
+  "file", "allegato", "allegata", "allegati", "allegate", "documento", "foto", "immagine", "immagini", "appunti",
+  "slide", "pagina", "pagine",
+  "this", "these", "that", "those", "here", "studying", "study", "reading", "read", "help", "understand",
+  "summarise", "summarize", "summary", "attached", "document", "photo", "picture", "image", "notes", "slides", "page",
+  "pages", "what's", "whats",
+]);
+
+/**
+ * The opening of what was read from a message's files, for the Library search: the first passages of each document in
+ * reading order, then the text read from its photos, FILES_QUERY_CHARS in all, shared among them.
+ */
+function filesOpening(db: Database.Database, sourceIds: string[], notes: string[]): string {
+  const parts = [
+    ...sourceIds.map((sourceId) =>
+      (
+        db
+          .prepare(
+            `SELECT p.text FROM passages p
+             WHERE p.source_id = ? AND p.document_id = ${latestDocument("p.source_id")}
+             ORDER BY ${readingOrder("p")} LIMIT 4`,
+          )
+          .pluck()
+          .all(sourceId) as string[]
+      ).join(" "),
+    ),
+    ...notes,
+  ].filter((part) => part.trim());
+  const each = Math.floor(FILES_QUERY_CHARS / Math.max(1, parts.length));
+  return parts.map((part) => part.replace(/\s+/g, " ").slice(0, each)).join("\n");
+}
+
+/**
+ * The Library's passages for a message with files, which is about them first. Two searches: the question with the opening
+ * of the files' text, and the question alone when it names a topic of its own (see POINTING). Only hits that pass the
+ * relevance bar of their search come along, so a Library on another subject than the files adds nothing. The files' own
+ * passages are left out here: `attachedPassages` adds them.
+ */
+async function gatherWithFiles(
+  db: Database.Database,
+  text: string,
+  filesText: string,
+  scope: SearchScope,
+  embed: AskInput["embed"],
+  question: AskInput["embed"],
+  own: string[],
+): Promise<{ hits: PassageHit[]; covered: boolean; usedVectors: boolean; relevant: string[] }> {
+  if (!scope.withLibrary && scope.sourceIds.length === 0)
+    return { hits: [], covered: false, usedVectors: false, relevant: [] };
+  const topic = topicWords(text, POINTING).join(" ");
+  const searches = [];
+  const options = { ...scope, limit: CHAT_PASSAGES, nearDistance: FILES_NEAR_DISTANCE };
+  if (filesText) searches.push(await retrieveWithModel(db, `${text}\n${filesText}`, { ...options, embed }));
+  // The question's own vector, already computed, with only its topic words for the lexical side.
+  if (topic) searches.push(await retrieveWithModel(db, topic, { ...options, embed: question }));
+  const relevant = new Set(searches.flatMap((found) => found.relevant));
+  const hits = new Map<string, PassageHit>();
+  for (const hit of searches.flatMap((found) => found.hits))
+    if (relevant.has(hit.id) && !own.includes(hit.sourceId) && hits.size < CHAT_PASSAGES) hits.set(hit.id, hit);
+  return {
+    hits: [...hits.values()],
+    covered: searches.some((found) => found.covered),
+    usedVectors: searches.some((found) => found.usedVectors),
+    relevant: [...hits.keys()],
+  };
+}
+
+/**
+ * The files a question carried, in the order they were attached: each one's name, kind, document and text read by OCR. A
+ * photo row with text and no name, which no build writes today, still brings its text, as "photo".
+ */
+function messageFiles(db: Database.Database, messageId: string) {
+  return db
+    .prepare(
+      `SELECT COALESCE(name, 'photo') AS name, kind, source_id AS sourceId, NULLIF(recognised, '') AS recognised FROM attachments
+       WHERE message_id = ? AND (name IS NOT NULL OR (recognised IS NOT NULL AND recognised <> '')) ORDER BY created_at, rowid`,
+    )
+    .all(messageId) as Array<{ name: string; kind: string | null; sourceId: string | null; recognised: string | null }>;
 }
 
 /** `subjectBy` says who set the chat's subject (or chose the whole Library); undefined while Pyxis may still pick one. */
@@ -1147,22 +1256,23 @@ async function answer(
     searches || (!kept && attachedIds.length > 0)
       ? await queryEmbedder(input.text, input.embed)
       : input.embed;
+  // A message with files is about them first (see docs/engines.md, "A question with files"): the Library is searched for
+  // what the files say as well as for the question, and only what is relevant comes along.
+  const withFiles = !kept && (attachedIds.length > 0 || thisTurnFile);
+  const filesText = withFiles ? filesOpening(db, attachedIds, notes) : "";
+  const search = (where: SearchScope) =>
+    withFiles
+      ? gatherWithFiles(db, input.text, filesText, where, input.embed, questionEmbed, attachedIds)
+      : gather(db, chatId, input.text, where, input.embed, questionEmbed);
   let gathered = kept
     ? { hits: kept.hits, covered: true, usedVectors: false, relevant: [] as string[] }
     : !searches
       ? { hits: [] as PassageHit[], covered: true, usedVectors: false, relevant: [] as string[] }
-      : await gather(db, chatId, input.text, scope, input.embed, questionEmbed);
+      : await search(scope);
   // A subject with nothing relevant on this question: the whole Library is searched, and the reply says it looked wider.
   let widened = false;
   if (searches && subject && gathered.relevant.length === 0) {
-    const wider = await gather(
-      db,
-      chatId,
-      input.text,
-      { sourceIds: attachments, withLibrary: true },
-      input.embed,
-      questionEmbed,
-    );
+    const wider = await search({ sourceIds: attachments, withLibrary: true });
     if (wider.relevant.length > 0) {
       gathered = wider;
       widened = true;
@@ -1197,36 +1307,50 @@ async function answer(
   // that cites none of them is still not "general knowledge", so the line above it does not say nothing was found.
   const ownSource = thisTurnFile || found.hits.some((hit) => attachedIds.includes(hit.sourceId));
 
-  const citations: ChatCitation[] = found.hits.map((hit, index) => ({
-    label: hit.sectionPath || hit.locator.paragraph || `P${kept?.numbers[index] ?? index + 1}`,
-    index: kept?.numbers[index] ?? index + 1,
+  // The passages of the message's own files are numbered first and the Library's after them. Continue keeps the numbers
+  // the cut reply was written with.
+  const ofFiles = (hit: PassageHit) => attachedIds.includes(hit.sourceId);
+  const numbered = found.hits.map((hit, index) => ({ hit, number: kept?.numbers[index] ?? 0 }));
+  const ordered = kept
+    ? numbered
+    : [...numbered.filter((item) => ofFiles(item.hit)), ...numbered.filter((item) => !ofFiles(item.hit))].map((item, index) => ({
+        ...item,
+        number: index + 1,
+      }));
+  const citations: ChatCitation[] = ordered.map(({ hit, number }) => ({
+    label: hit.sectionPath || hit.locator.paragraph || `P${number}`,
+    index: number,
     passageId: hit.id,
     sourceId: hit.sourceId,
     sectionPath: hit.sectionPath,
     locator: hit.locator,
   }));
   input.onPassages?.(passageLabels(citations));
-  const passageBlock =
-    citations.length > 0
-      ? dataBlock(
-          "passages",
-          citations
-            .map(
-              (cite, index) =>
-                `[P${cite.index}] ${oneLine(cite.label)}\n${found.hits[index]?.text ?? ""}`,
-            )
-            .join("\n\n"),
-        )
-      : "";
+  const passage = (cite: ChatCitation, index: number, name?: string) =>
+    `[P${cite.index}] ${oneLine(name ? `${name}, ${cite.label}` : cite.label)}\n${ordered[index]?.hit.text ?? ""}`;
+  const libraryPassages = citations.flatMap((cite, index) => (ofFiles(ordered[index]!.hit) ? [] : [passage(cite, index)]));
+  const passageBlock = libraryPassages.length > 0 ? dataBlock("passages", libraryPassages.join("\n\n")) : "";
+  // The files the question carried, named, before it: what was read from each sits in <attached>, so "this" has a referent.
+  const files = messageFiles(db, userMessageId);
+  const fileName = new Map(files.flatMap((file) => (file.sourceId ? [[file.sourceId, file.name] as const] : [])));
+  const fromFiles = [
+    ...citations.flatMap((cite, index) =>
+      ofFiles(ordered[index]!.hit) ? [passage(cite, index, fileName.get(cite.sourceId))] : [],
+    ),
+    ...files.flatMap((file) => (file.recognised ? [`Text read from ${oneLine(file.name)}:\n${file.recognised}`] : [])),
+  ];
+  const fileLines = files.map((file, index) => {
+    const unread = file.kind === "document" && !citations.some((cite) => cite.sourceId === file.sourceId);
+    return `${index + 1}. ${oneLine(file.name)} (${file.kind === "photo" ? "photo" : "document"})${unread ? ": no text could be read from it" : ""}`;
+  });
+  const attachedBlock = files.length
+    ? `Files attached to this message:\n${fileLines.join("\n")}${fromFiles.length ? `\n${dataBlock("attached", fromFiles.join("\n\n"))}` : ""}`
+    : "";
   const subjectLine = subject ? `Subject: ${oneLine(subject)}.` : "";
   const pinned = chatContext(db, chatId);
   const pinnedBlock = pinned
     ? `Pinned context: ${oneLine(pinned.title)}\n${dataBlock("pinned", pinned.body)}`
     : "Pinned context: none.";
-  const attachedBlock =
-    notes.length > 0
-      ? `Attached text:\n${dataBlock("attached", notes.join("\n"))}\n\n`
-      : "";
   const profile = readProfile(db);
   const template = CHAT_TEMPLATE;
   const where = chatPrompt(db, planId);
@@ -1244,8 +1368,8 @@ async function answer(
   })}\n${pinnedBlock}`;
   const told = contextHash(header);
   const noPassages =
-    selected && !input.allowGeneral && !thisTurnFile && citations.length === 0
-      ? "No passage matches this question.\n\n"
+    selected && !input.allowGeneral && !thisTurnFile && files.length === 0 && citations.length === 0
+      ? "No passage matches this question."
       : "";
   // What is new for this question goes last, after the parts that stay the same from turn to turn. Continue sends the
   // reply that was cut short with the question, so the model writes only what is missing.
@@ -1253,7 +1377,7 @@ async function answer(
   const resumeBlock = resume
     ? `\n\nYour earlier answer to this question was cut off. It ends here:\n${resume}\n\nContinue from exactly where it stops. Do not repeat any of it.`
     : "";
-  const question = `${attachedBlock}${passageBlock}${noPassages}\n\nQuestion:\n${input.text}${resumeBlock}`;
+  const question = `${[attachedBlock, passageBlock, noPassages].filter(Boolean).join("\n\n")}\n\nQuestion:\n${input.text}${resumeBlock}`;
   const exclude = [userMessageId, replacing?.assistantId ?? ""];
   // The tool session the chat stored, when this turn can continue it. A session in step already holds the conversation,
   // so the message is the new question, with the context block when it changed. A session out of step (a turn on it

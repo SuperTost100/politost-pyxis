@@ -4,15 +4,19 @@ import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
+import { PNG } from "pngjs";
 import {
   addDocumentVersion,
+  extractDocx,
   extractPdf,
   extractPlain,
   extractPptx,
+  scanPictures,
   storeExtracted,
   type ExtractedDocument,
 } from "./documents";
 import { onePagePdf, manyPagePdf, lockedPdf, blankPdf } from "./test-pdf";
+import { docxOf, pptxOf } from "./test-office";
 import { listSources } from "./smartbook";
 import { sourceDetails } from "./details";
 import { tempDir } from "../test-temp";
@@ -32,6 +36,37 @@ describe("document extract", () => {
     const extracted = await extractPdf(blankPdf());
     expect(extracted.scanned).toBe(true);
     expect(extracted.pages[0]?.text).toBe("");
+  });
+
+  it("calls a Word file made of pictures a scan, and lists its pictures in reading order for OCR", async () => {
+    const one = PNG.sync.write(new PNG({ width: 1, height: 1 }));
+    const two = PNG.sync.write(new PNG({ width: 2, height: 1 }));
+    const pictures = docxOf([one, "", two]);
+    const extracted = await extractDocx(pictures);
+    expect(extracted.scanned).toBe(true);
+    expect(extracted.pages.map((page) => page.text.trim()).join("")).toBe("");
+    expect(scanPictures(pictures, ".docx").map((picture) => [picture.section, picture.read()?.length])).toEqual([
+      ["picture 1", one.length],
+      ["picture 2", two.length],
+    ]);
+    // A short caption does not make it a text document; a page of text with a figure in it is one.
+    expect((await extractDocx(docxOf(["Chimica organica", one, two]))).scanned).toBe(true);
+    const essay = docxOf(["Gli alcani sono idrocarburi saturi: i loro atomi di carbonio sono uniti solo da legami semplici.", one]);
+    expect((await extractDocx(essay)).scanned).toBe(false);
+    expect((await extractDocx(docxOf(["Un file di solo testo."]))).scanned).toBe(false);
+  });
+
+  it("calls a presentation of picture slides a scan, and reads only the pictures of slides with no text of their own", () => {
+    const one = PNG.sync.write(new PNG({ width: 1, height: 1 }));
+    const two = PNG.sync.write(new PNG({ width: 2, height: 1 }));
+    const three = PNG.sync.write(new PNG({ width: 3, height: 1 }));
+    const deck = pptxOf([{ pictures: [one] }, { text: "Alcani: idrocarburi saturi con formula generale CnH2n+2", pictures: [two] }, { pictures: [three] }]);
+    expect(extractPptx(deck).scanned).toBe(true);
+    expect(scanPictures(deck, ".pptx").map((picture) => [picture.section, picture.read()?.length])).toEqual([
+      ["slide 1", one.length],
+      ["slide 3", three.length],
+    ]);
+    expect(extractPptx(pptxOf([{ text: "Alcani: idrocarburi saturi con formula generale CnH2n+2", pictures: [one] }])).scanned).toBe(false);
   });
 
   it("reads slide text from a pptx zip", () => {

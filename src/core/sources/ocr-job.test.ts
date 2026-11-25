@@ -13,15 +13,15 @@ afterEach(() => {
 });
 
 /** A scanned PDF of `count` pages, already through import: a document with no passages, waiting for OCR. */
-function scan(count = 20) {
+function scan(count = 20, kind = "pdf") {
   const workspace = tempDir("pyxis-ocr-job-");
   const db = openDatabase(join(workspace, "pyxis.db"));
   opened.push(db);
   const sha = putBlob(workspace, new TextEncoder().encode("%PDF-1.7 synthetic"), "application/pdf", ".pdf");
   db.prepare(
     `INSERT INTO sources (id, kind, title, blob_sha, status, mime, created_at, updated_at)
-     VALUES ('scan', 'pdf', 'Analisi', ?, 'needs-ocr', 'application/pdf', 1, 1)`,
-  ).run(sha);
+     VALUES ('scan', ?, 'Analisi', ?, 'needs-ocr', 'application/pdf', 1, 1)`,
+  ).run(kind, sha);
   db.prepare(
     `INSERT INTO source_documents (id, source_id, version, tree_json, created_at) VALUES ('doc', 'scan', 1, '{}', 1)`,
   ).run();
@@ -89,6 +89,27 @@ function start(
 }
 
 describe("reading a scan in core", () => {
+  it("reads the pictures of a Word file or a presentation made of pictures, each passage named by its picture", async () => {
+    for (const [kind, ext] of [["docx", ".docx"], ["pptx", ".pptx"]] as const) {
+      const fixture = scan(2, kind);
+      const asked: string[] = [];
+      const readPages: ScanDeps["readPages"] = async (_path, pages, signal, fileExt) => {
+        asked.push(fileExt);
+        signal.throwIfAborted();
+        return { count: 2, pages: pages.filter((page) => page <= 2).map((page) => ({ page, text: `Alcani ${page}`, section: `picture ${page}` })) };
+      };
+      const { runner, state } = start(fixture, readPages);
+      const jobId = startScan(fixture.db, runner, "scan");
+      await until(() => state(jobId) === "succeeded");
+      expect(fixture.status()).toBe("ready");
+      expect(asked).toEqual([ext]);
+      expect(fixture.db.prepare(`SELECT section_path FROM passages WHERE source_id = 'scan' ORDER BY section_path`).pluck().all()).toEqual([
+        "picture 1",
+        "picture 2",
+      ]);
+    }
+  });
+
   it("reads every page in batches, moves the bar, and ends ready with each page's text", async () => {
     const fixture = scan(20);
     const { readPages, batches } = reader(20);
@@ -302,9 +323,9 @@ describe("reading a scan in core", () => {
       .run();
     const paths: string[] = [];
     const { readPages } = reader(4);
-    const { runner, state } = start(fixture, (path, pages, signal) => {
+    const { runner, state } = start(fixture, (path, pages, signal, ext) => {
       paths.push(path);
-      return readPages(path, pages, signal);
+      return readPages(path, pages, signal, ext);
     });
     const jobId = startScan(fixture.db, runner, "scan");
     await until(() => state(jobId) === "succeeded");

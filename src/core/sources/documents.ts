@@ -133,7 +133,64 @@ export async function extractDocx(
     })
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|h[4-6]|li|td|th|tr|table|ul|ol|blockquote)>/gi, "\n\n");
-  return textSections(decodeXml(untag(text)).replace(/\n{3,}/g, "\n\n"), "heading");
+  const read = decodeXml(untag(text)).replace(/\n{3,}/g, "\n\n");
+  // Notes made of pasted slides or photographed pages hold their content in pictures, with a caption at most: those are
+  // read by OCR, as a scanned PDF is.
+  const pictures = picturesOf(zip, DOCX_BODY).length;
+  const thin = read.replace(/\s+/g, "").length < emptyPage * pictures;
+  return { ...textSections(read, "heading"), scanned: pictures > 0 && thin };
+}
+
+const DOCX_BODY = "word/document.xml";
+
+/** Picture types local OCR decodes. A drawing in another format (EMF, GIF, SVG) is left as it is. */
+const OCR_PICTURE = /\.(?:png|jpe?g)$/i;
+
+/** The relationships of a part, by id, as paths inside the archive. Links to outside the file are skipped. */
+function relationsOf(entries: BoundedZip, partKey: string): Map<string, string> {
+  const slash = partKey.lastIndexOf("/");
+  const dir = partKey.slice(0, slash);
+  const targets = new Map<string, string>();
+  for (const tag of textOf(entries, `${dir}/_rels/${partKey.slice(slash + 1)}.rels`).matchAll(/<Relationship\b[^<>]*>/g)) {
+    const id = /\bId="([^"]+)"/.exec(tag[0])?.[1];
+    const target = /\bTarget="([^"]+)"/.exec(tag[0])?.[1];
+    if (id && target && !/\bTargetMode="External"/.test(tag[0])) targets.set(id, partPath(dir, target));
+  }
+  return targets;
+}
+
+/**
+ * The pictures a part shows, in the order it shows them, as paths inside the archive: each DrawingML picture and each
+ * older VML image, once each, of the types OCR reads.
+ */
+function picturesOf(entries: BoundedZip, partKey: string): string[] {
+  const targets = relationsOf(entries, partKey);
+  const stored = new Set(entries.names);
+  const pictures = new Set<string>();
+  for (const match of textOf(entries, partKey).matchAll(/<(?:a:blip|v:imagedata)\b[^<>]*?\br:(?:embed|id)="([^"<>]+)"/g)) {
+    const path = targets.get(match[1] ?? "");
+    if (path && OCR_PICTURE.test(path) && stored.has(path)) pictures.add(path);
+  }
+  return [...pictures];
+}
+
+/** A picture a scanned .docx or .pptx is read from: where it sits, as a passage names it, and its bytes. */
+export type ScanPicture = { section: string; read: () => Uint8Array | undefined };
+
+/**
+ * The pictures OCR reads in a .docx or .pptx that `extractDocx` or `extractPptx` called a scan, in reading order: every
+ * picture of a Word file, and the pictures of the slides with almost no text of their own. Their position in this list is
+ * the page number the scan job stores them under.
+ */
+export function scanPictures(bytes: Uint8Array, ext: string): ScanPicture[] {
+  const entries = openZip(bytes, OFFICE_ZIP_LIMITS);
+  const picture = (section: string, path: string): ScanPicture => ({ section, read: () => entries.read(path) });
+  if (ext === ".docx") return picturesOf(entries, DOCX_BODY).map((path, index) => picture(`picture ${index + 1}`, path));
+  if (ext === ".pptx")
+    return slidesOf(entries).flatMap((slide) =>
+      slide.text.length < emptyPage ? picturesOf(entries, slide.key).map((path) => picture(`slide ${slide.number}`, path)) : [],
+    );
+  return [];
 }
 
 function decodeXml(text: string): string {
@@ -205,8 +262,8 @@ function slideNotes(entries: BoundedZip, slidePath: string): string {
   return "";
 }
 
-export function extractPptx(bytes: Uint8Array): ExtractedDocument {
-  const entries = openZip(bytes, OFFICE_ZIP_LIMITS);
+/** The slides of a presentation in its order: the part each is stored in and its text, with its speaker notes. */
+function slidesOf(entries: BoundedZip): Array<{ number: number; key: string; text: string }> {
   const presentation = textOf(entries, "ppt/presentation.xml");
   const rels = textOf(entries, "ppt/_rels/presentation.xml.rels");
   const targets = new Map<string, string>();
@@ -215,7 +272,7 @@ export function extractPptx(bytes: Uint8Array): ExtractedDocument {
     const target = /\bTarget="([^"]+)"/.exec(tag[0])?.[1];
     if (id && target) targets.set(id, target);
   }
-  const pages: ExtractedPage[] = [];
+  const slides: Array<{ number: number; key: string; text: string }> = [];
   let slide = 0;
   for (const match of presentation.matchAll(/<p:sldId\b[^<>]*r:id="([^"<>]+)"/g)) {
     const id = match[1];
@@ -231,9 +288,25 @@ export function extractPptx(bytes: Uint8Array): ExtractedDocument {
     const text = notes
       ? `${shown}${shown ? "\n\n" : ""}${SPEAKER_NOTES_LABEL} ${notes}`
       : shown;
-    pages.push({ text, locator: { slide }, section: `slide ${slide}` });
+    slides.push({ number: slide, key, text });
   }
-  return { pages, scanned: false };
+  return slides;
+}
+
+/**
+ * The slides' text. A presentation whose slides are mostly pictures with almost no text (screenshots of a lecture, say)
+ * is a scan: OCR reads the pictures of those slides.
+ */
+export function extractPptx(bytes: Uint8Array): ExtractedDocument {
+  const entries = openZip(bytes, OFFICE_ZIP_LIMITS);
+  const slides = slidesOf(entries);
+  const pages: ExtractedPage[] = slides.map((slide) => ({
+    text: slide.text,
+    locator: { slide: slide.number },
+    section: `slide ${slide.number}`,
+  }));
+  const pictured = slides.filter((slide) => slide.text.length < emptyPage && picturesOf(entries, slide.key).length > 0).length;
+  return { pages, scanned: pictured * 2 > slides.length };
 }
 
 export function extractPlain(

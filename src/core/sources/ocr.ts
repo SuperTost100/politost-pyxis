@@ -3,7 +3,8 @@ import { chunkText } from "./chunk";
 import { latestDocument } from "./documents";
 import { uuidv7 } from "../../shared/ids";
 
-export type OcrPage = { page: number; text: string };
+/** One page of a scan as OCR read it. `section` names it in its passages, `p. <page>` when absent. */
+export type OcrPage = { page: number; text: string; section?: string };
 
 function sourceStatus(
   db: Database.Database,
@@ -146,7 +147,7 @@ export function applyOcrPage(db: Database.Database, sourceId: string, page: OcrP
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     for (const chunk of chunkText(text)) {
       insert.run(uuidv7(), sourceId, document_id, version, chunk.text,
-        JSON.stringify({ page: page.page }), `p. ${page.page}`, chunk.start, chunk.end, now);
+        JSON.stringify({ page: page.page }), page.section ?? `p. ${page.page}`, chunk.start, chunk.end, now);
     }
   })();
   return true;

@@ -7,9 +7,12 @@ import type { EngineResult } from "../engine/funnel";
 import { clearBench } from "../engine/bench";
 import { LOCAL_PROVIDER } from "../engine/local";
 import { rememberReady } from "../engine/selection";
-import { extractPlain } from "../sources/documents";
+import { extractPlain, storeExtracted } from "../sources/documents";
 import { tempDir } from "../test-temp";
 import { heldFilesFor } from "./test-attach";
+import type { AttachmentView } from "../../shared/ipc";
+import { registerOcrJob, startScan } from "../sources/ocr-job";
+import { docxOf } from "../sources/test-office";
 import { askTurn, readChat, regenerateTurn } from "./turn";
 
 afterEach(() => {
@@ -209,6 +212,173 @@ describe("a reply to a question that came with a file", () => {
       run: async () => ({ ...reply, text: "Shakespeare." }),
     });
     expect(later.message?.grounding).toBe("general");
+    db.close();
+  });
+});
+
+/**
+ * A subject whose Library notes are about maths. Its passages share the everyday words of a question that points at a file
+ * ("sto studiando questo"), as passages of a long textbook do.
+ */
+function mathsSubject(db: ReturnType<typeof openDatabase>, workspace: string) {
+  db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('s-an', 'Analisi', 1)").run();
+  const notes = [
+    "# Serie di potenze\n\nIn questo capitolo, studiando una serie di potenze, si trova il raggio di convergenza con il criterio del rapporto.",
+    "# Teorema di Gauss-Green\n\nQuesto teorema, che sto per enunciare, lega l'integrale curvilineo sul bordo all'integrale doppio sul dominio.",
+  ].join("\n\n");
+  const { sourceId } = storeExtracted(db, workspace, {
+    title: "Analisi 2",
+    kind: "text",
+    mime: "text/markdown",
+    ext: ".md",
+    bytes: new TextEncoder().encode(notes),
+    extracted: extractPlain(notes, true),
+  });
+  db.prepare("UPDATE sources SET subject_id = 's-an' WHERE id = ?").run(sourceId);
+}
+
+const CHEMISTRY = "# Idrocarburi\n\nGli alcani sono idrocarburi saturi con formula CnH2n+2. Gli alcheni hanno un doppio legame carbonio carbonio.";
+
+describe("a question that comes with a file is about that file first", () => {
+  it("names the file before the question, puts its passages first, and leaves out Library passages unrelated to it", async () => {
+    const { db, workspace, write, attached } = setup();
+    mathsSubject(db, workspace);
+    let prompt = "";
+    await askTurn(db, {
+      text: "sto studiando questo",
+      subject: "Analisi",
+      ...(await attached(write("chimica.md", CHEMISTRY))),
+      workspace,
+      run: async (input) => {
+        prompt = input.prompt;
+        return reply;
+      },
+    });
+    // The model is told a file came with the question, by name, and what was read from it comes first, numbered first.
+    expect(prompt).toMatch(/Files attached to this message:\n1\. chimica\.md \(document\)/);
+    const attachedBlock = prompt.slice(prompt.indexOf("<attached>"), prompt.indexOf("</attached>"));
+    expect(attachedBlock).toContain("[P1] chimica.md");
+    expect(attachedBlock).toContain("Gli alcani sono idrocarburi saturi");
+    expect(prompt.indexOf("</attached>")).toBeLessThan(prompt.indexOf("Question:\nsto studiando questo"));
+    // The maths notes share only "questo" and "studiando" with the question: nothing in them is about the file.
+    expect(prompt).not.toContain("raggio di convergenza");
+    expect(prompt).not.toContain("Gauss-Green");
+    expect(prompt).not.toContain("No passage matches");
+    db.close();
+  });
+
+  it("still brings the Library passage a specific question asks about, after the file's", async () => {
+    const { db, workspace, write, attached } = setup();
+    mathsSubject(db, workspace);
+    let prompt = "";
+    const result = await askTurn(db, {
+      text: "cosa dice il teorema di Gauss-Green?",
+      subject: "Analisi",
+      ...(await attached(write("chimica.md", CHEMISTRY))),
+      workspace,
+      run: async (input) => {
+        prompt = input.prompt;
+        return { ...reply, text: "Lega il bordo al dominio [P2]." };
+      },
+    });
+    expect(prompt).toContain("[P1] chimica.md");
+    const library = prompt.slice(prompt.indexOf("<passages>"), prompt.indexOf("</passages>"));
+    expect(library).toContain("[P2] Teorema di Gauss-Green");
+    expect(library).not.toContain("raggio di convergenza");
+    // The line above the reply counts what it cites: one passage of the Library, none of the file.
+    expect(result.message?.citations.map((cite) => cite.index)).toEqual([2]);
+    db.close();
+  });
+
+  it("finds the Library's material on the same topic as the file, from what the file says", async () => {
+    const { db, workspace, write, attached } = setup();
+    mathsSubject(db, workspace);
+    let prompt = "";
+    await askTurn(db, {
+      text: "sto studiando questo",
+      subject: "Analisi",
+      ...(await attached(write("serie.md", "# Esercizi\n\nCalcolare il raggio di convergenza della serie di potenze con il criterio del rapporto."))),
+      workspace,
+      run: async (input) => {
+        prompt = input.prompt;
+        return reply;
+      },
+    });
+    expect(prompt).toContain("[P1] serie.md");
+    const library = prompt.slice(prompt.indexOf("<passages>"), prompt.indexOf("</passages>"));
+    expect(library).toContain("raggio di convergenza con il criterio del rapporto");
+    expect(library).not.toContain("Gauss-Green");
+    db.close();
+  });
+
+  it("lists every file of the message, says when nothing could be read from one, and names a photo read by OCR", async () => {
+    const { db, workspace, write, photo, attached } = setup({ visionAvailable: false });
+    mathsSubject(db, workspace);
+    let prompt = "";
+    await askTurn(db, {
+      text: "sto studiando questo",
+      subject: "Analisi",
+      ...(await attached(write("chimica.md", CHEMISTRY), write("vuoto.txt", "   \n"), photo)),
+      workspace,
+      recognize: async () => "Esterificazione: acido più alcol",
+      run: async (input) => {
+        prompt = input.prompt;
+        return reply;
+      },
+    });
+    expect(prompt).toContain(
+      "Files attached to this message:\n1. chimica.md (document)\n2. vuoto.txt (document): no text could be read from it\n3. foto.png (photo)",
+    );
+    const attachedBlock = prompt.slice(prompt.indexOf("<attached>"), prompt.indexOf("</attached>"));
+    expect(attachedBlock).toContain("Text read from foto.png:\nEsterificazione: acido più alcol");
+    db.close();
+  });
+});
+
+describe("a Word file made of pictures is read like a scan", () => {
+  it("is read by OCR picture by picture when attached, with no page count on its chip, and the question gets the text", async () => {
+    const { db, workspace, write } = setup();
+    mathsSubject(db, workspace);
+    const views: AttachmentView[] = [];
+    let files!: ReturnType<typeof heldFilesFor>;
+    files = heldFilesFor(db, workspace, {
+      emit: (view) => views.push(view),
+      scan: async (sourceId) => {
+        startScan(db, files.runner, sourceId);
+        return "started";
+      },
+    });
+    const asked: string[] = [];
+    registerOcrJob(db, workspace, files.runner, {
+      readPages: async (_path, wanted, _signal, ext) => {
+        asked.push(ext);
+        const text = ["Gli alcani sono idrocarburi saturi.", "Gli alcheni hanno un doppio legame."];
+        return { count: 2, pages: wanted.filter((page) => page <= 2).map((page) => ({ page, section: `picture ${page}`, text: text[page - 1]! })) };
+      },
+      requireData: async () => {},
+      onReady: () => {},
+    });
+    const picture = PNG.sync.write(new PNG({ width: 1, height: 1 }));
+    const note = await files.attach(write("organica.docx", docxOf([picture, "", picture.subarray(0)])));
+    expect(asked).toEqual([".docx"]);
+    expect(views.filter((view) => view.phase === "scan").every((view) => view.pages === undefined)).toBe(true);
+    expect(views.at(-1)).toMatchObject({ state: "ready" });
+    let prompt = "";
+    // The question's words match the second picture's text best: the passages still go in the file's order.
+    await askTurn(db, {
+      text: "sto studiando gli alcheni",
+      subject: "Analisi",
+      attachments: note.ids,
+      held: files.held,
+      workspace,
+      run: async (input) => {
+        prompt = input.prompt;
+        return reply;
+      },
+    });
+    expect(prompt).toContain("1. organica.docx (document)\n<attached>\n[P1] organica.docx, picture 1\nGli alcani sono idrocarburi saturi.");
+    expect(prompt).toContain("[P2] organica.docx, picture 2\nGli alcheni hanno un doppio legame.");
+    expect(prompt).not.toContain("raggio di convergenza");
     db.close();
   });
 });
