@@ -145,8 +145,8 @@ describe.skipIf(!live)("map and quiz tools, live", () => {
         const view = toolView(db, result.chatId, id);
         return {
           tool: view?.tool ?? "?",
-          view: view && (view.tool === "create_map" || view.tool === "create_quiz") ? view : null,
-          content: view && (view.tool === "create_map" || view.tool === "create_quiz") && view.job === "done" ? content(view) : null,
+          view: view && "job" in view ? view : null,
+          content: view && "job" in view && view.job === "done" ? content(view) : null,
         };
       });
       const turn: Turn = {

@@ -2950,6 +2950,7 @@
       "checking": "Controllo i calcoli…",
       "more": "Altre azioni",
       "answerStronger": "Rispondi di nuovo con il modello più potente",
+      "engineWithSolver": "{{engine}} con {{model}}",
       "makeCards": "Crea flashcard"
     },
     "quiz": {
@@ -3130,6 +3131,7 @@
         "unrestorable": "Quiz annullato: l’esame o il materiale da cui è stato scritto non c’è più, quindi non si può ripristinare."
       },
       "reading": "Guardo i tuoi risultati…",
+      "solving": "Chiedo al modello più forte…",
       "proposal": {
         "kicker": "Da confermare",
         "waiting": "Pronta quando la risposta è finita.",
@@ -3387,7 +3389,7 @@
     "effortAuto": "Automatico · {{level}}",
     "effortNone": "Non regolabile",
     "effortFellBack": "Questo modello non offre il livello «{{level}}», quindi Pyxis usa quello automatico.",
-    "effortAdvice": "Pyxis imposta il livello di ragionamento in base alla funzione: basso per chat e mappe, medio per lezioni, quiz, foto e correzione, alto per la creazione degli esami. Scegli un livello per cambiarlo per una sola funzione. I modelli senza impostazioni di ragionamento restano come sono.",
+    "effortAdvice": "Pyxis imposta il livello di ragionamento in base alla funzione: basso per chat e mappe, medio per lezioni, quiz, foto e correzione, alto per la creazione degli esami e per gli esercizi difficili. Scegli un livello per cambiarlo per una sola funzione. I modelli senza impostazioni di ragionamento restano come sono.",
     "effortLevel": {
       "none": "Nessuno",
       "minimal": "Minimo",
@@ -3480,11 +3482,14 @@
       "cards": "Flashcard",
       "grading": "Correzione",
       "map": "Mappe",
-      "vision": "Immagini"
+      "vision": "Immagini",
+      "solve": "Esercizi difficili"
     },
     "perFeature": "Modello per tipo di lavoro",
     "advanced": "Avanzate",
     "automatic": "Automatico",
+    "off": "Spento",
+    "solveAdvice": "Negli esercizi difficili, la chat può passare un esercizio lungo o difficile al modello forte dello stesso strumento e rispondere dalla sua soluzione. Con «Spento» risponde sempre da sola.",
     "backToAuto": "Riporta tutto su Automatico",
     "installHelp": "Pyxis ha bisogno di uno strumento AI per rispondere. Collega qui sopra l'AI che paghi già: il modello lo sceglie Pyxis.",
     "auto": {
@@ -3650,7 +3655,8 @@
         "map": "le mappe",
         "lesson": "le lezioni",
         "grading": "la correzione",
-        "plan": "il piano di studio"
+        "plan": "il piano di studio",
+        "solve": "gli esercizi difficili"
       }
     },
     "autoToday": "Automatico · oggi {{model}}",

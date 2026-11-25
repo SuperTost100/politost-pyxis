@@ -10,12 +10,14 @@ import { isProposal, proposalView, unwithdrawProposal, withdrawProposal } from "
 import { deleteNote } from "./proposeDelete";
 import { examNote } from "./proposeExam";
 import { pathNote } from "./proposePath";
+import { SOLVER_TOOL, type SolverData } from "./solver";
 
 /**
  * What a chat tool did, stored with the reply that called it (`chat_tool_results`) and shown there as a ```pyxis-tool
  * block whose body is the row's id. The row outlives the turn: the chat shows it again when reopened, and «Annulla» and
  * «Ripristina» act on it later. Flashcards are kept here; maps and quizzes in `map.ts` and `quiz.ts`, whose results also
- * follow the job that makes them (`jobs.ts`).
+ * follow the job that makes them (`jobs.ts`). A sub-call to the stronger model (`solver.ts`) made nothing to undo: its row
+ * only says which model solved the exercise, for the tag under the reply, and its block draws nothing.
  */
 
 /** A flashcard result: the cards it created, in order, where they went, and the first fronts the chat lists. */
@@ -81,6 +83,10 @@ function view(db: Database.Database, row: Row): ToolResultView | null {
   const undone = row.undone_json ? (JSON.parse(row.undone_json) as unknown) : null;
   if (row.tool === "create_map") return mapView(db, row.id, JSON.parse(row.data_json) as MapData, undone as MapUndone | null);
   if (row.tool === "create_quiz") return quizView(db, row.id, JSON.parse(row.data_json) as QuizData, undone as QuizUndone | null);
+  if (row.tool === SOLVER_TOOL) {
+    const data = JSON.parse(row.data_json) as SolverData;
+    return { id: row.id, tool: SOLVER_TOOL, provider: data.provider, model: data.model };
+  }
   if (row.tool !== "create_flashcards") return null;
   const data = JSON.parse(row.data_json) as FlashcardsData;
   return {
@@ -149,7 +155,7 @@ function flashcardsRow(db: Database.Database, chatId: string, id: string): { dat
 export function undoToolResult(db: Database.Database, chatId: string, id: string): MadeResultView {
   return db.transaction(() => {
     const row = resultRow(db, chatId, id);
-    if (row.undone_json === null) {
+    if (row.undone_json === null && row.tool !== SOLVER_TOOL) {
       const data = JSON.parse(row.data_json) as unknown;
       const undone =
         row.tool === "create_map"
@@ -202,7 +208,7 @@ export function takeBackToolResults(db: Database.Database, chatId: string, ids: 
     const row = db.prepare(`SELECT tool, data_json, undone_json FROM chat_tool_results WHERE id = ? AND chat_id = ?`).get(id, chatId) as
       | { tool: string; data_json: string; undone_json: string | null }
       | undefined;
-    if (!row || row.undone_json !== null) return false;
+    if (!row || row.undone_json !== null || row.tool === SOLVER_TOOL) return false;
     // A pending proposal is withdrawn while the new answer is written; one the student decided on stays theirs.
     if (isProposal(row.tool)) return withdrawProposal(db, chatId, id);
     try {
@@ -213,6 +219,27 @@ export function takeBackToolResults(db: Database.Database, chatId: string, ids: 
       throw err;
     }
   });
+}
+
+/** Of `ids`, the results that made something in the app (cards, a map, a quiz): not a sub-call to the stronger model. */
+export function madeResultIds(db: Database.Database, chatId: string, ids: readonly string[]): string[] {
+  if (ids.length === 0) return [];
+  const solved = new Set(
+    db
+      .prepare(`SELECT id FROM chat_tool_results WHERE chat_id = ? AND tool = ? AND id IN (SELECT value FROM json_each(?))`)
+      .pluck()
+      .all(chatId, SOLVER_TOOL, JSON.stringify(ids)) as string[],
+  );
+  return ids.filter((id) => !solved.has(id));
+}
+
+/**
+ * The per-turn counts a tool call starts from (`ToolTurn.tally`). A turn that continues a reply carries on that reply's
+ * own: the stronger model it already asked counts, so a reply asks it once however often it is continued.
+ */
+export function startingTally(db: Database.Database, chatId: string, continued: string): Record<string, number> {
+  const ids = toolBlockIds(continued);
+  return madeResultIds(db, chatId, ids).length < ids.length ? { [SOLVER_TOOL]: 1 } : {};
 }
 
 /** Puts back what `takeBackToolResults` undid, when the reply it was taken from stays on screen. */
@@ -257,7 +284,7 @@ export function dropStrayToolResults(db: Database.Database, chatId: string, keep
       }
       if (row.tool === "create_map") dropMap(db, data as MapData, row.undone_json !== null);
       else if (row.tool === "create_quiz") dropQuiz(db, data as QuizData, row.undone_json !== null);
-      else if (row.undone_json === null) removeCards(db, (data as FlashcardsData).cardIds);
+      else if (row.tool === "create_flashcards" && row.undone_json === null) removeCards(db, (data as FlashcardsData).cardIds);
       db.prepare(`DELETE FROM chat_tool_results WHERE id = ?`).run(row.id);
     }
   })();
@@ -309,11 +336,15 @@ export function describeToolBlocks(
   });
 }
 
-/** How the conversation handed to a model tells what a tool did: what the model would have read as the tool's result. */
+/**
+ * How the conversation handed to a model tells what a tool did: what the model would have read as the tool's result. A
+ * sub-call to the stronger model leaves nothing: the reply holds what came of it.
+ */
 export function toolNote(view: ToolResultView): string {
   if (view.tool === "propose_path_change") return pathNote(view);
   if (view.tool === "propose_exam") return examNote(view);
   if (view.tool === "propose_delete") return deleteNote(view);
+  if (view.tool === SOLVER_TOOL) return "";
   if (view.tool === "create_map") {
     const what = `the concept map "${view.topic}" in Mappe, under ${view.subject}`;
     if (view.undone) return `[Pyxis tool create_map: started ${what}; the student then undid it, so it is not in Mappe.]`;

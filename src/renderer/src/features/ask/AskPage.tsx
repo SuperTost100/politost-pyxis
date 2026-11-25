@@ -223,6 +223,18 @@ const Reply = memo(function Reply({
     }),
     [row.answers, row.id, row.body, last, onAnswer, busy, onSuggest, t, onPicking],
   );
+  // The model that wrote the reply, and the stronger one when it solved the exercise: "Claude · Sonnet 5.5 con Opus 5.5".
+  // A solver of another tool, pinned in Settings, is named with its tool.
+  const engineTag = (reply: typeof row) => {
+    const main = engineNames.label(reply.provider, reply.modelId);
+    const solved = Object.values(reply.tools ?? {}).find((view) => view.tool === "ask_stronger_model");
+    if (!main || !solved) return main || undefined;
+    const model =
+      solved.provider === reply.provider
+        ? engineNames.modelName(solved.provider, solved.model)
+        : engineNames.label(solved.provider, solved.model);
+    return t("components.chat.engineWithSolver", { engine: main, model });
+  };
   // A saved reply never has a tool at work: a `pending:` block in it is drawn as nothing (`savedToolLine`). A proposal
   // waiting for the student counts as a pick waiting for «Controlla»: its confirming button is the primary, so «Invia»
   // is quiet.
@@ -245,9 +257,7 @@ const Reply = memo(function Reply({
   }, [chatId, row.tools, proposalWaiting, busy, onSuggest, arriving]);
   return (
     <ChatMessage
-      engine={
-        engineNames.label(row.provider, row.modelId) || undefined
-      }
+      engine={engineTag(row)}
       lead={<UsedSources grounding={row.grounding} citations={row.citations} searched={row.searched} />}
       sources={<SourcesRow places={places} order={order} claims={claims} arriving={arriving} />}
       stopped={row.stopped}

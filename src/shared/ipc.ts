@@ -438,6 +438,7 @@ const engineFeature = z.enum([
   "map",
   "vision",
   "cards",
+  "solve",
 ]);
 const engineSelection = z.object({
   provider: z.string(),
@@ -642,10 +643,21 @@ const deleteProposalView = z.object({
   /** False once what it went into is gone, so «Annulla» can no longer bring it back. */
   restorable: z.boolean(),
 });
+/**
+ * `ask_stronger_model`: the chat's model handed an exercise to a stronger model, which solved it. It shows nothing where
+ * it was called (the reply holds what came of it); the tag under the reply names this model beside the one that wrote it.
+ */
+const solverResultView = z.object({
+  id: z.string(),
+  tool: z.literal("ask_stronger_model"),
+  provider: z.string(),
+  model: z.string(),
+});
 export const toolResultView = z.discriminatedUnion("tool", [
   flashcardsResultView,
   mapResultView,
   quizResultView,
+  solverResultView,
   pathProposalView,
   examProposalView,
   deleteProposalView,
@@ -660,6 +672,7 @@ export type MadeResultView = FlashcardsResultView | MapResultView | QuizResultVi
 export type FlashcardsResultView = z.infer<typeof flashcardsResultView>;
 export type MapResultView = z.infer<typeof mapResultView>;
 export type QuizResultView = z.infer<typeof quizResultView>;
+export type SolverResultView = z.infer<typeof solverResultView>;
 
 const messageFile = z.object({
   id: z.string(),
@@ -973,7 +986,8 @@ export const requests = {
   },
   "engines.setFeature": {
     input: z.object({
-      feature: engineFeature,
+      /** Hard exercises have no model of their own to pin: they follow the chat's tool. */
+      feature: engineFeature.exclude(["solve"]),
       provider: z.string(),
       model: z.string(),
       effort: z.string().optional(),
@@ -987,6 +1001,16 @@ export const requests = {
       /** Leave out to return the task to its automatic level. */
       effort: z.string().optional(),
     }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  /** The tasks the student switched off, read apart from the model rows, which may not exist yet. */
+  "engines.switchedOff": {
+    input: z.object({}),
+    output: z.object({ solve: z.boolean() }),
+  },
+  /** Switches a task off, or on again as it was (only `solve`, which then is never offered to the chat). */
+  "engines.setFeatureOff": {
+    input: z.object({ feature: z.literal("solve"), off: z.boolean() }),
     output: z.object({ ok: z.literal(true) }),
   },
   "engines.features": {

@@ -6,6 +6,7 @@ import { proposeDeleteTool } from "./proposeDelete";
 import { proposeExamTool } from "./proposeExam";
 import { proposePathTool } from "./proposePath";
 import { quizTool } from "./quiz";
+import { solverTool } from "./solver";
 import type { Tool } from "./server";
 
 /**
@@ -14,7 +15,7 @@ import type { Tool } from "./server";
  * state while it runs and its stored result where the model called it. The map and the quiz are made by background jobs,
  * so they are offered only where core has a job runner (`setToolRunner`), as are a new exam, built by its own job, and a
  * deletion, which stops the jobs of a quiz it takes. The `propose_*` tools change nothing: the student decides
- * (`proposals.ts`).
+ * (`proposals.ts`). The stronger model is offered only to a turn that has one to hand the exercise to (`solverSelection`).
  */
 export function chatToolList(db: Database.Database, jobs: boolean): Tool[] {
   return [
@@ -22,5 +23,6 @@ export function chatToolList(db: Database.Database, jobs: boolean): Tool[] {
     progressTool(db),
     proposePathTool(db),
     ...(jobs ? [mapTool(db), quizTool(db), proposeExamTool(db), proposeDeleteTool(db)] : []),
+    solverTool(db),
   ];
 }

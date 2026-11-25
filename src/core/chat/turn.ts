@@ -27,7 +27,9 @@ import {
   describeToolBlocks,
   dropStrayToolResults,
   linkToolResults,
+  madeResultIds,
   restoreToolResults,
+  startingTally,
   spliceToolBlocks,
   takeBackToolResults,
   toolNote,
@@ -1522,7 +1524,7 @@ async function answer(
   };
   // A server that cannot start leaves the turn without tools, as on an engine that takes none.
   const access = await chatTools(chatId).catch(() => null);
-  const tally: Record<string, number> = {};
+  const tally: Record<string, number> = startingTally(db, chatId, resume);
   /** This turn's reply holds the student's results: read_progress ran, or the reply it continues had them. */
   const readResults = () => (tally.results ?? 0) > 0 || Boolean(input.resumeFrom?.results);
   const toolTurn: Parameters<typeof armChatTools>[0] = {
@@ -1533,6 +1535,13 @@ async function answer(
     engine: () => ({ provider: answering.provider, model: answering.model }),
     // The student's results go only to a tool on this computer, or one whose notice naming them the student confirmed.
     results: () => isProviderCurrent(answering.provider),
+    // A tool's own model call (the stronger model) stops with the turn, runs on the turn's runner and counts with its reply.
+    call: () => ({
+      signal: input.signal,
+      run: input.run,
+      usage: { chatId, messageId, kind: "chat" },
+      language: where.language,
+    }),
     started: (tool) => {
       let mark = marks.find((entry) => entry.tool === tool && !entry.server && entry.callId !== undefined);
       if (mark) mark.server = true;
@@ -2027,7 +2036,8 @@ export async function regenerateTurn(
       : undefined;
   // An answer given again replaces the earlier one with what its tools did: the cards it created leave the deck before the
   // new answer runs, so the new answer's cards are not taken for duplicates of them. A Continue keeps the reply.
-  const replaced = last?.role === "assistant" && !resumeFrom ? toolBlockIds(last.body) : [];
+  // A sub-call to the stronger model made nothing: it goes with the earlier answer, and never names the new one's model.
+  const replaced = last?.role === "assistant" && !resumeFrom ? madeResultIds(db, input.chatId, toolBlockIds(last.body)) : [];
   const taken = takeBackToolResults(db, input.chatId, replaced);
   // The tool's session was told this question is answered again and the earlier answer discarded. When the new answer
   // fails or is stopped, the earlier one stays on screen: the session holds the conversation only up to the message before
@@ -2068,7 +2078,7 @@ export async function regenerateTurn(
     // stands in its place, and the earlier record goes with the earlier answer.
     // A proposal the student decided on was their own act, so its line heads the new answer in any case; one still
     // pending was withdrawn with the earlier answer and goes with it.
-    const noBlocks = toolBlockIds(result.message.body).length === 0;
+    const noBlocks = madeResultIds(db, input.chatId, toolBlockIds(result.message.body)).length === 0;
     const carried = replaced.filter((id) => decidedProposal(db, input.chatId, id) || (noBlocks && !proposalRow(db, input.chatId, id)));
     if (carried.length > 0) {
       const lead = carried.map((id) => `\`\`\`pyxis-tool\n${id}\n\`\`\`\n\n`).join("");
