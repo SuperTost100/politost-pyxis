@@ -206,6 +206,8 @@ test("the outline has a mark per question from the third on, a card on hover and
     await checkLeftPlacement();
 
     // The pointer on a mark shows its question and the start of its answer, opening to the right of the marks.
+    // The card's origin is set only when motion is allowed, so the check below needs that preference whatever the machine's is.
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     await marks.nth(3).hover();
     const card = outline.locator(".ask-outline-card");
     await expect(card).toContainText("Domanda 4 di 9");
