@@ -81,7 +81,7 @@ test("a document is read when it is attached, the question lists it, and it open
     await expect(page.locator(".ask-attachments")).toHaveCount(0);
     // The reply cites the attached file: the row under it names the file, and no line claims general knowledge.
     await expect(page.locator(".px-msg:not(.px-msg-user)").last().locator(".px-sources-row")).toContainText("appunti");
-    await expect(page.getByText(/quello che so in generale/)).toHaveCount(0);
+    await expect(page.getByText(/quello che so/)).toHaveCount(0);
     await saveShot(page, "chat-attachments/3-sent-message-lists-its-file.png");
     // It stays after the reply, and after the page is read again from core.
     await expect(page.getByText("Gli appunti dicono che il calore si trasmette per conduzione")).toBeVisible();
@@ -118,7 +118,7 @@ test("a file Pyxis cannot take says so on its own chip, which goes away with it,
     await pick(app, huge);
     await attach(page);
     const chip = page.locator(".ask-attachments li").filter({ hasText: "enorme.pdf" });
-    await expect(chip).toContainText("Il file supera i 256 MB che Pyxis legge per un documento.");
+    await expect(chip).toContainText("Il file supera il limite di 256 MB per un documento.");
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menuitem", { name: "Allega file o immagine" })).toHaveCount(0);
     await saveShot(page, "chat-attachments/2-large-file-says-why-on-its-chip.png");

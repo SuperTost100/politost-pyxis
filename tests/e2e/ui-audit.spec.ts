@@ -1252,7 +1252,7 @@ async function connectedTools(page: Page) {
 
 async function openAddSources(page: Page, tab?: RegExp) {
   await page
-    .getByRole("button", { name: both("Aggiungi file", "Add files") })
+    .getByRole("button", { name: both("Aggiungi fonti", "Add sources") })
     .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
@@ -3226,7 +3226,7 @@ async function openState(page: Page, name: string) {
       await page.getByRole("button", { name: both("Continua", "Continue") }).click();
       // The engines are signed out here, so the AI step's footer says it is done later.
       await page.getByRole("button", { name: /^(Lo faccio dopo|Continua|I'll do it later|Continue)$/ }).click();
-      await expect(title).toHaveText(/^(Come tieni il materiale per studiare\?|How do you keep your study material\?)$/);
+      await expect(title).toHaveText(/^(Dove tieni il materiale di studio\?|Where do you keep your study material\?)$/);
       if (name === "onboarding-material") break;
       await page
         .getByRole("button", { name: both("Una cartella con tutto lo studio", "One folder with all my studies") })
@@ -3686,7 +3686,7 @@ async function openState(page: Page, name: string) {
     case "ask-sources-none": {
       const reply = page.locator(".px-msg:not(.px-msg-user)").last();
       // The warning stays above the answer; with no source, the row only counts the checked result.
-      await expect(reply.getByText(/^(Non ho trovato niente su questa domanda nella tua Libreria|I found nothing on this in your Library)/)).toBeVisible();
+      await expect(reply.getByText(/^(Non ho trovato nulla su questa domanda nella tua Libreria|I found nothing on this in your Library)/)).toBeVisible();
       if (CHECKS_RUN)
         await expect(reply.getByRole("button", { name: both("1 risultato verificato", "1 verified result") })).toBeVisible({ timeout: 90_000 });
       break;
@@ -4353,7 +4353,7 @@ async function openState(page: Page, name: string) {
         .click();
       await expect(
         page.getByText(
-          /Per leggere questo file Pyxis ha bisogno|Pyxis needs its scan-reading data/,
+          /Per leggere questo file devo prima scaricare i dati per riconoscere il testo nelle scansioni\.|To read this file, I need to download the text-recognition data for scans first\./,
         ),
       ).toBeVisible();
       await expect(
@@ -4464,7 +4464,7 @@ async function openState(page: Page, name: string) {
       await page.getByRole("button", { name: both("Invia", "Send") }).click();
       await expect(
         page.getByText(
-          /Per leggere questo file Pyxis ha bisogno|Pyxis needs its scan-reading data/,
+          /Per leggere questo file devo prima scaricare i dati per riconoscere il testo nelle scansioni\.|To read this file, I need to download the text-recognition data for scans first\./,
         ),
       ).toBeVisible();
       // The message and the photo are still in the composer, and nothing was sent.
@@ -4654,7 +4654,7 @@ async function openState(page: Page, name: string) {
       await expect(page.locator(".px-empty").getByRole("button")).toHaveCount(0);
       break;
     case "library-empty":
-      await expect(page.locator(".px-empty").getByText(/^(Qui compariranno i tuoi file|Your files will appear here)/)).toBeVisible();
+      await expect(page.locator(".px-empty").getByText(/^(Qui troverai i tuoi file|Your files will appear here)/)).toBeVisible();
       await expect(page.locator(".px-empty").getByRole("button", { name: both("Collega una cartella", "Link a folder") })).toBeVisible();
       // The subject the audit has stays on the page, with no file in it, so the student can still act on it.
       await expect(page.getByRole("region", { name: /^Fisica (nessun file|no files)$/ })).toBeVisible();
@@ -4780,7 +4780,7 @@ async function openState(page: Page, name: string) {
         .fill("zzzz");
       await expect(
         page.getByText(
-          both("Nessuna mappa corrisponde.", "No map matches."),
+          both("Nessuna mappa trovata.", "No map matches."),
         ),
       ).toBeVisible();
       break;
@@ -5343,7 +5343,7 @@ async function openState(page: Page, name: string) {
       break;
     case "flashcards-empty":
       // One line on what will appear and the one button that writes the first flashcard.
-      await expect(page.getByText(/^(Qui compariranno le tue flashcard|Your flashcards will appear here)/)).toBeVisible();
+      await expect(page.getByText(/^(Qui troverai le tue flashcard|Your flashcards will appear here)/)).toBeVisible();
       await expect(page.getByRole("button", { name: both("Nuova flashcard", "New flashcard") })).toBeVisible();
       break;
     case "flashcards-new-hand":
@@ -6034,7 +6034,7 @@ async function walk(slice: typeof auditRoutes) {
               if (name === "library-import") {
                 await page
                   .getByRole("button", {
-                    name: /Aggiungi file|Add files/,
+                    name: /Aggiungi fonti|Add sources/,
                     exact: true,
                   })
                   .click();

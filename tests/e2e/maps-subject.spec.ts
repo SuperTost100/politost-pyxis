@@ -76,7 +76,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     // The folder step of setup opens from here, and leaving it comes back to Mappe.
     await page.getByRole("button", { name: "Collega una cartella" }).click();
     await expect(page).toHaveURL(/#\/onboarding\?again=1&step=material&from=maps$/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Come tieni il materiale per studiare?");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Dove tieni il materiale di studio?");
     await expect(page.getByRole("button", { name: "Torna a Mappe" })).toBeVisible();
     await page.getByRole("button", { name: "Lo faccio dopo" }).click();
     await expect(page).toHaveURL(/#\/maps$/);
@@ -99,7 +99,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await page.reload();
 
     // With subjects and no maps, the empty state offers a new map and no longer asks for an exam first.
-    await expect(page.getByText(/Ne fai una da un argomento/)).toBeVisible();
+    await expect(page.getByText(/Parti da un argomento per crearne una/)).toBeVisible();
     await expect(page.getByText(/Crea prima un esame/)).toHaveCount(0);
     await page.getByRole("button", { name: "Nuova mappa" }).click();
     const dialog = page.getByRole("dialog", { name: "Nuova mappa" });
@@ -578,7 +578,7 @@ test("a stopped build is not a failure, and the open page follows a build that i
     // It says the student stopped it, offers to resume it, and shows no failure.
     await expect(page.getByRole("heading", { name: "Hai fermato la creazione della mappa" })).toBeVisible();
     await expect(page.locator(".px-map-empty").getByRole("button", { name: "Riprendi" })).toBeVisible();
-    await expect(page.getByText("Non riesco a creare la mappa")).toHaveCount(0);
+    await expect(page.getByText("Non sono riuscito a creare la mappa")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Crea la mappa" })).toHaveCount(0);
     await expectNoAxeViolations(page);
     await saveShot(page, "maps-subject/build-stopped.png");

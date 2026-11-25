@@ -161,7 +161,7 @@ test("the exam page suggests the next part of a lesson in parts, picks up from i
     // The formula in part 1's title is drawn, not shown as TeX.
     await expect(rows.nth(0).locator(".katex")).toHaveCount(1);
     expect(await drawnText(rows.nth(0))).not.toContain("\\");
-    await expect(topic.getByText("Pyxis scrive le parti tratteggiate quando arrivi a quella prima.")).toBeVisible();
+    await expect(topic.getByText("Le parti con il cerchio tratteggiato non sono ancora pronte: le scrivo quando arrivi alla parte precedente.")).toBeVisible();
     const steps = page.getByRole("list", { name: "Passi di Funzioni di più variabili" });
     await expect(steps.getByRole("button", { name: /^Lezione/ })).toHaveCount(0);
     await expect(steps.getByRole("button", { name: /^Esercizi/ })).toBeVisible();
@@ -318,7 +318,7 @@ test("a suggestion that is not a lesson reads as before under Consigliato adesso
     const taylor = page.getByRole("list", { name: "Passi di Formula di Taylor in più variabili" });
     await expect(taylor.getByRole("button", { name: /^Lezione/ })).toBeVisible();
     await expect(page.locator(".px-xpath-parts")).toHaveCount(0);
-    await expect(page.locator(".px-xpath-row.is-open .px-xpath-head .px-xpath-sub")).toHaveText("1 passo su 3 fatto");
+    await expect(page.locator(".px-xpath-row.is-open .px-xpath-head .px-xpath-sub")).toHaveText("1 passo completato su 3");
 
     // A topic of one part does too.
     await path.getByRole("button", { name: /^Massimi e minimi liberi/ }).click();
