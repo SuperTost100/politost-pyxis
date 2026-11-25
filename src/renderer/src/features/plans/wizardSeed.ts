@@ -15,6 +15,8 @@ export type WizardSeed = {
   /** The goal as stored, a fraction from 0.5 to 1. */
   target: number;
   language: "it" | "en";
+  /** Library sources already chosen as material, such as the ones a chat's proposal of this exam named. */
+  picked?: string[];
 };
 
 export function isWizardSeed(value: unknown): value is WizardSeed {
@@ -26,7 +28,8 @@ export function isWizardSeed(value: unknown): value is WizardSeed {
     ["", "none", "1", "2", "3", "10"].includes(seed.examChoice ?? "-") &&
     Array.isArray(seed.sessions) &&
     typeof seed.target === "number" &&
-    (seed.language === "it" || seed.language === "en")
+    (seed.language === "it" || seed.language === "en") &&
+    (seed.picked === undefined || (Array.isArray(seed.picked) && seed.picked.every((id) => typeof id === "string")))
   );
 }
 
@@ -47,4 +50,19 @@ export function examFromChoice(examChoice: ExamChoice, date: string, now = new D
 
 export function seedSessions(seed: WizardSeed): ExamSessionInput[] {
   return sessionsFromDrafts(seed.sessions);
+}
+
+/** The statuses a source cannot be built from, as the exam form refuses them, and a source the student removed. */
+const UNUSABLE = new Set(["failed", "needs-ocr", "cancelled", "interrupted", "removed"]);
+
+/**
+ * The seeded sources the Library still has, usable, and how many of them it no longer does: a proposal from the chat can
+ * name a source that was removed or failed since, which the exam must not be created with.
+ */
+export function availableSeed(
+  picked: readonly string[],
+  library: ReadonlyArray<{ id: string; status: string }>,
+): { kept: string[]; dropped: number } {
+  const kept = picked.filter((id) => library.some((source) => source.id === id && !UNUSABLE.has(source.status)));
+  return { kept, dropped: picked.length - kept.length };
 }

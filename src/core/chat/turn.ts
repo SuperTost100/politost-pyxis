@@ -36,6 +36,7 @@ import {
   toolViews,
 } from "../tools/results";
 import { toolBlockIds } from "../../shared/tool-blocks";
+import { decidedProposal, decidedSince, isProposal } from "../tools/proposals";
 import { generate, type GenerateInput } from "../engine/generate";
 import { engineSeesImages } from "../engine/capabilities";
 import { LOCAL_PROVIDER } from "../engine/local";
@@ -1433,8 +1434,18 @@ async function answer(
       : input.resumeFrom?.results && !isProviderCurrent(provider)
         ? `\n\nYour earlier answer to this question was cut off. It used the student's own results, which are not shared with you, so it is not shown. Answer the question without them, and say you cannot see the results from here.`
         : `\n\nYour earlier answer to this question was cut off. It ends here:\n${resume}\n\nContinue from exactly where it stops. Do not repeat any of it.`;
+  // What the student chose on the model's proposals since its last reply (`tools/proposals.ts`), as the lines a
+  // conversation handed over gives them. The system prompt stays the same; this goes with the question.
+  const lastReplyAt = db
+    .prepare(`SELECT max(created_at) FROM messages WHERE chat_id = ? AND role = 'assistant' AND id != ?`)
+    .pluck()
+    .get(chatId, replacing?.assistantId ?? "") as number | null;
+  const decided = Object.values(toolViews(db, chatId, decidedSince(db, chatId, lastReplyAt ?? 0)));
+  const decisionsBlock = decided.length
+    ? `Since your last answer, the student decided on proposals you made:\n${decided.map(toolNote).join("\n")}`
+    : "";
   const questionFor = (provider: string) =>
-    `${[attachedBlock, passageBlock, noPassages].filter(Boolean).join("\n\n")}\n\nQuestion:\n${input.text}${resumeBlockFor(provider)}`;
+    `${[attachedBlock, passageBlock, noPassages, decisionsBlock].filter(Boolean).join("\n\n")}\n\nQuestion:\n${input.text}${resumeBlockFor(provider)}`;
   const exclude = [userMessageId, replacing?.assistantId ?? ""];
   // The tool session the chat stored, when this turn can continue it. A session in step already holds the conversation,
   // so the message is the new question, with the context block when it changed. A session out of step (a turn on it
@@ -2065,10 +2076,14 @@ export async function regenerateTurn(
     // The earlier answer's cards stay out of the deck. When the new answer made none, the line that says so, with
     // «Ripristina», heads the new answer, so the student can still bring them back. Otherwise the new answer's own result
     // stands in its place, and the earlier record goes with the earlier answer.
-    if (replaced.length > 0 && madeResultIds(db, input.chatId, toolBlockIds(result.message.body)).length === 0) {
-      const lead = replaced.map((id) => `\`\`\`pyxis-tool\n${id}\n\`\`\`\n\n`).join("");
+    // A proposal the student decided on was their own act, so its line heads the new answer in any case; one still
+    // pending was withdrawn with the earlier answer and goes with it.
+    const noBlocks = madeResultIds(db, input.chatId, toolBlockIds(result.message.body)).length === 0;
+    const carried = replaced.filter((id) => decidedProposal(db, input.chatId, id) || (noBlocks && !proposalRow(db, input.chatId, id)));
+    if (carried.length > 0) {
+      const lead = carried.map((id) => `\`\`\`pyxis-tool\n${id}\n\`\`\`\n\n`).join("");
       db.prepare(`UPDATE messages SET body = ? || body WHERE id = ? AND chat_id = ?`).run(lead, result.message.id, input.chatId);
-      linkToolResults(db, input.chatId, result.message.id, replaced);
+      linkToolResults(db, input.chatId, result.message.id, carried);
       const body = `${lead}${result.message.body}`;
       result.message = { ...result.message, body, ...toolsOf(db, input.chatId, body) };
     }
@@ -2357,6 +2372,12 @@ export function readChat(
       checking: runningChecks.has(row.id),
     };
   });
+}
+
+/** Whether a stored result of the chat is a proposal of an "ask first" tool. */
+function proposalRow(db: Database.Database, chatId: string, id: string): boolean {
+  const tool = db.prepare(`SELECT tool FROM chat_tool_results WHERE id = ? AND chat_id = ?`).pluck().get(id, chatId) as string | undefined;
+  return tool !== undefined && isProposal(tool);
 }
 
 /** The results a reply's tool blocks name, as the message carries them; nothing for a reply without tool blocks. */

@@ -598,3 +598,105 @@ export function seedTallSourcesChat(db: DatabaseSync, id = "look-sources-tall") 
   const cite = db.prepare("INSERT INTO message_passages(message_id,passage_id,label) VALUES(?,?,?)");
   CHAPTER_PASSAGES.forEach(([passageId], index) => cite.run(`${id}-a`, passageId, `P${index + 1}`));
 }
+
+/** What a proposal state's chat asks, by the tool the recorded reply calls for it. */
+export const PROPOSAL_QUESTIONS = {
+  path: "Il prof ha anticipato l'esame al 15 gennaio. Mi sistemi il percorso?",
+  exam: "A febbraio ho Chimica generale, lo scritto è lunedì 9. Me lo prepari?",
+  delete: "Le flashcard di Cinematica sono fatte male, eliminale.",
+} as const;
+
+/** The arguments of the recorded proposal calls, as the model would give them. */
+export const PROPOSAL_CALLS = {
+  path: {
+    tool: "propose_path_change",
+    args: {
+      exam_date: `${new Date().getFullYear() + 1}-01-15`,
+      weekly_hours: 8,
+      remove_topics: ["Fluidi"],
+      move_topics: [{ title: "Oscillazioni", after: "Dinamica" }],
+      add_topics: [{ title: "Urti e quantità di moto", after: "Lavoro ed energia" }],
+    },
+  },
+  exam: { tool: "propose_exam", args: { title: "Chimica generale", exam_date: `${new Date().getFullYear() + 1}-02-09` } },
+  delete: { tool: "propose_delete", args: { kind: "flashcards", topic: "Cinematica" } },
+} as const;
+
+const LOOK_TOPICS = ["Cinematica", "Dinamica", "Lavoro ed energia", "Fluidi", "Termodinamica", "Oscillazioni"];
+
+/**
+ * A chat on the exam Fisica 1 (`look-propose-<state>`) for the "ask first" tools. `path`, `exam` and `delete` hold an
+ * earlier answer only: the state sends the question, and the recorded reply proposes through the app's own server, so the
+ * card's fingerprint is the app's. `applied`, `declined` and `stale` hold a decided path proposal, or one whose data moved
+ * on, written here.
+ */
+export function seedProposalChat(db: DatabaseSync, state: "path" | "exam" | "delete" | "applied" | "declined" | "stale") {
+  const id = `look-propose-${state}`;
+  const year = new Date().getFullYear() + 1;
+  if (!db.prepare("SELECT 1 FROM subjects WHERE id = 'look-phys'").get())
+    db.prepare("INSERT INTO subjects(id,name,created_at) VALUES('look-phys','Fisica 1',1),('look-chem','Chimica generale',1)").run();
+  db.prepare("INSERT INTO plans(id,subject_id,title,status,created_at,updated_at) VALUES('look-plan','look-phys','Fisica 1','ready',1,1)").run();
+  LOOK_TOPICS.forEach((title, position) =>
+    db.prepare("INSERT INTO topics(id,plan_id,title,position,created_at) VALUES(?,?,?,?,1)").run(`look-topic-${position}`, "look-plan", title, position),
+  );
+  db.prepare("INSERT INTO plan_sessions(id,plan_id,date,label,created_at) VALUES('look-session','look-plan',?,'Scritto',1)").run(
+    new Date(year, 0, 22, 12).getTime(),
+  );
+  const card = db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,created_at) VALUES(?,'look-plan','look-topic-0',?,'Risposta',?,1)");
+  ["Che cos'è la velocità media?", "Che cos'è l'accelerazione?", "Come si legge un grafico s-t?"].forEach((front, i) =>
+    card.run(`look-card-${i}`, front, `look-${i}`),
+  );
+  card.run("look-card-mine", "La mia flashcard", null);
+  db.prepare("INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES('look-review','look-card-0','good','{}',5)").run();
+  db.prepare("INSERT INTO sources(id,subject_id,kind,title,status,library,created_at,updated_at) VALUES('look-disp','look-chem','excerpt','Dispense di Chimica 2026','ready',1,1,1)").run();
+  db.prepare("INSERT INTO chats(id,title,subject,scope_json,created_at,updated_at) VALUES(?,?,?,?,1,2)").run(
+    id,
+    state === "exam" ? "Un esame di Chimica" : "Esame anticipato",
+    "Fisica 1",
+    JSON.stringify({ planId: state === "exam" ? null : "look-plan", ids: [], subjectBy: "student" }),
+  );
+  if (state === "path" || state === "exam" || state === "delete") {
+    db.prepare("INSERT INTO messages(id,chat_id,role,body,created_at) VALUES(?,?,'user',?,1)").run(`${id}-q0`, id, "Che cosa studia la dinamica?");
+    db.prepare(
+      "INSERT INTO messages(id,chat_id,role,body,engine_provider,model_id,model_source,created_at) VALUES(?,?,'assistant',?,'claude','claude-sonnet-5-5','reported',2)",
+    ).run(`${id}-a0`, id, "La dinamica studia il moto dei corpi a partire dalle forze che lo causano.");
+    return;
+  }
+  const resultId = `0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4c${state === "applied" ? "01" : state === "declined" ? "02" : "03"}`;
+  const before = LOOK_TOPICS.map((title, i) => ({ id: `look-topic-${i}`, title }));
+  const after = [0, 1, 5, 2, 4].map((i) => ({ id: `look-topic-${i}`, title: LOOK_TOPICS[i]!, added: false, restored: false, movedFrom: i === 5 ? 6 : null }));
+  after.splice(4, 0, { id: null as unknown as string, title: "Urti e quantità di moto", added: true, restored: false, movedFrom: null });
+  const from = new Date(year, 0, 22, 12).getTime();
+  const to = new Date(year, 0, 15, 12).getTime();
+  const data = {
+    request: PROPOSAL_CALLS.path.args,
+    proposal: {
+      planId: "look-plan",
+      exam: "Fisica 1",
+      date: { sessionId: "look-session", from, to, label: "Scritto", sessions: [], next: null },
+      hours: { from: 6, to: 8 },
+      topics: { before, after },
+      already: [],
+    },
+    // A digest no resolution gives: the stale state's path changed since. The decided states never resolve it.
+    basis: "look-changed-since",
+    decision: state === "applied" ? { state: "applied", at: 3, outcome: { date: to, hours: 8, changed: 3 } } : state === "declined" ? { state: "declined", at: 3 } : null,
+  };
+  db.prepare("INSERT INTO messages(id,chat_id,role,body,created_at) VALUES(?,?,'user',?,1)").run(`${id}-q`, id, PROPOSAL_QUESTIONS.path);
+  db.prepare("INSERT INTO chat_tool_results(id,chat_id,message_id,tool,data_json,created_at) VALUES(?,?,?,?,?,2)").run(
+    resultId,
+    id,
+    `${id}-a`,
+    "propose_path_change",
+    JSON.stringify(data),
+  );
+  db.prepare("INSERT INTO messages(id,chat_id,role,body,engine_provider,model_id,model_source,created_at) VALUES(?,?,?,?,?,?,?,2)").run(
+    `${id}-a`,
+    id,
+    "assistant",
+    `Ho preparato le modifiche al percorso di Fisica 1.\n\n\`\`\`pyxis-tool\n${resultId}\n\`\`\`\n\nDa domani trovi le oscillazioni subito dopo la dinamica.`,
+    "claude",
+    "claude-sonnet-5-5",
+    "reported",
+  );
+}

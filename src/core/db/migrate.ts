@@ -607,6 +607,16 @@ ALTER TABLE tool_sessions ADD COLUMN tools INTEGER NOT NULL DEFAULT 0;`,
   // hold their grades. Such a reply is left out of the conversation handed to a tool the student has not confirmed the
   // notice naming results for (`chat/turn.ts`, `historyText`).
   { version: 40, sql: `ALTER TABLE messages ADD COLUMN results INTEGER NOT NULL DEFAULT 0;` },
+  // The chat's proposal that removed a card (`tools/proposeDelete.ts`), so its «Annulla» brings back only the cards it
+  // removed. Any later change of `removed` that does not name a proposal (a restore or a delete by hand) clears it.
+  {
+    version: 41,
+    sql: `ALTER TABLE cards ADD COLUMN removed_by TEXT;
+CREATE TRIGGER cards_removed_by_clear AFTER UPDATE OF removed ON cards
+  WHEN old.removed_by IS NOT NULL AND new.removed_by IS old.removed_by BEGIN
+  UPDATE cards SET removed_by = NULL WHERE id = new.id;
+END;`,
+  },
 ] satisfies Array<{
   version: number;
   sql: string;

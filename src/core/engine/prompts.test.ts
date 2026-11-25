@@ -47,8 +47,9 @@ describe("prompt templates", () => {
     // every written part as older.
     // Version 6 is about the files attached to a question; version 7 added the chart and practice question blocks and
     // read_progress as the only source of the student's results on one side, the map and the quiz on the other, and
-    // version 8 joins them. Version 9 adds ask_stronger_model, the stronger model a hard exercise can be handed to.
-    expect(loadTemplate("chat.tutor").version).toBe("9");
+    // version 8 joins them. Version 9 adds ask_stronger_model, the stronger model a hard exercise can be handed to, and
+    // version 11 the proposal tools (10 was their own branch's number before 9 landed).
+    expect(loadTemplate("chat.tutor").version).toBe("11");
     // The chat's tools are named in a fixed paragraph, the same whether or not a turn has them, so the system prompt stays
     // the same for the whole chat; each tool's own description lives in its server (src/core/tools). A concept map asked
     // for is made with its tool rather than drawn as a figure.

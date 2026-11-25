@@ -11,6 +11,8 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../test-temp";
 import { heldFilesFor } from "../chat/test-attach";
+import { createPlan } from "../plans/create";
+import { decideProposal } from "./proposals";
 
 afterEach(async () => {
   await stopToolServer();
@@ -499,5 +501,67 @@ describe("the token of a chat answered on Antigravity", () => {
     expect(ping.status).toBe(401);
     await askTurn(db, { chatId: first.chatId, text: "Di nuovo.", run: answer("antigravity") });
     expect(tokens[3]).not.toBe(tokens[2]);
+  });
+});
+
+describe("a reply that proposes a change", () => {
+  /** A reply that proposes 9 weekly hours through the server, as a CLI calls it, and then writes `after`. */
+  const proposing = (after: string, args: unknown = { weekly_hours: 9 }) =>
+    async (input: TurnInput): Promise<EngineResult> => {
+      input.onDelta?.("Ho preparato la modifica.");
+      input.tools!.onTool?.({ phase: "start", id: "call-1", tool: "propose_path_change" });
+      const answer = await callTool(input.tools!, "propose_path_change", args);
+      expect(answer.result.isError).toBeUndefined();
+      expect(answer.result.content[0]!.text).toMatch(/nothing has changed/);
+      input.tools!.onTool?.({ phase: "end", id: "call-1", tool: "propose_path_change" });
+      return { text: after, model: "claude-sonnet-5", provider: "claude", inputTokens: 1 };
+    };
+
+  function withExam(db: ReturnType<typeof setup>) {
+    const { planId } = createPlan(db, { title: "Meccanica", subject: "Fisica 1", sourceIds: [], draftTopics: [{ title: "Dinamica" }] });
+    setTools(chatToolList(db, false));
+    return planId;
+  }
+
+  it("tells the model at its next turn what the student chose, once, in the message and not in the system prompt", async () => {
+    const db = setup();
+    const planId = withExam(db);
+    const first = await askTurn(db, { text: "Portami a 9 ore.", planId, run: proposing("Applicala se ti va bene.") });
+    const [resultId] = toolBlockIds(first.message!.body);
+    expect(first.message!.tools?.[resultId!]).toMatchObject({ tool: "propose_path_change", state: "pending", ready: true });
+    const seen = (first.message!.tools?.[resultId!] as { seen: string }).seen;
+    decideProposal(db, first.chatId, resultId!, "apply", seen);
+    let prompt = "";
+    let system = "";
+    const capture = async (input: TurnInput): Promise<EngineResult> => {
+      prompt = input.prompt;
+      system = input.system ?? "";
+      return { text: "Bene.", model: "claude-sonnet-5", provider: "claude", inputTokens: 1 };
+    };
+    await askTurn(db, { chatId: first.chatId, text: "Fatto, grazie.", run: capture });
+    const note = "Since your last answer, the student decided on proposals you made:\n[Pyxis tool propose_path_change: you proposed a change to the path of Meccanica; the student applied it, and the path is now as proposed.]";
+    expect(prompt).toContain(`${note}\n\nQuestion:\nFatto, grazie.`);
+    expect(system).not.toContain("student applied");
+    // The turn after does not hear it again.
+    await askTurn(db, { chatId: first.chatId, text: "E adesso?", run: capture });
+    expect(prompt).not.toContain("Since your last answer");
+  });
+
+  it("keeps the line of a proposal the student applied when the reply is answered again, and drops a pending one", async () => {
+    const db = setup();
+    const planId = withExam(db);
+    const first = await askTurn(db, { text: "Portami a 9 ore.", planId, run: proposing("Ecco.") });
+    const [applied] = toolBlockIds(first.message!.body);
+    decideProposal(db, first.chatId, applied!, "apply", (first.message!.tools?.[applied!] as { seen: string }).seen);
+    const again = await regenerateTurn(db, { chatId: first.chatId, run: proposing("Di nuovo.", { weekly_hours: 11 }) });
+    const ids = toolBlockIds(again.message!.body);
+    expect(ids[0]).toBe(applied);
+    expect(again.message!.tools?.[applied!]).toMatchObject({ state: "applied" });
+    expect(again.message!.tools?.[ids[1]!]).toMatchObject({ state: "pending" });
+    // That pending one goes with its reply when the answer is given once more.
+    const third = await regenerateTurn(db, { chatId: first.chatId, run: async () => ({ text: "Niente.", model: "claude-sonnet-5", provider: "claude", inputTokens: 1 }) });
+    expect(toolBlockIds(third.message!.body)).toEqual([applied]);
+    expect(db.prepare("SELECT count(*) FROM chat_tool_results").pluck().get()).toBe(1);
+    noStrayResults(db);
   });
 });
