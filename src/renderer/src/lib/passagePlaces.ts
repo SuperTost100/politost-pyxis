@@ -41,6 +41,7 @@ export function usePassagePlaces(
       page: place?.locator.page,
       slide: place?.locator.slide,
       chapter: place?.locator.chapter,
+      picture: place?.locator.picture,
       section: place?.sectionPath ?? undefined,
       version: place?.version,
       fallbackTitle: cite.label,

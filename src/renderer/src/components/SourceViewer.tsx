@@ -8,6 +8,7 @@ import { spokenText } from "@shared/spoken-math";
 import { bookErrorKey } from "../lib/bookErrors";
 import { invoke } from "../lib/ipc";
 import { useSources } from "../lib/queries";
+import { localizeSection } from "../lib/sourcePlaces";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { IconButton } from "./IconButton";
@@ -107,7 +108,7 @@ export function useSourceView(
   const menu = props.menu?.() ?? null;
   const what = book.data
     ? [t("books.bookName"), t("books.chapters", { count: book.data.chapters.length }), t("books.free")].join(" · ")
-    : [listed ? t(`sources.fileKind.${listed.fileKind}`) : null, view?.passage?.sectionPath].filter(Boolean).join(" · ");
+    : [listed ? t(`sources.fileKind.${listed.fileKind}`) : null, localizeSection(view?.passage?.sectionPath, t)].filter(Boolean).join(" · ");
   const title = view?.title ?? (read.isPending ? "" : t("sources.details"));
   const menuProps: MenuProps = { items: menu?.items ?? [], onClick: ({ key }) => menu?.onSelect(key) };
   const itemMenu = useItemMenu({ menu: menuProps, disabled: !menu });
@@ -349,7 +350,7 @@ function SourceBody({
         ) : (
           <Message reason={body.reason} source={source} />
         )}
-        {showPassage && source.passage ? <CitedPassage text={source.passage.text} section={source.passage.sectionPath} /> : null}
+        {showPassage && source.passage ? <CitedPassage text={source.passage.text} section={localizeSection(source.passage.sectionPath, t) ?? null} /> : null}
       </div>
       {plan.address ? (
         <div className="source-view-foot">

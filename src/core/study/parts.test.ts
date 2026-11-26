@@ -873,7 +873,13 @@ describe("writePart", () => {
       'Part 1, Uno (before this part). Sections: "Passo 1 primo", "Passo 1 secondo".\nWhat it taught: Hai imparato il passo 1.',
     );
     expect(prompt.match(/MARK-\w+/g)).toEqual(["MARK-ps003", "MARK-ps004"]);
+    expect(prompt).toContain("[P1] ");
+    expect(prompt).toContain("[P2] ");
+    expect(prompt.indexOf("[P1] ")).toBeLessThan(prompt.indexOf("MARK-ps003"));
+    expect(prompt.indexOf("[P2] ")).toBeLessThan(prompt.indexOf("MARK-ps004"));
     expect(engine.calls[0]!.system).toContain("You write one part of a lesson");
+    expect(engine.calls[0]!.system).toContain("inline as [P1], [P2] in prose");
+    expect(engine.calls[0]!.system).not.toContain("Do not cite sources");
 
     const part = outline.parts[1]!;
     const shape = partShape(partText("2"), first);
@@ -996,7 +1002,7 @@ describe("writePart", () => {
     await write(db, 2, partText("2")).done;
     expect(liveOutline(db, "t")!.parts[1]!.passageIds).toEqual(["ps003", "ps004"]);
     const lesson = exportMarkdown(db, { planId: "p", kind: "lesson", topicId: "t" }).markdown;
-    expect(lesson).toContain("## Fonti\n\n- Sezione ps001\n- Sezione ps002\n");
+    expect(lesson).toContain("## Fonti\n\n- Dispense, Sezione ps001\n- Dispense, Sezione ps002\n");
     expect(lesson).not.toContain("Sezione ps003");
     expect(lesson).not.toContain("Sezione ps004");
   });
@@ -1480,5 +1486,20 @@ describe("a lesson in one tool session", () => {
     await writePart(db, { planId: "p", topicId: "t", position: 1, run: tool.run, python: null });
     expect(session(db)).toHaveLength(1);
     db.close();
+  });
+
+  it("strips passage citation marks from pyxis-takeaway so the footer never shows literal [Pn]", () => {
+    const reply = partText("1").replace(
+      '{"text":',
+      '{"text":',
+    ).replace(
+      /```pyxis-takeaway\n[\s\S]*?```/,
+      '```pyxis-takeaway\n{"text": "Il fattore integrante è $e^{A(x)}$ [P1] e risolve l’equazione [P2]."}\n```',
+    );
+    const shaped = partShape(reply, { kind: "part", headings: [], last: false });
+    expect(shaped.ok).toBe(true);
+    if (shaped.ok) {
+      expect(shaped.summary).toBe("Il fattore integrante è $e^{A(x)}$ e risolve l’equazione.");
+    }
   });
 });

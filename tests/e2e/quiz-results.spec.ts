@@ -24,7 +24,8 @@ const questions = [
   { id: "q8", stem: "In quale unità del Sistema Internazionale si misura l'accelerazione?", options: ["$m/s^2$", "$m/s$", "$N$", "$J$"], answer: { kind: "mcq", correct: 0, picked: -1 } },
 ].map((question) => ({ ...question, topicId: "t-kin", sourceIds: ["s-pass"] }));
 
-const picks = { q1: "0", q2: "1", q3: "1", q4: "$x(t) = t^3 - t^2$", q5: "0", q6: "", q7: "0", q8: "0" };
+const picks = { q1: "0", q2: "1", q3: "1", q4: "x(t) = t^{3} - t^{2}", q5: "0", q6: "", q7: "0", q8: "0" };
+const steps = { q4: "Integro la velocità e confronto con t^{3} - t^{2}." };
 const results = [
   { id: "q1", score: 1, expected: "24 km/h", explanation: "6 km in un quarto d'ora sono 24 km in un'ora." },
   { id: "q2", score: 0, expected: "0 m", explanation: "Hai calcolato la distanza percorsa. Lo spostamento somma i tratti con il segno: il sasso torna dove è partito [P1]." },
@@ -72,7 +73,7 @@ function seed(db: DatabaseSync) {
     at,
   );
   db.prepare("INSERT INTO attempt_answers(id,attempt_id,payload_json,created_at) VALUES('a-quiz-answers','a-quiz',?,?)").run(
-    JSON.stringify({ picks, score: 4.5 / 7, results }),
+    JSON.stringify({ picks, steps, score: 4.5 / 7, results }),
     at,
   );
   const event = db.prepare(
@@ -180,8 +181,22 @@ test("results list every question in order, right ones folded in green, the othe
     await expect(sourcePanel).toHaveCount(0);
     await expect(cite).toBeFocused();
     // Half right, graded by the AI tool, and a "Non lo so".
-    await expect(rows(page).nth(3).locator(".px-res-st")).toHaveText("A metà · 0,5/1");
-    await expect(rows(page).nth(3)).toContainText("Valutata da");
+    const openRow = rows(page).nth(3);
+    await expect(openRow.locator(".px-res-st")).toHaveText("A metà · 0,5/1");
+    await expect(openRow).toContainText("Valutata da");
+    // Student's own open answer and steps draw bare LaTeX formulas instead of showing raw braces.
+    await expect(openRow.locator(".px-res-answer.is-yours .katex")).toHaveCount(1);
+    await expect(openRow.locator(".px-res-answer.is-steps .katex")).toHaveCount(1);
+    await expect(openRow.locator(".px-res-answer.is-steps")).toContainText("Integro la velocità e confronto con");
+    expect(
+      await openRow.locator(".px-res-answer.is-yours").evaluate((el) => {
+        const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let raw = "";
+        for (let n = w.nextNode(); n; n = w.nextNode())
+          if (!n.parentElement?.closest(".katex-mathml")) raw += n.textContent ?? "";
+        return raw;
+      }),
+    ).not.toContain("^{");
     await expect(rows(page).nth(5).locator(".px-res-st")).toHaveText("Non lo so · 0/1");
     await expect(rows(page).nth(5).locator(".px-res-answer-empty")).toHaveText("Non lo so");
     await expect(rows(page).nth(5).locator(".px-res-answer.is-expected")).toContainText("Vero");

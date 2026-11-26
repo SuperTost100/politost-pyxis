@@ -38,7 +38,9 @@ export function contextBlock(input: {
     input.followups
       ? "Follow-ups: end with the <followups> block."
       : "Follow-ups: leave the <followups> block out.",
-    `Figures you can draw: ${input.figures.length ? input.figures.join(", ") : "none"}.`,
+    input.figures.length
+      ? `Figures you can draw: ${input.figures.join(", ")}.`
+      : `Figures you can draw: none. Drawings are not installed: if asked for a drawing, say so and point to ${input.language.toLowerCase().startsWith("it") ? "Impostazioni › Studio › Disegni" : "Settings › Study › Drawings"}, and do not draw with ASCII or text characters.`,
     "</context>",
   ]
     .filter(Boolean)

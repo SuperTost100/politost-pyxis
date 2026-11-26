@@ -22,6 +22,7 @@ import { engineStatus, keyStatus, manualChoice } from "../../lib/engineStatus";
 import { invoke, onBroadcast } from "../../lib/ipc";
 import { engineChoiceQuery, engineFeaturesQuery, enginesQuery, engineSwitchedOffQuery } from "../../lib/queries";
 import { isConnected, limitWhen, movedOrder, shownOrder, toggledUse } from "../../lib/toolOrder";
+import { displayModelName } from "@shared/model-names";
 import { roleItems, roleModelName, roleSummary, roles as roleOrder, rolesOfModel, type Role } from "../../lib/toolRoles";
 import { useEngineNames } from "../../lib/useEngineNames";
 import { useStillHere } from "../../lib/useStillHere";
@@ -319,9 +320,11 @@ export function EnginesPanel() {
   >;
   // A newer model file changes the roles without any other change to the page.
   useEffect(() => onBroadcast("engine.auto", () => void client.invalidateQueries({ queryKey: ["engine-roles"] })), [client]);
-  /** The engine's own name for a model, the way the student knows it. */
-  const modelLabel = (provider: string, id: string) =>
-    modelsByProvider[provider]?.find((model) => model.id === id)?.name ?? names.modelName(provider, id);
+  /** The engine's own name for a model, normalized to one display spelling. */
+  const modelLabel = (provider: string, id: string) => {
+    const listed = modelsByProvider[provider]?.find((model) => model.id === id)?.name;
+    return listed ? displayModelName(id, listed) : names.modelName(provider, id);
+  };
   const shortName = (provider: string, id: string) => roleModelName(modelLabel(provider, id));
   // Models of the connected tools the student lets Pyxis use, by tool, each with the roles it fills.
   const choices = [
@@ -689,9 +692,7 @@ export function EnginesPanel() {
             : t("engines.tested", {
                 ms: result.ms,
                 // The list Settings already read names the model even before the names query has refreshed.
-                model:
-                  modelsByProvider[result.provider]?.find((row) => row.id === result.model)?.name ??
-                  names.modelName(result.provider, result.model),
+                model: modelLabel(result.provider, result.model),
                 tokens: result.tokens,
               })}
         </p>
@@ -1055,7 +1056,7 @@ export function EnginesPanel() {
                 >
                   {models.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {item.name}
+                      {displayModelName(item.id, item.name)}
                     </option>
                   ))}
                 </select>

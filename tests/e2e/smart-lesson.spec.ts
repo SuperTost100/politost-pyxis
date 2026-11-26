@@ -239,6 +239,20 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await expect(page.locator(".px-smart .px-cite-mark").first()).toBeAttached();
     await expect(page.locator(".px-smart")).not.toContainText(/\[P\d|\bP\d+\b/);
     await expect(page.locator(".px-sources")).toBeVisible();
+    // Pointing at the source place in the old lesson shows its passage card and tints the cited sentence.
+    const sourcePlace = page.locator(".px-sources [data-cite-place]").first();
+    await sourcePlace.hover();
+    await expect(page.getByRole("tooltip")).toContainText("La forza cambia lo stato di moto.");
+    await expect
+      .poll(() =>
+        page.evaluate(() => [...(CSS.highlights.get("px-cited") ?? [])].map((range) => (range as Range).toString())),
+      )
+      .toEqual(["Una forza è ciò che cambia lo stato di moto di un corpo"]);
+    await page.keyboard.press("Escape");
+    await expect
+      .poll(() => page.evaluate(() => CSS.highlights.get("px-cited")?.size ?? 0))
+      .toBe(0);
+    await page.evaluate(() => window.scrollTo(0, 0));
     // A display formula alone on its line is a centred block, not inline text.
     const display = page.locator(".px-smart .katex-display");
     await expect(display).toHaveCount(1);

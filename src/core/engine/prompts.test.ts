@@ -28,9 +28,9 @@ describe("prompt templates", () => {
   });
 
   it("bumps the version of every template whose wording changed", () => {
-    // Smart text: lessons teach with inline blocks and no citations. smart-2 adds the pyxis-figure block. smart-3 and
-    // intro 4: a check's explanation shows after a wrong pick too, so it never calls the other options correct.
-    // smart-4 asks for about 6 sections and at most 6 quick checks.
+    // Smart text: lessons teach with inline blocks and [Pn] citations for the sources row. smart-2 adds the pyxis-figure
+    // block. smart-3 and intro 4: a check's explanation shows after a wrong pick too, so it never calls the other
+    // options correct. smart-4 asks for about 6 sections and at most 6 quick checks.
     expect(loadTemplate("lesson.write").version).toBe("smart-4");
     expect(loadTemplate("lesson.write").body).toContain("about 6 sections (5 to 7)");
     expect(loadTemplate("lesson.write").body).toContain("never more than 6 in the whole lesson");
@@ -48,8 +48,13 @@ describe("prompt templates", () => {
     // Version 6 is about the files attached to a question; version 7 added the chart and practice question blocks and
     // read_progress as the only source of the student's results on one side, the map and the quiz on the other, and
     // version 8 joins them. Version 9 adds ask_stronger_model, the stronger model a hard exercise can be handed to, and
-    // version 11 the proposal tools (10 was their own branch's number before 9 landed).
-    expect(loadTemplate("chat.tutor").version).toBe("13");
+    // version 11 the proposal tools (10 was their own branch's number before 9 landed), versions 12 and 13 the map and
+    // quiz card wording after tool calls and refusals, and version 14 adds the missing-drawings Settings guidance and
+    // forbids ASCII diagrams.
+    expect(loadTemplate("chat.tutor").version).toBe("14");
+    expect(loadTemplate("chat.tutor").body).toContain("point them to the Settings path named in the context block");
+    expect(loadTemplate("chat.tutor").body).toContain("Never draw a diagram, graph, plot or schema with ASCII art");
+    expect(loadTemplate("chat.tutor").body).toContain("When the tool made a map or a quiz");
     // The chat's tools are named in a fixed paragraph, the same whether or not a turn has them, so the system prompt stays
     // the same for the whole chat; each tool's own description lives in its server (src/core/tools). A concept map asked
     // for is made with its tool rather than drawn as a figure.
@@ -229,6 +234,8 @@ describe("prompt templates", () => {
       "map.generate",
       "chat.tutor",
       "lesson.agent",
+      "lesson.write",
+      "lesson.part",
     ];
     const figureTemplates: TemplateId[] = ["lesson.write", "lesson.part", "chat.tutor"];
     const rule = partialText("citation");

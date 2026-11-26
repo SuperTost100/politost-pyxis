@@ -60,7 +60,6 @@
   margin: var(--space-2) 0 0;
   white-space: pre-wrap;
   word-break: break-word;
-  opacity: 0.9;
 }
 .px-notice-text a {
   color: inherit;

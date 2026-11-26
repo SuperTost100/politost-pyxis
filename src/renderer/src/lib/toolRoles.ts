@@ -1,4 +1,5 @@
 import { taskTier } from "../../../shared/effort";
+import { displayModelName } from "../../../shared/model-names";
 
 export type Role = "fast" | "mid" | "strong";
 export const roles: readonly Role[] = ["fast", "mid", "strong"];
@@ -14,7 +15,7 @@ export const sentenceTasks: readonly string[] = ["chat", "cards", "map", "lesson
  * space ("GPT-6.1 Terra"), so all of them are spelled with the space.
  */
 export function roleModelName(name: string): string {
-  return name.replace(/^Claude (?=\S)/, "").replace(/^(GPT-\d+(?:\.\d+)*)-(?=[A-Za-z])/, "$1 ");
+  return displayModelName(name, name).replace(/^Claude (?=\S)/, "");
 }
 
 /** The three roles of a tool with the model each one runs, in the order of the row. A role with no model is left out. */

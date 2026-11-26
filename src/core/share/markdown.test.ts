@@ -150,8 +150,7 @@ describe("markdown export", () => {
     });
     expect(lesson.filename).toBe("Fisica 1.md");
     expect(lesson.markdown).toContain("$x^2$");
-    expect(lesson.markdown).toContain("Source");
-    expect(lesson.markdown).toContain("1. Moti");
+    expect(lesson.markdown).toContain("## Sources\n\n- Fisica, 1. Moti\n");
     const passage = db.prepare(`SELECT id FROM passages LIMIT 1`).get() as {
       id: string;
     };
@@ -282,7 +281,53 @@ describe("markdown export", () => {
     `);
     const lesson = exportMarkdown(db, { planId: "p", kind: "lesson", topicId: "t" }).markdown;
     expect(lesson).toBe(
-      "# Funzioni\n\n## Intorni\n\nPrimo.\n\n### Distanza\n\nTesto.\n\n## Insiemi aperti\n\n### Aperti\n\nAltro testo.\n\n## Fonti\n\n- 2.1 Intorni\n- 2.2 Aperti\n",
+      "# Funzioni\n\n## Intorni\n\nPrimo.\n\n### Distanza\n\nTesto.\n\n## Insiemi aperti\n\n### Aperti\n\nAltro testo.\n\n## Fonti\n\n- Libro, 2.1 Intorni\n- Libro, 2.2 Aperti\n",
+    );
+    db.close();
+  });
+
+  it("names each source document with its place in a lesson export, like a chat export", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      INSERT INTO plans (id,title,status,content_language,created_at,updated_at) VALUES ('p','Analisi 2','ready','it',1,1);
+      INSERT INTO topics (id,plan_id,title,position,created_at) VALUES ('t','p','EDO',0,1);
+      INSERT INTO sources (id,title,kind,status,created_at,updated_at) VALUES
+        ('s1','analisi2-teoremi','pdf','ready',1,1),
+        ('s2','appunti-edo','docx','ready',1,1),
+        ('s3','lavagna-foto','image','ready',1,1);
+      INSERT INTO passages (id,source_id,text,section_path,created_at) VALUES
+        ('p1','s1','Teorema','p. 1',1),
+        ('p2','s1','Altro sulla stessa pagina','p. 1',2),
+        ('p3','s2','Introduzione','1. Equazioni differenziali ordinarie (EDO)',3),
+        ('p4','s3','Solo testo senza sezione',NULL,4);
+      INSERT INTO topic_passages (topic_id,passage_id) VALUES ('t','p1'),('t','p2'),('t','p3'),('t','p4');
+    `);
+    const lesson = exportMarkdown(db, { planId: "p", kind: "lesson", topicId: "t" }).markdown;
+    expect(lesson).toContain(
+      "## Fonti\n\n- analisi2-teoremi, p. 1\n- appunti-edo, 1. Equazioni differenziali ordinarie (EDO)\n- lavagna-foto\n",
+    );
+    db.close();
+  });
+
+  it("localizes picture places in lesson exports by plan language", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      INSERT INTO plans (id,title,status,content_language,created_at,updated_at) VALUES
+        ('it','Analisi 2','ready','it',1,1),
+        ('en','Calculus 2','ready','en',1,1);
+      INSERT INTO topics (id,plan_id,title,position,created_at) VALUES
+        ('ti','it','EDO',0,1),
+        ('te','en','ODE',0,1);
+      INSERT INTO sources (id,title,kind,status,created_at,updated_at) VALUES ('s','appunti-edo','docx','ready',1,1);
+      INSERT INTO passages (id,source_id,text,locator_json,section_path,created_at) VALUES
+        ('p1','s','Testo immagine','{"picture":1}','picture 1',1);
+      INSERT INTO topic_passages (topic_id,passage_id) VALUES ('ti','p1'),('te','p1');
+    `);
+    expect(exportMarkdown(db, { planId: "it", kind: "lesson", topicId: "ti" }).markdown).toContain(
+      "## Fonti\n\n- appunti-edo, immagine 1\n",
+    );
+    expect(exportMarkdown(db, { planId: "en", kind: "lesson", topicId: "te" }).markdown).toContain(
+      "## Sources\n\n- appunti-edo, picture 1\n",
     );
     db.close();
   });

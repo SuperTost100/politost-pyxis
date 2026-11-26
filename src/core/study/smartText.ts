@@ -237,6 +237,7 @@ export function smartSources(db: Database.Database, passageIds: string[]) {
         page?: number;
         slide?: number;
         chapter?: number;
+        picture?: number;
         section?: string;
         version?: number;
       }>;
@@ -250,9 +251,10 @@ export function smartSources(db: Database.Database, passageIds: string[]) {
           page?: number;
           slide?: number;
           chapter?: number;
+          picture?: number;
         })
       : {};
-    // The coarsest place the reader can open: a page, a slide, a chapter, else the section heading.
+    // The coarsest place the reader can open: a page, a slide, a chapter, a picture, else the section heading.
     const place =
       locator.page != null
         ? { page: locator.page }
@@ -260,9 +262,11 @@ export function smartSources(db: Database.Database, passageIds: string[]) {
           ? { slide: locator.slide }
           : locator.chapter != null
             ? { chapter: locator.chapter }
-            : row.section_path
-              ? { section: row.section_path.slice(0, 120) }
-              : {};
+            : locator.picture != null
+              ? { picture: locator.picture }
+              : row.section_path
+                ? { section: row.section_path.slice(0, 120) }
+                : {};
     const source = sources.get(row.source_id) ?? {
       sourceId: row.source_id,
       title: row.title,
@@ -277,8 +281,8 @@ export function smartSources(db: Database.Database, passageIds: string[]) {
     ...source,
     places: source.places.sort(
       (a, b) =>
-        (a.page ?? a.slide ?? a.chapter ?? 0) -
-        (b.page ?? b.slide ?? b.chapter ?? 0),
+        (a.page ?? a.slide ?? a.chapter ?? a.picture ?? 0) -
+        (b.page ?? b.slide ?? b.chapter ?? b.picture ?? 0),
     ),
   }));
 }

@@ -1,4 +1,4 @@
-import { readableModel } from "../../../shared/model-names";
+import { displayModelName } from "../../../shared/model-names";
 import { ENGINE_NAMES } from "./engineErrorView";
 
 /** What `engines.names` answers: each engine's name, and each listed model's name by engine. */
@@ -12,13 +12,13 @@ export function engineName(names: EngineNames | undefined, provider: string): st
   return names?.engines[provider] ?? ENGINE_NAMES[provider] ?? provider;
 }
 
-/** The engine's own name for a model ("Codex 5.3" for `gpt-5.3-codex`), else the id made readable. */
+/** The engine's own name for a model ("Codex 5.3" for `gpt-5.3-codex`), normalized to one spelling, else the id made readable. */
 export function modelName(
   names: EngineNames | undefined,
   provider: string | null | undefined,
   model: string,
 ): string {
-  return (provider ? names?.models[provider]?.[model] : undefined) ?? readableModel(model);
+  return displayModelName(model, provider ? names?.models[provider]?.[model] : undefined);
 }
 
 /**

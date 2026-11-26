@@ -78,4 +78,16 @@ describe("citation marks are hidden only where the page knows its passages", () 
   it("turns a known mark into an anchor when the page gives its passages", () => {
     expect(markdownSource("Label [P1].", (n) => n === 1)).toBe("Label[](cite:p1).");
   });
+
+  it("keeps a display formula on its own line when a citation mark follows the closing $$", () => {
+    const oneLine = markdownSource("Tutte le soluzioni sono\n$$y_0(x)=C e^{-A(x)}.$$ [P2]", (n) => n === 2);
+    expect(oneLine).toContain("$$\ny_0(x)=C e^{-A(x)}.\n$$");
+    expect(oneLine).toContain("\n\n[](cite:p2)");
+
+    const multiLine = markdownSource("Tutte le soluzioni sono\n$$\ny_0(x)=C e^{-A(x)}\n$$ [P2].", (n) => n === 2);
+    expect(multiLine).toContain("$$\ny_0(x)=C e^{-A(x)}\n$$\n\n[](cite:p2).");
+
+    // Inline math stays inline when followed by a citation.
+    expect(markdownSource("Vale $x^2$ [P2].", (n) => n === 2)).toBe("Vale $x^2$[](cite:p2).");
+  });
 });

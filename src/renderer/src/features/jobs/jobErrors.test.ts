@@ -28,6 +28,16 @@ describe("job error text", () => {
     expect(jobErrorKey("not-logged-in: Please run /login")).toBe("engines.errors.not-logged-in");
     expect(jobErrorKey("model-not-included: not in your plan")).toBe("engines.errors.model-not-included");
     expect(jobErrorKey("stream-truncated")).toBe("engines.errors.stream-truncated");
+    expect(jobErrorKey("invalid-output")).toBe("engines.errors.invalid-output");
+    expect(jobErrorKey("invalid-output [codex]: bad json")).toBe("engines.errors.invalid-output");
+    expect(jobErrorEngine("invalid-output [codex]: bad json")).toBe("codex");
+    for (const lang of ["en", "it"]) {
+      const messages = JSON.parse(
+        readFileSync(resolve(import.meta.dirname, `../../locales/${lang}.json`), "utf8"),
+      ) as { engines: { errors: Record<string, unknown> } };
+      expect(typeof messages.engines.errors["invalid-output"], lang).toBe("string");
+      expect(String(messages.engines.errors["invalid-output"]), lang).not.toContain("invalid-output");
+    }
   });
 
   it("reads which engine a job's failure came from", () => {
