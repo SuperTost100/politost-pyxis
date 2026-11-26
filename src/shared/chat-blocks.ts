@@ -170,8 +170,8 @@ export function parseChart(body: string): ChartData | null {
       ? { value: numeric(first(reference, "value", "y")), label: text(first(reference, "label", "name")) ?? "" }
       : undefined,
   });
-  // The chart is model text read from JSON: the LaTeX a single backslash lost in it is restored here, not where it is drawn.
-  return parsed.success ? repairModelStrings(parsed.data) : null;
+  // A chart's labels are plain text and draw no LaTeX, so nothing in them is read as a lost backslash.
+  return parsed.success ? parsed.data : null;
 }
 
 const questionSchema = z

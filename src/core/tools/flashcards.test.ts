@@ -3,6 +3,7 @@ import { openDatabase } from "../db/connection";
 import { browseCards } from "../study/cardBrowser";
 import { toolBlockIds } from "../../shared/tool-blocks";
 import { CARDS_PER_TURN, flashcardsInput, flashcardsTool } from "./flashcards";
+import { chatToolList } from "./registry";
 import {
   describeToolBlocks,
   restoreToolResult,
@@ -46,6 +47,21 @@ const cards = (n: number, from = 0) =>
   Array.from({ length: n }, (_, i) => ({ front: `Che cosa dice il principio ${from + i + 1}?`, back: `$F = ma$ (${from + i + 1})` }));
 
 const args = (n: number, title?: string) => flashcardsInput.parse({ cards: cards(n), ...(title ? { title } : {}) });
+
+describe("create_flashcards and the LaTeX its JSON lost", () => {
+  it("restores it in each card's front and back, the tool's only formula fields, and leaves the deck's title as written", () => {
+    const tool = flashcardsTool(openDatabase(":memory:"));
+    expect(tool.repairs?.({ title: "Angoli\tre", cards: [{ front: "Cos'è $\theta$?", back: "$\frac{1}{2}\\pi$" }] })).toEqual({
+      title: "Angoli\tre",
+      cards: [{ front: "Cos'è $\\theta$?", back: "$\\frac{1}{2}\\pi$" }],
+    });
+  });
+
+  it("is the one chat tool that repairs its arguments: the others hold free text or names", () => {
+    const tools = chatToolList(openDatabase(":memory:"), true);
+    expect(tools.filter((tool) => tool.repairs).map((tool) => tool.name)).toEqual(["create_flashcards"]);
+  });
+});
 
 describe("create_flashcards", () => {
   it("files the cards under the chat's subject, skips fronts already there and stores what it did", async () => {

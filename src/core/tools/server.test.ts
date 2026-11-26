@@ -1,6 +1,7 @@
 import { request } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { repairModelStrings } from "../../shared/latex-repair";
 import { connect, type Socket } from "node:net";
 import {
   armChatTools,
@@ -195,6 +196,38 @@ describe("tool server", () => {
     // A new turn starts counting again.
     armChatTools(turnFor("chat-a"));
     expect((await call({ n: 1 })).isError).toBeUndefined();
+  });
+
+  it("hands a tool its arguments as the model's JSON says, and repairs only the fields the tool names", async () => {
+    const got: unknown[] = [];
+    setTools([
+      {
+        name: "echo",
+        description: "Keeps its text.",
+        input: z.object({ text: z.string() }).strict(),
+        run(_turn, args) {
+          got.push(args);
+          return { text: "ok" };
+        },
+      },
+      {
+        name: "card",
+        description: "Keeps a card.",
+        input: z.object({ front: z.string(), note: z.string() }).strict(),
+        repairs: (args) => ({ ...(args as object), front: repairModelStrings((args as { front: string }).front) }),
+        run(_turn, args) {
+          got.push(args);
+          return { text: "ok" };
+        },
+      },
+    ]);
+    const { url, token } = await chatTools("chat-a");
+    const call = (name: string, args: unknown) => send(url, { headers: auth(token), body: rpc("tools/call", { name, arguments: args }) });
+    armChatTools(turnFor("chat-a"));
+    // A statement copied as prose: the line break between `1 +` and `e^t` is a line break.
+    await call("echo", { text: "Calcola $$f(t) = 1 +\ne^t$$ e $\\theta$" });
+    await call("card", { front: "$\theta$", note: "$\theta$" });
+    expect(got).toEqual([{ text: "Calcola $$f(t) = 1 +\ne^t$$ e $\\theta$" }, { front: "$\\theta$", note: "$\theta$" }]);
   });
 
   it("tells a failing tool without its details", async () => {

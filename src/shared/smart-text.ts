@@ -449,6 +449,9 @@ export function mapFencedBlocks(
   return out.join("\n");
 }
 
+/** Blocks read from Markdown rather than JSON (a worked example may be written either way): they lost no backslash. */
+const fromMarkdown = new WeakSet<BlockData>();
+
 function repairBlock(
   kind: SmartBlockKind,
   body: string,
@@ -502,7 +505,10 @@ function repairBlock(
   // A worked example written as plain Markdown is still a worked example.
   if (!value) {
     const parsed = exampleSchema.safeParse({ body: raw === undefined ? body : undefined });
-    return parsed.success && !/^\s*[[{]/.test(body) ? { kind, ...parsed.data } : null;
+    if (!parsed.success || /^\s*[[{]/.test(body)) return null;
+    const example: BlockData = { kind, ...parsed.data };
+    fromMarkdown.add(example);
+    return example;
   }
   const steps = asSteps(pick(value, "steps"));
   const problem = asText(pick(value, "problem", "question"));
@@ -575,10 +581,14 @@ export function parseSmartText(
     // The id, and with it the order of a question's options, is made from the block as its JSON was read, as it always
     // was, so a saved answer keeps its question. The texts shown then get back the LaTeX a single backslash lost in the
     // JSON (`repairModelStrings`): here, once, where the JSON is read, and never again when they are drawn. Only texts
-    // change, so the questions, their options and the order of those stay. A figure's code stays as read.
+    // change, so the questions, their options and the order of those stay. A figure's code stays as read, and an example
+    // written as Markdown lost nothing.
     const base = `${kind}-${hash(JSON.stringify(read))}`;
-    const repaired: BlockData =
-      read.kind === "figure" ? { ...read, caption: repairModelStrings(read.caption) } : repairModelStrings(read);
+    const repaired: BlockData = fromMarkdown.has(read)
+      ? read
+      : read.kind === "figure"
+        ? { ...read, caption: repairModelStrings(read.caption) }
+        : repairModelStrings(read);
     const count = (seen.get(base) ?? 0) + 1;
     seen.set(base, count);
     const id = count > 1 ? `${base}-${count}` : base;

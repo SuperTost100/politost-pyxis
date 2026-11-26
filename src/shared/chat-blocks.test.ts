@@ -59,6 +59,12 @@ describe("chart blocks", () => {
     expect(parsed.reference).toEqual({ value: 18, label: "18" });
   });
 
+  it("keeps its labels as the JSON says: they are plain text, never LaTeX", () => {
+    // `C:\notes` written with its backslash escaped in the JSON is a backslash and an n, not a line break.
+    const parsed = parseChart(chart({ ...GRADES, title: "Voti in C:\\notes" }))!;
+    expect(parsed.title).toBe("Voti in C:\\notes");
+  });
+
   it("refuses what is not a chart: incomplete while streaming, no title, an unknown kind, no points", () => {
     expect(parseChart(chart(GRADES).slice(0, 120))).toBeNull();
     expect(parseChart(chart({ ...GRADES, title: "" }))).toBeNull();

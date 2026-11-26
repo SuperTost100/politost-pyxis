@@ -111,6 +111,15 @@ describe("smart text", () => {
     expect(segment.block.explanation).toBe("Riga\nnuova: $\\nabla f$.");
   });
 
+  it("leaves a worked example written as Markdown as written, and repairs one written as JSON", () => {
+    // Markdown never travelled inside a JSON string, so the line break between `1 +` and `e^t` is one.
+    const markdown = "Calcola:\n\n$$\nf(t) = 1 +\ne^t\n$$";
+    const [plain] = parseSmartText(`\`\`\`pyxis-example\n${markdown}\n\`\`\``);
+    expect(plain?.type === "block" && plain.block.kind === "example" ? plain.block.body : null).toBe(markdown);
+    const [json] = parseSmartText(`\`\`\`pyxis-example\n${String.raw`{"title": "Angoli", "body": "Con $\theta = \frac{\pi}{2}$."}`}\n\`\`\``);
+    expect(json?.type === "block" && json.block.kind === "example" ? json.block.body : null).toBe("Con $\\theta = \\frac{\\pi}{2}$.");
+  });
+
   it("drops invalid and unknown blocks instead of showing raw JSON", () => {
     const segments = parseSmartText(
       [
