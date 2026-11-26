@@ -42,32 +42,23 @@ export function usedLine(reply: {
   return { key: "ask.used.library", values: { count, ...context } };
 }
 
-/** Characters of plain prose up to which a reply with no math, list or block is taken as a short reply, not an explanation. */
-const SHORT_REPLY = 600;
-
 /**
- * Whether a reply explains something, which is what the general-knowledge note speaks about. A reply whose substance is
- * a tool's result (a ```pyxis-tool block: cards, a map, a quiz, a proposal) or the student's own results is not one,
- * and neither is a short plain reply with no math, list, heading, table or block: a refusal, or a question back.
- * shortcut: the length and the marks stand in for "explains", so a short answer without math from general knowledge
- * loses the note too; a mark the model writes for such replies would be exact, if that ever matters.
+ * Whether a reply's substance is an action rather than an answer: it holds a ```pyxis-tool block (cards, a map, a quiz,
+ * a proposal) or its turn read the student's own results. The general-knowledge note speaks about where an answer comes
+ * from, so it is left off such a reply. Every other reply keeps it, however short, a refusal included.
  */
-function explains(reply: { body?: string; results?: boolean }): boolean {
-  if (reply.body === undefined) return true;
-  if (reply.results || /^```pyxis-tool\s*$/m.test(reply.body)) return false;
-  const text = reply.body.trim();
-  if (/\$|\\\(|\\\[|^```|^\s*(?:[-*+]|\d+[.)])\s|^#{1,6}\s|^\s*\|/m.test(text)) return true;
-  return text.length > SHORT_REPLY;
+function isAction(reply: { body?: string; results?: boolean }): boolean {
+  return Boolean(reply.results) || (reply.body !== undefined && /^```pyxis-tool\s*$/m.test(reply.body));
 }
 
 /**
  * The line kept above an answer, now that the row under it names the sources: one that says the answer comes from
  * general knowledge, or that the chat's subject had nothing on the question, both warnings to read before the answer.
- * The general-knowledge note is left off a reply that explains nothing (`explains`).
+ * The general-knowledge note is left off a reply whose substance is an action (`isAction`).
  */
 export function noteLine(reply: Parameters<typeof usedLine>[0] & { body?: string; results?: boolean }): UsedLine {
   const line = usedLine(reply);
   if (!line) return null;
-  if (reply.grounding === "general") return explains(reply) ? line : null;
+  if (reply.grounding === "general") return isAction(reply) ? null : line;
   return line.values.context === "wider" ? line : null;
 }

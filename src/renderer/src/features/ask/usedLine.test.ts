@@ -92,7 +92,7 @@ describe("noteLine", () => {
   });
 });
 
-describe("noteLine, on a reply that explains nothing", () => {
+describe("noteLine, on a reply whose substance is an action", () => {
   const general = { grounding: "general", citations: [], searched: { found: false, where: "library" } } as const;
   const tool = "```pyxis-tool\n0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b\n```";
 
@@ -103,22 +103,18 @@ describe("noteLine, on a reply that explains nothing", () => {
     expect(noteLine({ ...general, results: true, body: "Nell'ultimo quiz hai preso 26/30.\n\n```pyxis-chart\n{}\n```" })).toBeNull();
   });
 
-  it("says nothing above a short plain reply: a refusal or a question back, with no explanation in it", () => {
-    const refusal =
-      "No, non posso cambiare il voto dell'ultimo quiz. I risultati indicano il tuo livello di preparazione, quindi possono cambiare solo attraverso il tuo lavoro.\n\nPuoi rifare il quiz dalla pagina dei risultati, oppure segnalare una domanda poco chiara con «Domanda sbagliata?».";
-    expect(noteLine({ ...general, body: refusal })).toBeNull();
-    expect(
-      noteLine({ ...general, searched: { found: true, where: "library" }, body: "Di quale argomento vuoi cancellare le flashcard?" }),
-    ).toBeNull();
-  });
-
-  it("keeps the note above an answer from general knowledge: one with math, a list or a block, or a long one", () => {
+  it("keeps the note above every other answer from general knowledge, however short, a refusal included", () => {
     const line = { key: "ask.used.general", values: {} };
     expect(noteLine({ ...general, body: "Un autovalore è un numero $\\lambda$ per cui $Av = \\lambda v$ con $v \\neq 0$." })).toEqual(line);
     expect(noteLine({ ...general, body: "Le tre leggi:\n\n1. inerzia\n2. $F = ma$\n3. azione e reazione" })).toEqual(line);
     expect(noteLine({ ...general, body: "Ecco il grafico.\n\n```pyxis-figure\n{}\n```" })).toEqual(line);
-    expect(noteLine({ ...general, body: "Il teorema di Cauchy-Lipschitz garantisce esistenza e unicità locale. ".repeat(10) })).toEqual(line);
-    // A tool block in a reply that also cites nothing but explains at length is still an action: the card is the answer.
+    expect(noteLine({ ...general, body: "Sì, è il teorema di Cauchy." })).toEqual(line);
+    expect(noteLine({ ...general, body: "No, il voto non lo posso cambiare: puoi rifare il quiz dalla pagina dei risultati." })).toEqual(line);
+    expect(noteLine({ ...general, searched: { found: true, where: "library" }, body: "Di quale argomento vuoi cancellare le flashcard?" })).toEqual({
+      key: "ask.used.generalUnused",
+      values: {},
+    });
+    // A tool block in a reply that also explains is still an action: the card is the answer.
     expect(noteLine({ ...general, body: `Ecco le flashcard.\n\n${tool}` })).toBeNull();
   });
 });
