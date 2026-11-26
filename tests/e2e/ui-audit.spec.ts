@@ -3519,10 +3519,21 @@ async function openState(page: Page, name: string) {
         "aria-current",
         "step",
       );
-      if (step === 1)
+      if (step === 1) {
         await expect(
           page.getByRole("slider", { name: /^(Obiettivo|Goal) .* (su|out of) (30|100)$/ }),
         ).toBeVisible();
+        // At 1280 x 832 (a laptop window), the primary button at the bottom of step 1 must fit whole inside the viewport.
+        const before = page.viewportSize();
+        if (before && before.width >= 1200) {
+          await page.setViewportSize({ width: 1280, height: 832 });
+          const primary = page.locator(".focus-actions-bar .ant-btn-primary");
+          await expect(primary).toBeVisible();
+          const box = (await primary.boundingBox())!;
+          expect(box.y + box.height, "wizard step 1 primary button is cut off at 1280x832").toBeLessThanOrEqual(832);
+          await page.setViewportSize(before);
+        }
+      }
       // With a source picked, the material step creates the exam and offers no guided flow.
       if (step === 2) {
         await expect(

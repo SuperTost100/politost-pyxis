@@ -113,6 +113,7 @@ function Setup({
     notice: false,
     picking: false,
     connected: [],
+    allConnected: false,
   });
   const onEngines = useCallback((state: EnginesState) => setEngines(state), []);
   const [busy, setBusy] = useState(false);
@@ -204,7 +205,7 @@ function Setup({
         ).format(engines.connected),
         count: engines.connected.length,
       });
-      body = t("onboarding.ai.readyBody");
+      body = engines.allConnected ? "" : t("onboarding.ai.readyBody");
     } else {
       title = t("onboarding.ai.title");
       body = t("onboarding.ai.body");
@@ -265,7 +266,7 @@ function Setup({
           <h1 className="display" tabIndex={-1} ref={heading}>
             {title}
           </h1>
-          <p className="body">{body}</p>
+          {body ? <p className="body">{body}</p> : null}
         </div>
       )}
 

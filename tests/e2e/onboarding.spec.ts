@@ -1033,3 +1033,41 @@ test("First setup: the three tools sit in one row when they fit and in one colum
     rmSync(bin, { recursive: true, force: true });
   }
 });
+
+test("First setup: when all three tools are connected, the AI step does not ask to connect another", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-all3-"));
+  const { bin, env } = fakeBins({ claude: true, codex: true });
+  const agy = join(bin, "agy");
+  writeFileSync(
+    agy,
+    `#!/bin/sh
+case "$1" in
+  --version) echo "1.5.13";;
+  models) printf 'gemini-3.8-flash\\tGemini 3.8 Flash\\n';;
+  *) exit 1;;
+esac
+`,
+  );
+  chmodSync(agy, 0o755);
+  const app = await launch(userData, { ...env, CLI_FUNNEL_AGY_BIN: agy, GEMINI_API_KEY: "test-key" });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 1280, height: 832 });
+    await button(page, "Continua").click();
+    await expect(cardState(page, "Claude")).toHaveText("Collegato", { timeout: 30000 });
+    await expect(cardState(page, "ChatGPT")).toHaveText("Collegato");
+    await expect(cardState(page, "Gemini")).toHaveText("Collegato");
+    await expect(page.getByRole("heading", { name: "Claude, ChatGPT e Gemini sono pronti" })).toBeVisible();
+    await expect(page.locator(".px-onboarding-title .body")).toHaveCount(0);
+    await expect(page.getByText("collega anche un'altra AI", { exact: false })).toHaveCount(0);
+    await saveShot(page, "onboarding/2-ai-all-connected.png");
+    await noAxeViolations(page);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
