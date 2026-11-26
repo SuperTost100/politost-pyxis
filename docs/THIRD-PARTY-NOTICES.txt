@@ -1,4 +1,4 @@
-PoliTost Pyxis 0.5.0-dev.13
+PoliTost Pyxis 0.5.0-dev.14
 
 MIT License
 
@@ -25444,7 +25444,7 @@ DEALINGS IN THE SOFTWARE.
 
 ========================================================================
 
-@open-spaced-repetition/srs-kit 1.0.0
+@open-spaced-repetition/srs-kit 1.0.1
 License metadata: BSD-3-Clause
 
 --- LICENSE ---
@@ -25980,7 +25980,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ========================================================================
 
-@rc-component/drawer 1.4.2
+@rc-component/drawer 1.4.3
 License metadata: MIT
 
 --- LICENSE ---
@@ -27227,7 +27227,7 @@ SOFTWARE.
 
 ========================================================================
 
-@tanstack/query-core 5.108.1
+@tanstack/query-core 5.108.4
 License metadata: MIT
 
 --- LICENSE ---
@@ -27256,7 +27256,7 @@ SOFTWARE.
 
 ========================================================================
 
-@tanstack/react-query 5.108.1
+@tanstack/react-query 5.108.4
 License metadata: MIT
 
 --- LICENSE ---
@@ -27372,7 +27372,7 @@ License metadata: MIT
 
 ========================================================================
 
-@types/d3-selection 3.0.12
+@types/d3-selection 3.0.13
 License metadata: MIT
 
 --- LICENSE ---
@@ -27662,7 +27662,7 @@ License metadata: MIT
 
 ========================================================================
 
-@types/node 26.6.6
+@types/node 26.6.10
 License metadata: MIT
 
 --- LICENSE ---
@@ -27691,7 +27691,7 @@ License metadata: MIT
 
 ========================================================================
 
-@types/react 19.3.0
+@types/react 19.3.3
 License metadata: MIT
 
 --- LICENSE ---
@@ -28377,7 +28377,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ========================================================================
 
-@xyflow/react 13.0.2
+@xyflow/react 13.0.3
 License metadata: MIT
 
 --- LICENSE ---
@@ -28406,7 +28406,7 @@ SOFTWARE.
 
 ========================================================================
 
-@xyflow/system 1.0.0
+@xyflow/system 1.0.1
 License metadata: MIT
 
 --- LICENSE ---
@@ -28435,7 +28435,7 @@ SOFTWARE.
 
 ========================================================================
 
-antd 6.7.1
+antd 6.7.2
 License metadata: MIT
 
 --- LICENSE ---
@@ -30255,7 +30255,7 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ========================================================================
 
-dompurify 3.4.18
+dompurify 3.5.0
 License metadata: (MPL-2.0 OR Apache-2.0)
 
 --- LICENSE ---
@@ -32371,7 +32371,7 @@ IN THE SOFTWARE.
 
 ========================================================================
 
-i18next 27.2.2
+i18next 27.2.9
 License metadata: MIT
 
 --- LICENSE ---
@@ -36222,7 +36222,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ========================================================================
 
-lucide-react 1.77.0
+lucide-react 1.80.0
 License metadata: ISC
 
 --- LICENSE ---
@@ -86464,7 +86464,7 @@ SOFTWARE.
 
 ========================================================================
 
-react-router 8.5.2
+react-router 8.5.3
 License metadata: MIT
 
 --- LICENSE.md ---
@@ -88159,7 +88159,7 @@ THE SOFTWARE.
 
 ========================================================================
 
-ts-fsrs 6.0.0
+ts-fsrs 6.0.1
 License metadata: MIT
 
 --- LICENSE ---
@@ -88836,7 +88836,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
 
-undici 8.13.0
+undici 8.13.1
 License metadata: MIT
 
 --- LICENSE ---

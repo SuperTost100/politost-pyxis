@@ -1262,7 +1262,7 @@
   },
   {
     "name": "@open-spaced-repetition/srs-kit",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "license": "BSD-3-Clause",
     "texts": [
       {
@@ -1468,7 +1468,7 @@
   },
   {
     "name": "@rc-component/drawer",
-    "version": "1.4.2",
+    "version": "1.4.3",
     "license": "MIT",
     "texts": [
       {
@@ -1943,7 +1943,7 @@
   },
   {
     "name": "@tanstack/query-core",
-    "version": "5.108.1",
+    "version": "5.108.4",
     "license": "MIT",
     "texts": [
       {
@@ -1954,7 +1954,7 @@
   },
   {
     "name": "@tanstack/react-query",
-    "version": "5.108.1",
+    "version": "5.108.4",
     "license": "MIT",
     "texts": [
       {
@@ -1998,7 +1998,7 @@
   },
   {
     "name": "@types/d3-selection",
-    "version": "3.0.12",
+    "version": "3.0.13",
     "license": "MIT",
     "texts": [
       {
@@ -2108,7 +2108,7 @@
   },
   {
     "name": "@types/node",
-    "version": "26.6.6",
+    "version": "26.6.10",
     "license": "MIT",
     "texts": [
       {
@@ -2119,7 +2119,7 @@
   },
   {
     "name": "@types/react",
-    "version": "19.3.0",
+    "version": "19.3.3",
     "license": "MIT",
     "texts": [
       {
@@ -2211,7 +2211,7 @@
   },
   {
     "name": "@xyflow/react",
-    "version": "13.0.2",
+    "version": "13.0.3",
     "license": "MIT",
     "texts": [
       {
@@ -2222,7 +2222,7 @@
   },
   {
     "name": "@xyflow/system",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "license": "MIT",
     "texts": [
       {
@@ -2233,7 +2233,7 @@
   },
   {
     "name": "antd",
-    "version": "6.7.1",
+    "version": "6.7.2",
     "license": "MIT",
     "texts": [
       {
@@ -2794,7 +2794,7 @@
   },
   {
     "name": "dompurify",
-    "version": "3.4.18",
+    "version": "3.5.0",
     "license": "(MPL-2.0 OR Apache-2.0)",
     "texts": [
       {
@@ -3226,7 +3226,7 @@
   },
   {
     "name": "i18next",
-    "version": "27.2.2",
+    "version": "27.2.9",
     "license": "MIT",
     "texts": [
       {
@@ -3528,7 +3528,7 @@
   },
   {
     "name": "lucide-react",
-    "version": "1.77.0",
+    "version": "1.80.0",
     "license": "ISC",
     "texts": [
       {
@@ -4741,7 +4741,7 @@
   },
   {
     "name": "react-router",
-    "version": "8.5.2",
+    "version": "8.5.3",
     "license": "MIT",
     "texts": [
       {
@@ -5110,7 +5110,7 @@
   },
   {
     "name": "ts-fsrs",
-    "version": "6.0.0",
+    "version": "6.0.1",
     "license": "MIT",
     "texts": [
       {
@@ -5202,7 +5202,7 @@
   },
   {
     "name": "undici",
-    "version": "8.13.0",
+    "version": "8.13.1",
     "license": "MIT",
     "texts": [
       {
