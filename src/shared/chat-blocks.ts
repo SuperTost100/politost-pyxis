@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { repairModelStrings } from "./latex-repair";
 import { end, parseMarkdown, start, walk } from "./markdown-tree";
 import { arranged, hash, mapFencedBlocks, parseLooseJson, stripPassageRefs } from "./smart-text";
 
@@ -169,7 +170,8 @@ export function parseChart(body: string): ChartData | null {
       ? { value: numeric(first(reference, "value", "y")), label: text(first(reference, "label", "name")) ?? "" }
       : undefined,
   });
-  return parsed.success ? parsed.data : null;
+  // The chart is model text read from JSON: the LaTeX a single backslash lost in it is restored here, not where it is drawn.
+  return parsed.success ? repairModelStrings(parsed.data) : null;
 }
 
 const questionSchema = z
@@ -250,8 +252,12 @@ export function chatQuestion(body: string): ChatQuestion | null {
   const data = parseQuestion(body);
   if (!data) return null;
   const id = `question-${hash(JSON.stringify(data))}`;
-  const shown = arranged({ question: data.question, options: data.options, answer: data.answer, explanation: undefined }, id);
-  return { ...data, options: shown.options, answer: shown.answer, order: shown.order, id };
+  // The id is made from the question as its JSON was read, as it always was, so a stored answer keeps it. The texts shown
+  // get back the LaTeX a single backslash lost in the JSON, here and not where they are drawn; that changes no option's
+  // place, since the order comes from the id and the number of options.
+  const texts = repairModelStrings(data);
+  const shown = arranged({ question: texts.question, options: texts.options, answer: texts.answer, explanation: undefined }, id);
+  return { ...texts, options: shown.options, answer: shown.answer, order: shown.order, id };
 }
 
 /**

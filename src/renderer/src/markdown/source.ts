@@ -2,7 +2,6 @@ import {
   displayMathLines,
   holdOpenMath,
   normalizeMathDelimiters,
-  repairLatexInProse,
 } from "../../../shared/math-delimiters";
 import { liftBlocks } from "../../../shared/chat-blocks";
 import { linkCitations, type KnownPassage } from "./citations";
@@ -40,9 +39,9 @@ function markChecks(body: string, steps: readonly string[]): string {
  * passages `known` names as empty links (without `known`, a text's [Pn] stays as it is stored), formulas in one
  * delimiter, display formulas on lines of their own. `writing` says the text is still arriving, so
  * a formula whose closing delimiter has not come yet waits as a placeholder instead of showing as raw source or, for
- * `$$`, as an error. That comes after the LaTeX escapes are repaired, so the formula is classified as it will be drawn,
- * and before the markers: one put at the end of a paragraph would stand between an open formula and the end of the text,
- * and the formula would no longer look open.
+ * `$$`, as an error. That comes before the markers: one put at the end of a paragraph would stand between an open formula
+ * and the end of the text, and the formula would no longer look open. Nothing here repairs LaTeX a model lost in JSON:
+ * that is done once where the JSON is read (`repairModelStrings`), and Markdown written as text lost nothing.
  */
 export function markdownSource(
   body: string,
@@ -51,10 +50,10 @@ export function markdownSource(
   checkSteps: readonly string[] = [],
 ): string {
   // A figure, chart or question block indented as far as Markdown's indented code, in a list item, is lifted to where it
-  // reads as that block. The text is classified as it will be drawn: its LaTeX escapes (a `\times` that arrived as a tab)
-  // are back first.
-  const repaired = repairLatexInProse(liftBlocks(body));
-  const held = writing ? holdOpenMath(repaired) : repaired;
-  const steps = checkSteps.map(repairLatexInProse);
-  return displayMathLines(normalizeMathDelimiters(known ? linkCitations(markChecks(held, steps), known) : markChecks(held, steps)));
+  // reads as that block.
+  const lifted = liftBlocks(body);
+  const held = writing ? holdOpenMath(lifted) : lifted;
+  return displayMathLines(
+    normalizeMathDelimiters(known ? linkCitations(markChecks(held, checkSteps), known) : markChecks(held, checkSteps)),
+  );
 }

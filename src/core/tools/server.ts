@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { z } from "zod";
 import type { runTurn } from "../engine/funnel";
 import type { UsageScope } from "../engine/usage";
+import { repairModelStrings } from "../../shared/latex-repair";
 
 /**
  * The MCP server through which the model that answers a chat calls Pyxis's tools (`registry.ts`). It is Streamable HTTP
@@ -336,7 +337,9 @@ async function call(chat: Chat, params: Record<string, unknown>) {
   const handle = turn.started(tool.name);
   let outcome: ToolOutcome;
   try {
-    const parsed = tool.input.safeParse(params.arguments ?? {});
+    // The arguments are the model's JSON, read by its tool and again here: the LaTeX a single backslash lost in them is
+    // restored once, before any tool stores or shows them.
+    const parsed = tool.input.safeParse(repairModelStrings(params.arguments ?? {}));
     outcome = parsed.success
       ? await tool.run(turn, parsed.data)
       : { text: `Invalid arguments: ${z.prettifyError(parsed.error).slice(0, 1500)}`, isError: true };

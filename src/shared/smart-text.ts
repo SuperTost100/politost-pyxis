@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { seededRandom, shuffleChoices } from "./choices";
 import { figureKind, type FigureKind } from "./figure-kinds";
+import { repairModelStrings } from "./latex-repair";
 import { priceFormulas } from "./math-delimiters";
 import { inRanges, notProseRanges } from "./outside-code";
 import { indentWidth, inListItem } from "./markdown-tree";
@@ -345,7 +346,9 @@ function repairFigure(raw: unknown): FigureData | null {
 
 /** The figure in a ```pyxis-figure body, or null when it is not one. */
 export function parseFigure(body: string): FigureData | null {
-  return repairFigure(parseLooseJson(body, FIGURE_CODE_KEYS));
+  const figure = repairFigure(parseLooseJson(body, FIGURE_CODE_KEYS));
+  // The caption is model text read from JSON, so the LaTeX it lost is restored here; the code is code and stays as read.
+  return figure && { ...figure, caption: repairModelStrings(figure.caption) };
 }
 
 /**
@@ -567,9 +570,15 @@ export function parseSmartText(
       segments.push({ type: "pending", kind });
       continue;
     }
-    const repaired = kind ? repairBlock(kind, body) : null;
-    if (!repaired) continue;
-    const base = `${kind}-${hash(JSON.stringify(repaired))}`;
+    const read = kind ? repairBlock(kind, body) : null;
+    if (!read) continue;
+    // The id, and with it the order of a question's options, is made from the block as its JSON was read, as it always
+    // was, so a saved answer keeps its question. The texts shown then get back the LaTeX a single backslash lost in the
+    // JSON (`repairModelStrings`): here, once, where the JSON is read, and never again when they are drawn. Only texts
+    // change, so the questions, their options and the order of those stay. A figure's code stays as read.
+    const base = `${kind}-${hash(JSON.stringify(read))}`;
+    const repaired: BlockData =
+      read.kind === "figure" ? { ...read, caption: repairModelStrings(read.caption) } : repairModelStrings(read);
     const count = (seen.get(base) ?? 0) + 1;
     seen.set(base, count);
     const id = count > 1 ? `${base}-${count}` : base;

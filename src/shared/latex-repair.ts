@@ -4,7 +4,13 @@ import { mapOutsideCode } from "./outside-code";
 /**
  * A model that writes LaTeX with one backslash inside a JSON string loses it: `\theta` becomes a tab and "heta", `\frac` a
  * form feed and "rac", `\nu` a line break and "u". `parseLooseJson` fixes the JSON text before it is read; these functions
- * put the backslash back in strings that were already read, as the engine's parser or an earlier save left them.
+ * put the backslash back in strings that were already read, as the engine's parser left them.
+ *
+ * Only text that travelled inside a JSON string can have lost a backslash, so `repairModelStrings` runs on that text alone,
+ * once, where the JSON is read: a structured answer (`generate`), a lesson block and its figure's caption (`parseSmartText`,
+ * `parseFigure`), a chat question or chart (`chat-blocks`), a tool's arguments (`tools/server`), an introduction sent as
+ * JSON and a part's takeaway. Markdown a model wrote as text, and what a student or a book wrote, lost nothing: a tab or a
+ * line break in it is one, and nothing repairs it, when it is drawn or ever.
  */
 
 // What follows the escape letter, for the LaTeX commands that start with b, f, n, r, t or v. Longest names first is not
@@ -132,7 +138,10 @@ export function repairLatexOutsideCode(text: string): string {
   );
 }
 
-/** The value with every string in it repaired by `repairLatexOutsideCode`. */
+/**
+ * The value with every string in it repaired by `repairLatexOutsideCode`, for a value read from a model's JSON: the
+ * commands a single backslash lost, a line break written as `\n` and a backslash written twice. Never for other text.
+ */
 export function repairModelStrings<T>(value: T): T {
   if (typeof value === "string") return repairLatexOutsideCode(value) as T;
   if (Array.isArray(value)) return value.map(repairModelStrings) as T;

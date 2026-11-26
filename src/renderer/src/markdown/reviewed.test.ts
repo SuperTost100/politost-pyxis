@@ -190,10 +190,11 @@ describe("CodeRabbit round 3, 5: indented code in a block quote", () => {
   });
 });
 
-describe("CodeRabbit round 3, 6: a \\times whose backslash arrived as a tab, while it streams", () => {
+describe("CodeRabbit round 3, 6: a \\times in a formula still being written", () => {
+  // A streamed answer is Markdown and lost no backslash; the tab of the original case is restored where JSON is read.
   it("is held as the formula it is, and a plain price is not", () => {
-    expect(markdownSource("Vale $5\times 2", undefined, true)).toContain("pyxis-math:inline:");
-    expect(markdownSource("Vale $5\times 2", undefined, true)).not.toContain("imes");
+    expect(markdownSource("Vale $5\\times 2", undefined, true)).toContain("pyxis-math:inline:");
+    expect(markdownSource("Vale $5\\times 2", undefined, true)).not.toContain("times");
     expect(markdownSource("Costa $5", undefined, true)).toBe("Costa $5");
   });
 });

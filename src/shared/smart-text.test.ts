@@ -20,7 +20,6 @@ import {
   stripPassageRefsOutsideCode,
   writtenSections,
 } from "./smart-text";
-import { repairLatexInProse } from "./math-delimiters";
 
 const check = {
   question: "Quanto vale $F$ se $m=2$ e $a=3$?",
@@ -92,13 +91,24 @@ describe("smart text", () => {
 
   it("keeps the id and option order of a block whose formulas open with a line break before e, u or i", () => {
     // Real line breaks inside the JSON strings, as a model writes them. The block is read as before, so an answer saved
-    // under its id stays; only the drawing of its formulas changed, which keeps those line breaks.
+    // under its id stays, and the texts shown keep those line breaks.
     const body = '{"question": "Quale vale?", "options": ["$$\ne^{x}\n$$", "$$\nu(t)\n$$", "$$\ni_{k}\n$$"], "answer": 1, "explanation": "Quindi\n$$\nu(t)=e^{t}\n$$"}';
     const [segment] = parseSmartText(`\`\`\`pyxis-check\n${body}\n\`\`\``);
     if (segment?.type !== "block" || segment.block.kind !== "check") throw new Error("not a check");
     // The id, order and answer 0.5.0-dev.13 gave this block.
     expect(segment.block).toMatchObject({ id: "check-o49o0rs94p", order: [1, 0, 2], answer: 0 });
-    for (const text of [...segment.block.options, segment.block.explanation!]) expect(repairLatexInProse(text)).toBe(text);
+    expect([...segment.block.options].sort()).toEqual(["$$\ne^{x}\n$$", "$$\ni_{k}\n$$", "$$\nu(t)\n$$"]);
+    expect(segment.block.explanation).toBe("Quindi\n$$\nu(t)=e^{t}\n$$");
+  });
+
+  it("restores the LaTeX a block's JSON lost to single backslashes where the block is read, not where it is drawn", () => {
+    // Raw model text: in String.raw, `\n`, `\t`, `\f`, `\b` and `\r` are the two characters of a JSON escape.
+    const body = String.raw`{"question": "Quale vale per $\nu$ e $\tau$?", "options": ["$\frac{1}{2}\theta$", "$\beta \ne \rho$", "$a \ni b$"], "answer": 0, "explanation": "Riga\nnuova: $\nabla f$."}`;
+    const [segment] = parseSmartText(`\`\`\`pyxis-check\n${body}\n\`\`\``);
+    if (segment?.type !== "block" || segment.block.kind !== "check") throw new Error("not a check");
+    expect(segment.block.question).toBe("Quale vale per $\\nu$ e $\\tau$?");
+    expect([...segment.block.options].sort()).toEqual(["$\\beta \\ne \\rho$", "$\\frac{1}{2}\\theta$", "$a \\ni b$"]);
+    expect(segment.block.explanation).toBe("Riga\nnuova: $\\nabla f$.");
   });
 
   it("drops invalid and unknown blocks instead of showing raw JSON", () => {

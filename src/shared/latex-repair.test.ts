@@ -181,7 +181,12 @@ describe("repairModelStrings and code", () => {
     expect(repairModelStrings(code)).toEqual({ prompt: "```\na\times b\n```\ne `c\times d` e $\\theta$" });
   });
 
+  it("repairs a command inside \\( … \\) and \\[ … \\] math", () => {
+    expect(repairModelStrings(["\\(a\neq b\\)", "\\[x\nu\\]"])).toEqual(["\\(a\\neq b\\)", "\\[x\\nu\\]"]);
+  });
+
   it("repairs prose that starts in the middle of a line after inline code", () => {
+    expect(repairModelStrings(["uso `x`\theta qui"])).toEqual(["uso `x`\\theta qui"]);
     expect(repairModelStrings(["`x`\theta"])).toEqual(["`x`\\theta"]);
   });
 });

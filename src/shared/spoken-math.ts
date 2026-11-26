@@ -1,4 +1,3 @@
-import { repairLatexOutsideCode } from "./latex-repair";
 import { mathSpans, resolveBookRefs } from "./math-delimiters";
 
 export const SIGNS: Record<string, string> = {
@@ -84,7 +83,7 @@ function spokenFormula(latex: string, glyphs = false): string {
 
 /** Markdown with `$…$` formulas as plain text for an accessible name, formulas spoken as signs and words. */
 export function spokenText(input: string, glyphs = false): string {
-  const markdown = resolveBookRefs(repairLatexOutsideCode(input));
+  const markdown = resolveBookRefs(input);
   let out = "";
   let at = 0;
   for (const [start, end] of mathSpans(markdown)) {
@@ -102,7 +101,7 @@ export function spokenText(input: string, glyphs = false): string {
  */
 export function plainTitle(input: string, max = 80): string {
   // Offsets are read in the text the spans were found in: a book reference changes the length of the text before it.
-  let text = resolveBookRefs(repairLatexOutsideCode(input));
+  let text = resolveBookRefs(input);
   const spans = mathSpans(text);
   const dangling = lastOpenDollar(text, spans);
   if (dangling >= 0) text = text.slice(0, dangling);
