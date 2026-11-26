@@ -71,6 +71,21 @@ function cardPlace(
 
 const TOOL_NAME = "create_flashcards";
 
+/** Subjects named when the model asks which one: enough for a student's courses, few enough for one sentence. */
+const SUBJECTS_NAMED = 8;
+
+/**
+ * What a tool that makes something in the chat's subject answers when the chat has none and the question pointed to
+ * none (`place` in `chat/turn.ts`): the model asks which subject in one sentence, naming the ones there are.
+ */
+export function askForSubject(db: Database.Database, what: string): string {
+  const names = db.prepare("SELECT name FROM subjects ORDER BY name COLLATE NOCASE LIMIT ?").pluck().all(SUBJECTS_NAMED + 1) as string[];
+  const list = names.length > SUBJECTS_NAMED ? `${names.slice(0, SUBJECTS_NAMED).join(", ")} and others` : names.join(", ");
+  return names.length === 0
+    ? `This chat has no subject and the Library has none, so ${what} has nowhere to go and nothing was created. Tell the student in one sentence that they can create a subject in Libreria and then ask again.`
+    : `This chat has no subject or exam yet, and this question did not point to one, so ${what} has nowhere to go and nothing was created. Ask the student in one sentence which subject it is for (${list}), and say that choosing it with the subject button above the conversation puts it there.`;
+}
+
 export function flashcardsTool(db: Database.Database): Tool {
   return {
     name: TOOL_NAME,
@@ -91,7 +106,7 @@ export function flashcardsTool(db: Database.Database): Tool {
       if (!where)
         return {
           declined: true,
-          text: "This chat has no subject or exam, so the cards have nowhere to go and none was created. Tell the student to choose a subject for the chat (the subject button above the conversation) and ask again.",
+          text: askForSubject(db, "the cards"),
         };
       const engine = turn.engine();
       turn.tally.cards = used + args.cards.length;

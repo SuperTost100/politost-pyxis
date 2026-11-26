@@ -8,6 +8,7 @@ import { GIVEN_UP } from "../jobs/runner";
 import { startChatMap } from "../maps/generate";
 import { mapShape } from "../maps/library";
 import { deleteMap, readStoredMap, storeMap, type StoredMap } from "../maps/store";
+import { askForSubject } from "./flashcards";
 import { goOnWithJob, hideJob, jobRow, jobState, showJob, stopJob, toolRunner } from "./jobs";
 import type { Tool, ToolTurn } from "./server";
 
@@ -82,7 +83,7 @@ export function mapTool(db: Database.Database): Tool {
       if (!subject)
         return {
           declined: true,
-          text: "This chat has no subject, so the map has nowhere to go and none was created. Tell the student to choose a subject for the chat (the subject button above the conversation) and ask again.",
+          text: askForSubject(db, "the map"),
         };
       turn.tally.maps = 1;
       const topic = asTitle(args.topic);

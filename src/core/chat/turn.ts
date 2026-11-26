@@ -59,7 +59,7 @@ import {
   contextBlock,
   dataBlock,
 } from "./prompts";
-import { liveSubject, pickSubject, sourceSubjects, subjectSourceIds, type SubjectBy } from "./subject";
+import { liveSubject, pickSubject, settledSubject, sourceSubjects, subjectSourceIds, type SubjectBy } from "./subject";
 import {
   contextHash,
   currentSession,
@@ -1340,15 +1340,14 @@ async function answer(
       : undefined;
   // Pyxis picks the chat's subject from a search of the whole Library, unless the student already chose (see subject.ts).
   const subjects = sourceSubjects(db, gathered.hits.map((hit) => hit.sourceId));
-  const picked =
-    searches && !narrowed && !subjectBy
-      ? pickSubject(
-          gathered.hits.map((hit) => ({
-            subject: subjects.get(hit.sourceId) ?? null,
-            relevant: gathered.relevant.includes(hit.id),
-          })),
-        )
-      : null;
+  const votes = gathered.hits.map((hit) => ({
+    subject: subjects.get(hit.sourceId) ?? null,
+    relevant: gathered.relevant.includes(hit.id),
+  }));
+  const picked = searches && !narrowed && !subjectBy ? pickSubject(votes) : null;
+  // Where the chat's tools put what they make when the chat has no subject yet: the one Pyxis picks, or else the one subject
+  // every relevant passage of this search belongs to. A tool that makes something there gives the chat that subject.
+  const settled = picked ?? (searches && !narrowed && !subjectBy ? settledSubject(votes) : null);
   const found = {
     ...gathered,
     hits: [
@@ -1533,7 +1532,7 @@ async function answer(
     chatId,
     tally,
     kept: {},
-    place: () => ({ planId: planId ?? null, subject: subject || picked || null }),
+    place: () => ({ planId: planId ?? null, subject: subject || settled || null }),
     engine: () => ({ provider: answering.provider, model: answering.model }),
     // The student's results go only to a tool on this computer, or one whose notice naming them the student confirmed.
     results: () => isProviderCurrent(answering.provider),
@@ -1811,12 +1810,14 @@ async function answer(
   });
   keepSession(db, chatId, result.provider, messageId);
   // The subject Pyxis picked is kept only with a whole reply, and only if nobody set one while it was written: a failed
-  // or stopped turn leaves the chat as it was.
-  if (picked) {
+  // or stopped turn leaves the chat as it was. A subject the search only settled on is kept when a tool made something
+  // there, so the chat is where its cards, map or quiz are.
+  const pyxisSubject = picked ?? (settled && marks.some((mark) => mark.resultId) ? settled : null);
+  if (pyxisSubject) {
     const scopeNow = readScope(db, chatId);
     if (!scopeNow.subjectBy && !chatSubject(db, chatId))
       db.prepare(`UPDATE chats SET subject = ?, scope_json = ? WHERE id = ?`).run(
-        picked,
+        pyxisSubject,
         scopeJson({ ...scopeNow, subjectBy: "pyxis" }),
         chatId,
       );
