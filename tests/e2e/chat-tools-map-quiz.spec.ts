@@ -89,6 +89,8 @@ const openChat = async (page: Page) => {
     location.hash = "/ask/tool-chat";
   });
   await expect(page.getByRole("textbox", { name: "Messaggio" })).toBeVisible();
+  // The subject chip is drawn only once the chat itself has loaded, and Enter does nothing before that.
+  await expect(page.getByRole("button", { name: /^Materia(:| della chat:)/ })).toBeVisible();
 };
 
 async function ask(page: Page, text: string) {
