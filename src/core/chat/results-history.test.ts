@@ -4,7 +4,7 @@ import { acknowledgeProviders, configureDisclosure, type EngineResult, type Turn
 import { putSetting } from "../settings";
 import { chatToolList } from "../tools/registry";
 import { setTools, stopToolServer } from "../tools/server";
-import { askTurn } from "./turn";
+import { askTurn, readChat } from "./turn";
 
 afterEach(async () => {
   await stopToolServer();
@@ -79,6 +79,9 @@ describe("results in earlier replies and the tool that answers", () => {
     const db = setup();
     const first = await ask(db, "Come vado nei quiz?", { provider: "claude", sessionId: "c1", reply: GRADES_REPLY, readsResults: true });
     expect(db.prepare("SELECT results FROM messages WHERE id = ?").pluck().get(first.message.id)).toBe(1);
+    // The reply says so, as it is answered and as the chat reads it again, so no general-knowledge note goes above it.
+    expect(first.message.results).toBe(true);
+    expect(readChat(db, first.chatId).find((row) => row.id === first.message.id)?.results).toBe(true);
     // The chat moves to Codex, which starts a new session with the conversation handed across.
     const next = await ask(db, "E adesso?", { chatId: first.chatId, provider: "codex", sessionId: "x1" });
     expect(next.prompt).toContain("Come vado nei quiz?");
@@ -117,6 +120,7 @@ describe("results in earlier replies and the tool that answers", () => {
     const db = setup();
     const first = await ask(db, "Fammi un grafico della pressione", { provider: "claude", sessionId: "c1", reply: PRESSURE_REPLY });
     expect(db.prepare("SELECT results FROM messages WHERE id = ?").pluck().get(first.message.id)).toBe(0);
+    expect(readChat(db, first.chatId).find((row) => row.id === first.message.id)?.results).toBeUndefined();
     const next = await ask(db, "E adesso?", { chatId: first.chatId, provider: "codex", sessionId: "x1" });
     expect(next.prompt).toContain("101.3");
   });

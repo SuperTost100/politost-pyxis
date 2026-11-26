@@ -91,3 +91,34 @@ describe("noteLine", () => {
     expect(noteLine({ grounding: null, citations: [] })).toBeNull();
   });
 });
+
+describe("noteLine, on a reply that explains nothing", () => {
+  const general = { grounding: "general", citations: [], searched: { found: false, where: "library" } } as const;
+  const tool = "```pyxis-tool\n0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b\n```";
+
+  it("says nothing above a reply whose substance is a tool's result or a proposal", () => {
+    expect(noteLine({ ...general, body: `Te le preparo.\n\n${tool}\n\nLe trovi nel mazzo.` })).toBeNull();
+    expect(noteLine({ ...general, searched: { found: true, where: "library" }, body: `Ecco la proposta.\n\n${tool}` })).toBeNull();
+    // A reply built on the student's own results speaks of their numbers, not of where an explanation came from.
+    expect(noteLine({ ...general, results: true, body: "Nell'ultimo quiz hai preso 26/30.\n\n```pyxis-chart\n{}\n```" })).toBeNull();
+  });
+
+  it("says nothing above a short plain reply: a refusal or a question back, with no explanation in it", () => {
+    const refusal =
+      "No, non posso cambiare il voto dell'ultimo quiz. I risultati indicano il tuo livello di preparazione, quindi possono cambiare solo attraverso il tuo lavoro.\n\nPuoi rifare il quiz dalla pagina dei risultati, oppure segnalare una domanda poco chiara con «Domanda sbagliata?».";
+    expect(noteLine({ ...general, body: refusal })).toBeNull();
+    expect(
+      noteLine({ ...general, searched: { found: true, where: "library" }, body: "Di quale argomento vuoi cancellare le flashcard?" }),
+    ).toBeNull();
+  });
+
+  it("keeps the note above an answer from general knowledge: one with math, a list or a block, or a long one", () => {
+    const line = { key: "ask.used.general", values: {} };
+    expect(noteLine({ ...general, body: "Un autovalore è un numero $\\lambda$ per cui $Av = \\lambda v$ con $v \\neq 0$." })).toEqual(line);
+    expect(noteLine({ ...general, body: "Le tre leggi:\n\n1. inerzia\n2. $F = ma$\n3. azione e reazione" })).toEqual(line);
+    expect(noteLine({ ...general, body: "Ecco il grafico.\n\n```pyxis-figure\n{}\n```" })).toEqual(line);
+    expect(noteLine({ ...general, body: "Il teorema di Cauchy-Lipschitz garantisce esistenza e unicità locale. ".repeat(10) })).toEqual(line);
+    // A tool block in a reply that also cites nothing but explains at length is still an action: the card is the answer.
+    expect(noteLine({ ...general, body: `Ecco le flashcard.\n\n${tool}` })).toBeNull();
+  });
+});

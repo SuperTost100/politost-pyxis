@@ -11,13 +11,18 @@ export function UsedSources({
   grounding,
   citations,
   searched,
+  body,
+  results,
 }: {
   grounding: "sources" | "wider" | "general" | null;
   citations: ReadonlyArray<{ sourceId: string; subject?: string | null; attached?: boolean }>;
   searched?: { found: boolean; where: "library" | "files" };
+  /** The reply's text, so a reply that explains nothing (a tool's card, a refusal) gets no general-knowledge note. */
+  body?: string;
+  results?: boolean;
 }) {
   const { t } = useTranslation();
-  const line = noteLine({ grounding, citations, searched });
+  const line = noteLine({ grounding, citations, searched, body, results });
   if (!line) return null;
   return (
     <p className="ask-used ask-used-general">

@@ -132,6 +132,8 @@ export type ChatMessageView = {
    * for a reply stopped or saved before this was kept.
    */
   searched?: SearchNote;
+  /** The reply read the student's own results (`read_progress`), so what it says comes from Pyxis, not from a search. */
+  results?: true;
 };
 
 export type SearchNote = { found: boolean; where: "library" | "files" };
@@ -1980,6 +1982,7 @@ function saveReply(
       checks: splitChecks(parsed.body).checks,
       checking: false,
       ...(note ? { searched: note } : {}),
+      ...(meta.results ? { results: true as const } : {}),
       ...(meta.figures ? { figures: meta.figures } : {}),
       ...toolsOf(db, chatId, parsed.body),
     },
@@ -2243,7 +2246,7 @@ export function readChat(
   const rows = db
     .prepare(
       `SELECT id, role, body, model_id, engine_provider, grounding, prompt_template, reaction, stopped, figures_json, error,
-              passages_json
+              passages_json, results
        FROM messages WHERE chat_id = ? ORDER BY created_at, rowid`,
     )
     .all(chatId) as Array<{
@@ -2259,6 +2262,7 @@ export function readChat(
     figures_json: string | null;
     error: string | null;
     passages_json: string | null;
+    results: number | null;
   }>;
   const chips = readProfile(db)?.followups !== false;
   const answers = chatAnswers(db, chatId);
@@ -2364,6 +2368,7 @@ export function readChat(
       error: row.error,
       checks: metadata.checks,
       ...searchNote(row.passages_json),
+      ...(row.role === "assistant" && row.results ? { results: true as const } : {}),
       ...(row.figures_json
         ? { figures: figureImages(JSON.parse(row.figures_json)) }
         : {}),

@@ -3463,6 +3463,8 @@ export const requests = {
           grounding: z.enum(["sources", "wider", "general"]).nullable(),
           /** For a reply from general knowledge: whether passages were found and not cited, and where Pyxis looked. */
           searched: z.object({ found: z.boolean(), where: z.enum(["library", "files"]) }).optional(),
+          /** The reply read the student's own results (`read_progress`). */
+          results: z.literal(true).optional(),
           followups: z.array(z.string()),
           reaction: z.enum(["up", "down"]).nullable(),
           stopped: z.boolean(),
@@ -3601,6 +3603,8 @@ export const requests = {
           grounding: z.enum(["sources", "wider", "general"]).nullable(),
           /** For a reply from general knowledge: whether passages were found and not cited, and where Pyxis looked. */
           searched: z.object({ found: z.boolean(), where: z.enum(["library", "files"]) }).optional(),
+          /** The reply read the student's own results (`read_progress`). */
+          results: z.literal(true).optional(),
           followups: z.array(z.string()),
           citations: z.array(
             z.object({
