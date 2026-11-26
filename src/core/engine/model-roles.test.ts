@@ -198,7 +198,7 @@ describe("a tool only runs its maker's models", () => {
       models: names.map(model),
     }));
     const plan = planAuto(ready);
-    expect(Object.keys(plan).length).toBe(8);
+    expect(Object.keys(plan).length).toBe(9);
     for (const choice of Object.values(plan)) expect(choice.model).toMatch(makers[choice.provider]!);
     // Each tool alone, with the others' models mixed into its list.
     for (const provider of ready)
@@ -355,7 +355,7 @@ describe("through the engine handlers", () => {
   it("gives every task a model of its tool's maker, with every tool ready", async () => {
     const { db, handlers } = setup();
     const { features } = await handlers.autoConfigure({});
-    expect(Object.keys(features).length).toBe(8);
+    expect(Object.keys(features).length).toBe(9);
     for (const row of Object.values(features)) expect(row.model).toMatch(makers[row.provider]!);
     for (const feature of Object.keys(features)) {
       const choice = selectionFor(db, feature);

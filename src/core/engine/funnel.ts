@@ -423,6 +423,14 @@ export type TurnInput = {
 export const TOOL_SERVER = "pyxis_tools";
 
 /**
+ * How long Claude Code and Codex wait on one call to Pyxis's tools. Without it Claude Code ends a call after 60 seconds
+ * (2.1.332: "The operation timed out." at 60.0 s), and Codex 0.166.0 waited a call of 200 seconds out, so its own default
+ * is longer but unwritten. The stronger model's sub-call (`tools/solver.ts`) needs more than a minute and stops itself
+ * well before this. Antigravity over ACP has no such field and refuses it: it ends a call after 180 seconds.
+ */
+export const TOOL_CALL_LIMIT_SEC = 300;
+
+/**
  * The tools that refused Pyxis's server since core started (a `pyxis_tools` server already in the user's Codex config, a
  * transport without servers). They are not offered it again until the next start, so each question resumes its session
  * on one run instead of a refused attempt and a new session without tools.
@@ -531,6 +539,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
             type: "http" as const,
             url: input.tools.url,
             headers: { Authorization: `Bearer ${input.tools.token}` },
+            ...(selection.provider === "antigravity" ? {} : { toolTimeoutSec: TOOL_CALL_LIMIT_SEC }),
           },
         }
       : undefined;

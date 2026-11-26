@@ -64,10 +64,12 @@ import {
 import { tooOld } from "./agy-version";
 import { isInstallable, runInstaller } from "./install";
 import {
+  isFeatureOff,
   keepAllowed,
   offLimits,
   rememberOrder,
   rememberReady,
+  setFeatureOff,
   withoutRefusedModels,
   type StoredSelection,
   plannedModels,
@@ -97,6 +99,7 @@ const features = [
   "map",
   "vision",
   "cards",
+  "solve",
 ] as const;
 const providers = new Set<string>(engineProviders);
 
@@ -299,6 +302,8 @@ export async function autoConfigureEngines(
   db: Database.Database,
   options: { reset?: boolean; features?: string[]; rows?: OverviewRow[] } = {},
 ): Promise<{ ready: string[]; features: Record<string, StoredSelection> }> {
+  // Hard exercises handed back to Pyxis are on again, whether or not any tool can be planned now.
+  if (options.reset && (!options.features?.length || options.features.includes("solve"))) setFeatureOff(db, "solve", false);
   const rows = options.rows ?? (await overviewRows());
   // Only the engines the student lets Pyxis use, and only while they are ready.
   const allowed = readAllowed(db);
@@ -353,6 +358,16 @@ export async function autoConfigureEngines(
   if (!unreadable) rememberReady(listed);
   // A model the student's subscription refused today is left out, so the task moves to one that answers.
   const plan = planAuto(withoutRefusedModels(listed), undefined, order);
+  // Hard exercises go to the strong model of the tool that answers the chat: with the chat pinned, that is the pinned
+  // model's tool, whatever the plan would have given the chat.
+  const chatRow = db.prepare("SELECT selection_json FROM feature_engines WHERE feature = 'chat'").pluck().get() as string | undefined;
+  const chatPin = chatRow ? (JSON.parse(chatRow) as StoredSelection) : undefined;
+  if (chatPin && chatPin.auto !== true) {
+    const chatTool = withoutRefusedModels(listed).find((provider) => provider.id === chatPin.provider);
+    const solve = chatTool ? planAuto([chatTool], ["solve"])["solve"] : undefined;
+    if (solve) plan.solve = solve;
+    else delete plan.solve;
+  }
   const doubtful =
     !unreadable && listed.length === 0 && hadEngines.get(db) === true;
   if (!unreadable) hadEngines.set(db, listed.length > 0);
@@ -990,6 +1005,8 @@ export function engineHandlers(
       effort?: string;
       fast?: boolean;
     }) {
+      // Hard exercises always go to the strong model of the tool answering the chat, which no pin may change.
+      if (input.feature === "solve") throw invalidSelection();
       const local = input.provider === LOCAL_PROVIDER;
       if (!providers.has(input.provider) && !local) {
         throw invalidSelection();
@@ -1045,6 +1062,17 @@ export function engineHandlers(
       // A chat that talked to the old engine starts over with the new one.
       endConversations();
       return { warning };
+    },
+    /** Which tasks the student switched off, read apart from the model rows, which may not exist yet. */
+    switchedOff() {
+      return { solve: isFeatureOff(db, "solve") };
+    },
+    /** "Spento" for hard exercises: the chat's model is no longer offered the stronger model, or is again. */
+    setFeatureOff(input: { feature: "solve"; off: boolean }) {
+      setFeatureOff(db, input.feature, input.off);
+      // A live session listed its tools when it started, so it starts over with the list this changes.
+      endConversations();
+      return { ok: true as const };
     },
     /** Sets, or with no `effort` clears, the student's reasoning effort for one task. */
     setEffort(input: { feature: (typeof features)[number]; effort?: string }) {

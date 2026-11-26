@@ -138,15 +138,15 @@ describe.skipIf(!live)("map and quiz tools, live", () => {
       // The reply is over; the jobs it started go on. Each is waited for, at most ten minutes.
       for (let i = 0; i < 1200; i++) {
         const views = ids.map((id) => toolView(db, result.chatId, id));
-        if (views.every((view) => !view || view.tool === "create_flashcards" || view.job !== "working")) break;
+        if (views.every((view) => !view || !("job" in view) || view.job !== "working")) break;
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
       const made = ids.map((id) => {
         const view = toolView(db, result.chatId, id);
         return {
           tool: view?.tool ?? "?",
-          view: view && view.tool !== "create_flashcards" ? view : null,
-          content: view && view.tool !== "create_flashcards" && view.job === "done" ? content(view) : null,
+          view: view && "job" in view ? view : null,
+          content: view && "job" in view && view.job === "done" ? content(view) : null,
         };
       });
       const turn: Turn = {

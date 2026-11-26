@@ -80,10 +80,17 @@ type Exam = { planId: string; title: string };
  * counts on the exam's path), so a chat on a subject uses the subject's exam when it has exactly one.
  */
 function quizExam(db: Database.Database, place: ReturnType<ToolTurn["place"]>): Exam | { refused: string } {
-  const live = `archived_at IS NULL AND EXISTS (SELECT 1 FROM topics t WHERE t.plan_id = plans.id AND t.archived_at IS NULL)`;
+  const live = `archived_at IS NULL AND status != 'building' AND EXISTS (SELECT 1 FROM topics t WHERE t.plan_id = plans.id AND t.archived_at IS NULL)`;
+  // A chat of an exam makes its quiz there or nowhere: never in another exam of its subject.
   if (place.planId) {
-    const plan = db.prepare(`SELECT id AS planId, title FROM plans WHERE id = ? AND ${live}`).get(place.planId) as Exam | undefined;
-    if (plan) return plan;
+    const plan = db.prepare(`SELECT id AS planId, title, ${live} AS live FROM plans WHERE id = ?`).get(place.planId) as
+      | (Exam & { live: number })
+      | undefined;
+    if (plan?.live) return { planId: plan.planId, title: plan.title };
+    if (plan)
+      return {
+        refused: `This chat's exam, ${plan.title}, is archived, still being built or has no topics, so no quiz was created. Tell the student in one sentence, and offer to ask them a few questions here instead.`,
+      };
   }
   const exams = place.subject
     ? (db
@@ -110,13 +117,21 @@ export function quizTopic(db: Database.Database, planId: string, asked: string):
   const topics = db
     .prepare(`SELECT id, title FROM topics WHERE plan_id = ? AND archived_at IS NULL ORDER BY position, id`)
     .all(planId) as Array<{ id: string; title: string }>;
+  return matchTitle(topics, asked);
+}
+
+/**
+ * The item whose title is the words, else the only one whose title holds them or is held in them, as whole words. Null
+ * when none does, or when several do.
+ */
+export function matchTitle<T extends { title: string }>(items: readonly T[], asked: string): (T & { exact: boolean }) | null {
   const want = foldText(asked).replace(/\s+/g, " ").trim();
-  const exact = topics.find((topic) => foldText(topic.title).trim() === want);
+  const exact = items.find((item) => foldText(item.title).replace(/\s+/g, " ").trim() === want);
   if (exact) return { ...exact, exact: true };
   // Whole words only: "Attrito statico" holds the topic Attrito, but "Termodinamica" does not hold Dinamica.
   const askedWords = wordsOf(asked);
-  const near = topics.filter((topic) => {
-    const title = wordsOf(topic.title);
+  const near = items.filter((item) => {
+    const title = wordsOf(item.title);
     return title.join(" ").length >= 4 && askedWords.join(" ").length >= 4 && (holds(askedWords, title) || holds(title, askedWords));
   });
   // Words that name two topics ("Cinematica e dinamica") are no one topic: the quiz spans the exam on them.
@@ -203,7 +218,7 @@ function buildJob(db: Database.Database, attemptId: string): string | undefined 
 }
 
 /** Handing in starts a grading job before the attempt is closed: from then on the quiz is handed in and has a grade. */
-function handedIn(db: Database.Database, itemId: string): boolean {
+export function handedIn(db: Database.Database, itemId: string): boolean {
   return !!db
     .prepare(
       `SELECT 1 FROM attempts a WHERE a.item_id = ? AND (a.submitted_at IS NOT NULL OR EXISTS (
@@ -303,7 +318,7 @@ export function undoQuiz(db: Database.Database, stored: QuizData): QuizUndone {
  * Whether «Ripristina» can bring the quiz back: its exam is still there, and the rows are not from a newer Pyxis than
  * this one (after a downgrade). The card says so plainly otherwise, with no button.
  */
-function restorableQuiz(db: Database.Database, stored: QuizData, undone: QuizUndone): boolean {
+export function restorableQuiz(db: Database.Database, stored: QuizData, undone: QuizUndone): boolean {
   if (!db.prepare("SELECT 1 FROM plans WHERE id = ?").get(stored.planId) || (undone.schema ?? 0) > SCHEMA_VERSION) return false;
   // A quiz written from the student's material whose every passage was deleted since has nothing left to stand on.
   const cited = quizPassages(db, stored, undone);

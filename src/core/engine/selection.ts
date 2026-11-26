@@ -1,7 +1,7 @@
 import { IpcError } from "../../shared/ipc";
 import { isRetiredProvider } from "../../shared/limits";
 import type Database from "better-sqlite3";
-import { nearestEffort, studentEffort } from "../../shared/effort";
+import { effortScale, nearestEffort, studentEffort } from "../../shared/effort";
 import { planAuto, type AutoFeature, type AutoProvider } from "./auto";
 import { isBenched, isModelBenched } from "./bench";
 import { effortsOf, runsAs, unfoldVariant, wasReported } from "./efforts";
@@ -192,10 +192,15 @@ export function selectionOn(
   provider: string,
   feature = "default",
 ): Omit<StoredSelection, "auto" | "effortChoice" | "chosenFor"> | undefined {
+  const choice = plannedOn(provider, feature);
+  return choice ? runnable({ ...choice, provider: choice.provider as ProviderId }) : undefined;
+}
+
+/** `selectionOn` before a level the tool lists as a model of its own replaces the model id, for a caller that sets the level. */
+function plannedOn(provider: string, feature: string) {
   const there = ready.find((candidate) => candidate.id === provider);
   if (!there || isBenched(provider)) return undefined;
-  const choice = planAuto(withoutRefusedModels([there]), undefined, null)[feature as AutoFeature];
-  return choice ? runnable({ ...choice, provider: choice.provider as ProviderId }) : undefined;
+  return planAuto(withoutRefusedModels([there]), undefined, null)[feature as AutoFeature];
 }
 
 /**
@@ -305,4 +310,56 @@ export function withoutRefusedModels(providers: AutoProvider[]): AutoProvider[] 
       return model.efforts.length && !efforts.length ? [] : [{ ...model, efforts }];
     }),
   }));
+}
+
+const offKey = (feature: string) => `feature-off:${feature}`;
+
+/**
+ * Whether the student switched this task off in Settings. Only `solve` can be: the chat then never offers its model the
+ * stronger model. Kept in `settings` beside the task's row, which stays as it was, so switching it on again brings back
+ * the automatic choice or the model pinned before.
+ */
+export function isFeatureOff(db: Database.Database, feature: string): boolean {
+  const row = db.prepare("SELECT value_json FROM settings WHERE key = ?").get(offKey(feature)) as { value_json: string } | undefined;
+  return row?.value_json === "true";
+}
+
+export function setFeatureOff(db: Database.Database, feature: string, off: boolean): void {
+  if (off)
+    db.prepare(
+      `INSERT INTO settings (key, value_json, updated_at) VALUES (?, 'true', ?)
+       ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
+    ).run(offKey(feature), Date.now());
+  else db.prepare("DELETE FROM settings WHERE key = ?").run(offKey(feature));
+}
+
+/**
+ * The model a chat turn hands a hard exercise to (`tools/solver.ts`), or null when the chat has none to hand it to. It
+ * is always a model of the tool answering the chat, which already holds this conversation, so nothing the chat could
+ * not send reaches another tool: the strong model the automatic choice gives that tool (`plannedOn`), or before the
+ * first plan of this run the one the stored row names for it. "Esercizi difficili" has no model of its own to pin, only
+ * the effort the student may pick for it. Null when the task is switched off, when the tool has no such model, and when
+ * that model is the one already answering (a chat pinned to the strong model, or "answer again with the strongest
+ * model").
+ */
+export function solverSelection(
+  db: Database.Database,
+  chat: { provider: string; model: string },
+): Omit<StoredSelection, "auto" | "effortChoice" | "chosenFor"> | null {
+  if (isFeatureOff(db, "solve")) return null;
+  const own = readRow(db, "solve");
+  const base = plannedOn(chat.provider, "solve") ?? (own?.auto === true && own.provider === chat.provider ? own : undefined);
+  if (!base) return null;
+  const listed = effortsOf(base.provider, base.model);
+  const picked = own?.effortChoice && listed?.includes(own.effortChoice) ? own.effortChoice : undefined;
+  let effort = picked ?? (listed ? automaticEffortOn(base.provider, "solve", listed) : base.effort);
+  // Antigravity ends a tool call after 180 seconds and cannot be given longer. Its strong model at high effort took
+  // 91 seconds on one exercise and more than 150 on another in a live check, so there it thinks at medium effort unless
+  // the student picked a level. The level is settled before the model id: a level the tool lists as a model of its own
+  // (`gemini-4-neon-xhigh`) runs as that id.
+  if (!picked && base.provider === "antigravity" && effort && effortScale.indexOf(effort as never) > effortScale.indexOf("medium"))
+    effort = listed ? nearestEffort("medium", listed) : "medium";
+  const choice = runnable({ provider: base.provider as ProviderId, model: base.model, ...(effort ? { effort } : {}) });
+  if (choice.provider === chat.provider && choice.model === chat.model) return null;
+  return choice;
 }

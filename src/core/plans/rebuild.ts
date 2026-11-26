@@ -296,6 +296,50 @@ const stagesFor = (style: string) =>
     ? (["practice", "learn", "cards", "gaps"] as const)
     : (["learn", "practice", "cards", "gaps"] as const);
 
+/** The path's steps of topics new to the plan, one per stage of the plan's style, at the end until `orderPath` runs. */
+export function addTopicNodes(
+  db: Database.Database,
+  planId: string,
+  style: string,
+  topics: ReadonlyArray<{ id: string; title: string }>,
+  now: number,
+): void {
+  const insertNode = db.prepare(
+    `INSERT INTO path_nodes (id, plan_id, topic_id, kind, position, title, created_at)
+     VALUES (?, ?, ?, ?, 0, ?, ?)`,
+  );
+  topics.forEach((topic, i) =>
+    stagesFor(style).forEach((stage, j) =>
+      insertNode.run(uuidv7(now + 1000 + i * 4 + j), planId, topic.id, stage, topic.title, now),
+    ),
+  );
+}
+
+/**
+ * Puts the path's steps in one order: the opening stages, the steps of each topic of `order` in that order, the closing
+ * stages, then the steps of topics no longer in the path (archived), which keep their history. Steps keep their order
+ * within each group.
+ */
+export function orderPath(db: Database.Database, planId: string, order: readonly string[]): void {
+  const nodes = db
+    .prepare("SELECT id, topic_id, kind FROM path_nodes WHERE plan_id = ? ORDER BY position, rowid")
+    .all(planId) as Array<{ id: string; topic_id: string | null; kind: string }>;
+  const rank = new Map(order.map((id, i) => [id, i]));
+  const slot = (node: (typeof nodes)[number]) =>
+    node.topic_id == null
+      ? ["intro", "diagnostic"].includes(node.kind)
+        ? 0
+        : 2 + order.length
+      : rank.has(node.topic_id)
+        ? 1 + rank.get(node.topic_id)!
+        : 3 + order.length;
+  const move = db.prepare("UPDATE path_nodes SET position = ? WHERE id = ?");
+  nodes
+    .map((node, i) => ({ node, i }))
+    .sort((a, b) => slot(a.node) - slot(b.node) || a.i - b.i)
+    .forEach(({ node }, position) => move.run(position, node.id));
+}
+
 export function applyRebuild(
   db: Database.Database,
   planId: string,
@@ -368,50 +412,14 @@ export function applyRebuild(
         "UPDATE topics SET archived_at = ? WHERE id = ? AND plan_id = ?",
       ).run(now, id, planId);
 
-    const insertNode = db.prepare(
-      `INSERT INTO path_nodes (id, plan_id, topic_id, kind, position, title, created_at)
-       VALUES (?, ?, ?, ?, 0, ?, ?)`,
+    addTopicNodes(
+      db,
+      planId,
+      plan.style,
+      created.map((topicId) => ({ id: topicId, title: rebuild.tree[order.indexOf(topicId)]!.title })),
+      now,
     );
-    created.forEach((topicId, i) => {
-      const title = rebuild.tree[order.indexOf(topicId)]!.title;
-      stagesFor(plan.style).forEach((stage, j) =>
-        insertNode.run(
-          uuidv7(now + 1000 + i * 4 + j),
-          planId,
-          topicId,
-          stage,
-          title,
-          now,
-        ),
-      );
-    });
-    // One pass restores a single order: opening stages, topics in the new order, closing stages, then archived history.
-    const nodes = db
-      .prepare(
-        "SELECT id, topic_id, kind FROM path_nodes WHERE plan_id = ? ORDER BY position, rowid",
-      )
-      .all(planId) as Array<{
-      id: string;
-      topic_id: string | null;
-      kind: string;
-    }>;
-    const rank = new Map(order.map((id, i) => [id, i]));
-    const slot = (node: (typeof nodes)[number]) =>
-      node.topic_id == null
-        ? ["intro", "diagnostic"].includes(node.kind)
-          ? 0
-          : 2 + order.length
-        : rank.has(node.topic_id)
-          ? 1 + rank.get(node.topic_id)!
-          : 3 + order.length;
-    nodes
-      .map((node, i) => ({ node, i }))
-      .sort((a, b) => slot(a.node) - slot(b.node) || a.i - b.i)
-      .forEach(({ node }, position) =>
-        db
-          .prepare("UPDATE path_nodes SET position = ? WHERE id = ?")
-          .run(position, node.id),
-      );
+    orderPath(db, planId, order);
     db.prepare(
       "UPDATE plans SET status = 'ready', updated_at = ? WHERE id = ?",
     ).run(now, planId);

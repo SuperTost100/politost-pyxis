@@ -31,6 +31,10 @@
     "plan": {
       "tier": "strong",
       "weight": 1
+    },
+    "solve": {
+      "tier": "strong",
+      "weight": 0
     }
   },
   "unknownFeature": {

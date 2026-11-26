@@ -90,14 +90,14 @@ test("ENG-10 tool details, the key dialog and the secure key-storage notice in b
                   : "Modello per tipo di lavoro",
             }),
           ).toBeVisible();
-          await expect(page.locator(".engines-feature-row")).toHaveCount(8);
+          await expect(page.locator(".engines-feature-row")).toHaveCount(9);
           // Each task has its own reasoning effort next to its model.
           await expect(
             page.getByRole("combobox", {
               name: language === "en" ? "Chat: Reasoning effort" : "Chat: Livello di ragionamento",
             }),
           ).toBeVisible();
-          await expect(page.locator('[id^="engine-effort-"]')).toHaveCount(8);
+          await expect(page.locator('[id^="engine-effort-"]')).toHaveCount(9);
           // A row reads by the tool's name and says its three roles, each with the model it runs.
           for (const [id, name] of [
             ["claude", "Claude"],
@@ -247,7 +247,7 @@ test("Automatic engines: the page says it in one sentence, and Advanced can pin 
     // The model of each task waits under Advanced, and the week's tokens under debug mode.
     const advanced = page.locator(".engines-advanced");
     const week = page.getByRole("region", { name: "This week" });
-    await expect(page.locator(".engines-feature-row")).toHaveCount(8);
+    await expect(page.locator(".engines-feature-row")).toHaveCount(9);
     await expect(week).toHaveCount(0);
     await saveShot(page, "engines-simple-en.png", { fullPage: true });
     await page.getByRole("switch", { name: "Show technical details and debug" }).click();
@@ -666,8 +666,8 @@ test("Settings: a tool's row says its three roles with the model each one runs, 
         const note = page.locator(".engines-roles-note");
         await expect(note).toHaveText(
           language === "en"
-            ? "Each tool uses only its maker's models, and Pyxis picks among three: fast for flashcards and maps, balanced for chat, lessons and grading, strong for the study plan."
-            : "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: veloce per le flashcard e le mappe, equilibrato per la chat, le lezioni e la correzione, forte per il piano di studio.",
+            ? "Each tool uses only its maker's models, and Pyxis picks among three: fast for flashcards and maps, balanced for chat, lessons and grading, strong for the study plan and hard exercises."
+            : "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: veloce per le flashcard e le mappe, equilibrato per la chat, le lezioni e la correzione, forte per il piano di studio e gli esercizi difficili.",
         );
         for (const id of ["claude", "codex"]) await expect(tool(page, id)).not.toContainText(/Qui «Chat»|Here “Chat”/);
         await expect(
@@ -695,6 +695,7 @@ test("Settings: a tool's row says its three roles with the model each one runs, 
           words.fast,
           words.mid,
           words.mid,
+          words.strong,
           words.strong,
           words.mid,
           words.mid,
@@ -791,7 +792,7 @@ test("Settings: the model field of each kind of work shows the whole model name 
         }, textSize);
         await page.setViewportSize({ width, height: 900 });
         await page.reload();
-        await expect(page.locator(".engines-feature-row")).toHaveCount(8, { timeout: 30000 });
+        await expect(page.locator(".engines-feature-row")).toHaveCount(9, { timeout: 30000 });
         await expect(page.locator("#engine-chat option").first()).toContainText("Automatico · oggi", { timeout: 30000 });
         // The text of the selected option, as the browser draws it, fits inside the field it is in.
         const clipped = await page.locator(".engines-feature-row select[id^='engine-']:not([id^='engine-effort'])").evaluateAll((nodes) => {
@@ -975,8 +976,8 @@ test("Settings: the line under the list says what is true of every tool, with th
       // The chat is balanced on Claude and ChatGPT and fast on Gemini: it is not listed under one role, it is said apart.
       await expect(page.locator(".engines-roles-note")).toHaveText(
         language === "en"
-          ? "Each tool uses only its maker's models, and Pyxis picks among three: fast for flashcards and maps, balanced for lessons and grading, strong for the study plan. For chat: the balanced model of Claude and ChatGPT, the fast one of Gemini."
-          : "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: veloce per le flashcard e le mappe, equilibrato per le lezioni e la correzione, forte per il piano di studio. Per la chat usa il modello equilibrato di Claude e ChatGPT, quello veloce di Gemini.",
+          ? "Each tool uses only its maker's models, and Pyxis picks among three: fast for flashcards and maps, balanced for lessons and grading, strong for the study plan and hard exercises. For chat: the balanced model of Claude and ChatGPT, the fast one of Gemini."
+          : "Ogni strumento usa solo i modelli di chi lo fa, e Pyxis sceglie tra tre: veloce per le flashcard e le mappe, equilibrato per le lezioni e la correzione, forte per il piano di studio e gli esercizi difficili. Per la chat usa il modello equilibrato di Claude e ChatGPT, quello veloce di Gemini.",
         { timeout: 30000 },
       );
       // The word under "Chat" in Avanzate is the role on the tool that runs it today: the automatic choice gives the chat

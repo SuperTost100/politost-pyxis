@@ -7,7 +7,7 @@ import { chatContext, chatTitle, heldSources, readChat } from "./turn";
 import { visibleText } from "./visible";
 import { safeFileName } from "../../shared/file-name";
 import { mapToolBlocks } from "../../shared/tool-blocks";
-import type { ToolResultView } from "../../shared/ipc";
+import type { ProposalView, ToolResultView } from "../../shared/ipc";
 
 export type ChatExportLanguage = "en" | "it";
 
@@ -37,8 +37,10 @@ const labels = {
 } as const;
 
 /** What a chat tool made, in the export's language, where the reply showed its card. */
-function toolLine(view: ToolResultView, language: ChatExportLanguage): string {
+function toolLine(view: Exclude<ToolResultView, { tool: "ask_stronger_model" }>, language: ChatExportLanguage): string {
   const it = language === "it";
+  if (view.tool === "propose_path_change" || view.tool === "propose_exam" || view.tool === "propose_delete")
+    return proposalLine(view, it);
   if (view.tool === "create_map") {
     const map = it
       ? `la mappa «${view.topic}» in Mappe, sotto ${view.subject}`
@@ -71,6 +73,59 @@ function toolLine(view: ToolResultView, language: ChatExportLanguage): string {
   return view.undone === null
     ? `${made}.`
     : `${made}, then undone: ${one ? "it is" : "they are"} no longer in the deck.`;
+}
+
+/** A proposal of an "ask first" tool: what it proposed, and what the student chose. */
+function proposalLine(view: ProposalView, it: boolean): string {
+  const day = (at: number) =>
+    new Intl.DateTimeFormat(it ? "it-IT" : "en-GB", { day: "numeric", month: "long", year: "numeric" }).format(at);
+  let what: string;
+  let done: string;
+  if (view.tool === "propose_path_change") {
+    what = it ? `di cambiare il percorso di ${view.exam}` : `a change to the path of ${view.exam}`;
+    const parts = [
+      view.date ? (it ? `esame il ${day(view.date.to)}` : `exam on ${day(view.date.to)}`) : "",
+      view.hours ? (it ? `${view.hours.to} ore a settimana` : `${view.hours.to} hours a week`) : "",
+      view.changed ? (it ? `${view.changed} argoment${view.changed === 1 ? "o cambiato" : "i cambiati"}` : `${view.changed} topic${view.changed === 1 ? "" : "s"} changed`) : "",
+    ].filter(Boolean);
+    done = it ? `hai applicato la modifica (${parts.join(", ")})` : `you applied it (${parts.join(", ")})`;
+  } else if (view.tool === "propose_exam") {
+    what = it ? `un nuovo esame, «${view.title}»` : `a new exam, "${view.title}"`;
+    done = it ? "l'hai creato" : "you created it";
+  } else {
+    const thing =
+      view.kind === "flashcards"
+        ? it
+          ? `${view.count} flashcard${view.name ? ` di ${view.name}` : " create in questa chat"}`
+          : `${view.count} flashcard${view.count === 1 ? "" : "s"}${view.name ? ` of ${view.name}` : " made in this chat"}`
+        : view.kind === "map"
+          ? it
+            ? `la mappa «${view.name}»`
+            : `the concept map "${view.name}"`
+          : it
+            ? `il quiz${view.name ? ` su ${view.name}` : ""} non consegnato`
+            : `the unfinished quiz${view.name ? ` on ${view.name}` : ""}`;
+    what = it ? `di eliminare ${thing}` : `deleting ${thing}`;
+    done = it ? "hai confermato" : "you confirmed";
+  }
+  const after: Record<ProposalView["state"], string> = it
+    ? {
+        pending: "non hai ancora deciso",
+        applied: done,
+        restored: `${done}, poi hai annullato`,
+        declined: "hai scelto di no",
+        stale: "i dati sono cambiati prima che decidessi, quindi non è cambiato niente",
+        expired: "la proposta è stata sostituita da una successiva",
+      }
+    : {
+        pending: "you have not decided yet",
+        applied: done,
+        restored: `${done}, then undid it`,
+        declined: "you chose not to",
+        stale: "the data changed before you decided, so nothing changed",
+        expired: "a later proposal replaced it",
+      };
+  return it ? `Pyxis ha proposto ${what}: ${after[view.state]}.` : `Pyxis proposed ${what}: ${after[view.state]}.`;
 }
 
 export type ChatExport = {
@@ -214,7 +269,8 @@ export function exportChat(
           message.role === "assistant"
             ? mapToolBlocks(message.body, (id) => {
                 const view = message.tools?.[id];
-                return view ? `*${toolLine(view, language)}*` : "";
+                // A sub-call to the stronger model made nothing: the reply holds what came of it.
+                return view && view.tool !== "ask_stronger_model" ? `*${toolLine(view, language)}*` : "";
               })
             : message.body,
           language,

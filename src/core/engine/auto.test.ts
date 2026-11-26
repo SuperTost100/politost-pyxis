@@ -89,6 +89,8 @@ describe("automatic engine policy", () => {
       vision: "claude:claude-sonnet-5-5:medium",
       default: "claude:claude-sonnet-5-5:medium",
       plan: "claude:claude-opus-5-5:high",
+      // A hard exercise goes to the strong model of the chat's own tool, whichever tool has the chat.
+      solve: "codex:gpt-6.2-sol:high",
     });
   });
 
@@ -108,6 +110,7 @@ describe("automatic engine policy", () => {
       default: "claude:claude-sonnet-5-5:medium",
       grading: "claude:claude-sonnet-5-5:medium",
       plan: "claude:claude-opus-5-5:high",
+      solve: "claude:claude-opus-5-5:high",
     });
   });
 
@@ -140,6 +143,7 @@ describe("automatic engine policy", () => {
       default: "codex:gpt-6.1-terra:medium",
       grading: "codex:gpt-6.1-terra:medium",
       plan: "codex:gpt-6.2-sol:high",
+      solve: "codex:gpt-6.2-sol:high",
     });
   });
 
@@ -302,7 +306,9 @@ describe("automatic choice with Antigravity", () => {
       const used = new Set(
         Object.values(plan).map((choice) => choice!.provider),
       );
-      expect(Object.keys(plan).sort()).toEqual([...order].sort());
+      // Every task has a model, and hard exercises are on the chat's tool.
+      expect(Object.keys(plan).sort()).toEqual([...order, "solve"].sort());
+      expect(plan.solve!.provider).toBe(plan.chat!.provider);
       expect(used.size).toBe(ready.length);
       for (const choice of Object.values(plan)) {
         expect(choice!.model).not.toMatch(/thinking|fable/);
@@ -326,6 +332,7 @@ describe("the order the student put their tools in", () => {
       vision: "codex:gpt-6.1-terra:medium",
       default: "codex:gpt-6.1-terra:medium",
       plan: "codex:gpt-6.2-sol:high",
+      solve: "codex:gpt-6.2-sol:high",
     });
     expect(new Set(Object.values(providersOf(planAuto([claude, codex], undefined, ["claude", "codex"]))))).toEqual(
       new Set(["claude"]),

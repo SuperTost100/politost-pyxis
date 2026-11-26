@@ -4,14 +4,20 @@ import { automaticEffort, studentEffort } from "@shared/effort";
 import type { RequestOutput } from "@shared/ipc";
 import { Button } from "../../components/Button";
 
-/** In the order of the roles the tasks run in: the fast ones, the middle ones, the plan. */
-export const featureNames = ["chat", "cards", "map", "lesson", "grading", "plan", "vision", "default"] as const;
+/** In the order of the roles the tasks run in: the fast ones, the middle ones, the strong ones. */
+export const featureNames = ["chat", "cards", "map", "lesson", "grading", "plan", "solve", "vision", "default"] as const;
 export type Feature = (typeof featureNames)[number];
 type Engine = RequestOutput<"engines.overview">[number];
 type Model = RequestOutput<"engines.models">[number];
 type Features = RequestOutput<"engines.features">;
 
 const AUTO = "__auto__";
+/**
+ * Hard exercises go to the strong model of the tool answering the chat, so they have no model to pin: the field offers
+ * Automatico and Spento, which means the chat never hands one on.
+ */
+const OFF = "__off__";
+const followsChat = (feature: Feature) => feature === "solve";
 
 /**
  * The model and the reasoning effort of each kind of work, for a student who wants to set them by hand. "Automatic"
@@ -33,6 +39,8 @@ export function EngineTasks({
   onModel,
   onEffort,
   onAutomatic,
+  off,
+  onOff,
 }: {
   features: Features | undefined;
   overview: Engine[] | undefined;
@@ -55,6 +63,10 @@ export function EngineTasks({
   onEffort: (feature: Feature, effort: string | undefined) => void;
   /** Hands one task, or all of them when none is named, back to Pyxis. */
   onAutomatic: (feature?: Feature) => void;
+  /** The tasks switched off, which may have no model row to show. */
+  off: { solve: boolean } | undefined;
+  /** Switches a task off (only hard exercises). "Automatic" switches it on again. */
+  onOff: (feature: Feature) => void;
 }) {
   const { t } = useTranslation();
   const headingId = useId();
@@ -92,7 +104,8 @@ export function EngineTasks({
         </div>
         {featureNames.map((feature) => {
           const selection = features?.[feature];
-          const isAuto = !selection || selection.auto === true;
+          const isOff = followsChat(feature) && off?.solve === true;
+          const isAuto = !selection || selection.auto === true || followsChat(feature);
           const value = selection ? JSON.stringify([selection.provider, selection.model]) : "";
           const row = overview?.find((item) => item.id === selection?.provider);
           const listed = (
@@ -124,11 +137,12 @@ export function EngineTasks({
               <div className="engines-feature-model">
                 <select
                   id={`engine-${feature}`}
-                  className={isAuto ? "px-ctl-field" : "px-ctl-field is-pinned"}
+                  className={isAuto || isOff ? "px-ctl-field" : "px-ctl-field is-pinned"}
                   disabled={busy}
-                  value={isAuto ? AUTO : value}
+                  value={isOff ? OFF : isAuto ? AUTO : value}
                   onChange={(event) => {
                     const next = event.target.value;
+                    if (next === OFF) return onOff(feature);
                     if (next === AUTO) return onAutomatic(feature);
                     const [provider] = JSON.parse(next) as [string, string];
                     // The pick travels with the task and applies wherever the new model lists it.
@@ -144,8 +158,9 @@ export function EngineTasks({
                       ? t("engines.autoToday", { model: autoLabel(selection.provider, selection.model) })
                       : t("engines.automatic")}
                   </option>
-                  {missing ? <option value={value}>{labelOf(selection.provider, selection.model)}</option> : null}
-                  {groups.map((group) => (
+                  {followsChat(feature) ? <option value={OFF}>{t("engines.off")}</option> : null}
+                  {missing && !followsChat(feature) ? <option value={value}>{labelOf(selection.provider, selection.model)}</option> : null}
+                  {followsChat(feature) ? null : groups.map((group) => (
                     <optgroup key={group} label={group}>
                       {choices
                         .filter((choice) => choice.group === group)
@@ -167,7 +182,7 @@ export function EngineTasks({
                   id={`engine-effort-${feature}`}
                   className="px-ctl-field"
                   aria-label={`${t(`engines.feature.${feature}`)}: ${t("engines.effort")}`}
-                  disabled={!listed.length || busy}
+                  disabled={!listed.length || busy || isOff}
                   value={pickedListed ? picked : AUTO}
                   onChange={(event) =>
                     onEffort(feature, event.target.value === AUTO ? undefined : event.target.value)
@@ -196,6 +211,7 @@ export function EngineTasks({
       </div>
       <p className="small engines-hint">{t("engines.modelAdvice")}</p>
       <p className="small engines-hint">{t("engines.effortAdvice")}</p>
+      <p className="small engines-hint">{t("engines.solveAdvice")}</p>
     </section>
   );
 }

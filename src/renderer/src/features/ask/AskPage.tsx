@@ -223,16 +223,41 @@ const Reply = memo(function Reply({
     }),
     [row.answers, row.id, row.body, last, onAnswer, busy, onSuggest, t, onPicking],
   );
-  // A saved reply never has a tool at work: a `pending:` block in it is drawn as nothing (`savedToolLine`).
+  // The model that wrote the reply, and the stronger one when it solved the exercise: "Claude · Sonnet 5.5 con Opus 5.5".
+  // A solver of another tool, pinned in Settings, is named with its tool.
+  const engineTag = (reply: typeof row) => {
+    const main = engineNames.label(reply.provider, reply.modelId);
+    const solved = Object.values(reply.tools ?? {}).find((view) => view.tool === "ask_stronger_model");
+    if (!main || !solved) return main || undefined;
+    const model =
+      solved.provider === reply.provider
+        ? engineNames.modelName(solved.provider, solved.model)
+        : engineNames.label(solved.provider, solved.model);
+    return t("components.chat.engineWithSolver", { engine: main, model });
+  };
+  // A saved reply never has a tool at work: a `pending:` block in it is drawn as nothing (`savedToolLine`). A proposal
+  // waiting for the student counts as a pick waiting for «Controlla»: its confirming button is the primary, so «Invia»
+  // is quiet.
+  const proposalWaiting = useCallback(
+    (id: string, waiting: boolean) => onPicking(`${row.id}\nproposal:${id}`, waiting),
+    [onPicking, row.id],
+  );
   const toolBlock = useCallback((line: string) => {
     const saved = savedToolLine(line);
-    return saved ? <ToolResult chatId={chatId} line={saved} view={row.tools?.[saved]} /> : null;
-  }, [chatId, row.tools]);
+    return saved ? (
+      <ToolResult
+        chatId={chatId}
+        line={saved}
+        view={row.tools?.[saved]}
+        onWaiting={proposalWaiting}
+        onAsk={busy ? undefined : onSuggest}
+        fresh={arriving}
+      />
+    ) : null;
+  }, [chatId, row.tools, proposalWaiting, busy, onSuggest, arriving]);
   return (
     <ChatMessage
-      engine={
-        engineNames.label(row.provider, row.modelId) || undefined
-      }
+      engine={engineTag(row)}
       lead={<UsedSources grounding={row.grounding} citations={row.citations} searched={row.searched} />}
       sources={<SourcesRow places={places} order={order} claims={claims} arriving={arriving} />}
       stopped={row.stopped}
@@ -918,8 +943,8 @@ export function AskPage() {
     );
     return kept;
   });
-  // The practice questions with an option picked and not checked, by reply and question: while there is one, Invia is
-  // quiet.
+  // The practice questions with an option picked and not checked, by reply and question, and the proposals waiting for
+  // the student: while there is one, Invia is quiet.
   const [picking, setPicking] = useState<ReadonlySet<string>>(() => new Set());
   const pickingChanged = useStable((pick: string, on: boolean) =>
     setPicking((current) => {
