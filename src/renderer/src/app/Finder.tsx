@@ -232,7 +232,11 @@ export function Finder({
             className={row.stay ? "px-finder-row is-more" : "px-finder-row"}
             onMouseMove={() => setActive(at)}
             onClick={() => pick(row)}
-            {...menuTrigger(() => openChatMenu(row), Boolean(row.chat))}
+            // Select the row as soon as its menu opens so active state does not lag until the next mousemove frame.
+            {...menuTrigger(() => {
+              setActive(at);
+              openChatMenu(row);
+            }, Boolean(row.chat))}
           >
             <span className="px-finder-title">{row.title}</span>
             {row.sub ? <span className="px-finder-sub">{row.sub}</span> : null}
