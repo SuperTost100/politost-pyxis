@@ -81,6 +81,13 @@ export type Tool = {
   /** Whether a running turn may see and call it now. Absent means always; a tool that has it is never listed between turns. */
   offered?(turn: ToolTurn): boolean;
   input: z.ZodType;
+  /**
+   * The arguments with the LaTeX a single backslash lost in the model's JSON restored (`repairModelStrings`) in the
+   * tool's short formula fields only, such as a card's front and back, before they are validated. Free text a model
+   * copies or writes as prose, and names, have real line breaks far more often and stay as written: a tool without it
+   * gets its arguments as the JSON says.
+   */
+  repairs?(args: unknown): unknown;
   run(turn: ToolTurn, args: unknown): ToolOutcome | Promise<ToolOutcome>;
 };
 
@@ -336,7 +343,8 @@ async function call(chat: Chat, params: Record<string, unknown>) {
   const handle = turn.started(tool.name);
   let outcome: ToolOutcome;
   try {
-    const parsed = tool.input.safeParse(params.arguments ?? {});
+    const args = params.arguments ?? {};
+    const parsed = tool.input.safeParse(tool.repairs ? tool.repairs(args) : args);
     outcome = parsed.success
       ? await tool.run(turn, parsed.data)
       : { text: `Invalid arguments: ${z.prettifyError(parsed.error).slice(0, 1500)}`, isError: true };

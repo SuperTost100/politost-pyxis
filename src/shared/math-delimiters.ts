@@ -1,4 +1,3 @@
-import { repairLatexEscapes } from "./latex-repair";
 import { end, parseMarkdown, start, walk, type MdNode } from "./markdown-tree";
 import { codeRanges, mapOutsideCode } from "./outside-code";
 
@@ -405,22 +404,12 @@ function boldInFormulas(text: string): string {
 }
 
 /**
- * A model that writes a LaTeX command with one backslash in a JSON string loses it: `\\times` arrives as a tab and
- * `imes`. The prose of the text, as the parser reads it, has them back (`repairLatexEscapes`). Before the delimiters are
- * converted: the repair reads \( ... \) and \[ ... \] as math, and trimming a formula's edges would drop a line break
- * that is really the start of `\nu`. Anything that classifies a text, as `holdOpenMath` does, does it on this text.
- */
-export function repairLatexInProse(source: string): string {
-  return mapOutsideCode(source, (chunk, from) => repairLatexEscapes(chunk, from === 0 || source[from - 1] === "\n"));
-}
-
-/**
  * Turns \\( … \\) and \\[ … \\] into $ / $$ forms for remark-math, and Markdown bold inside a formula into \\mathbf,
  * and repairs what a model's formulas need to be read as formulas (see `prepared` and `rewriteRest`). Code, as the
  * parser reads it, is left as written.
  */
 export function normalizeMathDelimiters(input: string): string {
-  return boldInFormulas(rewriteRest(prepared(repairLatexInProse(resolveBookRefs(input))).text));
+  return boldInFormulas(rewriteRest(prepared(resolveBookRefs(input)).text));
 }
 
 /** Whether a line closes a `$$` block opened with `width` dollar signs: only dollar signs, at least as many, after any quote marks. */

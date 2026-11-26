@@ -3,6 +3,7 @@ import { z } from "zod";
 import { saveProposedCardIds } from "../study/cardsFromText";
 import { addFlashcards, storeFlashcards } from "./results";
 import type { Tool, ToolTurn } from "./server";
+import { repairModelStrings } from "../../shared/latex-repair";
 
 /** Cards one call may create. A longer list is refused whole, before anything is saved. */
 export const CARDS_PER_CALL = 30;
@@ -76,6 +77,17 @@ export function flashcardsTool(db: Database.Database): Tool {
     name: TOOL_NAME,
     description: FLASHCARDS_DESCRIPTION,
     input: flashcardsInput,
+    // A card's front and back are short Markdown with formulas; the deck's title is a name.
+    repairs: (args) => {
+      const value = args && typeof args === "object" ? (args as { cards?: unknown }) : null;
+      if (!value || !Array.isArray(value.cards)) return args;
+      const cards = value.cards.map((card: unknown) => {
+        if (!card || typeof card !== "object") return card;
+        const { front, back } = card as { front?: unknown; back?: unknown };
+        return { ...card, front: repairModelStrings(front), back: repairModelStrings(back) };
+      });
+      return { ...value, cards };
+    },
     run(turn, raw) {
       const args = raw as z.infer<typeof flashcardsInput>;
       const used = turn.tally.cards ?? 0;

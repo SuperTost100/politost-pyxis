@@ -25,11 +25,13 @@ const chapter = [
   "",
 ].join("\n");
 
-// "\theta" and "\frac" in these JS strings are a tab and a form feed: what a single backslash in a model's JSON becomes.
+// The lesson as a model writes it: Markdown, which keeps every backslash, and blocks whose body is JSON. The recap's
+// JSON writes `\frac` with one backslash, which JSON reads as a form feed and "rac": the app restores it where it reads
+// the block. Markdown never went through JSON, so its prose has no such loss for the app to restore.
 const lesson = [
   "## Il vettore",
   "",
-  "Il modulo è {{formula:1.5}}: vedi [testo](ref:chapter/1#p2), con $m\\vec{g}\\sin\theta$ e $\frac{a}{b}$.",
+  "Il modulo è {{formula:1.5}}: vedi [testo](ref:chapter/1#p2), con $m\\vec{g}\\sin\\theta$ e $\\frac{a}{b}$.",
   "",
   "Un punto $P$ nello spazio [P1].",
   "",
@@ -48,7 +50,7 @@ const lesson = [
         explanation: "Alfa.",
       },
     ],
-  }),
+  }).replace("\\\\frac{a}{b}", "\\frac{a}{b}"),
 ].join("\n");
 
 test("book text and model LaTeX reach the student clean: path row, lesson, source panel, selection and option names", async () => {
@@ -145,7 +147,8 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     await expect(solution).toContainText("Il modulo è eq. 1.5:");
     expect(await solution.innerText()).not.toContain("{{");
 
-    // 3. The lesson: no placeholder, no reference link, and LaTeX the model wrote with single backslashes is intact. The
+    // 3. The lesson: no placeholder, no reference link, and the LaTeX the model wrote is intact (the recap's, written with
+    // single backslashes in its JSON, is checked by the option names below). The
     // topic's lesson was finished before lessons came in parts, for another course, so the reader that came before parts
     // writes the student's own; lessons in parts have their own spec.
     const seeding = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });

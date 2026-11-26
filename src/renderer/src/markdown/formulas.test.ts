@@ -118,6 +118,23 @@ describe("a display formula that opens on a line of its own", () => {
   });
 });
 
+describe("a line break in Markdown a model wrote as text", () => {
+  // Markdown never travelled inside a JSON string, so it lost no backslash: each line break in it is a line break.
+  it.each([
+    // A chat answer of ChatGPT's on the dev.14 build, which was drawn with ν'' where u'' stands.
+    ["Quindi\n\n$$\nu'(t)=\\ln t+\\frac32-\\frac1{2t^2},\n\\qquad\nu''(t)=\\frac1t+\\frac1{t^3}.\n$$", "u'(t)=\\ln t+\\frac32-\\frac1{2t^2},\n\\qquad\nu''(t)=\\frac1t+\\frac1{t^3}."],
+    ["Vale\n\n$$f(t) = 1 +\ne^{t}\n$$", "f(t) = 1 +\ne^{t}"],
+    ["Vale\n\n$$a_k = k\ni_k\n$$", "a_k = k\ni_k"],
+    ["Vale $$x =\n\theta$$ qui", "x =\n\theta"],
+  ])("draws the formula as written: %j", (text, formula) => {
+    const html = render(text, false);
+    const latex = [...html.matchAll(/<annotation encoding="application\/x-tex">([^<]*)<\/annotation>/g)].map((m) =>
+      m[1]!.replaceAll("&#x27;", "'").trim(),
+    );
+    expect(latex).toEqual([formula]);
+  });
+});
+
 describe("prices with punctuation after the dollar sign", () => {
   // From the walk of the dev.13 build: a price followed by a comma or a full stop paired with the next dollar sign.
   it.each([

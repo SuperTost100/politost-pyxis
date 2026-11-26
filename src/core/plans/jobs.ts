@@ -30,6 +30,7 @@ import { queueSyllabusChecks } from "../sources/syllabus";
 import { aboutPlan } from "../study/jobAbout";
 import { shuffleChoices } from "../../shared/choices";
 import { topicTitle } from "../../shared/book-text";
+import { repairModelStrings } from "../../shared/latex-repair";
 import { stripPassageRefs } from "../../shared/smart-text";
 import { saveSessions, sessionsFromInput } from "./sessions";
 
@@ -215,12 +216,15 @@ function introPrompt(params: Params, rows: Passage[]): string {
     })),
   });
 }
-/** The introduction's smart text. A JSON reply ({ "markdown": ... }) is unwrapped; passage references are removed. */
+/**
+ * The introduction's smart text. A JSON reply ({ "markdown": ... }) is unwrapped, with the LaTeX a single backslash lost
+ * in it restored; passage references are removed.
+ */
 function introText(text: string): string {
   let markdown = text.trim();
   try {
     const parsed = JSON.parse(markdown) as { markdown?: unknown };
-    if (typeof parsed?.markdown === "string") markdown = parsed.markdown;
+    if (typeof parsed?.markdown === "string") markdown = repairModelStrings(parsed.markdown);
   } catch {
     // Plain smart text, as asked.
   }

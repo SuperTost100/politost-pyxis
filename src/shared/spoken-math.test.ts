@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { plainTitle, spokenText } from "./spoken-math";
+import { repairModelStrings } from "./latex-repair";
 
 describe("spokenText", () => {
   it("drops the dollar signs and the units markup", () => {
@@ -17,8 +18,8 @@ describe("spokenText", () => {
     expect(spokenText("Il valore è $$E = mc^2$$ joule")).toBe("Il valore è E = mc^2 joule");
   });
 
-  it("reads a formula whose backslashes were lost to control characters as the student sees it", () => {
-    expect(spokenText("$m\vec{g}\\sin\theta + \frac{a}{b}$")).toBe("mg sin θ + a/b");
+  it("reads a formula whose backslashes JSON lost as the student sees it, once they are restored where the JSON was read", () => {
+    expect(spokenText(repairModelStrings("$m\vec{g}\\sin\theta + \frac{a}{b}$"))).toBe("mg sin θ + a/b");
   });
 
   it("reads an accent or a root on a single token without braces, as the same formula with braces", () => {

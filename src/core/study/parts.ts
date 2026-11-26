@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
 import { IpcError } from "../../shared/ipc";
+import { repairModelStrings } from "../../shared/latex-repair";
 import { parseLooseJson, parseSmartText, partQuestions, replaceSection, smartSections } from "../../shared/smart-text";
 import { contextHash } from "../chat/sessions";
 import { generate, type GenerateInput } from "../engine/generate";
@@ -781,9 +782,9 @@ function fencedBlocks(lines: readonly string[]): Array<{ info: string; from: num
   return blocks;
 }
 
-/** A takeaway block's text: `{"text": ...}`, or a body that is only a string. */
+/** A takeaway block's text: `{"text": ...}`, or a body that is only a string, with the LaTeX its JSON lost restored. */
 function takeawayText(body: string): string | null {
-  const raw = parseLooseJson(body);
+  const raw = repairModelStrings(parseLooseJson(body));
   const text =
     typeof raw === "string" ? raw : raw && typeof raw === "object" ? (raw as { text?: unknown }).text : undefined;
   return typeof text === "string" && text.trim() ? text.replace(/\s+/g, " ").trim() : null;

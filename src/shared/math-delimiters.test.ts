@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import { displayMathLines, hasFormula, holdOpenMath, normalizeMathDelimiters } from "./math-delimiters";
 
 describe("normalizeMathDelimiters and control characters", () => {
-  it("restores LaTeX commands in prose but leaves code as written", () => {
-    expect(normalizeMathDelimiters("Vale $\\theta\theta$ qui")).toBe("Vale $\\theta\\theta$ qui");
+  // LaTeX a single backslash lost in JSON is restored where the JSON is read (`repairModelStrings`); a text that reaches the
+  // view lost nothing, so a tab or a line break in it is one, in prose, in a formula and in code alike.
+  it("leaves tabs and line breaks as written, in prose and in code", () => {
+    expect(normalizeMathDelimiters("Vale $\\theta\theta$ qui")).toBe("Vale $\\theta\theta$ qui");
     const code = "```\na\times b\nprice $ 5\nnot_found\n```";
     expect(normalizeMathDelimiters(code)).toBe(code);
     const inline = "uso `a\times b` e $\theta$";
-    expect(normalizeMathDelimiters(inline)).toBe("uso `a\times b` e $\\theta$");
+    expect(normalizeMathDelimiters(inline)).toBe(inline);
   });
 });
 
@@ -30,13 +32,9 @@ describe("normalizeMathDelimiters and Windows line ends", () => {
 });
 
 describe("normalizeMathDelimiters and backslash delimiters", () => {
-  it("repairs a command inside \\( … \\) and \\[ … \\] math", () => {
-    expect(normalizeMathDelimiters("\\(a\neq b\\)")).toBe("$a\\neq b$");
-    expect(normalizeMathDelimiters("\\[x\nu\\]")).toBe("\n$$\nx\\nu\n$$\n");
-  });
-
-  it("repairs a command right after inline code, where the chunk starts mid-line", () => {
-    expect(normalizeMathDelimiters("uso `x`\theta qui")).toBe("uso `x`\\theta qui");
+  it("converts \\( … \\) and \\[ … \\] math whose commands were repaired where the JSON was read", () => {
+    expect(normalizeMathDelimiters("\\(a\\neq b\\)")).toBe("$a\\neq b$");
+    expect(normalizeMathDelimiters("\\[x\\nu\\]")).toBe("\n$$\nx\\nu\n$$\n");
   });
 });
 
