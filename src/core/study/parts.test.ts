@@ -873,7 +873,13 @@ describe("writePart", () => {
       'Part 1, Uno (before this part). Sections: "Passo 1 primo", "Passo 1 secondo".\nWhat it taught: Hai imparato il passo 1.',
     );
     expect(prompt.match(/MARK-\w+/g)).toEqual(["MARK-ps003", "MARK-ps004"]);
+    expect(prompt).toContain("[P1] ");
+    expect(prompt).toContain("[P2] ");
+    expect(prompt.indexOf("[P1] ")).toBeLessThan(prompt.indexOf("MARK-ps003"));
+    expect(prompt.indexOf("[P2] ")).toBeLessThan(prompt.indexOf("MARK-ps004"));
     expect(engine.calls[0]!.system).toContain("You write one part of a lesson");
+    expect(engine.calls[0]!.system).toContain("inline as [P1], [P2] in prose");
+    expect(engine.calls[0]!.system).not.toContain("Do not cite sources");
 
     const part = outline.parts[1]!;
     const shape = partShape(partText("2"), first);

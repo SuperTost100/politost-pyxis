@@ -153,9 +153,11 @@ it("caches lessons per wording and education, bounds the context, regenerates sa
     });
     expect(simple.wording).toBe("simple");
     expect(simple.passageIds).toHaveLength(10);
-    // Every passage is taught, with no labels the model could cite.
+    // Every passage is taught, numbered [P1]..[P10] to match passageIds so the sources row can tint cited sentences.
     expect(calls[0]!.prompt.match(/x{500}/g)).toHaveLength(10);
-    expect(calls[0]!.prompt).not.toMatch(/\[P\d+\]/);
+    expect(calls[0]!.prompt.match(/\[P\d+\]/g)).toEqual(
+      Array.from({ length: 10 }, (_, index) => `[P${index + 1}]`),
+    );
     expect(calls[0]!.prompt.length).toBeLessThan(25_000);
     expect(calls[0]!.system).toContain("Wording: simple");
     expect(calls[0]!.system).toContain("education level: primary");
@@ -271,9 +273,11 @@ it("falls back to the book on an empty reply without poisoning a later lesson, a
     `);
     let calls = 0;
     const systems: string[] = [];
+    const prompts: string[] = [];
     const run: Parameters<typeof writeLesson>[3] = async (input) => {
       calls++;
       systems.push(input.system ?? "");
+      prompts.push(input.prompt);
       return {
         text:
           calls === 1
@@ -308,11 +312,12 @@ it("falls back to the book on an empty reply without poisoning a later lesson, a
       itemCount,
     );
     expect(systems[0]).toContain("Write all output in Italian.");
-    expect(systems[0]).not.toContain(partialText("citation"));
+    expect(systems[0]).toContain(partialText("citation"));
     expect(systems[0]).toContain("```pyxis-<kind>");
-    expect(systems[0]).toContain("Do not cite sources");
+    expect(systems[0]).not.toContain("Do not cite sources");
     expect(systems[0]).toContain("Teach only the current part");
     expect(systems[0]).not.toMatch(/\{\{[A-Za-z]/);
+    expect(prompts[0]).toContain("[P1]");
     expect(
       db
         .prepare(

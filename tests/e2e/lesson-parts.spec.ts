@@ -860,3 +860,80 @@ test("going back from a lesson opened with the topic's Lezione step puts the foc
     await close();
   }
 });
+
+test("a lesson part receives numbered passages and pointing at a source tints the cited sentence in prose and blocks", async () => {
+  test.setTimeout(120_000);
+  const citedPassages = [
+    {
+      id: "cp-1",
+      text: "Un intorno sferico di raggio r contiene tutti i punti a distanza minore di r.",
+      section: "p. 12",
+      locator: { page: 12 },
+    },
+    {
+      id: "cp-2",
+      text: "La distanza euclidea fra due punti si calcola con la radice della somma dei quadrati.",
+      section: "p. 15",
+      locator: { page: 15 },
+    },
+  ];
+  const citedPart = [
+    "Partiamo dalla distanza nello spazio euclideo.",
+    "",
+    "## Intorni sferici",
+    "",
+    "Un intorno sferico di raggio $r$ raccoglie tutti i punti a distanza minore di $r$ [P1].",
+    partText("Intorni").split("\n").slice(4, 10).join("\n"),
+    "",
+    "## Un esempio di distanza",
+    "",
+    "```pyxis-example",
+    JSON.stringify({
+      title: "Distanza nel piano [P2]",
+      body: "La distanza euclidea fra due punti usa la radice della somma dei quadrati [P2].",
+    }),
+    "```",
+    "",
+    partText("Intorni").split("\n").slice(12).join("\n"),
+  ].join("\n");
+  const { page, prompts, close } = await start(
+    [{ markdown: citedPart }],
+    [{ id: "t-cited", title: "Distanza in Rn", passages: citedPassages }],
+  );
+  try {
+    await open(page, "t-cited");
+    await expect(page.getByRole("heading", { level: 2, name: "Intorni sferici" })).toBeVisible({ timeout: 20_000 });
+    // The write call numbered the part's passages [P1] and [P2] so the model could cite them.
+    const logged = readFileSync(prompts, "utf8");
+    expect(logged).toContain("[P1] Un intorno sferico");
+    expect(logged).toContain("[P2] La distanza euclidea");
+    // Open the sources row under the part and hover each page: the passage card opens and tints its cited sentence.
+    const row = page.locator(".px-sources-row");
+    await expect(row).toBeVisible();
+    await row.click();
+    const p12 = page.getByRole("button", { name: "Bramanti, Pagani, Salsa, p. 12", exact: true });
+    await atRest(p12);
+    await p12.hover();
+    await expect(page.getByRole("tooltip")).toContainText("Un intorno sferico di raggio r");
+    await expect
+      .poll(() =>
+        page.evaluate(() => [...(CSS.highlights.get("px-cited") ?? [])].map((range) => (range as Range).toString())),
+      )
+      .toEqual([expect.stringMatching(/^Un intorno sferico di raggio .* raccoglie tutti i punti a distanza minore di/)]);
+    await saveShot(page, "lesson-parts/part-sources-hover-tint.png");
+
+    const p15 = page.getByRole("button", { name: "Bramanti, Pagani, Salsa, p. 15", exact: true });
+    await p15.hover();
+    await expect(page.getByRole("tooltip")).toContainText("La distanza euclidea fra due punti");
+    await expect
+      .poll(() =>
+        page.evaluate(() => [...(CSS.highlights.get("px-cited") ?? [])].map((range) => (range as Range).toString())),
+      )
+      .toEqual([
+        "Distanza nel piano",
+        "La distanza euclidea fra due punti usa la radice della somma dei quadrati",
+      ]);
+  } finally {
+    await close();
+  }
+});

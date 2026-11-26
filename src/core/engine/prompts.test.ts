@@ -28,9 +28,9 @@ describe("prompt templates", () => {
   });
 
   it("bumps the version of every template whose wording changed", () => {
-    // Smart text: lessons teach with inline blocks and no citations. smart-2 adds the pyxis-figure block. smart-3 and
-    // intro 4: a check's explanation shows after a wrong pick too, so it never calls the other options correct.
-    // smart-4 asks for about 6 sections and at most 6 quick checks.
+    // Smart text: lessons teach with inline blocks and [Pn] citations for the sources row. smart-2 adds the pyxis-figure
+    // block. smart-3 and intro 4: a check's explanation shows after a wrong pick too, so it never calls the other
+    // options correct. smart-4 asks for about 6 sections and at most 6 quick checks.
     expect(loadTemplate("lesson.write").version).toBe("smart-4");
     expect(loadTemplate("lesson.write").body).toContain("about 6 sections (5 to 7)");
     expect(loadTemplate("lesson.write").body).toContain("never more than 6 in the whole lesson");
@@ -229,6 +229,8 @@ describe("prompt templates", () => {
       "map.generate",
       "chat.tutor",
       "lesson.agent",
+      "lesson.write",
+      "lesson.part",
     ];
     const figureTemplates: TemplateId[] = ["lesson.write", "lesson.part", "chat.tutor"];
     const rule = partialText("citation");
