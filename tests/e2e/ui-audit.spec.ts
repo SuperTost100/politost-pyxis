@@ -475,9 +475,11 @@ const routes = [
   ["ask-map-working", "/ask/look-map-working"],
   ["ask-map-done", "/ask/look-map-done"],
   ["ask-map-undone", "/ask/look-map-undone"],
+  ["ask-map-stopped", "/ask/look-map-stopped"],
   ["ask-quiz-working", "/ask/look-quiz-working"],
   ["ask-quiz-done", "/ask/look-quiz-done"],
   ["ask-quiz-undone", "/ask/look-quiz-undone"],
+  ["ask-quiz-stopped", "/ask/look-quiz-stopped"],
   // The "ask first" tools: a change to the path, a new exam and a deletion waiting for the student, a path change applied
   // and one declined, and one whose path changed before the student decided.
   ["ask-propose-path", "/ask/look-propose-path"],
@@ -3805,6 +3807,11 @@ async function openState(page: Page, name: string) {
     case "ask-quiz-undone":
       await expect(page.getByRole("button", { name: both("Ripristina", "Restore") })).toBeVisible();
       break;
+    case "ask-map-stopped":
+    case "ask-quiz-stopped":
+      await expect(page.getByText(name === "ask-map-stopped" ? both("La creazione della mappa si è fermata.", "The map stopped before it was finished.") : both("La scrittura del quiz si è fermata.", "The quiz stopped before it was finished."))).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Riprendi", "Resume") })).toBeVisible();
+      break;
     case "ask-map-working":
     case "ask-quiz-working":
       await expect(page.getByText(name === "ask-map-working" ? both("Creo la mappa…", "Creating the map…") : both("Creo il quiz…", "Creating the quiz…"))).toBeVisible();
@@ -6250,7 +6257,7 @@ function lookChats(name: string) {
     // The stronger model is asked in the same chat the flashcard tool works in.
     else if (name === "ask-solver-working") seedToolChat(db, "working");
     else if (name.startsWith("ask-map-") || name.startsWith("ask-quiz-")) {
-      const [, tool, state] = name.split("-") as [string, "map" | "quiz", "working" | "done" | "undone"];
+      const [, tool, state] = name.split("-") as [string, "map" | "quiz", "working" | "done" | "undone" | "stopped"];
       seedMadeChat(db, tool, state);
     }
     else if (name.startsWith("ask-propose-"))

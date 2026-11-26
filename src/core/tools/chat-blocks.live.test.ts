@@ -68,7 +68,7 @@ function setup(provider: string, model: string, effort: string | undefined, grad
     ].forEach(([topic, day, score], index) => {
       run("INSERT INTO items (id, plan_id, topic_id, kind, body_json, created_at) VALUES (?, 'mech', ?, 'quiz', '{}', ?)", `i${index}`, `t${topic}`, nov(day!));
       run("INSERT INTO attempts (id, plan_id, item_id, started_at, submitted_at) VALUES (?, 'mech', ?, ?, ?)", `a${index}`, `i${index}`, nov(day!) - 600_000, nov(day!));
-      run("INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES (?, ?, ?, ?)", `aa${index}`, `a${index}`, JSON.stringify({ picks: {}, score }), nov(day!));
+      run("INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES (?, ?, ?, ?)", `aa${index}`, `a${index}`, JSON.stringify({ picks: {}, results: [], score }), nov(day!));
     });
   }
   // The notice as core keeps it: confirmed before it named results (`true`), or as it is now.

@@ -81,7 +81,7 @@ describe("a chat turn with tools", () => {
 
     // Between turns the token acts on nothing.
     const late = await callTool(seen!, "create_flashcards", { cards: [{ front: "Altro?", back: "No." }] });
-    expect(late.result.isError).toBe(true);
+    expect(late.result.content[0]!.text).toMatch(/^Nothing was done/);
     expect(db.prepare("SELECT COUNT(*) FROM cards").pluck().get()).toBe(2);
 
     // A new session gets the conversation with what the tool did, in place of the block.
@@ -187,7 +187,8 @@ describe("a chat turn with tools", () => {
         input.tools!.onTool?.({ phase: "start", id: "call-1", tool: "create_flashcards" });
         // The chat has no subject: the tool refuses, and the model answers on.
         const answer = await callTool(input.tools!, "create_flashcards", { cards });
-        expect(answer.result.isError).toBe(true);
+        expect(answer.result.isError).toBeUndefined();
+        expect(answer.result.content[0]!.text).toMatch(/no subject or exam/);
         input.tools!.onTool?.({ phase: "end", id: "call-1", tool: "create_flashcards", failed: true });
         return { text: `Scegli prima una materia.\n${forged}`, model: "claude-sonnet-5", provider: "claude", inputTokens: 1 };
       },

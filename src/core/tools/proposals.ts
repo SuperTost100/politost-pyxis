@@ -119,11 +119,16 @@ export function propose<R, A>(
   return { resultId, action: action as A };
 }
 
-type Row = { id: string; chat_id: string; message_id: string | null; tool: string; data_json: string; created_at: number };
+/**
+ * `seq` is the row's rowid: SQLite gives each new row one more than the largest, and no result row is ever written back,
+ * so it is the order the results were made in. "Later" goes by it, never by `created_at` (two calls can share a
+ * millisecond) or by the id (whose part after the millisecond is random).
+ */
+type Row = { id: string; seq: number; chat_id: string; message_id: string | null; tool: string; data_json: string; created_at: number };
 
 function proposalRow(db: Database.Database, chatId: string, id: string): Row {
   const row = db
-    .prepare(`SELECT id, chat_id, message_id, tool, data_json, created_at FROM chat_tool_results WHERE id = ? AND chat_id = ?`)
+    .prepare(`SELECT id, rowid AS seq, chat_id, message_id, tool, data_json, created_at FROM chat_tool_results WHERE id = ? AND chat_id = ?`)
     .get(id, chatId) as Row | undefined;
   if (!row || !isProposal(row.tool)) throw new Error("tool-result-missing");
   return row;
@@ -148,9 +153,9 @@ function newerSaved(db: Database.Database, row: Row): boolean {
   return !!db
     .prepare(
       `SELECT 1 FROM chat_tool_results r JOIN messages m ON m.id = r.message_id AND m.chat_id = r.chat_id
-       WHERE r.chat_id = ? AND r.tool = ? AND r.id != ? AND (r.created_at > ? OR (r.created_at = ? AND r.id > ?)) LIMIT 1`,
+       WHERE r.chat_id = ? AND r.tool = ? AND r.rowid > ? LIMIT 1`,
     )
-    .get(row.chat_id, row.tool, row.id, row.created_at, row.created_at, row.id);
+    .get(row.chat_id, row.tool, row.seq);
 }
 
 /** Whether the reply that made the proposal is saved, so the student can decide on it. */
@@ -186,7 +191,7 @@ function viewOf(db: Database.Database, row: Row, at = Date.now(), stale = false)
 /** A stored proposal's view, for `toolViews`. */
 export function proposalView(db: Database.Database, id: string): ProposalView | null {
   const row = db
-    .prepare(`SELECT id, chat_id, message_id, tool, data_json, created_at FROM chat_tool_results WHERE id = ?`)
+    .prepare(`SELECT id, rowid AS seq, chat_id, message_id, tool, data_json, created_at FROM chat_tool_results WHERE id = ?`)
     .get(id) as Row | undefined;
   return row && isProposal(row.tool) ? viewOf(db, row) : null;
 }
@@ -256,14 +261,14 @@ export function decideProposal(
  */
 export function expireOlderProposals(db: Database.Database, chatId: string, ids: readonly string[], now = Date.now()): void {
   const rows = db
-    .prepare(`SELECT id, tool, data_json, created_at FROM chat_tool_results WHERE chat_id = ? ORDER BY created_at, id`)
-    .all(chatId) as Array<{ id: string; tool: string; data_json: string; created_at: number }>;
+    .prepare(`SELECT id, rowid AS seq, tool, data_json FROM chat_tool_results WHERE chat_id = ? ORDER BY rowid`)
+    .all(chatId) as Array<{ id: string; seq: number; tool: string; data_json: string }>;
   const saved = rows.filter((row) => ids.includes(row.id) && isProposal(row.tool));
   if (saved.length === 0) return;
   for (const row of rows) {
     if (!isProposal(row.tool) || ids.includes(row.id)) continue;
     const newer = saved.some(
-      (other) => other.tool === row.tool && (other.created_at > row.created_at || (other.created_at === row.created_at && other.id > row.id)),
+      (other) => other.tool === row.tool && other.seq > row.seq,
     );
     const data = JSON.parse(row.data_json) as ProposalData;
     // Only a proposal still waiting lapses. One withdrawn by a regenerate stays withdrawn, so a stopped or failed new
@@ -315,7 +320,7 @@ export function decidedProposal(db: Database.Database, chatId: string, id: strin
  */
 export function decidedSince(db: Database.Database, chatId: string, since: number): string[] {
   const rows = db
-    .prepare(`SELECT id, tool, data_json FROM chat_tool_results WHERE chat_id = ? ORDER BY created_at, id`)
+    .prepare(`SELECT id, tool, data_json FROM chat_tool_results WHERE chat_id = ? ORDER BY rowid`)
     .all(chatId) as Array<{ id: string; tool: string; data_json: string }>;
   return rows.flatMap((row) => {
     if (!isProposal(row.tool)) return [];

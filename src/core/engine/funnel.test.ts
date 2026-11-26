@@ -38,7 +38,7 @@ function fakeFunnel(options: { providers?: Record<string, unknown> }) {
     providers: {
       claude: { capabilities: { ...caps(false, true), mcpServersAtNone: ["http"] }, openSession: () => undefined },
       codex: { capabilities: { ...caps(false, true), mcpServersAtNone: ["http"] }, openSession: () => undefined },
-      antigravity: { capabilities: caps(false) },
+      antigravity: { capabilities: { ...caps(false), mcpServersAtNone: ["http"] } },
       ...options.providers,
     },
     sessionsEnabled: true,
@@ -539,6 +539,55 @@ describe("Pyxis's tools in a run", () => {
     expect(toolsAttach("claude")).toBe(true);
     const other = await runTurn({ selection: { provider: "claude", model: "m" }, prompt: "tre", tools });
     expect(other.tools).toBe(true);
+  });
+
+  /** Runs `body` as if on `platform`: whether Antigravity takes the tools depends on it (`toolsAttach`). */
+  async function onPlatform(platform: NodeJS.Platform, body: () => Promise<void>) {
+    const real = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { ...real, value: platform });
+    try {
+      await body();
+    } finally {
+      Object.defineProperty(process, "platform", real);
+    }
+  }
+  const stored = { provider: "antigravity", id: "s-1", cwd: "/scratch" };
+  const agyTurn = (withTools: boolean) => ({
+    selection: { provider: "antigravity" as const, model: "m" },
+    prompt: "whole context, then due",
+    conversation: { key: "chat-agy", followUp: "due", session: stored },
+    ...(withTools ? { tools } : {}),
+  });
+
+  it.each(["linux", "darwin"] as const)(
+    "on %s, starts a new Antigravity session with the whole prompt when the tools go with the run, and resumes one without them",
+    async (platform) => {
+      run.mockResolvedValue({ text: "ok" });
+      await onPlatform(platform, async () => {
+        // cli-funnel names the server anew for each agy process, so a resumed conversation would hold calls under a name
+        // that no longer exists, which the model copies.
+        const fresh = await runTurn(agyTurn(true));
+        expect(run.mock.calls[0]![0]).toMatchObject({ prompt: "whole context, then due" });
+        expect(run.mock.calls[0]![0].sessionId).toBeUndefined();
+        expect(run.mock.calls[0]![0].mcpServers).toBeDefined();
+        expect(fresh.continued).toBe(false);
+        await runTurn(agyTurn(false));
+        expect(run.mock.calls[1]![0]).toMatchObject({ prompt: "due", sessionId: "s-1" });
+        // Claude Code and Codex keep their sessions with the tools.
+        await runTurn({ ...agyTurn(true), selection: { provider: "claude" as const, model: "m" }, conversation: { key: "chat-cc", followUp: "due", session: { ...stored, provider: "claude" } } });
+        expect(run.mock.calls[2]![0]).toMatchObject({ prompt: "due", sessionId: "s-1" });
+      });
+    },
+  );
+
+  it("on Windows, where Antigravity takes no tools, resumes its session as before", async () => {
+    run.mockResolvedValue({ text: "ok" });
+    await onPlatform("win32", async () => {
+      const resumed = await runTurn(agyTurn(true));
+      expect(run.mock.calls[0]![0]).toMatchObject({ prompt: "due", sessionId: "s-1" });
+      expect(run.mock.calls[0]![0].mcpServers).toBeUndefined();
+      expect(resumed.continued).toBe(true);
+    });
   });
 
   it("does not run again without the tools once a call reached Pyxis's server, whatever the failure says", async () => {

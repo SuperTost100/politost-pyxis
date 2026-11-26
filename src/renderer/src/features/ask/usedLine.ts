@@ -43,10 +43,22 @@ export function usedLine(reply: {
 }
 
 /**
+ * Whether a reply's substance is an action rather than an answer: it holds a ```pyxis-tool block (cards, a map, a quiz,
+ * a proposal) or its turn read the student's own results. The general-knowledge note speaks about where an answer comes
+ * from, so it is left off such a reply. Every other reply keeps it, however short, a refusal included.
+ */
+function isAction(reply: { body?: string; results?: boolean }): boolean {
+  return Boolean(reply.results) || (reply.body !== undefined && /^```pyxis-tool\s*$/m.test(reply.body));
+}
+
+/**
  * The line kept above an answer, now that the row under it names the sources: one that says the answer comes from
  * general knowledge, or that the chat's subject had nothing on the question, both warnings to read before the answer.
+ * The general-knowledge note is left off a reply whose substance is an action (`isAction`).
  */
-export function noteLine(reply: Parameters<typeof usedLine>[0]): UsedLine {
+export function noteLine(reply: Parameters<typeof usedLine>[0] & { body?: string; results?: boolean }): UsedLine {
   const line = usedLine(reply);
-  return line && (reply.grounding === "general" || line.values.context === "wider") ? line : null;
+  if (!line) return null;
+  if (reply.grounding === "general") return isAction(reply) ? null : line;
+  return line.values.context === "wider" ? line : null;
 }

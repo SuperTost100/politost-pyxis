@@ -55,7 +55,7 @@ describe("create_flashcards", () => {
       "INSERT INTO cards (id, subject_id, front, back, seed_key, created_at) VALUES ('old', 'phys', 'Che cosa dice il principio 2?', 'x', 'text:x', 1)",
     ).run();
     const outcome = await tool.run(turn({ planId: null, subject: "fisica 1" }), args(4, "  sui tre\nprincipi  "));
-    expect(outcome.isError).toBeUndefined();
+    expect(outcome.declined).toBeUndefined();
     expect(outcome.text).toBe(
       "Created 3 flashcards in the deck of Fisica 1. 1 was already in the deck and skipped. The student sees them in the chat: write one short sentence and do not list them.",
     );
@@ -105,17 +105,17 @@ describe("create_flashcards", () => {
     const db = fixture();
     const tool = flashcardsTool(db);
     const nowhere = await tool.run(turn({ planId: null, subject: null }), args(2));
-    expect(nowhere.isError).toBe(true);
+    expect(nowhere.declined).toBe(true);
     expect(nowhere.shown).toBeUndefined();
     const gone = await tool.run(turn({ planId: null, subject: "Chimica" }), args(2));
-    expect(gone.isError).toBe(true);
+    expect(gone.declined).toBe(true);
     expect(db.prepare("SELECT COUNT(*) FROM cards").pluck().get()).toBe(0);
 
     const answer = turn({ planId: null, subject: "Fisica 1" });
     const first = await tool.run(answer, args(CARDS_PER_TURN - 2));
     expect(first.shown).toBeDefined();
     const more = await tool.run(answer, flashcardsInput.parse({ cards: cards(5, 100) }));
-    expect(more.isError).toBe(true);
+    expect(more.declined).toBe(true);
     expect(more.text).toMatch(/already created 28 cards/);
     expect(db.prepare("SELECT COUNT(*) FROM cards").pluck().get()).toBe(CARDS_PER_TURN - 2);
     // The same cards again, in a new answer: all there, nothing added, nothing shown.

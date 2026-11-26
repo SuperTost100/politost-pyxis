@@ -400,11 +400,11 @@ export function proposePathTool(db: Database.Database): Tool {
     run(turn, raw) {
       if ((turn.tally[PATH_TOOL] ?? 0) >= 1)
         return {
-          isError: true,
+          declined: true,
           text: "This answer already proposed a change to the path, and one answer may propose one. Nothing more was proposed: put everything in one call next time.",
         };
       const made = propose<PathRequest, PathProposal>(db, turn, PATH_TOOL, raw as PathRequest);
-      if ("refused" in made) return { isError: true, text: made.refused };
+      if ("refused" in made) return { declined: true, text: made.refused };
       turn.tally[PATH_TOOL] = 1;
       const { action } = made;
       return {

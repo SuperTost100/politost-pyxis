@@ -111,12 +111,37 @@ export function Proposal({
     }
   }
 
+  // The exam's build stopped (from Attività, or cut off by a restart): it starts again as the build screen's own button
+  // does, and the card follows it.
+  async function resumeBuild(jobId: string, interrupted: boolean) {
+    if (!chatId || busy) return;
+    setBusy(true);
+    setFailed(false);
+    let started = false;
+    try {
+      await invoke(interrupted ? "jobs.resume" : "jobs.retry", { jobId });
+      started = true;
+      moved.current = true;
+      // The build is going again: the card's own query reads it from here, whatever happens to the read below, and
+      // polls while it works (`ToolResult`).
+      void client.invalidateQueries({ queryKey: ["tool-result", chatId, view.id] });
+      for (const family of ["plans", "plan", "jobs"]) void client.invalidateQueries({ queryKey: [family] });
+      const next = await invoke("chats.toolView", { chatId, resultId: view.id });
+      if (next) onChange(next);
+    } catch {
+      // Only a build that did not start again is a failure to show; a read that failed after it is made good above.
+      if (!started) setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const failure = failed ? (
     <p className="small px-toolres-failed" role="alert">
       {t("components.toolResult.proposal.failed")}
     </p>
   ) : null;
-  const props = { view, arriving, busy, failure, decide, onAsk, rootRef: root, chatId };
+  const props = { view, arriving, busy, failure, decide, resumeBuild, onAsk, rootRef: root, chatId };
   if (view.tool === "propose_path_change") return <PathCard {...props} view={view} />;
   if (view.tool === "propose_exam") return <ExamCard {...props} view={view} />;
   return <DeleteCard {...props} view={view} />;
@@ -128,6 +153,7 @@ type CardProps<V> = {
   busy: boolean;
   failure: ReactNode;
   decide: (action: Action) => Promise<void>;
+  resumeBuild: (jobId: string, interrupted: boolean) => Promise<void>;
   onAsk?: (text: string) => void;
   rootRef: Ref<HTMLElement & HTMLDivElement>;
   chatId: string;
@@ -385,7 +411,7 @@ function Change({ from, to }: { from: string; to: string }) {
 }
 
 function ExamCard(props: CardProps<ExamProposalView>) {
-  const { view, busy, decide, arriving, rootRef, failure, onAsk } = props;
+  const { view, busy, decide, resumeBuild, arriving, rootRef, failure, onAsk } = props;
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const describeEngineError = useEngineError(navigate);
@@ -395,6 +421,22 @@ function ExamCard(props: CardProps<ExamProposalView>) {
   if (view.state === "applied" && view.created) {
     const made = view.created;
     if (made.gone) return <Outcome icon="x" text={own("createdGone")} arriving={arriving} rootRef={rootRef} />;
+    // A build that stopped made no path: the line says the creation stopped and offers to start it again.
+    if (made.job === "cancelled" || made.job === "interrupted")
+      return (
+        <Outcome
+          icon="circle-alert"
+          text={own("buildStopped", { title: view.title })}
+          arriving={arriving}
+          rootRef={rootRef}
+          failure={failure}
+          action={
+            <Button variant="ghost" size="sm" icon="rotate-ccw" disabled={busy} onClick={() => void resumeBuild(made.jobId, made.job === "interrupted")}>
+              {t("components.toolResult.resume")}
+            </Button>
+          }
+        />
+      );
     const line = view.date === null ? own("created", { title: view.title }) : own("createdDated", { title: view.title, date: day(view.date) });
     const open = (
       <Button
@@ -415,8 +457,6 @@ function ExamCard(props: CardProps<ExamProposalView>) {
           {own("buildFailed")}{" "}
           {made.error ? describeEngineError(jobErrorKey(made.error), jobErrorEngine(made.error)).text : t("jobs.failedGeneral")}
         </>
-      ) : made.job === "cancelled" || made.job === "interrupted" ? (
-        own("buildStopped")
       ) : undefined;
     return <Outcome done icon="circle-check" text={line} detail={detail} action={open} arriving={arriving} rootRef={rootRef} />;
   }

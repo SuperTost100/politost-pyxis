@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { saveProfile } from "../profile/profile";
+import { readQuiz } from "../study/quizJobs";
+import { gradeValue } from "../../shared/grade";
 import { progressInput, progressTool, readProgress } from "./progress";
 import type { ToolTurn } from "./server";
 
@@ -18,17 +20,33 @@ function fixture() {
      ('atoms', 'gen', 'Atomi', 0, 1)`,
   );
   let n = 0;
+  // Rows as a handed-in quiz with an open question leaves them: the draft, the open answer's check, the result with its
+  // `results` once grading ends, and a check written after it, as a regrade of that answer writes one. A quiz still being
+  // graded has its draft and check and no result yet.
   const quiz = (planId: string, topicId: string | null, at: number, score: number | null, kind = "quiz") => {
     n += 1;
-    run(`INSERT INTO items (id, plan_id, topic_id, kind, body_json, created_at) VALUES (?, ?, ?, ?, '{}', ?)`, `i${n}`, planId, topicId, kind, at);
+    const body = {
+      complete: true,
+      questions: [
+        { id: "q1", stem: "Scegli", options: ["a", "b"], answer: { kind: "mcq", correct: 0 } },
+        { id: "q2", stem: "Spiega", answer: { kind: "open", reference: "r" } },
+      ],
+    };
+    run(`INSERT INTO items (id, plan_id, topic_id, kind, body_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`, `i${n}`, planId, topicId, kind, JSON.stringify(body), at);
     run(`INSERT INTO attempts (id, plan_id, item_id, started_at, submitted_at) VALUES (?, ?, ?, ?, ?)`, `a${n}`, planId, `i${n}`, at - 600_000, at);
-    run(
-      `INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES (?, ?, ?, ?)`,
-      `aa${n}`,
-      `a${n}`,
-      JSON.stringify(score === null ? { picks: {} } : { picks: {}, score }),
-      at,
-    );
+    const answer = (id: string, payload: unknown, created: number) =>
+      run(`INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES (?, ?, ?, ?)`, id, `a${n}`, JSON.stringify(payload), created);
+    const picks = { q1: "0", q2: "Perché sì" };
+    const check = { id: "q2", score: score ?? 0.5, expected: "r", explanation: "", provider: "codex", model: "gpt-6.1-terra" };
+    answer(`aa${n}-draft`, { draft: { picks, index: 1 } }, at - 1000);
+    answer(`aa${n}-check`, { check }, at - 10);
+    if (score === null) return;
+    const results = [
+      { id: "q1", score: 1, expected: "a", explanation: "" },
+      { id: "q2", score: score, expected: "r", explanation: "" },
+    ];
+    answer(`aa${n}`, { picks, results, score }, at);
+    answer(`aa${n}-regrade`, { check: { ...check, explanation: "Rivisto" } }, at + 5);
   };
   const nov = (day: number) => new Date(2026, 10, day, 12).getTime();
   quiz("mech", "kin", nov(2), 0.6);
@@ -163,7 +181,7 @@ describe("read_progress, windows it says it took", () => {
     const db = fixture();
     const item = db.prepare("INSERT INTO items (id, plan_id, topic_id, kind, body_json, created_at) VALUES (?, 'mech', 'kin', 'quiz', '{}', ?)");
     const attempt = db.prepare("INSERT INTO attempts (id, plan_id, item_id, started_at, submitted_at) VALUES (?, 'mech', ?, ?, ?)");
-    const answers = db.prepare(`INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES (?, ?, '{"score":0.7}', ?)`);
+    const answers = db.prepare(`INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES (?, ?, '{"picks":{},"results":[],"score":0.7}', ?)`);
     for (let i = 0; i < 36; i++) {
       const at = new Date(2026, 9, 1 + (i % 28), 12).getTime() - i;
       item.run(`x${i}`, at);
@@ -183,5 +201,24 @@ describe("read_progress, windows it says it took", () => {
     for (let i = 0; i < 7; i++)
       db.prepare("INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES (?, 'phys', ?, 'ready', 1, ?)").run(`p${i}`, `Esame ${i}`, i);
     expect(readProgress(db, { planId: null, subject: "Fisica 1" })!.exams).toHaveLength(8);
+  });
+});
+
+describe("read_progress, the grade the results page shows", () => {
+  it("gives every handed-in quiz the grade its results page computes, with check rows written after the result", () => {
+    const db = fixture();
+    const [exam] = readProgress(db, { planId: "mech", subject: null })!.exams;
+    const attempts = db
+      .prepare(
+        "SELECT a.id FROM attempts a JOIN items i ON i.id = a.item_id WHERE a.plan_id = 'mech' AND a.submitted_at IS NOT NULL AND i.kind = 'quiz' ORDER BY a.submitted_at DESC",
+      )
+      .pluck()
+      .all() as string[];
+    const page = attempts.map((id) => {
+      const score = readQuiz(db, id).result?.score;
+      return score === undefined ? null : gradeValue(score, 30);
+    });
+    expect(page).toEqual([null, 21, 26, 18]);
+    expect(exam!.quizzes.filter((quiz) => quiz.kind === "quiz").map((quiz) => quiz.grade)).toEqual(page);
   });
 });

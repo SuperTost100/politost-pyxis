@@ -3191,7 +3191,7 @@
           "createdDated": "Exam created: {{title}}, {{date}}.",
           "building": "Preparing the path…",
           "buildFailed": "The path was not prepared.",
-          "buildStopped": "Preparing the path stopped.",
+          "buildStopped": "Creating the exam {{title}} stopped before its path was ready.",
           "open": "Open the exam",
           "createdGone": "The exam created here was deleted.",
           "declined": "I created nothing.",
