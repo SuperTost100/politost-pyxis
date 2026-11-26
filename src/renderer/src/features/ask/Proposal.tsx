@@ -117,14 +117,20 @@ export function Proposal({
     if (!chatId || busy) return;
     setBusy(true);
     setFailed(false);
+    let started = false;
     try {
       await invoke(interrupted ? "jobs.resume" : "jobs.retry", { jobId });
+      started = true;
       moved.current = true;
+      // The build is going again: the card's own query reads it from here, whatever happens to the read below, and
+      // polls while it works (`ToolResult`).
+      void client.invalidateQueries({ queryKey: ["tool-result", chatId, view.id] });
+      for (const family of ["plans", "plan", "jobs"]) void client.invalidateQueries({ queryKey: [family] });
       const next = await invoke("chats.toolView", { chatId, resultId: view.id });
       if (next) onChange(next);
-      for (const family of ["plans", "plan", "jobs"]) void client.invalidateQueries({ queryKey: [family] });
     } catch {
-      setFailed(true);
+      // Only a build that did not start again is a failure to show; a read that failed after it is made good above.
+      if (!started) setFailed(true);
     } finally {
       setBusy(false);
     }
