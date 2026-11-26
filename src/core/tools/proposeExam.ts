@@ -197,11 +197,11 @@ export function proposeExamTool(db: Database.Database): Tool {
     run(turn, raw) {
       if ((turn.tally[EXAM_TOOL] ?? 0) >= 1)
         return {
-          isError: true,
+          declined: true,
           text: "This answer already proposed an exam, and one answer may propose one. Nothing more was proposed: the student can ask for another in their next message.",
         };
       const made = propose<ExamRequest, ExamProposal>(db, turn, EXAM_TOOL, raw as ExamRequest);
-      if ("refused" in made) return { isError: true, text: made.refused };
+      if ("refused" in made) return { declined: true, text: made.refused };
       turn.tally[EXAM_TOOL] = 1;
       const { action: proposal, resultId } = made;
       const { subject, date } = proposal;

@@ -55,7 +55,7 @@ describe("read_progress and the notice", () => {
     putSetting(db, "engine-disclosure:claude", true);
     const before = await turnSees(db, "claude");
     expect(before.listed).toEqual(["create_flashcards", "propose_path_change"]);
-    expect(before.answer).toBe("Unknown tool.");
+    expect(before.answer).toBe("Nothing was done: there is no such tool here. Answer without it.");
 
     acknowledgeProviders(["claude"]);
     const after = await turnSees(db, "claude");

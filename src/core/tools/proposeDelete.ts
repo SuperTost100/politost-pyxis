@@ -419,11 +419,11 @@ export function proposeDeleteTool(db: Database.Database): Tool {
     run(turn, raw) {
       if ((turn.tally[TOOL] ?? 0) >= 1)
         return {
-          isError: true,
+          declined: true,
           text: "This answer already proposed a deletion, and one answer may propose one. Nothing more was proposed: the student can ask in their next message.",
         };
       const made = propose<DeleteRequest, DeleteProposal>(db, turn, TOOL, raw as DeleteRequest);
-      if ("refused" in made) return { isError: true, text: made.refused };
+      if ("refused" in made) return { declined: true, text: made.refused };
       turn.tally[TOOL] = 1;
       return {
         text: `Shown to the student as a card to confirm: deleting ${describe(made.action)}. They have not decided yet, and nothing is deleted. In one short sentence say what you prepared and that nothing is deleted until they confirm on the card; never say it is deleted.`,

@@ -38,7 +38,7 @@ function fakeFunnel(options: { providers?: Record<string, unknown> }) {
     providers: {
       claude: { capabilities: { ...caps(false, true), mcpServersAtNone: ["http"] }, openSession: () => undefined },
       codex: { capabilities: { ...caps(false, true), mcpServersAtNone: ["http"] }, openSession: () => undefined },
-      antigravity: { capabilities: caps(false) },
+      antigravity: { capabilities: { ...caps(false), mcpServersAtNone: ["http"] } },
       ...options.providers,
     },
     sessionsEnabled: true,
@@ -539,6 +539,29 @@ describe("Pyxis's tools in a run", () => {
     expect(toolsAttach("claude")).toBe(true);
     const other = await runTurn({ selection: { provider: "claude", model: "m" }, prompt: "tre", tools });
     expect(other.tools).toBe(true);
+  });
+
+  it("starts a new Antigravity session with the whole prompt when the tools go with the run, and resumes one without them", async () => {
+    run.mockResolvedValue({ text: "ok" });
+    const stored = { provider: "antigravity", id: "s-1", cwd: "/scratch" };
+    const turn = (withTools: boolean) => ({
+      selection: { provider: "antigravity" as const, model: "m" },
+      prompt: "whole context, then due",
+      conversation: { key: "chat-agy", followUp: "due", session: stored },
+      ...(withTools ? { tools } : {}),
+    });
+    // cli-funnel names the server anew for each agy process, so a resumed conversation would hold calls under a name
+    // that no longer exists, which the model copies.
+    const fresh = await runTurn(turn(true));
+    expect(run.mock.calls[0]![0]).toMatchObject({ prompt: "whole context, then due" });
+    expect(run.mock.calls[0]![0].sessionId).toBeUndefined();
+    expect(run.mock.calls[0]![0].mcpServers).toBeDefined();
+    expect(fresh.continued).toBe(false);
+    await runTurn(turn(false));
+    expect(run.mock.calls[1]![0]).toMatchObject({ prompt: "due", sessionId: "s-1" });
+    // Claude Code and Codex keep their sessions with the tools.
+    await runTurn({ ...turn(true), selection: { provider: "claude" as const, model: "m" }, conversation: { key: "chat-cc", followUp: "due", session: { ...stored, provider: "claude" } } });
+    expect(run.mock.calls[2]![0]).toMatchObject({ prompt: "due", sessionId: "s-1" });
   });
 
   it("does not run again without the tools once a call reached Pyxis's server, whatever the failure says", async () => {

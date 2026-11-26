@@ -106,7 +106,7 @@ export function solverTool(db: Database.Database): Tool {
     offered: (turn) => turn.call !== undefined && solverSelection(db, turn.engine()) !== null,
     async run(turn: ToolTurn, raw) {
       const args = raw as z.infer<typeof solverInput>;
-      if (turn.tally[SOLVER_TOOL]) return { text: "You already asked the stronger model in this answer. Finish the answer yourself.", isError: true };
+      if (turn.tally[SOLVER_TOOL]) return { text: "You already asked the stronger model in this answer. Finish the answer yourself.", declined: true };
       const call = turn.call?.();
       const selection = solverSelection(db, turn.engine());
       if (!call || !selection) return { text: FAILED };

@@ -75,13 +75,13 @@ export function mapTool(db: Database.Database): Tool {
       const args = raw as z.infer<typeof mapInput>;
       if ((turn.tally.maps ?? 0) >= 1)
         return {
-          isError: true,
+          declined: true,
           text: "This answer already created a map, and one answer may create one. Nothing more was created: tell the student they can ask for another map in their next message.",
         };
       const subject = mapSubject(db, turn.place());
       if (!subject)
         return {
-          isError: true,
+          declined: true,
           text: "This chat has no subject, so the map has nowhere to go and none was created. Tell the student to choose a subject for the chat (the subject button above the conversation) and ask again.",
         };
       turn.tally.maps = 1;

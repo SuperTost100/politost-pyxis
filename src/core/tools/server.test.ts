@@ -160,19 +160,20 @@ describe("tool server", () => {
     const b = await chatTools("chat-b");
     const call = (token: string, n: number) =>
       send(a.url, { headers: auth(token), body: rpc("tools/call", { name: "count", arguments: { n } }) }).then((r) => r.json().result);
-    // Between questions nothing may act.
-    expect(await call(a.token, 1)).toMatchObject({ isError: true });
+    // Between questions nothing may act. The refusal is an ordinary result that says so, which no CLI reads as a failure.
+    const refused = { content: [{ type: "text", text: expect.stringMatching(/^Nothing was done/) }] };
+    expect(await call(a.token, 1)).toEqual(refused);
     expect(calls).toEqual([]);
     // Chat B's turn is running: chat A's token still cannot act, on A or on B.
     const disarmB = armChatTools(turnFor("chat-b"));
-    expect(await call(a.token, 1)).toMatchObject({ isError: true });
+    expect(await call(a.token, 1)).toEqual(refused);
     expect(calls).toEqual([]);
     // B's own token acts on B.
     expect(await call(b.token, 2)).toEqual({ content: [{ type: "text", text: "Recorded 2." }] });
     expect(calls).toEqual([{ chatId: "chat-b", n: 2 }]);
     expect(shown).toEqual([{ chatId: "chat-b", resultId: "r-2" }]);
     disarmB();
-    expect(await call(b.token, 3)).toMatchObject({ isError: true });
+    expect(await call(b.token, 3)).toEqual(refused);
     expect(calls).toHaveLength(1);
   });
 
@@ -181,20 +182,40 @@ describe("tool server", () => {
     const call = (args: unknown, name = "count") =>
       send(url, { headers: auth(token), body: rpc("tools/call", { name, arguments: args }) }).then((r) => r.json().result);
     const disarm = armChatTools(turnFor("chat-a"));
+    // Every refusal is an ordinary result whose text says nothing was done and why.
     const invalid = await call({ n: 9 });
-    expect(invalid.isError).toBe(true);
-    expect(invalid.content[0].text).toMatch(/^Invalid arguments/);
-    expect((await call({ n: 1, extra: true })).isError).toBe(true);
-    expect((await call({ n: 1 }, "rm_rf")).isError).toBe(true);
+    expect(invalid.isError).toBeUndefined();
+    expect(invalid.content[0].text).toMatch(/^Nothing was done\. Invalid arguments/);
+    expect((await call({ n: 1, extra: true })).content[0].text).toMatch(/^Nothing was done\. Invalid arguments/);
+    const unknown = await call({ n: 1 }, "rm_rf");
+    expect(unknown.isError).toBeUndefined();
+    expect(unknown.content[0].text).toMatch(/^Nothing was done: there is no such tool/);
     expect(calls).toEqual([]);
-    // Failed calls count too: a model cannot retry without end.
-    while ((await call({ n: 1 })).isError !== true) void 0;
+    // Refused calls count too: a model cannot retry without end.
+    while (!/no more tool calls/i.test((await call({ n: 1 })).content[0].text)) void 0;
     expect(calls.length).toBe(MAX_CALLS_PER_TURN - 2);
-    expect((await call({ n: 1 })).content[0].text).toMatch(/No more tool calls/);
+    const capped = await call({ n: 1 });
+    expect(capped.content[0].text).toMatch(/no more tool calls/i);
+    expect(capped.isError).toBeUndefined();
     disarm();
     // A new turn starts counting again.
     armChatTools(turnFor("chat-a"));
     expect((await call({ n: 1 })).isError).toBeUndefined();
+  });
+
+  it("hands a tool's refusal to the model as an ordinary result, so no CLI reads it as a failed call", async () => {
+    setTools([
+      {
+        name: "decline",
+        description: "Declines.",
+        input: z.object({}),
+        run: () => ({ text: "The exam is already on that date. Nothing was changed: tell the student so.", declined: true }),
+      },
+    ]);
+    const { url, token } = await chatTools("chat-a");
+    armChatTools(turnFor("chat-a"));
+    const result = (await send(url, { headers: auth(token), body: rpc("tools/call", { name: "decline", arguments: {} }) })).json().result;
+    expect(result).toEqual({ content: [{ type: "text", text: "The exam is already on that date. Nothing was changed: tell the student so." }] });
   });
 
   it("tells a failing tool without its details", async () => {

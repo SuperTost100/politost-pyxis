@@ -158,11 +158,11 @@ export function quizTool(db: Database.Database): Tool {
       const args = raw as z.infer<typeof quizInput>;
       if ((turn.tally.quizzes ?? 0) >= 1)
         return {
-          isError: true,
+          declined: true,
           text: "This answer already created a quiz, and one answer may create one. Nothing more was created: tell the student they can ask for another quiz in their next message.",
         };
       const exam = quizExam(db, turn.place());
-      if ("refused" in exam) return { isError: true, text: exam.refused };
+      if ("refused" in exam) return { declined: true, text: exam.refused };
       turn.tally.quizzes = 1;
       const topic = quizTopic(db, exam.planId, args.topic);
       const count = args.questions ?? QUIZ_MAX_QUESTIONS;

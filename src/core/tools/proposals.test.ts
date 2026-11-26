@@ -130,7 +130,7 @@ describe("propose_path_change", () => {
         add_topics: [{ title: "Urti e quantità di moto", after: "Lavoro ed energia" }],
       }),
     );
-    expect(outcome.isError).toBeUndefined();
+    expect(outcome.declined).toBeUndefined();
     expect(outcome.text).toMatch(/not decided yet and nothing has changed/);
     const id = outcome.shown!.resultId;
     const view = toolView(db, "chat", id) as PathProposalView;
@@ -213,7 +213,7 @@ describe("propose_path_change", () => {
     const place = { planId, subject: "Fisica" };
     const refused = async (args: unknown) => {
       const out = await tool.run(turn(place), pathInput.parse(args));
-      expect(out.isError).toBe(true);
+      expect(out.declined).toBe(true);
       expect(out.shown).toBeUndefined();
       return out.text;
     };
@@ -248,7 +248,7 @@ describe("propose_path_change", () => {
     const { db, planId } = fixture();
     const tool = proposePathTool(db);
     const answer = turn({ planId, subject: null });
-    expect((await tool.run(answer, pathInput.parse({ weekly_hours: 9 }))).isError).toBeUndefined();
+    expect((await tool.run(answer, pathInput.parse({ weekly_hours: 9 }))).declined).toBeUndefined();
     expect((await tool.run(answer, pathInput.parse({ weekly_hours: 10 }))).text).toMatch(/already proposed/);
   });
 
@@ -496,7 +496,7 @@ describe("what a proposal is about is found without guessing", () => {
     jobs(db);
     storeMap(db, { subjectId }, { id: "map-dyn-2", title: "Dinamica", passageIds: [], graph: { nodes: [{ id: "r", label: "Dinamica", parent: null, sources: [] }], edges: [] } } as never);
     const out = await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "map", topic: "Dinamica" }));
-    expect(out.isError).toBe(true);
+    expect(out.declined).toBe(true);
     expect(out.text).toMatch(/2 maps of Fisica are called "Dinamica".*Mappe/);
   });
 
@@ -507,7 +507,7 @@ describe("what a proposal is about is found without guessing", () => {
     db.prepare(`INSERT INTO items (id, plan_id, topic_id, kind, body_json, created_at) VALUES ('gas-quiz', ?, 'gas', 'quiz', '{"complete":true,"questions":[{"id":"q1"}]}', 8)`).run(planId);
     db.prepare("INSERT INTO attempts (id, plan_id, item_id, started_at) VALUES ('gas-a', ?, 'gas-quiz', 8)").run(planId);
     const out = await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "quiz", topic: "Termodinamica" }));
-    expect(out.isError).toBeUndefined();
+    expect(out.declined).toBeUndefined();
     expect(toolView(db, "chat", out.shown!.resultId)).toMatchObject({ name: "Termodinamica", count: 2 });
   });
 
@@ -516,7 +516,7 @@ describe("what a proposal is about is found without guessing", () => {
     createPlan(db, { title: "Fisica 2", subject: "Fisica", sourceIds: [], draftTopics: [{ title: "Ottica" }] });
     setPlanArchived(db, planId, true);
     const out = await proposePathTool(db).run(turn({ planId, subject: "Fisica" }), pathInput.parse({ weekly_hours: 9 }));
-    expect(out.isError).toBe(true);
+    expect(out.declined).toBe(true);
     expect(out.text).toMatch(/archived/);
     expect(db.prepare("SELECT count(*) FROM chat_tool_results").pluck().get()).toBe(0);
   });
@@ -527,7 +527,7 @@ describe("what a proposal is about is found without guessing", () => {
       turn({ planId, subject: null }),
       pathInput.parse({ add_topics: [{ title: "Urti", after: "Lavoro ed energia" }], move_topics: [{ title: "Cinematica", after: "Urti" }] }),
     );
-    expect(out.isError).toBeUndefined();
+    expect(out.declined).toBeUndefined();
     expect((toolView(db, "chat", out.shown!.resultId) as PathProposalView).after.map((entry) => entry.title)).toEqual([
       "Dinamica",
       "Lavoro ed energia",
@@ -663,7 +663,7 @@ describe("the second review", () => {
     db.prepare("INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('intro1', ?, 'Introduzione', 30, 1), ('intro2', ?, 'Introduzione', 31, 1)").run(planId, planId);
     db.prepare("INSERT INTO cards (id, plan_id, topic_id, front, back, seed_key, created_at) VALUES ('i1', ?, 'intro1', 'f', 'b', 'i1', 1)").run(planId);
     const twin = await tool.run(turn({ planId, subject: null }), deleteInput.parse({ kind: "flashcards", topic: "Introduzione" }));
-    expect(twin.isError).toBe(true);
+    expect(twin.declined).toBe(true);
     expect(twin.text).toMatch(/2 topics of Fisica 1 are called "Introduzione"/);
   });
 
@@ -671,7 +671,7 @@ describe("the second review", () => {
     const { db } = fixture();
     jobs(db);
     const out = await proposeExamTool(db).run(turn({ planId: null, subject: null }), examInput.parse({ title: "Fisica‎ 1" }));
-    expect(out.isError).toBe(true);
+    expect(out.declined).toBe(true);
     expect(out.text).toMatch(/already has an exam/);
   });
 
@@ -684,11 +684,11 @@ describe("the second review", () => {
       turn({ planId, subject: null }),
       pathInput.parse({ move_topics: [{ title: "Cinematica", after: "Dinamica" }, { title: "Dinamica", after: "Lavoro ed energia" }] }),
     );
-    expect(crossed.isError).toBe(true);
+    expect(crossed.declined).toBe(true);
     expect(crossed.text).toMatch(/"Cinematica" no longer comes after "Dinamica"/);
     // A move after a topic that stays where it is still works.
     const fine = await tool.run(turn({ planId, subject: null }), pathInput.parse({ move_topics: [{ title: "Cinematica", after: "Dinamica" }] }));
-    expect(fine.isError).toBeUndefined();
+    expect(fine.declined).toBeUndefined();
   });
 
   it("gives a quiz no exam that is still being built", async () => {
@@ -696,7 +696,7 @@ describe("the second review", () => {
     jobs(db);
     db.prepare("UPDATE plans SET status = 'building' WHERE id = ?").run(planId);
     const out = await quizTool(db).run(turn({ planId, subject: null }), quizInput.parse({ topic: "Dinamica" }));
-    expect(out.isError).toBe(true);
+    expect(out.declined).toBe(true);
     expect(out.text).toMatch(/still being built/);
   });
 

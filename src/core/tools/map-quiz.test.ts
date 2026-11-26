@@ -141,7 +141,7 @@ const finishedToday = (ids: string[]) => runner!.finished().filter((job) => ids.
 
 async function makeMap(db: Db, place = { planId: null as string | null, subject: "fisica 1" as string | null }) {
   const outcome = await mapTool(db).run(turn(place), mapInput.parse({ topic: "  dinamica\n e attrito " }));
-  expect(outcome.isError).toBeUndefined();
+  expect(outcome.declined).toBeUndefined();
   const id = outcome.shown!.resultId;
   const jobId = (JSON.parse(db.prepare("SELECT data_json FROM chat_tool_results WHERE id = ?").pluck().get(id) as string) as { jobId: string }).jobId;
   return { id, jobId, text: outcome.text };
@@ -149,7 +149,7 @@ async function makeMap(db: Db, place = { planId: null as string | null, subject:
 
 async function makeQuiz(db: Db, topic = "Dinamica", place = { planId: "mech" as string | null, subject: null as string | null }, questions?: number) {
   const outcome = await quizTool(db).run(turn(place), quizInput.parse({ topic, ...(questions ? { questions } : {}) }));
-  expect(outcome.isError).toBeUndefined();
+  expect(outcome.declined).toBeUndefined();
   return { id: outcome.shown!.resultId, text: outcome.text };
 }
 
@@ -187,12 +187,12 @@ describe("create_map", () => {
     const inExam = await tool.run(turn({ planId: "mech", subject: null }), mapInput.parse({ topic: "Dinamica" }));
     expect(mapOf(db, inExam.shown!.resultId)).toMatchObject({ subjectId: "phys", subject: "Fisica 1" });
     const nowhere = await tool.run(turn({ planId: null, subject: null }), mapInput.parse({ topic: "Dinamica" }));
-    expect(nowhere).toMatchObject({ isError: true });
+    expect(nowhere).toMatchObject({ declined: true });
     expect(nowhere.text).toContain("no subject");
     const one = turn({ planId: null, subject: "Chimica" });
-    expect((await tool.run(one, mapInput.parse({ topic: "Legami" }))).isError).toBeUndefined();
+    expect((await tool.run(one, mapInput.parse({ topic: "Legami" }))).declined).toBeUndefined();
     const again = await tool.run(one, mapInput.parse({ topic: "Acidi" }));
-    expect(again).toMatchObject({ isError: true });
+    expect(again).toMatchObject({ declined: true });
     expect(db.prepare("SELECT COUNT(*) FROM chat_tool_results WHERE tool = 'create_map'").pluck().get()).toBe(2);
     db.close();
   });
@@ -425,7 +425,7 @@ describe("create_quiz", () => {
     const bySubject = await tool.run(turn({ planId: null, subject: "Fisica 1" }), quizInput.parse({ topic: "Dinamica" }));
     expect(quizOf(db, bySubject.shown!.resultId)).toMatchObject({ planId: "mech", exam: "Meccanica" });
     const none = await tool.run(turn({ planId: null, subject: "Chimica" }), quizInput.parse({ topic: "Legami" }));
-    expect(none).toMatchObject({ isError: true });
+    expect(none).toMatchObject({ declined: true });
     expect(none.text).toContain("a quiz belongs to an exam");
     db.prepare("INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('opt', 'phys', 'Ottica', 'ready', 1, 1)").run();
     db.prepare("INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('lens', 'opt', 'Lenti', 0, 1)").run();
@@ -441,7 +441,7 @@ describe("create_quiz", () => {
     const one = turn({ planId: "mech", subject: null });
     const first = await tool.run(one, quizInput.parse({ topic: "attrito", questions: 4 }));
     expect(first.text).toContain('quiz of 4 questions on "Attrito" in the exam Meccanica');
-    expect((await tool.run(one, quizInput.parse({ topic: "Dinamica" }))).isError).toBe(true);
+    expect((await tool.run(one, quizInput.parse({ topic: "Dinamica" }))).declined).toBe(true);
     const params = JSON.parse(db.prepare("SELECT params_json FROM jobs WHERE kind = 'quiz-build'").pluck().get() as string) as {
       input: { scope: string; count: number; focus?: string };
       snapshot: { focus?: string; passages: Array<{ id: string }> };

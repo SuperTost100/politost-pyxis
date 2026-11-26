@@ -81,7 +81,7 @@ export function flashcardsTool(db: Database.Database): Tool {
       const used = turn.tally.cards ?? 0;
       if (used + args.cards.length > CARDS_PER_TURN)
         return {
-          isError: true,
+          declined: true,
           text:
             used === 0
               ? `Too many cards: at most ${CARDS_PER_TURN} in one answer. Nothing was created.`
@@ -90,7 +90,7 @@ export function flashcardsTool(db: Database.Database): Tool {
       const where = cardPlace(db, turn.place());
       if (!where)
         return {
-          isError: true,
+          declined: true,
           text: "This chat has no subject or exam, so the cards have nowhere to go and none was created. Tell the student to choose a subject for the chat (the subject button above the conversation) and ask again.",
         };
       const engine = turn.engine();
