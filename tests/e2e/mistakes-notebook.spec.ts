@@ -145,7 +145,7 @@ function seed(db: DatabaseSync) {
     "aa-sim",
     "a-sim",
     JSON.stringify({
-      picks: { "s-law": "$x = v t$" },
+      picks: { "s-law": "x^{2} + v t" },
       score: 0.4,
       results: [
         {
@@ -274,6 +274,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
       "Correct answerLa forza",
     );
     await expect(entry("legge oraria")).toContainText("Your answer · 0.4 of 1");
+    await expect(entry("legge oraria").locator(".px-quiz-answer.is-partial .katex")).toHaveCount(1);
     await expect(entry("legge oraria").locator(".katex").first()).toBeVisible();
     await expect(entry("Il numero atomico")).toContainText("Your answerTrue");
     await expect(entry("Il numero atomico")).toContainText(
