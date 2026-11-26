@@ -889,13 +889,15 @@ test("Riprova on a failed build shows Pyxis at work in place at once, and a retr
     });
     await expect(page.locator(".react-flow__node").first()).toBeVisible();
 
-    // The line is a notice: its icon, Riprova as its action and Chiudi beside it.
+    // The line is a notice: its icon, Dettagli for the stored error, Riprova as its action and Chiudi beside it.
     const line = recovery(page);
     await expect(line.locator(".px-notice")).toContainText("L’ultima costruzione della mappa non è riuscita");
     // A failure is the danger tone, as for a failed flashcard or a failed review question.
     await expect(line.locator(".px-notice")).toHaveClass(/\bis-danger\b/);
     await expect(line.locator(".px-notice svg").first()).toBeVisible();
-    await expect(line.getByRole("button")).toHaveText(["Riprova", "Chiudi"]);
+    await expect(line.getByRole("button")).toHaveText(["Dettagli", "Riprova", "Chiudi"]);
+    await line.getByRole("button", { name: "Dettagli" }).click();
+    await expect(line.locator(".px-notice-details")).toHaveText("offline");
     await expectNoAxeViolations(page);
 
     // Riprova: Pyxis at work where the map will be, at once, as for a new map, with the words asked for.
