@@ -37,8 +37,8 @@ export const QUIZ_DESCRIPTION = [
   "Call it when the student asks for a quiz or a test on a topic (\"fammi un quiz su…\", \"interrogami con un quiz\"), or accepts your offer to make one. Never call it on your own initiative. To ask the student one or two questions in the conversation, just ask them in your answer.",
   "Give `topic` as a few words naming what the quiz covers, in the student's language, and `questions` only when the student asked for a number.",
   `A quiz has at most ${QUIZ_MAX_QUESTIONS} questions of every kind (multiple choice, true or false, fill in, matching and open), written from the exam's material.`,
-  "Pyxis writes the quiz in the background, which takes a minute or two: the call returns once it has started, and the student sees it in the chat while it is written and opens it from there.",
-  "At most one quiz per answer. After the call, write one short sentence and do not write the questions in your answer.",
+  "Pyxis writes the quiz in the background: the call returns once the writing has started, and the student sees a card under your answer that shows the quiz at work and then opens it.",
+  "At most one quiz per answer. After the call, write one short sentence that is true both while it is written and once it is ready, such as that they find it below: never that you are preparing it, and never how long it takes. Do not write the questions in your answer.",
 ].join(" ");
 
 /** What a quiz result stores: where the quiz is, what it is about, and the attempt the student takes it in. */
@@ -158,11 +158,11 @@ export function quizTool(db: Database.Database): Tool {
       const args = raw as z.infer<typeof quizInput>;
       if ((turn.tally.quizzes ?? 0) >= 1)
         return {
-          isError: true,
+          declined: true,
           text: "This answer already created a quiz, and one answer may create one. Nothing more was created: tell the student they can ask for another quiz in their next message.",
         };
       const exam = quizExam(db, turn.place());
-      if ("refused" in exam) return { isError: true, text: exam.refused };
+      if ("refused" in exam) return { declined: true, text: exam.refused };
       turn.tally.quizzes = 1;
       const topic = quizTopic(db, exam.planId, args.topic);
       const count = args.questions ?? QUIZ_MAX_QUESTIONS;
@@ -194,7 +194,7 @@ export function quizTool(db: Database.Database): Tool {
         return id;
       })();
       return {
-        text: `Pyxis is writing a quiz of ${count} question${count === 1 ? "" : "s"} on "${title}" in the exam ${exam.title}. It takes a minute or two; the student sees it in the chat and opens it from there when it is ready. Write one short sentence and do not write the questions.`,
+        text: `Pyxis started writing a quiz of ${count} question${count === 1 ? "" : "s"} on "${title}" in the exam ${exam.title}. The student sees it as a card under your answer, at work and then ready to open. Write one short sentence that is true both while it is written and once it is ready, such as that they find it below: never that you are preparing it, and never how long it takes. Do not write the questions.`,
         shown: { resultId },
       };
     },
@@ -258,6 +258,7 @@ export function quizView(db: Database.Database, id: string, stored: QuizData, un
     error: state === "failed" ? (job?.error ?? null) : null,
     activity: state === "working" && !undone ? activityOf(build) : null,
     undone: undone !== null,
+    stopped: !!undone && undone.stopped !== null && !body?.complete,
     restorable: !undone || restorableQuiz(db, stored, undone),
     gone: !undone && (!item || !attempt),
     topic: stored.topic,

@@ -522,6 +522,8 @@ const mapResultView = z.object({
   /** What the job's model call is doing and since when, while it works (`activityOf`); null between calls. */
   activity: JobActivity.nullable(),
   undone: z.boolean(),
+  /** Undone by «Ferma» while it was built, so no map was made: the card says the creation stopped. */
+  stopped: z.boolean(),
   /** False for an undone result «Ripristina» cannot bring back: what it went into was deleted since. */
   restorable: z.boolean(),
   /** The map was deleted in Mappe (or with its subject) after it was made: there is nothing to open or undo. */
@@ -547,6 +549,8 @@ const quizResultView = z.object({
   /** What the job's model call is doing and since when, while it works (`activityOf`); null between calls. */
   activity: JobActivity.nullable(),
   undone: z.boolean(),
+  /** Undone by «Ferma» while it was written, so the quiz was never finished: the card says the creation stopped. */
+  stopped: z.boolean(),
   /** False for an undone result «Ripristina» cannot bring back: what it went into was deleted since. */
   restorable: z.boolean(),
   /** The quiz was deleted from the exam's unfinished activities (or with its exam) after it was made. */
@@ -628,6 +632,8 @@ const examProposalView = z.object({
   created: z
     .object({
       planId: z.string(),
+      /** The exam's build, which the card starts again when it stopped. */
+      jobId: z.string(),
       job: z.enum(["working", "done", "failed", "cancelled", "interrupted"]),
       error: z.string().nullable(),
       activity: JobActivity.nullable(),
@@ -3458,6 +3464,8 @@ export const requests = {
           grounding: z.enum(["sources", "wider", "general"]).nullable(),
           /** For a reply from general knowledge: whether passages were found and not cited, and where Pyxis looked. */
           searched: z.object({ found: z.boolean(), where: z.enum(["library", "files"]) }).optional(),
+          /** The reply read the student's own results (`read_progress`). */
+          results: z.literal(true).optional(),
           followups: z.array(z.string()),
           reaction: z.enum(["up", "down"]).nullable(),
           stopped: z.boolean(),
@@ -3596,6 +3604,8 @@ export const requests = {
           grounding: z.enum(["sources", "wider", "general"]).nullable(),
           /** For a reply from general knowledge: whether passages were found and not cited, and where Pyxis looked. */
           searched: z.object({ found: z.boolean(), where: z.enum(["library", "files"]) }).optional(),
+          /** The reply read the student's own results (`read_progress`). */
+          results: z.literal(true).optional(),
           followups: z.array(z.string()),
           citations: z.array(
             z.object({

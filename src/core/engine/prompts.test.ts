@@ -48,11 +48,13 @@ describe("prompt templates", () => {
     // Version 6 is about the files attached to a question; version 7 added the chart and practice question blocks and
     // read_progress as the only source of the student's results on one side, the map and the quiz on the other, and
     // version 8 joins them. Version 9 adds ask_stronger_model, the stronger model a hard exercise can be handed to, and
-    // version 11 the proposal tools (10 was their own branch's number before 9 landed), and version 12 tells the tutor
-    // what to say when drawings are not installed and forbids ASCII diagrams.
-    expect(loadTemplate("chat.tutor").version).toBe("12");
+    // version 11 the proposal tools (10 was their own branch's number before 9 landed), versions 12 and 13 the map and
+    // quiz card wording after tool calls and refusals, and version 14 adds the missing-drawings Settings guidance and
+    // forbids ASCII diagrams.
+    expect(loadTemplate("chat.tutor").version).toBe("14");
     expect(loadTemplate("chat.tutor").body).toContain("point them to the Settings path named in the context block");
     expect(loadTemplate("chat.tutor").body).toContain("Never draw a diagram, graph, plot or schema with ASCII art");
+    expect(loadTemplate("chat.tutor").body).toContain("When the tool made a map or a quiz");
     // The chat's tools are named in a fixed paragraph, the same whether or not a turn has them, so the system prompt stays
     // the same for the whole chat; each tool's own description lives in its server (src/core/tools). A concept map asked
     // for is made with its tool rather than drawn as a figure.

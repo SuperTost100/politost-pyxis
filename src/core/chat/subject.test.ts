@@ -1,9 +1,11 @@
 import type Database from "better-sqlite3";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { removeSubject, renameSubject } from "../plans/subjects";
 import type { EngineResult } from "../engine/funnel";
-import { pickSubject, type SubjectVote } from "./subject";
+import { pickSubject, settledSubject, type SubjectVote } from "./subject";
+import { chatToolList } from "../tools/registry";
+import { setTools, stopToolServer } from "../tools/server";
 import { askTurn, chatSubject, chatSubjectBy, readChat, setChatSubject } from "./turn";
 
 const votes = (spec: Array<[string | null, number, boolean?]>): SubjectVote[] =>
@@ -103,6 +105,73 @@ async function ask(db: Database.Database, text: string, chatId?: string, fail = 
   });
   return { chatId: result.chatId, prompt, reply: readChat(db, result.chatId).at(-1)! };
 }
+
+describe("the subject a turn's search settled on, for the chat's tools", () => {
+  it("is the one subject of every relevant passage, even one passage, and nothing when they are spread or loose", () => {
+    expect(settledSubject(votes([["Analisi 1", 1]]))).toBe("Analisi 1");
+    expect(settledSubject(votes([["Analisi 1", 3], ["Storia", 4, false]]))).toBe("Analisi 1");
+    expect(settledSubject(votes([["Analisi 1", 3], ["Fisica 2", 1]]))).toBeNull();
+    expect(settledSubject(votes([["Analisi 1", 3], [null, 1]]))).toBeNull();
+    expect(settledSubject(votes([["Analisi 1", 3, false]]))).toBeNull();
+    expect(settledSubject([])).toBeNull();
+  });
+});
+
+describe("flashcards asked in a chat whose subject Pyxis chooses", () => {
+  afterEach(async () => {
+    await stopToolServer();
+  });
+
+  const card = { front: "Quando converge una serie geometrica?", back: "Quando la ragione è minore di uno in modulo." };
+  const askCards = async (db: Database.Database, text: string) => {
+    let answer = "";
+    const result = await askTurn(db, {
+      text,
+      embed: null,
+      python: null,
+      run: async (call): Promise<EngineResult> => {
+        const response = await fetch(call.tools!.url, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${call.tools!.token}` },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "create_flashcards", arguments: { cards: [card] } } }),
+        });
+        answer = ((await response.json()) as { result: { content: Array<{ text: string }> } }).result.content[0]!.text;
+        return { text: "Fatto.", model: "m", provider: "claude", inputTokens: 1 };
+      },
+    });
+    return { chatId: result.chatId, answer };
+  };
+
+  it("files them in the subject the turn's search settled on, though one passage is too few to name the chat", async () => {
+    const db = library([
+      { id: "fis", subject: "Fisica 2", texts: physics },
+      { id: "an", subject: "Analisi 1", texts: calculus },
+      { id: "other", subject: "Storia", texts: filler },
+    ]);
+    setTools(chatToolList(db, false));
+    const { chatId, answer } = await askCards(db, "Fammi una flashcard sulla serie geometrica e la sua ragione");
+    expect(answer).toMatch(/^Created 1 flashcard in the deck of Analisi 1/);
+    expect(db.prepare("SELECT s.name FROM cards c JOIN subjects s ON s.id = c.subject_id").pluck().all()).toEqual(["Analisi 1"]);
+    // The chat is now where its cards are, as Pyxis's choice, so a later request about them finds them.
+    expect(chatSubject(db, chatId)).toBe("Analisi 1");
+    expect(chatSubjectBy(db, chatId)).toBe("pyxis");
+    db.close();
+  });
+
+  it("asks which subject in one sentence when the search settled on none, naming the subjects there are", async () => {
+    const db = library([
+      { id: "fis", subject: "Fisica 2", texts: physics },
+      { id: "an", subject: "Analisi 1", texts: calculus },
+    ]);
+    setTools(chatToolList(db, false));
+    const { chatId, answer } = await askCards(db, "Fammi delle flashcard sulla ricetta della carbonara");
+    expect(answer).toMatch(/Ask the student in one sentence which subject/);
+    expect(answer).toContain("Analisi 1, Fisica 2");
+    expect(db.prepare("SELECT count(*) FROM cards").pluck().get()).toBe(0);
+    expect(chatSubject(db, chatId)).toBeNull();
+    db.close();
+  });
+});
 
 describe("a chat's subject", () => {
   it("is picked from the whole Library on the first question, and the reply names the subject it used", async () => {

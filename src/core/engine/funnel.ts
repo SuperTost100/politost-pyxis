@@ -543,6 +543,12 @@ async function turn(input: TurnInput): Promise<EngineResult> {
           },
         }
       : undefined;
+  // cli-funnel gives Pyxis's server a new name inside agy for each process it starts (`clifunnel<random>_0`, so no
+  // server in the user's config can take it beforehand), and a chat's token, which starts a new process, changes after
+  // every turn on Antigravity (`chat/turn.ts`). A resumed agy conversation still holds the earlier turns' calls under the
+  // old name, and Gemini copies it: agy answers "unknown tool", and cli-funnel stops the run as a broken guard (seen in
+  // the 0.5.0-dev.14 walk). A run with the tools therefore starts a new agy session with the whole prompt.
+  if (servers && selection.provider === "antigravity") resumeId = undefined;
   try {
     for (;;) {
       const continuing = Boolean(resumeId) && Boolean(conversation);

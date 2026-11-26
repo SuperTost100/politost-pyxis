@@ -3196,7 +3196,7 @@
           "createdDated": "Esame creato: {{title}}, {{date}}.",
           "building": "Preparo il percorso…",
           "buildFailed": "Il percorso non è stato preparato.",
-          "buildStopped": "La preparazione del percorso si è fermata.",
+          "buildStopped": "La creazione dell'esame {{title}} si è fermata prima che il percorso fosse pronto.",
           "open": "Apri l'esame",
           "createdGone": "L'esame creato da qui è stato eliminato.",
           "declined": "Non ho creato niente.",

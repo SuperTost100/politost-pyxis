@@ -14,7 +14,7 @@ import {
   type QuizInput,
   type QuizSnapshot,
 } from "./configuredQuiz";
-import { DRAFT_GRACE_MS, startAttempt, withoutAnswer, type AttemptResult } from "./attempt";
+import { DRAFT_GRACE_MS, finalResult, startAttempt, withoutAnswer } from "./attempt";
 import { checkedAnswer } from "./quizGrading";
 
 type Params = {
@@ -136,22 +136,7 @@ export function readQuiz(
     )
     .get(attemptId) as
     { id: string; state: string; error: string | null } | undefined;
-  const final =
-    row.submitted_at == null
-      ? undefined
-      : (db
-          .prepare(
-            "SELECT payload_json FROM attempt_answers WHERE attempt_id = ? AND json_type(payload_json, '$.results') = 'array' ORDER BY created_at DESC LIMIT 1",
-          )
-          .get(attemptId) as { payload_json: string } | undefined);
-  const result = final
-    ? (JSON.parse(final.payload_json) as {
-        score: number;
-        results: AttemptResult[];
-        picks: Record<string, string>;
-        steps?: Record<string, string>;
-      })
-    : undefined;
+  const result = row.submitted_at == null ? undefined : finalResult(db, attemptId);
   const saved = db
     .prepare(
       "SELECT payload_json FROM attempt_answers WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object' ORDER BY created_at DESC LIMIT 1",

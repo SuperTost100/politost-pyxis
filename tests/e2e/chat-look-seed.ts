@@ -364,11 +364,11 @@ function lookQuizBody(complete: boolean) {
 }
 
 /**
- * A chat whose answer made a map or a quiz with the chat's tools, in one of three states: at work (its job running),
- * the card of what it made, and the line after «Annulla». The job rows are written while the app runs, so the runner
- * never picks a running one up.
+ * A chat whose answer made a map or a quiz with the chat's tools, in one of four states: at work (its job running),
+ * the card of what it made, the line after «Annulla», and the line after «Ferma» stopped it before it was made. The job
+ * rows are written while the app runs, so the runner never picks a running one up.
  */
-export function seedMadeChat(db: DatabaseSync, tool: "map" | "quiz", state: "working" | "done" | "undone") {
+export function seedMadeChat(db: DatabaseSync, tool: "map" | "quiz", state: "working" | "done" | "undone" | "stopped") {
   const id = `look-${tool}-${state}`;
   if (!db.prepare("SELECT 1 FROM subjects WHERE id = 'look-phys'").get())
     db.prepare("INSERT INTO subjects(id,name,created_at) VALUES('look-phys','Fisica 1',1)").run();
@@ -390,7 +390,7 @@ export function seedMadeChat(db: DatabaseSync, tool: "map" | "quiz", state: "wor
     map ? "Mi fai una mappa della dinamica dai miei appunti?" : "Preparami un quiz sulla dinamica, voglio vedere se sono pronta.",
   );
   const jobId = `${id}-job`;
-  const jobState = state === "working" ? "running" : "succeeded";
+  const jobState = state === "working" ? "running" : state === "stopped" ? "cancelled" : "succeeded";
   const attemptId = `${id}-attempt`;
   const itemId = `${id}-item`;
   db.prepare("INSERT INTO jobs(id,kind,params_json,state,progress,dismissed,created_at,updated_at) VALUES(?,?,?,?,0,?,1,1)").run(
@@ -398,22 +398,22 @@ export function seedMadeChat(db: DatabaseSync, tool: "map" | "quiz", state: "wor
     map ? "map-build" : "quiz-build",
     JSON.stringify(map ? { input: { subjectId: "look-phys" }, parts: [], next: 0 } : { input: { planId: "look-plan", topicId: "look-topic" }, attemptId }),
     jobState,
-    state === "undone" ? 1 : 0,
+    state === "undone" || state === "stopped" ? 1 : 0,
   );
   const stored = lookMap();
   if (map && state === "done")
     db.prepare(
       "INSERT INTO maps(id,subject_id,plan_id,topic_id,graph_json,grounding,created_at) VALUES('look-map-row','look-phys',NULL,NULL,?,'general',1)",
     ).run(JSON.stringify({ version: 1, maps: [stored] }));
-  const item = { id: itemId, plan_id: "look-plan", topic_id: "look-topic", kind: "quiz", body_json: JSON.stringify(lookQuizBody(state !== "working")), created_at: 1 };
+  const item = { id: itemId, plan_id: "look-plan", topic_id: "look-topic", kind: "quiz", body_json: JSON.stringify(lookQuizBody(state === "done" || state === "undone")), created_at: 1 };
   const attempt = { id: attemptId, plan_id: "look-plan", item_id: itemId, started_at: 1, submitted_at: null };
-  if (!map && state !== "undone") {
+  if (!map && state !== "undone" && state !== "stopped") {
     db.prepare("INSERT INTO items(id,plan_id,topic_id,kind,body_json,created_at) VALUES(?,?,?,?,?,?)").run(
       item.id, item.plan_id, item.topic_id, item.kind, item.body_json, item.created_at,
     );
     db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES(?,?,?,1)").run(attemptId, "look-plan", itemId);
   }
-  const resultId = `0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4b${map ? "1" : "2"}${state === "working" ? "0" : state === "done" ? "1" : "2"}`;
+  const resultId = `0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4b${map ? "1" : "2"}${{ working: "0", done: "1", undone: "2", stopped: "3" }[state]}`;
   db.prepare("INSERT INTO chat_tool_results(id,chat_id,message_id,tool,data_json,undone_json,created_at) VALUES(?,?,?,?,?,?,2)").run(
     resultId,
     id,
@@ -424,9 +424,8 @@ export function seedMadeChat(db: DatabaseSync, tool: "map" | "quiz", state: "wor
         ? { jobId, subjectId: "look-phys", subject: "Fisica 1", topic: "Dinamica", mapId: stored.id }
         : { planId: "look-plan", exam: "Fisica 1", topic: "Dinamica", topicId: "look-topic", attemptId, itemId, count: 10 },
     ),
-    state !== "undone"
-      ? null
-      : JSON.stringify(
+    state === "undone"
+      ? JSON.stringify(
           map
             ? { map: stored, stopped: false, dismissed: 0 }
             : {
@@ -435,7 +434,19 @@ export function seedMadeChat(db: DatabaseSync, tool: "map" | "quiz", state: "wor
                 jobs: [{ id: jobId, dismissed: 0 }],
                 stopped: null,
               },
-        ),
+        )
+      : state === "stopped"
+        ? JSON.stringify(
+            map
+              ? { map: null, stopped: true, dismissed: null }
+              : {
+                  rows: { items: [item], item_passages: [], attempts: [attempt], attempt_answers: [], gap_answers: [], tool_sessions: [] },
+                  events: [],
+                  jobs: [],
+                  stopped: jobId,
+                },
+          )
+        : null,
   );
   const [before, after] = map
     ? [

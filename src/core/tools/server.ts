@@ -70,8 +70,12 @@ export type ToolTurn = {
 /** A result the chat shows where the tool was called: its stored id. */
 export type ToolShown = { resultId: string };
 
-/** What a tool returns: the text the model reads, and for a call that did something, the result the chat shows. */
-export type ToolOutcome = { text: string; isError?: boolean; shown?: ToolShown };
+/**
+ * What a tool returns: the text the model reads, and for a call that did something, the result the chat shows.
+ * `declined` marks a call that did nothing on purpose (a limit, a refusal, nothing to act on), and the text says why. It
+ * goes to the model as an ordinary result like any other: see `call` below.
+ */
+export type ToolOutcome = { text: string; declined?: true; shown?: ToolShown };
 
 export type Tool = {
   name: string;
@@ -320,30 +324,38 @@ function describe(tool: Tool) {
   return { name: tool.name, description: tool.description, inputSchema: schema };
 }
 
-const errorResult = (text: string) => ({ content: [{ type: "text", text }], isError: true });
+/**
+ * A call's answer. Every call Pyxis answers on purpose, a refusal included (no turn running, a tool not offered, the
+ * turn's cap, invalid arguments, a tool that `declined`), is an ordinary result whose text tells the model why: an
+ * `isError` result is what a CLI reads as a failed call, and cli-funnel at access `none` stops the run on a failed call it
+ * cannot place. Only a tool that threw, which Pyxis did not mean, is `isError`. A tool never sets it.
+ */
+const result = (text: string, failed = false) => ({ content: [{ type: "text", text }], ...(failed ? { isError: true } : {}) });
 
 async function call(chat: Chat, params: Record<string, unknown>) {
   const armed = chat.armed;
   // The token is the chat's, but no turn of it is running: nothing may act on the chat between questions.
   if (!armed || armed.turn.chatId !== chat.chatId)
-    return errorResult("This tool can only be used while you are answering the student.");
+    return result("Nothing was done: this tool can only be used while you are answering the student.");
   const { turn } = armed;
   const tool = offered(chat).find((entry) => entry.name === params.name);
-  if (!tool) return errorResult("Unknown tool.");
+  if (!tool) return result("Nothing was done: there is no such tool here. Answer without it.");
   if (armed.calls >= MAX_CALLS_PER_TURN)
-    return errorResult(`No more tool calls in this answer (at most ${MAX_CALLS_PER_TURN}). Finish your answer.`);
+    return result(`Nothing was done: no more tool calls in this answer (at most ${MAX_CALLS_PER_TURN}). Finish your answer.`);
   armed.calls += 1;
   const handle = turn.started(tool.name);
   let outcome: ToolOutcome;
+  let failed = false;
   try {
     const parsed = tool.input.safeParse(params.arguments ?? {});
     outcome = parsed.success
       ? await tool.run(turn, parsed.data)
-      : { text: `Invalid arguments: ${z.prettifyError(parsed.error).slice(0, 1500)}`, isError: true };
+      : { text: `Nothing was done. Invalid arguments: ${z.prettifyError(parsed.error).slice(0, 1500)}`, declined: true };
   } catch {
-    outcome = { text: "The tool failed. Tell the student it did not work, and do not retry.", isError: true };
+    failed = true;
+    outcome = { text: "The tool failed. Tell the student it did not work, and do not retry." };
   }
   // The turn may have ended while the tool ran (Stop): its result is still stored, and the chat shows it once read.
   turn.finished(handle, outcome.shown ?? null);
-  return { content: [{ type: "text", text: outcome.text }], ...(outcome.isError ? { isError: true } : {}) };
+  return result(outcome.text, failed);
 }

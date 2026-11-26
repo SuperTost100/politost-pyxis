@@ -7,6 +7,7 @@ import { reachableTarget } from "../../shared/plan-file";
 import { OPEN_GAPS_WHERE, planMastery, planTarget } from "../plans/progress";
 import { readSteps } from "../plans/steps";
 import { readProfile } from "../profile/profile";
+import { finalResult } from "../study/attempt";
 import type { Tool, ToolTurn } from "./server";
 
 /**
@@ -31,24 +32,20 @@ export const PROGRESS_DESCRIPTION = [
 ].join(" ");
 
 type Attempt = {
+  id: string;
   submitted_at: number;
   kind: string;
   topic_id: string | null;
   topic: string | null;
-  payload: string | null;
 };
 
 /** The pass mark on each scale: 18 out of 30, as Italian universities mark exams, and 60 out of 100. */
 const passMark = (scale: GradeScale) => (scale === 30 ? 18 : 60);
 
-function score(payload: string | null): number | null {
-  if (!payload) return null;
-  try {
-    const value = (JSON.parse(payload) as { score?: unknown }).score;
-    return typeof value === "number" && Number.isFinite(value) ? value : null;
-  } catch {
-    return null;
-  }
+/** The attempt's grade as its results page shows it (`finalResult`), or null while its open answers are being graded. */
+function score(db: Database.Database, attemptId: string): number | null {
+  const value = finalResult(db, attemptId)?.score;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 /** One exam as the student sees it in Pyxis: its handed-in quizzes and each topic's state, on the student's scale. */
@@ -59,9 +56,7 @@ export function examProgress(db: Database.Database, planId: string, scale: Grade
   const threshold = reachableTarget(target);
   const attempts = db
     .prepare(
-      `SELECT a.submitted_at, i.kind, i.topic_id, t.title AS topic,
-              (SELECT aa.payload_json FROM attempt_answers aa WHERE aa.attempt_id = a.id
-               ORDER BY aa.created_at DESC, aa.rowid DESC LIMIT 1) AS payload
+      `SELECT a.id, a.submitted_at, i.kind, i.topic_id, t.title AS topic
        FROM attempts a JOIN items i ON i.id = a.item_id LEFT JOIN topics t ON t.id = i.topic_id
        WHERE a.plan_id = ? AND a.submitted_at IS NOT NULL AND i.kind IN ('quiz', 'diagnostic', 'review', 'simulation')
        ORDER BY a.submitted_at DESC, a.rowid DESC`,
@@ -75,7 +70,7 @@ export function examProgress(db: Database.Database, planId: string, scale: Grade
         .all({ plan: planId }) as Array<{ topicId: string; n: number }>
     ).map((row) => [row.topicId, row.n]),
   );
-  const graded = attempts.map((attempt) => ({ ...attempt, score: score(attempt.payload) }));
+  const graded = attempts.map((attempt) => ({ ...attempt, score: score(db, attempt.id) }));
   return {
     exam: plan.title,
     goal: gradeValue(target, scale),

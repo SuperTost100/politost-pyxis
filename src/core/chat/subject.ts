@@ -37,6 +37,18 @@ export function pickSubject(votes: readonly SubjectVote[]): string | null {
 }
 
 /**
+ * The subject every relevant passage of a turn's search belongs to, or null: at least one passage passed the bar, and all
+ * of them are files of that one subject. It is weaker than `pickSubject`, which names the chat, and only says where the
+ * chat's tools put what this turn asks them to make (`place` in `turn.ts`) when the chat has no subject of its own.
+ */
+export function settledSubject(votes: readonly SubjectVote[]): string | null {
+  const relevant = votes.filter((vote) => vote.relevant);
+  const subjects = new Set(relevant.map((vote) => vote.subject));
+  if (relevant.length === 0 || subjects.size !== 1) return null;
+  return [...subjects][0] ?? null;
+}
+
+/**
  * The subject each source belongs to, by name: the Library file's own subject, or else the subject of the exams that study
  * it when they all have the same one. A chat attachment, or a file with neither, has none.
  */

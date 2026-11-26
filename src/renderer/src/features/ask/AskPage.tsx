@@ -259,7 +259,7 @@ const Reply = memo(function Reply({
   return (
     <ChatMessage
       engine={engineTag(row)}
-      lead={<UsedSources grounding={row.grounding} citations={row.citations} searched={row.searched} />}
+      lead={<UsedSources grounding={row.grounding} citations={row.citations} searched={row.searched} body={row.body} results={row.results} />}
       sources={<SourcesRow places={places} order={order} claims={claims} arriving={arriving} />}
       stopped={row.stopped}
       failure={failure?.text}

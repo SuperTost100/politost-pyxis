@@ -15,7 +15,7 @@ import type { Tool, ToolTurn } from "./server";
 /**
  * `propose_delete`: the model proposes to delete something, and the student deletes it or not (`proposals.ts`). Only
  * what the chat's tools can also create may be proposed, and only in the chat's exam or subject: flashcards Pyxis made
- * (of an exam's topic, or those this chat's tools created), a concept map of the subject, or a quiz of the exam that was
+ * (of an exam's topic, of the subject outside its exams, or those this chat's tools created), a concept map of the subject, or a quiz of the exam that was
  * not handed in. Never an exam, a source, a chat, a grade, or anything of the review history. What goes is found and
  * counted by the app.
  *
@@ -42,7 +42,7 @@ export const deleteInput = z
       // Matched whole: a name cut short could match a shorter topic it begins with.
       .pipe(z.string().max(TOPIC_TITLE_MAX))
       .optional()
-      .describe("For flashcards and a quiz, the exam topic they are on; for a map, its title."),
+      .describe("For flashcards, the exam topic they are on, or this chat's subject for its flashcards that belong to no exam; for a quiz, the exam topic; for a map, its title."),
     made_in_chat: z
       .boolean()
       .optional()
@@ -51,7 +51,7 @@ export const deleteInput = z
   .strict();
 
 export const DELETE_DESCRIPTION = [
-  "Proposes to delete flashcards Pyxis made (of a topic of this chat's exam, or the ones you created in this chat), a concept map of this chat's subject, or a quiz of this chat's exam that the student has not handed in. It deletes nothing by itself: the student sees what would go, counted by Pyxis, as a card in your answer, and deletes it or not.",
+  "Proposes to delete flashcards Pyxis made (of a topic of this chat's exam, of this chat's subject outside its exams, or the ones you created in this chat), a concept map of this chat's subject, or a quiz of this chat's exam that the student has not handed in. It deletes nothing by itself: the student sees what would go, counted by Pyxis, as a card in your answer, and deletes it or not.",
   "Call it only when the student asks to delete such a thing. Never call it on your own initiative, and never to make room for something new unless they asked.",
   "Nothing else can be deleted from the chat: not an exam, a source, a chat, a grade, a quiz already handed in, or the review history. Say so plainly when asked.",
   "One proposal of this kind per answer. After the call, say in one short sentence that you prepared it and that nothing is deleted until the student confirms on the card. Never say it is deleted: you will be told what the student chose in their next message.",
@@ -162,6 +162,38 @@ function subjectOf(db: Database.Database, where: ReturnType<ToolTurn["place"]>):
     | undefined) ?? null;
 }
 
+/** The flashcards Pyxis made in a subject and in none of its exams; the ones the student wrote and the exams' cards stay. */
+function subjectCards(db: Database.Database, subject: { id: string; name: string }): Cards | { refused: string } {
+  const cardIds = db
+    .prepare("SELECT id FROM cards WHERE plan_id IS NULL AND subject_id = ? AND removed = 0 AND seed_key IS NOT NULL ORDER BY id")
+    .pluck()
+    .all(subject.id) as string[];
+  const handMade = db
+    .prepare("SELECT count(*) FROM cards WHERE plan_id IS NULL AND subject_id = ? AND removed = 0 AND seed_key IS NULL")
+    .pluck()
+    .get(subject.id) as number;
+  if (cardIds.length === 0)
+    return {
+      refused: handMade
+        ? `The flashcards of ${subject.name} outside its exams were all written by the student, and Pyxis deletes only cards it made, so nothing was proposed. They can delete their own cards in Flashcard.`
+        : `${subject.name} has no flashcards Pyxis made outside its exams, so nothing was proposed. Tell the student in one sentence; the cards of an exam's topic are deleted by naming the topic.`,
+    };
+  if (cardIds.length > CARDS_PER_DELETION) return tooMany(cardIds.length);
+  return {
+    kind: "flashcards",
+    planId: null,
+    topicId: null,
+    scope: { subjectId: subject.id },
+    name: plainName(subject.name),
+    place: plainName(subject.name),
+    cardIds,
+    contents: textOf(db, cardIds),
+    reviewed: reviewedOf(db, cardIds),
+    handMade,
+    others: db.prepare("SELECT count(*) FROM cards WHERE plan_id IS NOT NULL AND subject_id = ? AND removed = 0").pluck().get(subject.id) as number,
+  };
+}
+
 const listOf = (titles: string[]) => titles.map((title) => `"${title}"`).join(", ");
 
 const tooMany = (count: number) => ({
@@ -208,6 +240,19 @@ function resolve(db: Database.Database, args: DeleteRequest, ctx: Omit<ProposalC
       };
     }
     if (!args.topic) return { refused: "Name the topic whose flashcards to delete (`topic`), or set `made_in_chat`. Nothing was proposed." };
+    // The chat's own subject by name: its cards that belong to no exam, as a chat of the subject or the Flashcard dialog
+    // files them. A topic of the chat's exam with that very title still means the topic.
+    const subject = subjectOf(db, where);
+    if (subject && matchTitle([{ title: subject.name }], args.topic)?.exact) {
+      const own = where.planId ? chatExam(db, where) : null;
+      const topicNamed =
+        own &&
+        !("refused" in own) &&
+        (db.prepare("SELECT title FROM topics WHERE plan_id = ? AND archived_at IS NULL").pluck().all(own.id) as string[]).some(
+          (title) => matchTitle([{ title }], args.topic!)?.exact,
+        );
+      if (!topicNamed) return subjectCards(db, subject);
+    }
     const exam = chatExam(db, where);
     if ("refused" in exam) return exam;
     // Two topics of one exam can share a title (an "Introduzione" from each source): the words then name neither.
@@ -419,11 +464,11 @@ export function proposeDeleteTool(db: Database.Database): Tool {
     run(turn, raw) {
       if ((turn.tally[TOOL] ?? 0) >= 1)
         return {
-          isError: true,
+          declined: true,
           text: "This answer already proposed a deletion, and one answer may propose one. Nothing more was proposed: the student can ask in their next message.",
         };
       const made = propose<DeleteRequest, DeleteProposal>(db, turn, TOOL, raw as DeleteRequest);
-      if ("refused" in made) return { isError: true, text: made.refused };
+      if ("refused" in made) return { declined: true, text: made.refused };
       turn.tally[TOOL] = 1;
       return {
         text: `Shown to the student as a card to confirm: deleting ${describe(made.action)}. They have not decided yet, and nothing is deleted. In one short sentence say what you prepared and that nothing is deleted until they confirm on the card; never say it is deleted.`,

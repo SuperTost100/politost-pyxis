@@ -25,7 +25,7 @@ function fixture() {
   run("INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('dyn', 'mech', 'Dinamica', 0, 1)");
   run("INSERT INTO items (id, plan_id, topic_id, kind, body_json, created_at) VALUES ('quiz', 'mech', 'dyn', 'quiz', '{}', 1)");
   run("INSERT INTO attempts (id, plan_id, item_id, started_at, submitted_at) VALUES ('a', 'mech', 'quiz', 1, 2)");
-  run(`INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES ('aa', 'a', '{"picks":{},"score":0.6}', 2)`);
+  run(`INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES ('aa', 'a', '{"picks":{},"results":[],"score":0.6}', 2)`);
   run(
     `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at) VALUES
      ('e1', 'answer_given', 'mech', 'dyn', '{"score":0.6,"attemptId":"a"}', 2),

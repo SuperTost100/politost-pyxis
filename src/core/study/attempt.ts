@@ -218,6 +218,29 @@ export function submitAttempt(
   return { score, results };
 }
 
+/** An attempt's handed-in result: its grade (0 to 1), the answers given and each question's result. */
+export type FinalResult = {
+  score: number;
+  picks: Record<string, string>;
+  steps?: Record<string, string>;
+  results: AttemptResult[];
+};
+
+/**
+ * The row of `attempt_answers` that holds an attempt's handed-in result, the one with `results`. The same table holds a
+ * draft and one check row per open answer, which a later regrade rewrites, so the newest row is not the result. This is
+ * the one definition of an attempt's grade: the quiz's results page and the chat's `read_progress` both read it here.
+ */
+export function finalResult(db: Database.Database, attemptId: string): FinalResult | undefined {
+  const row = db
+    .prepare(
+      "SELECT payload_json FROM attempt_answers WHERE attempt_id = ? AND json_type(payload_json, '$.results') = 'array' ORDER BY created_at DESC, rowid DESC LIMIT 1",
+    )
+    .pluck()
+    .get(attemptId) as string | undefined;
+  return row ? (JSON.parse(row) as FinalResult) : undefined;
+}
+
 export function expectedText(question: StoredQuestion): string {
   const answer = question.answer;
   if (answer.kind === "mcq") return question.options?.[answer.correct] ?? "";

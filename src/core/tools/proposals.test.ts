@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createRunner } from "../jobs/runner";
 import { deleteMap, listMaps, storeMap } from "../maps/store";
@@ -12,6 +12,7 @@ import { setToolRunner } from "./jobs";
 import { decidedSince, decideProposal } from "./proposals";
 import { CARDS_PER_DELETION, deleteInput, proposeDeleteTool } from "./proposeDelete";
 import { examInput, proposeExamTool } from "./proposeExam";
+import { flashcardsInput, flashcardsTool } from "./flashcards";
 import { pathInput, proposePathTool } from "./proposePath";
 import { quizInput, quizTool } from "./quiz";
 import { chatToolList } from "./registry";
@@ -45,7 +46,7 @@ function fixture() {
   // The student's record: a handed-in quiz with its grade, a review of a card, study time and a gap.
   run(`INSERT INTO items (id, plan_id, topic_id, kind, body_json, created_at) VALUES ('graded', ?, ?, 'quiz', '{"complete":true,"questions":[{"id":"q1"}]}', 1)`, planId, topic("Dinamica"));
   run(`INSERT INTO attempts (id, plan_id, item_id, started_at, submitted_at) VALUES ('graded-a', ?, 'graded', 1, 2)`, planId);
-  run(`INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES ('graded-aa', 'graded-a', '{"score":0.7}', 2)`);
+  run(`INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES ('graded-aa', 'graded-a', '{"picks":{},"results":[],"score":0.7}', 2)`);
   run(`INSERT INTO learning_events (id, kind, plan_id, topic_id, item_id, payload_json, created_at) VALUES ('ev-time', 'active_time', ?, ?, NULL, '{"ms":600000}', 3)`, planId, topic("Cinematica"));
   run(`INSERT INTO learning_events (id, kind, plan_id, topic_id, item_id, payload_json, created_at) VALUES ('ev-answer', 'answer_given', ?, ?, 'graded', '{"score":0.7}', 3)`, planId, topic("Dinamica"));
   run(`INSERT INTO gaps (id, plan_id, topic_id, opened_at) VALUES ('gap', ?, ?, 4)`, planId, topic("Dinamica"));
@@ -130,7 +131,7 @@ describe("propose_path_change", () => {
         add_topics: [{ title: "Urti e quantità di moto", after: "Lavoro ed energia" }],
       }),
     );
-    expect(outcome.isError).toBeUndefined();
+    expect(outcome.declined).toBeUndefined();
     expect(outcome.text).toMatch(/not decided yet and nothing has changed/);
     const id = outcome.shown!.resultId;
     const view = toolView(db, "chat", id) as PathProposalView;
@@ -213,7 +214,7 @@ describe("propose_path_change", () => {
     const place = { planId, subject: "Fisica" };
     const refused = async (args: unknown) => {
       const out = await tool.run(turn(place), pathInput.parse(args));
-      expect(out.isError).toBe(true);
+      expect(out.declined).toBe(true);
       expect(out.shown).toBeUndefined();
       return out.text;
     };
@@ -248,7 +249,7 @@ describe("propose_path_change", () => {
     const { db, planId } = fixture();
     const tool = proposePathTool(db);
     const answer = turn({ planId, subject: null });
-    expect((await tool.run(answer, pathInput.parse({ weekly_hours: 9 }))).isError).toBeUndefined();
+    expect((await tool.run(answer, pathInput.parse({ weekly_hours: 9 }))).declined).toBeUndefined();
     expect((await tool.run(answer, pathInput.parse({ weekly_hours: 10 }))).text).toMatch(/already proposed/);
   });
 
@@ -307,7 +308,9 @@ describe("propose_exam", () => {
     expect(applied.state).toBe("applied");
     const plan = db.prepare("SELECT id, title, status FROM plans WHERE title = 'Chimica generale'").get() as { id: string; status: string };
     expect(plan.status).toBe("building");
-    expect(applied.created).toMatchObject({ planId: plan.id, job: "working", gone: false });
+    const buildJob = db.prepare("SELECT id FROM jobs WHERE kind = 'plan-build' AND json_extract(params_json, '$.planId') = ?").pluck().get(plan.id);
+    // The card names the build, so a stopped one can be started again from it.
+    expect(applied.created).toMatchObject({ planId: plan.id, jobId: buildJob, job: "working", gone: false });
     expect(db.prepare("SELECT source_id FROM plan_sources WHERE plan_id = ?").pluck().all(plan.id)).toEqual(["disp"]);
     expect(readSessions(db, plan.id).map((session) => session.date)).toEqual([day(NEXT_YEAR, 2, 9)]);
     expect(runner.list().some((job) => job.kind === "plan-build")).toBe(true);
@@ -496,7 +499,7 @@ describe("what a proposal is about is found without guessing", () => {
     jobs(db);
     storeMap(db, { subjectId }, { id: "map-dyn-2", title: "Dinamica", passageIds: [], graph: { nodes: [{ id: "r", label: "Dinamica", parent: null, sources: [] }], edges: [] } } as never);
     const out = await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "map", topic: "Dinamica" }));
-    expect(out.isError).toBe(true);
+    expect(out.declined).toBe(true);
     expect(out.text).toMatch(/2 maps of Fisica are called "Dinamica".*Mappe/);
   });
 
@@ -507,7 +510,7 @@ describe("what a proposal is about is found without guessing", () => {
     db.prepare(`INSERT INTO items (id, plan_id, topic_id, kind, body_json, created_at) VALUES ('gas-quiz', ?, 'gas', 'quiz', '{"complete":true,"questions":[{"id":"q1"}]}', 8)`).run(planId);
     db.prepare("INSERT INTO attempts (id, plan_id, item_id, started_at) VALUES ('gas-a', ?, 'gas-quiz', 8)").run(planId);
     const out = await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "quiz", topic: "Termodinamica" }));
-    expect(out.isError).toBeUndefined();
+    expect(out.declined).toBeUndefined();
     expect(toolView(db, "chat", out.shown!.resultId)).toMatchObject({ name: "Termodinamica", count: 2 });
   });
 
@@ -516,7 +519,7 @@ describe("what a proposal is about is found without guessing", () => {
     createPlan(db, { title: "Fisica 2", subject: "Fisica", sourceIds: [], draftTopics: [{ title: "Ottica" }] });
     setPlanArchived(db, planId, true);
     const out = await proposePathTool(db).run(turn({ planId, subject: "Fisica" }), pathInput.parse({ weekly_hours: 9 }));
-    expect(out.isError).toBe(true);
+    expect(out.declined).toBe(true);
     expect(out.text).toMatch(/archived/);
     expect(db.prepare("SELECT count(*) FROM chat_tool_results").pluck().get()).toBe(0);
   });
@@ -527,7 +530,7 @@ describe("what a proposal is about is found without guessing", () => {
       turn({ planId, subject: null }),
       pathInput.parse({ add_topics: [{ title: "Urti", after: "Lavoro ed energia" }], move_topics: [{ title: "Cinematica", after: "Urti" }] }),
     );
-    expect(out.isError).toBeUndefined();
+    expect(out.declined).toBeUndefined();
     expect((toolView(db, "chat", out.shown!.resultId) as PathProposalView).after.map((entry) => entry.title)).toEqual([
       "Dinamica",
       "Lavoro ed energia",
@@ -631,6 +634,115 @@ describe("what the security read asked for", () => {
   });
 });
 
+describe("propose_delete, a subject's flashcards with no exam", () => {
+  it("finds by the subject's name the cards a chat of that subject made, and deletes only those, with an undo for them", async () => {
+    const { db, planId, subjectId } = fixture();
+    jobs(db);
+    // A chat of the subject Fisica (no exam chosen) makes two cards: they belong to the subject and to no exam.
+    const made = await flashcardsTool(db).run(
+      turn({ planId: null, subject: "Fisica" }),
+      flashcardsInput.parse({ cards: [{ front: "Cos'è una forza?", back: "Un'interazione." }, { front: "Unità della forza?", back: "Il newton." }] }),
+    );
+    const ids = db.prepare("SELECT id FROM cards WHERE plan_id IS NULL AND subject_id = ? ORDER BY id").pluck().all(subjectId) as string[];
+    expect(made.shown).toBeDefined();
+    expect(ids).toHaveLength(2);
+    // One the student wrote with no exam stays, as do the exam's cards.
+    db.prepare("INSERT INTO cards (id, subject_id, front, back, seed_key, created_at) VALUES ('mine-subject', ?, 'Mia', 'Mia', NULL, 1)").run(subjectId);
+    const examCards = db.prepare("SELECT count(*) FROM cards WHERE plan_id = ? AND removed = 0").pluck().get(planId) as number;
+
+    const out = await proposeDeleteTool(db).run(turn({ planId: null, subject: "Fisica" }), deleteInput.parse({ kind: "flashcards", topic: "fisica" }));
+    expect(out.declined).toBeUndefined();
+    const id = out.shown!.resultId;
+    save(db, "chat", id);
+    const view = toolView(db, "chat", id) as DeleteProposalView;
+    expect(view).toMatchObject({ state: "pending", kind: "flashcards", name: "Fisica", place: "Fisica", count: 2, handMade: 1, others: examCards });
+    expect(decideProposal(db, "chat", id, "apply", view.seen).state).toBe("applied");
+    expect(db.prepare("SELECT id FROM cards WHERE removed = 1 ORDER BY id").pluck().all()).toEqual(ids);
+    expect(db.prepare("SELECT count(*) FROM cards WHERE plan_id = ? AND removed = 0").pluck().get(planId)).toBe(examCards);
+    expect(decideProposal(db, "chat", id, "undo", undefined).state).toBe("restored");
+    expect(db.prepare("SELECT count(*) FROM cards WHERE removed = 1").pluck().get()).toBe(0);
+  });
+
+  it("is resolved again at the click, refuses more than one deletion may take, and finds them from an exam's chat too", async () => {
+    const { db, planId, subjectId } = fixture();
+    jobs(db);
+    const insert = db.prepare("INSERT INTO cards (id, subject_id, front, back, seed_key, created_at) VALUES (?, ?, ?, 'b', ?, 1)");
+    insert.run("s1", subjectId, "Uno", "s1");
+    insert.run("s2", subjectId, "Due", "s2");
+    // From the chat of the subject's exam, by the subject's name.
+    const id = (await proposeDeleteTool(db).run(turn({ planId, subject: "Fisica" }), deleteInput.parse({ kind: "flashcards", topic: "Fisica" }))).shown!.resultId;
+    save(db, "chat", id);
+    const view = toolView(db, "chat", id) as DeleteProposalView;
+    expect(view.count).toBe(2);
+    // A card made since changes what the deletion would take: the click deletes nothing.
+    insert.run("s3", subjectId, "Tre", "s3");
+    expect(decideProposal(db, "chat", id, "apply", view.seen).state).toBe("stale");
+    expect(db.prepare("SELECT count(*) FROM cards WHERE removed = 1").pluck().get()).toBe(0);
+    for (let i = 0; i < CARDS_PER_DELETION; i++) insert.run(`many${i}`, subjectId, `m${i}`, `m${i}`);
+    expect((await proposeDeleteTool(db).run(turn({ planId: null, subject: "Fisica" }), deleteInput.parse({ kind: "flashcards", topic: "Fisica" }))).text).toMatch(
+      /more than the 200/,
+    );
+  });
+
+  it("says plainly when the subject has no card Pyxis made outside its exams", async () => {
+    const { db } = fixture();
+    jobs(db);
+    const out = await proposeDeleteTool(db).run(turn({ planId: null, subject: "Fisica" }), deleteInput.parse({ kind: "flashcards", topic: "Fisica" }));
+    expect(out.declined).toBe(true);
+    expect(out.text).toMatch(/Fisica has no flashcards Pyxis made outside its exams/);
+  });
+});
+
+describe("which proposal is later", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  /** A clock that stands still, and random bytes set by the test: ids made now share their millisecond and sort by `fill`. */
+  function oneMillisecond() {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 10, 26, 12));
+    const random = { fill: 0xff };
+    vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation((bytes) => {
+      new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength).fill(random.fill);
+      return bytes;
+    });
+    return random;
+  }
+
+  it("goes by the order they were made, never by the random part of ids made in the same millisecond", async () => {
+    const { db, planId } = fixture();
+    const tool = proposePathTool(db);
+    // Both proposals in one millisecond, and the later one with the smaller id: the random bytes of a uuidv7 decide
+    // the order of ids within a millisecond.
+    const random = oneMillisecond();
+    const a = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 9 }))).shown!.resultId;
+    random.fill = 0x00;
+    const b = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 10 }))).shown!.resultId;
+    expect(b < a).toBe(true);
+    save(db, "chat", a);
+    decideProposal(db, "chat", a, "decline", undefined);
+    save(db, "chat", b);
+    // The later proposal replaced the earlier one: reopened, the earlier one has lapsed, and the later one waits.
+    expect(decideProposal(db, "chat", a, "reopen", undefined).state).toBe("expired");
+    expect((toolView(db, "chat", b) as PathProposalView).state).toBe("pending");
+  });
+
+  it("lets a later pending proposal of the same millisecond expire only the earlier one", async () => {
+    const { db, planId } = fixture();
+    const tool = proposePathTool(db);
+    const random = oneMillisecond();
+    const a = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 9 }))).shown!.resultId;
+    save(db, "chat", a);
+    random.fill = 0x00;
+    const b = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 10 }))).shown!.resultId;
+    save(db, "chat", b);
+    expect((toolView(db, "chat", a) as PathProposalView).state).toBe("expired");
+    expect((toolView(db, "chat", b) as PathProposalView).state).toBe("pending");
+  });
+});
+
 describe("the second review", () => {
   it("never makes a declined proposal pending again once a later one of its kind was saved", async () => {
     const { db, planId } = fixture();
@@ -663,7 +775,7 @@ describe("the second review", () => {
     db.prepare("INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('intro1', ?, 'Introduzione', 30, 1), ('intro2', ?, 'Introduzione', 31, 1)").run(planId, planId);
     db.prepare("INSERT INTO cards (id, plan_id, topic_id, front, back, seed_key, created_at) VALUES ('i1', ?, 'intro1', 'f', 'b', 'i1', 1)").run(planId);
     const twin = await tool.run(turn({ planId, subject: null }), deleteInput.parse({ kind: "flashcards", topic: "Introduzione" }));
-    expect(twin.isError).toBe(true);
+    expect(twin.declined).toBe(true);
     expect(twin.text).toMatch(/2 topics of Fisica 1 are called "Introduzione"/);
   });
 
@@ -671,7 +783,7 @@ describe("the second review", () => {
     const { db } = fixture();
     jobs(db);
     const out = await proposeExamTool(db).run(turn({ planId: null, subject: null }), examInput.parse({ title: "Fisica‎ 1" }));
-    expect(out.isError).toBe(true);
+    expect(out.declined).toBe(true);
     expect(out.text).toMatch(/already has an exam/);
   });
 
@@ -684,11 +796,11 @@ describe("the second review", () => {
       turn({ planId, subject: null }),
       pathInput.parse({ move_topics: [{ title: "Cinematica", after: "Dinamica" }, { title: "Dinamica", after: "Lavoro ed energia" }] }),
     );
-    expect(crossed.isError).toBe(true);
+    expect(crossed.declined).toBe(true);
     expect(crossed.text).toMatch(/"Cinematica" no longer comes after "Dinamica"/);
     // A move after a topic that stays where it is still works.
     const fine = await tool.run(turn({ planId, subject: null }), pathInput.parse({ move_topics: [{ title: "Cinematica", after: "Dinamica" }] }));
-    expect(fine.isError).toBeUndefined();
+    expect(fine.declined).toBeUndefined();
   });
 
   it("gives a quiz no exam that is still being built", async () => {
@@ -696,7 +808,7 @@ describe("the second review", () => {
     jobs(db);
     db.prepare("UPDATE plans SET status = 'building' WHERE id = ?").run(planId);
     const out = await quizTool(db).run(turn({ planId, subject: null }), quizInput.parse({ topic: "Dinamica" }));
-    expect(out.isError).toBe(true);
+    expect(out.declined).toBe(true);
     expect(out.text).toMatch(/still being built/);
   });
 

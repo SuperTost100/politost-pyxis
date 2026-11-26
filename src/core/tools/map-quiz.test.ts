@@ -13,8 +13,8 @@ import { readQuiz, registerQuizJobs, saveQuizDraft } from "../study/quizJobs";
 import { registerQuizGradingJobs, submitQuiz } from "../study/quizGrading";
 import type { MapResultView, QuizResultView } from "../../shared/ipc";
 import { setToolRunner } from "./jobs";
-import { MAP_TOPIC_MAX, mapInput, mapTool } from "./map";
-import { quizInput, quizTool, quizTopic } from "./quiz";
+import { MAP_DESCRIPTION, MAP_TOPIC_MAX, mapInput, mapTool } from "./map";
+import { QUIZ_DESCRIPTION, quizInput, quizTool, quizTopic } from "./quiz";
 import {
   dropStrayToolResults,
   linkToolResults,
@@ -141,7 +141,7 @@ const finishedToday = (ids: string[]) => runner!.finished().filter((job) => ids.
 
 async function makeMap(db: Db, place = { planId: null as string | null, subject: "fisica 1" as string | null }) {
   const outcome = await mapTool(db).run(turn(place), mapInput.parse({ topic: "  dinamica\n e attrito " }));
-  expect(outcome.isError).toBeUndefined();
+  expect(outcome.declined).toBeUndefined();
   const id = outcome.shown!.resultId;
   const jobId = (JSON.parse(db.prepare("SELECT data_json FROM chat_tool_results WHERE id = ?").pluck().get(id) as string) as { jobId: string }).jobId;
   return { id, jobId, text: outcome.text };
@@ -149,7 +149,7 @@ async function makeMap(db: Db, place = { planId: null as string | null, subject:
 
 async function makeQuiz(db: Db, topic = "Dinamica", place = { planId: "mech" as string | null, subject: null as string | null }, questions?: number) {
   const outcome = await quizTool(db).run(turn(place), quizInput.parse({ topic, ...(questions ? { questions } : {}) }));
-  expect(outcome.isError).toBeUndefined();
+  expect(outcome.declined).toBeUndefined();
   return { id: outcome.shown!.resultId, text: outcome.text };
 }
 
@@ -160,6 +160,20 @@ describe("create_map", () => {
     expect(mapInput.safeParse({ topic: " a " }).success).toBe(false);
     expect(mapInput.safeParse({ topic: "x".repeat(MAP_TOPIC_MAX * 2 + 1) }).success).toBe(false);
     expect(mapInput.safeParse({ topic: "Dinamica", subjectId: "chem" }).success).toBe(false);
+  });
+
+  it("asks the model for one line that stays true once the map or the quiz is ready, with no wait and no time", async () => {
+    const db = fixture();
+    jobs(db);
+    const map = (await mapTool(db).run(turn({ planId: null, subject: "Fisica 1" }), mapInput.parse({ topic: "Dinamica" }))).text;
+    const quiz = (await quizTool(db).run(turn({ planId: "mech", subject: null }), quizInput.parse({ topic: "Dinamica" }))).text;
+    // The card under the reply changes when the build ends; the model's sentence does not, so it must hold either way.
+    for (const text of [map, quiz, MAP_DESCRIPTION, QUIZ_DESCRIPTION]) {
+      expect(text).not.toMatch(/\bminutes?\b|\bseconds?\b|a moment/i);
+      expect(text).toMatch(/true (both )?while it is (built|written) and once it is ready/);
+    }
+    for (const text of [map, quiz]) expect(text).toMatch(/never that you are preparing it/);
+    db.close();
   });
 
   it("returns once the build is queued, and the result follows the build to the finished map", async () => {
@@ -187,12 +201,12 @@ describe("create_map", () => {
     const inExam = await tool.run(turn({ planId: "mech", subject: null }), mapInput.parse({ topic: "Dinamica" }));
     expect(mapOf(db, inExam.shown!.resultId)).toMatchObject({ subjectId: "phys", subject: "Fisica 1" });
     const nowhere = await tool.run(turn({ planId: null, subject: null }), mapInput.parse({ topic: "Dinamica" }));
-    expect(nowhere).toMatchObject({ isError: true });
+    expect(nowhere).toMatchObject({ declined: true });
     expect(nowhere.text).toContain("no subject");
     const one = turn({ planId: null, subject: "Chimica" });
-    expect((await tool.run(one, mapInput.parse({ topic: "Legami" }))).isError).toBeUndefined();
+    expect((await tool.run(one, mapInput.parse({ topic: "Legami" }))).declined).toBeUndefined();
     const again = await tool.run(one, mapInput.parse({ topic: "Acidi" }));
-    expect(again).toMatchObject({ isError: true });
+    expect(again).toMatchObject({ declined: true });
     expect(db.prepare("SELECT COUNT(*) FROM chat_tool_results WHERE tool = 'create_map'").pluck().get()).toBe(2);
     db.close();
   });
@@ -206,7 +220,8 @@ describe("create_map", () => {
     renameMap(db, { subjectId: "phys" }, mapId, "La mia dinamica");
     expect(finishedToday([jobId])).toEqual([jobId]);
 
-    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true, topic: "La mia dinamica" });
+    // A finished map undone was made: its card says so, not that its creation stopped.
+    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true, stopped: false, topic: "La mia dinamica" });
     expect(listMaps(db, { subjectId: "phys" })).toEqual([]);
     expect(listAllMaps(db)).toEqual([]);
     expect(listAllMaps(db, "dinamica")).toEqual([]);
@@ -230,11 +245,13 @@ describe("create_map", () => {
     const { id, jobId } = await makeMap(db);
     await until(() => jobOf(db, jobId).state === "running", () => jobOf(db, jobId));
     expect(listed([jobId])).toEqual([jobId]);
-    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true });
+    // No map was made: the card says the creation stopped, never that a map left Mappe.
+    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true, stopped: true });
     await until(() => jobOf(db, jobId).state === "cancelled", () => jobOf(db, jobId));
     expect(listed([jobId])).toEqual([]);
+    expect(mapOf(db, id)).toMatchObject({ undone: true, stopped: true });
     gate.release();
-    expect(restoreToolResult(db, "chat", id)).toMatchObject({ undone: false, job: "working" });
+    expect(restoreToolResult(db, "chat", id)).toMatchObject({ undone: false, stopped: false, job: "working" });
     expect(jobOf(db, jobId)).toEqual({ state: "queued", dismissed: 0 });
     await until(() => mapOf(db, id).job === "done", () => mapOf(db, id));
     expect(listMaps(db, { subjectId: "phys" })).toHaveLength(1);
@@ -425,7 +442,7 @@ describe("create_quiz", () => {
     const bySubject = await tool.run(turn({ planId: null, subject: "Fisica 1" }), quizInput.parse({ topic: "Dinamica" }));
     expect(quizOf(db, bySubject.shown!.resultId)).toMatchObject({ planId: "mech", exam: "Meccanica" });
     const none = await tool.run(turn({ planId: null, subject: "Chimica" }), quizInput.parse({ topic: "Legami" }));
-    expect(none).toMatchObject({ isError: true });
+    expect(none).toMatchObject({ declined: true });
     expect(none.text).toContain("a quiz belongs to an exam");
     db.prepare("INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('opt', 'phys', 'Ottica', 'ready', 1, 1)").run();
     db.prepare("INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('lens', 'opt', 'Lenti', 0, 1)").run();
@@ -441,7 +458,7 @@ describe("create_quiz", () => {
     const one = turn({ planId: "mech", subject: null });
     const first = await tool.run(one, quizInput.parse({ topic: "attrito", questions: 4 }));
     expect(first.text).toContain('quiz of 4 questions on "Attrito" in the exam Meccanica');
-    expect((await tool.run(one, quizInput.parse({ topic: "Dinamica" }))).isError).toBe(true);
+    expect((await tool.run(one, quizInput.parse({ topic: "Dinamica" }))).declined).toBe(true);
     const params = JSON.parse(db.prepare("SELECT params_json FROM jobs WHERE kind = 'quiz-build'").pluck().get() as string) as {
       input: { scope: string; count: number; focus?: string };
       snapshot: { focus?: string; passages: Array<{ id: string }> };
@@ -480,7 +497,7 @@ describe("create_quiz", () => {
     const citations = () => db.prepare("SELECT COUNT(*) FROM item_passages").pluck().get();
     expect(citations()).toBeGreaterThan(0);
 
-    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true });
+    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true, stopped: false });
     expect(unfinishedActivities(db, "mech")).toEqual([]);
     expect(() => readQuiz(db, attemptId)).toThrow("quiz-missing");
     expect(db.prepare("SELECT COUNT(*) FROM items WHERE kind = 'quiz'").pluck().get()).toBe(0);
@@ -504,9 +521,11 @@ describe("create_quiz", () => {
     const { id } = await makeQuiz(db);
     const { attemptId } = quizOf(db, id);
     await until(() => readQuiz(db, attemptId).questions.length > 0, () => readQuiz(db, attemptId));
-    undoToolResult(db, "chat", id);
+    // Its writing stopped half way: the card says the creation stopped, not that a quiz left the exam.
+    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true, stopped: true });
     const build = db.prepare("SELECT id FROM jobs WHERE kind = 'quiz-build'").pluck().get() as string;
     await until(() => jobOf(db, build).state === "cancelled", () => jobOf(db, build));
+    expect(quizOf(db, id)).toMatchObject({ undone: true, stopped: true });
     expect(runner!.list().filter((job) => job.id === build)).toEqual([]);
     gate.release();
     expect(restoreToolResult(db, "chat", id)).toMatchObject({ undone: false, job: "working" });
@@ -523,9 +542,11 @@ describe("create_quiz", () => {
     const { id } = await makeQuiz(db);
     const { attemptId } = quizOf(db, id);
     await until(() => readQuiz(db, attemptId).questions.length > 0, () => readQuiz(db, attemptId));
-    undoToolResult(db, "chat", id);
+    // Its writing stopped half way: the card says the creation stopped, not that a quiz left the exam.
+    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true, stopped: true });
     const build = db.prepare("SELECT id FROM jobs WHERE kind = 'quiz-build'").pluck().get() as string;
     await until(() => jobOf(db, build).state === "cancelled", () => jobOf(db, build));
+    expect(quizOf(db, id)).toMatchObject({ undone: true, stopped: true });
     // The student removes the notes' passage on the second principle while the quiz is out of the exam.
     db.prepare("DELETE FROM topic_passages WHERE passage_id = 'p3'").run();
     db.prepare("DELETE FROM passages WHERE id = 'p3'").run();
