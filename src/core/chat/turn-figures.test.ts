@@ -7,6 +7,7 @@ import { darkFigure } from "../math/dark-figure";
 import { isFigureFixCall } from "../engine/recorded-plan";
 import { setUsageRecorder, storeUsage } from "../engine/usage";
 import { askTurn, readChat, regenerateTurn } from "./turn";
+import { contextBlock } from "./prompts";
 import { visibleText } from "./visible";
 
 const PNG =
@@ -148,6 +149,8 @@ it("offers no figures without a sandbox, and keeps none in a stopped reply", asy
     python: null,
   });
   expect(calls[0]!.prompt).toContain("Figures you can draw: none.");
+  expect(calls[0]!.prompt).toContain("Impostazioni › Studio › Disegni");
+  expect(calls[0]!.prompt).toContain("ASCII");
   expect(plain.message!.body).not.toContain("pyxis-figure");
   expect(plain.message!.figures).toBeUndefined();
   expect(readChat(db, plain.chatId).at(-1)!.figures).toBeUndefined();
@@ -411,4 +414,27 @@ it("keeps the earlier reply, figures included, when a regenerated one is stopped
   const kept = savedFigures(db, chatId);
   expect(kept.count).toBe(1);
   expect(kept.last.figures).toEqual(figuresWithDark(figureKey(first), figureKey(last)));
+});
+
+it("tells the tutor the right Settings path for drawings when no figure kinds can be drawn", () => {
+  const itBlock = contextBlock({
+    language: "Italian",
+    planLine: "",
+    subject: "",
+    profile: "",
+    followups: true,
+    figures: [],
+  });
+  expect(itBlock).toContain("Impostazioni › Studio › Disegni");
+  expect(itBlock).toContain("do not draw with ASCII or text characters");
+  const enBlock = contextBlock({
+    language: "English",
+    planLine: "",
+    subject: "",
+    profile: "",
+    followups: true,
+    figures: [],
+  });
+  expect(enBlock).toContain("Settings › Study › Drawings");
+  expect(enBlock).not.toContain("Impostazioni");
 });
