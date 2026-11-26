@@ -218,15 +218,22 @@ test("a right-click opens the same menu as the three dots, at the pointer, and s
     await page.getByRole("button", { name: "Cerca", exact: true }).click();
     const finder = page.getByRole("dialog", { name: "Cerca" });
     await expect(finder.getByRole("group", { name: "Chat" }).getByRole("option")).toHaveCount(2);
-    await answerNextMenu(app, null);
+    const search = finder.getByRole("combobox", { name: "Cerca" });
+    const termodinamica = finder.getByRole("option", { name: /Termodinamica/ });
     const analisi = finder.getByRole("option", { name: /Analisi/ });
-    await analisi.click({ button: "right" });
+    // Park the pointer on Analisi and move selection back with ArrowUp so the right-click fires without mousemove and
+    // proves the menu trigger itself selects Analisi.
+    await analisi.hover();
+    await expect(analisi).toHaveAttribute("aria-selected", "true");
+    await search.press("ArrowUp");
+    await expect(termodinamica).toHaveAttribute("aria-selected", "true");
+    await answerNextMenu(app, null);
+    await page.mouse.down({ button: "right" });
+    await page.mouse.up({ button: "right" });
     await expect.poll(() => lastMenuLabels(app)).toEqual(chatDots);
-    // Right-clicking selects the row right away, so Alt+Enter acts on it and never races a delayed mousemove frame.
     await expect(analisi).toHaveAttribute("aria-selected", "true");
     // The menu keys stay with the search field, whose own menu (copy, paste, spelling) they open: the chat's menu does
     // not take them, and nothing is prevented.
-    const search = finder.getByRole("combobox", { name: "Cerca" });
     await answerNextMenu(app, null);
     for (const keys of [{ key: "ContextMenu" }, { key: "F10", shiftKey: true }]) {
       const prevented = await search.evaluate((input, init) => {
@@ -240,7 +247,7 @@ test("a right-click opens the same menu as the three dots, at the pointer, and s
     // The chat's menu has its own key there, Alt+Enter (Option+Enter on a Mac), which opens the row Enter would open.
     await search.press("Alt+Enter");
     await expect.poll(() => lastMenuLabels(app)).toEqual(chatDots);
-    const optionBox = (await finder.getByRole("option", { selected: true }).boundingBox())!;
+    const optionBox = (await analisi.boundingBox())!;
     const askedFor = (await lastMenuAt(app))!;
     expect(askedFor).toBeDefined();
     expect(Math.abs(askedFor.y - (optionBox.y + optionBox.height))).toBeLessThan(4);
