@@ -12,6 +12,7 @@ import { setToolRunner } from "./jobs";
 import { decidedSince, decideProposal } from "./proposals";
 import { CARDS_PER_DELETION, deleteInput, proposeDeleteTool } from "./proposeDelete";
 import { examInput, proposeExamTool } from "./proposeExam";
+import { flashcardsInput, flashcardsTool } from "./flashcards";
 import { pathInput, proposePathTool } from "./proposePath";
 import { quizInput, quizTool } from "./quiz";
 import { chatToolList } from "./registry";
@@ -630,6 +631,65 @@ describe("what the security read asked for", () => {
     db.prepare("UPDATE topics SET title = ? WHERE id = ?").run("Ciner‮amatica", topic("Cinematica"));
     const id = (await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "flashcards", topic: "Ciner‮amatica" }))).shown!.resultId;
     expect((toolView(db, "chat", id) as DeleteProposalView).name).toBe("Cineramatica");
+  });
+});
+
+describe("propose_delete, a subject's flashcards with no exam", () => {
+  it("finds by the subject's name the cards a chat of that subject made, and deletes only those, with an undo for them", async () => {
+    const { db, planId, subjectId } = fixture();
+    jobs(db);
+    // A chat of the subject Fisica (no exam chosen) makes two cards: they belong to the subject and to no exam.
+    const made = await flashcardsTool(db).run(
+      turn({ planId: null, subject: "Fisica" }),
+      flashcardsInput.parse({ cards: [{ front: "Cos'è una forza?", back: "Un'interazione." }, { front: "Unità della forza?", back: "Il newton." }] }),
+    );
+    const ids = db.prepare("SELECT id FROM cards WHERE plan_id IS NULL AND subject_id = ? ORDER BY id").pluck().all(subjectId) as string[];
+    expect(made.shown).toBeDefined();
+    expect(ids).toHaveLength(2);
+    // One the student wrote with no exam stays, as do the exam's cards.
+    db.prepare("INSERT INTO cards (id, subject_id, front, back, seed_key, created_at) VALUES ('mine-subject', ?, 'Mia', 'Mia', NULL, 1)").run(subjectId);
+    const examCards = db.prepare("SELECT count(*) FROM cards WHERE plan_id = ? AND removed = 0").pluck().get(planId) as number;
+
+    const out = await proposeDeleteTool(db).run(turn({ planId: null, subject: "Fisica" }), deleteInput.parse({ kind: "flashcards", topic: "fisica" }));
+    expect(out.declined).toBeUndefined();
+    const id = out.shown!.resultId;
+    save(db, "chat", id);
+    const view = toolView(db, "chat", id) as DeleteProposalView;
+    expect(view).toMatchObject({ state: "pending", kind: "flashcards", name: "Fisica", place: "Fisica", count: 2, handMade: 1, others: examCards });
+    expect(decideProposal(db, "chat", id, "apply", view.seen).state).toBe("applied");
+    expect(db.prepare("SELECT id FROM cards WHERE removed = 1 ORDER BY id").pluck().all()).toEqual(ids);
+    expect(db.prepare("SELECT count(*) FROM cards WHERE plan_id = ? AND removed = 0").pluck().get(planId)).toBe(examCards);
+    expect(decideProposal(db, "chat", id, "undo", undefined).state).toBe("restored");
+    expect(db.prepare("SELECT count(*) FROM cards WHERE removed = 1").pluck().get()).toBe(0);
+  });
+
+  it("is resolved again at the click, refuses more than one deletion may take, and finds them from an exam's chat too", async () => {
+    const { db, planId, subjectId } = fixture();
+    jobs(db);
+    const insert = db.prepare("INSERT INTO cards (id, subject_id, front, back, seed_key, created_at) VALUES (?, ?, ?, 'b', ?, 1)");
+    insert.run("s1", subjectId, "Uno", "s1");
+    insert.run("s2", subjectId, "Due", "s2");
+    // From the chat of the subject's exam, by the subject's name.
+    const id = (await proposeDeleteTool(db).run(turn({ planId, subject: "Fisica" }), deleteInput.parse({ kind: "flashcards", topic: "Fisica" }))).shown!.resultId;
+    save(db, "chat", id);
+    const view = toolView(db, "chat", id) as DeleteProposalView;
+    expect(view.count).toBe(2);
+    // A card made since changes what the deletion would take: the click deletes nothing.
+    insert.run("s3", subjectId, "Tre", "s3");
+    expect(decideProposal(db, "chat", id, "apply", view.seen).state).toBe("stale");
+    expect(db.prepare("SELECT count(*) FROM cards WHERE removed = 1").pluck().get()).toBe(0);
+    for (let i = 0; i < CARDS_PER_DELETION; i++) insert.run(`many${i}`, subjectId, `m${i}`, `m${i}`);
+    expect((await proposeDeleteTool(db).run(turn({ planId: null, subject: "Fisica" }), deleteInput.parse({ kind: "flashcards", topic: "Fisica" }))).text).toMatch(
+      /more than the 200/,
+    );
+  });
+
+  it("says plainly when the subject has no card Pyxis made outside its exams", async () => {
+    const { db } = fixture();
+    jobs(db);
+    const out = await proposeDeleteTool(db).run(turn({ planId: null, subject: "Fisica" }), deleteInput.parse({ kind: "flashcards", topic: "Fisica" }));
+    expect(out.declined).toBe(true);
+    expect(out.text).toMatch(/Fisica has no flashcards Pyxis made outside its exams/);
   });
 });
 
