@@ -70,6 +70,7 @@ export type JobGroups = {
 
 /** Engine messages a retry alone can fix. The other engine messages need the engine set up first. */
 const RETRY_FIRST = new Set([
+  "engines.errors.invalid-output",
   "engines.errors.cli-failed",
   "engines.errors.timeout",
   "engines.errors.stream-truncated",

@@ -38,6 +38,8 @@ import {
 } from "@xyflow/react";
 import { BackControl } from "../../components/BackControl";
 import { Dialog } from "../../components/Dialog";
+import { useEngineError } from "../../lib/engineError";
+import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import { noteForArrival } from "../../app/arrival-note";
 import { forgetPlaces } from "../../app/history";
 import { pageOf } from "../../app/trail";
@@ -254,6 +256,7 @@ const edgeTypes = { cross: CrossEdge, radial: RadialEdge };
 export function MapPage() {
   const { t } = useTranslation();
   const { message } = App.useApp();
+  const describeEngineError = useEngineError();
   // `/maps/:subjectId/:topicId?` names a subject and maybe one of its topics; `/plans/:planId/map/:topicId`, the older
   // address, a topic of an exam. Core reads either as the same map.
   const params = useParams();
@@ -1592,22 +1595,34 @@ export function MapPage() {
           {notice}
         </p>
       ) : null}
-      {recoverable && job ? (
-        // How the last build ended, as a notice with its way back: Riprova or Riprendi, and Chiudi, as in Attività.
-        <div className="px-map-notice px-map-recover">
-          <Notice
-            tone={job.state === "failed" ? "danger" : job.state === "cancelled" ? "info" : "warning"}
-            action={{
-              label: t(job.state === "failed" ? "maps.retry" : "jobs.resume"),
-              disabled,
-              onClick: () => void (job.state === "failed" ? retryBuild() : resumeBuild()),
-            }}
-            secondary={{ label: t("jobs.dismiss"), disabled, onClick: () => void dismissBuild() }}
-          >
-            {t(job.state === "failed" ? "map.lastFailed" : job.state === "cancelled" ? "map.stopped" : "map.lastInterrupted")}
-          </Notice>
-        </div>
-      ) : null}
+      {recoverable && job ? (() => {
+        const errorKey = job.state === "failed" && job.error ? jobErrorKey(job.error) : undefined;
+        const failure =
+          job.state === "failed" && job.error && errorKey && errorKey !== "jobs.failedGeneral"
+            ? describeEngineError(errorKey, jobErrorEngine(job.error))
+            : undefined;
+        return (
+          // How the last build ended, as a notice with its way back: Riprova or Riprendi, and Chiudi, as in Attività.
+          <div className="px-map-notice px-map-recover">
+            <Notice
+              tone={job.state === "failed" ? "danger" : job.state === "cancelled" ? "info" : "warning"}
+              action={{
+                label: t(job.state === "failed" ? "maps.retry" : "jobs.resume"),
+                disabled,
+                onClick: () => void (job.state === "failed" ? retryBuild() : resumeBuild()),
+              }}
+              secondary={{ label: t("jobs.dismiss"), disabled, onClick: () => void dismissBuild() }}
+              details={job.state === "failed" && job.error?.trim() ? job.error.trim().slice(0, 2000) : undefined}
+            >
+              {job.state === "failed"
+                ? failure
+                  ? `${t("map.lastFailed")}. ${failure.text}`
+                  : t("map.lastFailed")
+                : t(job.state === "cancelled" ? "map.stopped" : "map.lastInterrupted")}
+            </Notice>
+          </div>
+        );
+      })() : null}
       {map.isError || list.isError || scope.isError ? (
         <LoadError
           onRetry={() => {

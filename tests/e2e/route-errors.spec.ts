@@ -108,7 +108,7 @@ test("a failed plan build says so in the title and steps, shows its message unde
     await expect(page.getByText("Non sono riuscito a creare gli argomenti")).toBeVisible();
     await expect(page.getByText("Creo gli argomenti")).toHaveCount(0);
     const state = page.getByRole("alert");
-    await expect(state).toContainText("Un passaggio si \u00e8 fermato");
+    await expect(state).toContainText("Lo strumento ha dato una risposta che non riesco a usare.");
     // The technical message stays hidden until the student asks for it.
     await expect(page.getByText(reason)).toHaveCount(0);
     const details = state.getByRole("button", { name: "Dettagli" });

@@ -391,13 +391,12 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const gradingStopped = ["failed", "cancelled", "interrupted"].includes(
     gradeState,
   );
-  // Grading that stopped on a refused sign-in names the engine and offers its sign-in.
-  const gradingFailure = grading.data?.error
-    ? describeEngineError(
-        jobErrorKey(grading.data.error),
-        jobErrorEngine(grading.data.error),
-      )
-    : undefined;
+  // Grading that stopped on a known engine or job error explains why; a refused sign-in names its engine and offers sign-in.
+  const gradingErrorKey = grading.data?.error ? jobErrorKey(grading.data.error) : undefined;
+  const gradingFailure =
+    grading.data?.error && gradingErrorKey && gradingErrorKey !== "jobs.failedGeneral"
+      ? describeEngineError(gradingErrorKey, jobErrorEngine(grading.data.error))
+      : undefined;
   const gradingStarted =
     !finalResult &&
     (submit.isPending || Boolean(submit.data?.jobId) || gradeState !== "none");
@@ -651,6 +650,15 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       }
     : !lastAsked
       ? { key: "next", label: t("quiz.next"), onClick: () => goTo(index + 1), disabled: false }
+      : generationFailed && !canFinish && session.data?.jobId
+        ? {
+            key: "retry",
+            label: t(session.data.state === "interrupted" ? "quiz.resume" : "quiz.retry"),
+            onClick: () => {
+              if (!retry.isPending) retry.mutate();
+            },
+            disabled: retry.isPending,
+          }
       : waitingAfter || !canFinish
         ? {
             key: "wait",
@@ -807,14 +815,13 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   function optionState(value: string): QuizOptionState {
     return rawPick === value ? "selected" : "idle";
   }
-  // A failed preparation sits under the step it stopped at, or above the questions that did arrive. A refused sign-in
-  // names its engine and offers its sign-in.
-  const buildFailure = session.data?.error
-    ? describeEngineError(
-        jobErrorKey(session.data.error),
-        jobErrorEngine(session.data.error),
-      )
-    : undefined;
+  // A failed preparation sits under the step it stopped at, or above the questions that did arrive. A known failure
+  // code is turned into an actionable sentence through `jobErrorKey`; the raw code stays behind Details.
+  const buildErrorKey = session.data?.error ? jobErrorKey(session.data.error) : undefined;
+  const buildFailure =
+    session.data?.error && buildErrorKey && buildErrorKey !== "jobs.failedGeneral"
+      ? describeEngineError(buildErrorKey, jobErrorEngine(session.data.error))
+      : undefined;
   const buildFailed = generationFailed ? (
     <ErrorState
       secondary={buildFailure?.action}
@@ -834,12 +841,11 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       }
       details={session.data?.error}
     >
-      {t(
-        session.data?.state === "cancelled"
-          ? "quiz.buildCancelled"
-          : "quiz.buildFailed",
-      )}
-      {buildFailure?.action ? ` ${buildFailure.text}` : null}
+      {session.data?.state === "cancelled"
+        ? t("quiz.buildCancelled")
+        : buildFailure
+          ? `${t("quiz.buildStopped")} ${buildFailure.text}`
+          : t("quiz.buildFailed")}
     </ErrorState>
   ) : null;
   // The results screen: the score counts every answer not marked wrong by the student.
@@ -951,7 +957,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       });
   // The answer sheet around one card: the Domande card beside it, Indietro and Avanti under it.
   function answerSheet(content: ReactNode) {
-    const waiting = loadingAttempt || fixed || !generating ? 0 : Math.max(0, requestedCount - questions.length);
+    const waiting = loadingAttempt || fixed || canFinish ? 0 : Math.max(0, requestedCount - questions.length);
     return (
       <QuizColumn
         loading={loadingAttempt}
@@ -969,14 +975,21 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
             : undefined
         }
         busyActivity={generating && questions.length ? session.data?.activity : undefined}
+        stoppedLine={
+          generationFailed && waiting > 0 && questions.length
+            ? t("quiz.partialStopped", { ready: questions.length, total: requestedCount, count: waiting })
+            : undefined
+        }
         handIn={{
           disabled: !canFinish || gradingStarted || submit.isPending || loadingAttempt,
           note:
             generating && timed
               ? t("quiz.timerWaiting")
-              : generating || owed > 0
-                ? t("quiz.sheet.waitQuestions")
-                : undefined,
+              : generationFailed && !canFinish
+                ? t("quiz.sheet.waitStopped")
+                : generating || owed > 0 || !canFinish
+                  ? t("quiz.sheet.waitQuestions")
+                  : undefined,
           onRequest: requestHandIn,
         }}
         confirm={
@@ -1546,7 +1559,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                   details={grading.data.error.slice(0, 2000)}
                   action={gradingFailure?.action}
                 >
-                  {gradingFailure?.action
+                  {gradingFailure
                     ? `${t("quiz.gradingStopped")} ${gradingFailure.text}`
                     : t("quiz.gradingStopped")}
                 </Notice>
