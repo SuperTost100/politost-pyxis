@@ -53,6 +53,7 @@ import {
   writeAllowed,
   writeOrder,
 } from "./choice";
+import { displayModelName } from "../../shared/model-names";
 import { TOOL_NAMES } from "../../shared/tool-names";
 import {
   effortsOf,
@@ -896,7 +897,7 @@ export function engineHandlers(
       rememberModels(input.provider, list, all);
       return list.map((model) => ({
         id: model.id,
-        name: model.name,
+        name: displayModelName(model.id, model.name),
         efforts: model.efforts,
         defaultEffort: model.defaultEffort,
         fast: model.fast,
