@@ -1002,7 +1002,7 @@ describe("writePart", () => {
     await write(db, 2, partText("2")).done;
     expect(liveOutline(db, "t")!.parts[1]!.passageIds).toEqual(["ps003", "ps004"]);
     const lesson = exportMarkdown(db, { planId: "p", kind: "lesson", topicId: "t" }).markdown;
-    expect(lesson).toContain("## Fonti\n\n- Sezione ps001\n- Sezione ps002\n");
+    expect(lesson).toContain("## Fonti\n\n- Dispense, Sezione ps001\n- Dispense, Sezione ps002\n");
     expect(lesson).not.toContain("Sezione ps003");
     expect(lesson).not.toContain("Sezione ps004");
   });

@@ -162,6 +162,28 @@ function answerLine(
   return answer.accepted[0]?.[0] ?? "";
 }
 
+function lessonSources(db: Database.Database, ids: string[]): string[] {
+  if (ids.length === 0) return [];
+  const marks = ids.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `SELECT p.id, p.section_path, s.title
+       FROM passages p
+       LEFT JOIN sources s ON s.id = p.source_id
+       WHERE p.id IN (${marks})`,
+    )
+    .all(...ids) as Array<{ id: string; section_path: string | null; title: string | null }>;
+  const byId = new Map(
+    rows.map((row) => {
+      const title = row.title?.trim() ?? "";
+      const place = row.section_path?.trim() ?? "";
+      const label = title && place ? `${title}, ${place}` : title || place;
+      return [row.id, label] as const;
+    }),
+  );
+  return ids.map((id) => byId.get(id) ?? "");
+}
+
 function sectionPaths(db: Database.Database, ids: string[]): string[] {
   if (ids.length === 0) return [];
   const marks = ids.map(() => "?").join(", ");
@@ -204,7 +226,7 @@ export function exportMarkdown(
       markdown: lessonMarkdown(
         topic.title,
         smartTextToMarkdown(lesson.markdown, labels),
-        sectionPaths(db, lesson.passageIds),
+        lessonSources(db, lesson.passageIds),
         words,
       ),
     };
