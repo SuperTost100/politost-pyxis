@@ -69,7 +69,7 @@ function setup(provider: string, model: string, effort?: string) {
   // A quiz on Dinamica handed in with 21/30.
   db.prepare(`INSERT INTO items (id, plan_id, topic_id, kind, body_json, created_at) VALUES ('graded', ?, ?, 'quiz', '{"complete":true,"questions":[]}', 1)`).run(planId, topic("Dinamica"));
   db.prepare("INSERT INTO attempts (id, plan_id, item_id, started_at, submitted_at) VALUES ('graded-a', ?, 'graded', 1, 2)").run(planId);
-  db.prepare(`INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES ('graded-aa', 'graded-a', '{"score":0.7}', 2)`).run();
+  db.prepare(`INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES ('graded-aa', 'graded-a', '{"picks":{},"results":[],"score":0.7}', 2)`).run();
   db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('chem', 'Chimica generale', 1)").run();
   db.prepare("INSERT INTO sources (id, kind, title, status, subject_id, created_at, updated_at) VALUES ('disp', 'pdf', 'Dispense di Chimica 2026', 'ready', 'chem', 1, 1)").run();
   // The exam's build is registered so it can be queued, and never runs: the runner is not activated.

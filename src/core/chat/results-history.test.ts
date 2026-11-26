@@ -23,7 +23,7 @@ function setup() {
   run("INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('kin', 'mech', 'Cinematica', 0, 1)");
   run("INSERT INTO items (id, plan_id, topic_id, kind, body_json, created_at) VALUES ('q', 'mech', 'kin', 'quiz', '{}', 1)");
   run("INSERT INTO attempts (id, plan_id, item_id, started_at, submitted_at) VALUES ('a', 'mech', 'q', 1, 2)");
-  run(`INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES ('aa', 'a', '{"score":0.8667}', 2)`);
+  run(`INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES ('aa', 'a', '{"picks":{},"results":[],"score":0.8667}', 2)`);
   configureDisclosure(db);
   acknowledgeProviders(["claude"]);
   putSetting(db, "engine-disclosure:codex", true);

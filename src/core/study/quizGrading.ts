@@ -17,8 +17,8 @@ import {
   answerOf,
   DRAFT_GRACE_MS,
   expectedText,
+  finalResult,
   submitAttempt,
-  type AttemptResult,
   type StoredQuestion,
 } from "./attempt";
 import { gradeAnswer } from "./grade";
@@ -893,19 +893,7 @@ export function readQuizGrading(db: Database.Database, attemptId: string) {
   const last = params?.next
     ? checkedAnswer(db, attemptId, params.pending[params.next - 1]!)
     : undefined;
-  const final = db
-    .prepare(
-      "SELECT payload_json FROM attempt_answers WHERE attempt_id = ? AND json_type(payload_json, '$.results') = 'array' ORDER BY created_at DESC LIMIT 1",
-    )
-    .get(attemptId) as { payload_json: string } | undefined;
-  const result = final
-    ? (JSON.parse(final.payload_json) as {
-        score: number;
-        picks: Record<string, string>;
-        steps?: Record<string, string>;
-        results: AttemptResult[];
-      })
-    : undefined;
+  const result = finalResult(db, attemptId);
   return {
     state: job?.state ?? "none",
     jobId: job?.id,

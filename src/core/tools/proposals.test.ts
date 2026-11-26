@@ -45,7 +45,7 @@ function fixture() {
   // The student's record: a handed-in quiz with its grade, a review of a card, study time and a gap.
   run(`INSERT INTO items (id, plan_id, topic_id, kind, body_json, created_at) VALUES ('graded', ?, ?, 'quiz', '{"complete":true,"questions":[{"id":"q1"}]}', 1)`, planId, topic("Dinamica"));
   run(`INSERT INTO attempts (id, plan_id, item_id, started_at, submitted_at) VALUES ('graded-a', ?, 'graded', 1, 2)`, planId);
-  run(`INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES ('graded-aa', 'graded-a', '{"score":0.7}', 2)`);
+  run(`INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES ('graded-aa', 'graded-a', '{"picks":{},"results":[],"score":0.7}', 2)`);
   run(`INSERT INTO learning_events (id, kind, plan_id, topic_id, item_id, payload_json, created_at) VALUES ('ev-time', 'active_time', ?, ?, NULL, '{"ms":600000}', 3)`, planId, topic("Cinematica"));
   run(`INSERT INTO learning_events (id, kind, plan_id, topic_id, item_id, payload_json, created_at) VALUES ('ev-answer', 'answer_given', ?, ?, 'graded', '{"score":0.7}', 3)`, planId, topic("Dinamica"));
   run(`INSERT INTO gaps (id, plan_id, topic_id, opened_at) VALUES ('gap', ?, ?, 4)`, planId, topic("Dinamica"));
