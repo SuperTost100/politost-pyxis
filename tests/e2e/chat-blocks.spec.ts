@@ -297,6 +297,8 @@ test("a chat with a chart exports its data as a table in Markdown and prints the
   try {
     const page = await setUp(app, userData, async () => {
       const first = await app.firstWindow();
+      // The recent chats show beside the page from 1100px; Windows runners scale the default window below that.
+      await first.setViewportSize({ width: 1280, height: 832 });
       await first.getByRole("button", { name: "Salta" }).click();
       await fromChiediToExams(first);
       const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
