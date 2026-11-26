@@ -4373,13 +4373,17 @@ async function openState(page: Page, name: string) {
         ).toContainText("Analisi 1");
         // Jobs that stopped for one reason are one problem with the count in its title. How many share the reason
         // depends on which states ran before this one (a full run seeds one more), so only the merge is checked.
+        // The seeded jobs stopped for more than one reason (an answer the app could not read has its own line), so
+        // there is a merged problem per reason and the first one is checked.
         await expect(
-          list.getByText(/^([2-9]|\d\d+) (attività ferme|tasks stopped)$/),
+          list.getByText(/^([2-9]|\d\d+) (attività ferme|tasks stopped)$/).first(),
         ).toBeVisible();
         await expect(
-          list.getByRole("button", {
-            name: /^(Mostra le \d+ attività|Show the \d+ tasks)$/,
-          }),
+          list
+            .getByRole("button", {
+              name: /^(Mostra le \d+ attività|Show the \d+ tasks)$/,
+            })
+            .first(),
         ).toBeVisible();
         // Finished today, with the engine that answered after another one refused.
         await expect(
