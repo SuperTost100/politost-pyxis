@@ -14,7 +14,8 @@ export type CitedPlace = {
   page?: number;
   slide?: number;
   chapter?: number;
-  /** A section's name, for a source without pages, slides or chapters. */
+  picture?: number;
+  /** A section's name, for a source without pages, slides, chapters or pictures. */
   section?: string | null;
   /** The version of the file the passage was read from: a linked file read again has a new one. */
   version?: number;
@@ -22,9 +23,9 @@ export type CitedPlace = {
   fallbackTitle?: string;
 };
 
-/** How a place is named in the list: a page, a slide, a chapter, a section, or the passage's place in its source. */
+/** How a place is named in the list: a page, a slide, a chapter, a picture, a section, or the passage's place in its source. */
 export type PlaceLabel =
-  | { kind: "page" | "slide" | "chapter" | "passage"; n: number }
+  | { kind: "page" | "slide" | "chapter" | "picture" | "passage"; n: number }
   | { kind: "section"; text: string };
 
 /**
@@ -89,15 +90,27 @@ export function citedPassageIds(cited: ReadonlyArray<{ passageId: string }>, ord
   return [...new Set(order.flatMap((n) => (cited[n - 1] ? [cited[n - 1]!.passageId] : [])))];
 }
 
-const KIND_ORDER = { chapter: 0, page: 1, slide: 2 } as const;
+const KIND_ORDER = { chapter: 0, page: 1, slide: 2, picture: 3 } as const;
+
+const PICTURE_SECTION = /^picture (\d+)$/i;
 
 function placeLabel(place: CitedPlace): PlaceLabel | null {
   if (place.page != null) return { kind: "page", n: place.page };
   if (place.slide != null) return { kind: "slide", n: place.slide };
   if (place.chapter != null) return { kind: "chapter", n: place.chapter };
+  if (place.picture != null) return { kind: "picture", n: place.picture };
   const section = place.section?.trim();
+  const picture = section ? PICTURE_SECTION.exec(section) : null;
+  if (picture) return { kind: "picture", n: Number(picture[1]) };
   // "P3" is a passage number, not a name a reader knows.
   return section && !/^P\d+$/.test(section) ? { kind: "section", text: section } : null;
+}
+
+/** Localizes a stored `picture N` section name for UI labels outside the sources row (such as the source viewer). */
+export function localizeSection(section: string | null | undefined, t: Translate): string | null | undefined {
+  if (!section) return section;
+  const picture = PICTURE_SECTION.exec(section.trim());
+  return picture ? t("sourcesRow.place.picture", { n: Number(picture[1]) }) : section;
 }
 
 /**
@@ -213,7 +226,7 @@ export function rowText(
 type LessonSource = {
   sourceId: string;
   title: string;
-  places: ReadonlyArray<{ passageId: string; page?: number; slide?: number; chapter?: number; section?: string; version?: number }>;
+  places: ReadonlyArray<{ passageId: string; page?: number; slide?: number; chapter?: number; picture?: number; section?: string; version?: number }>;
 };
 
 /**
@@ -242,6 +255,7 @@ export function lessonPlaces(
         page: place.page,
         slide: place.slide,
         chapter: place.chapter,
+        picture: place.picture,
         section: place.section,
         version: place.version,
       },

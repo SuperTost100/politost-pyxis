@@ -112,6 +112,24 @@ describe("sourceGroups", () => {
     expect(text!.places.map((place) => placeText(it_, place.label!))).toEqual(["brano 1", "brano 2"]);
   });
 
+  it("localizes a document picture locator in Italian and English, keeping slide first on decks", () => {
+    const pics: CitedPlace[] = [
+      { n: 1, passageId: "pic-1", sourceId: "doc", title: "appunti-edo", picture: 1, section: "picture 1" },
+      { n: 2, passageId: "pic-2", sourceId: "doc", title: "appunti-edo", picture: 2, section: "picture 2" },
+      { n: 3, passageId: "deck-1", sourceId: "deck", title: "Lezione 3", slide: 4, picture: 2, section: "slide 4" },
+    ];
+    const [doc, deck] = sourceGroups(pics, [2, 1, 3]);
+    expect(doc!.places.map((place) => placeText(it_, place.label!))).toEqual(["immagine 1", "immagine 2"]);
+    expect(doc!.places.map((place) => placeText(en, place.label!))).toEqual(["picture 1", "picture 2"]);
+    expect(placeText(it_, deck!.places[0]!.label!)).toBe("slide 4");
+    const lesson = lessonPlaces("Teorema [P1].", ["pic-1"], [
+      { sourceId: "doc", title: "appunti-edo", places: [{ passageId: "pic-1", picture: 1 }] },
+    ]);
+    const [lessonGroup] = sourceGroups(lesson.places, lesson.order);
+    expect(placeText(it_, lessonGroup!.places[0]!.label!)).toBe("immagine 1");
+    expect(placeText(en, lessonGroup!.places[0]!.label!)).toBe("picture 1");
+  });
+
   it("names a source whose title is not known by its fallback, apart from the others", () => {
     const groups = sourceGroups([{ n: 1, passageId: "x", fallbackTitle: "1. Dinamica" }, { n: 2, passageId: "y" }], [1, 2]);
     expect(groups.map((group) => [group.key, group.title])).toEqual([

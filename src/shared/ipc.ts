@@ -741,6 +741,7 @@ const LessonSources = z.array(
         page: z.number().optional(),
         slide: z.number().optional(),
         chapter: z.number().optional(),
+        picture: z.number().optional(),
         section: z.string().optional(),
         /** The version of the file the passage was read from. */
         version: z.number().optional(),

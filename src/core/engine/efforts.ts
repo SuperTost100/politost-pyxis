@@ -1,5 +1,5 @@
 import { effortScale, nearestEffort } from "../../shared/effort";
-import { readableModel } from "../../shared/model-names";
+import { displayModelName } from "../../shared/model-names";
 import { variantsOf } from "./effort-variants";
 import { lowEffortOn } from "./model-roles";
 
@@ -69,7 +69,7 @@ export function rememberModels(
   );
   const next = new Map(
     models.flatMap((model) =>
-      model.name?.trim() ? [[model.id, model.name.trim()] as const] : [],
+      model.name?.trim() ? [[model.id, displayModelName(model.id, model.name)] as const] : [],
     ),
   );
   const before = names.get(provider);
@@ -96,7 +96,7 @@ export function setModelNamesListener(
 
 /** The name a student reads for a model: the engine's own when its list was read, else the id made readable. */
 export function modelName(provider: string, model: string): string {
-  return names.get(provider)?.get(model) ?? readableModel(model);
+  return displayModelName(model, names.get(provider)?.get(model));
 }
 
 /** Every model name read so far, by engine, for the screens that show a model. */

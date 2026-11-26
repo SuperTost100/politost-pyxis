@@ -32,3 +32,14 @@ export function readableModel(id: string): string {
   }
   return words.join(" ") || id;
 }
+
+/**
+ * The one display name a student reads for a model everywhere: normalizes provider-reported spellings (such as
+ * "GPT-6-Luna" to "GPT-6 Luna", or a raw lowercase id reported as a name) and falls back to `readableModel(id)`.
+ */
+export function displayModelName(id: string, reported?: string | null): string {
+  const raw = reported?.trim();
+  if (!raw) return readableModel(id);
+  if (/^[a-z0-9]+(?:[-.:][a-z0-9]+)+$/.test(raw)) return readableModel(raw);
+  return raw.replace(/^(GPT-\d+(?:\.\d+)*)-(?=[A-Za-z])/, "$1 ");
+}

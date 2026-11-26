@@ -7,6 +7,7 @@ import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedPlan } from "./seed";
+import { saveShot } from "./shots";
 
 const written = ["Quanto vale $2 + 2$?", "Quanto vale $3 \\cdot 3$?"].map((stem, index) => ({
   id: `q-${index}`,
@@ -32,21 +33,34 @@ async function launch() {
       const now = Date.now();
       db.prepare("INSERT INTO subjects(id,name,position,created_at) VALUES('sub-fis','Fisica',0,1)").run();
       seedPlan(db, { id: "p-fis", subjectId: "sub-fis", title: "Fisica I", language: "it", topics: [{ id: "t-kin", title: "Cinematica" }] });
-      for (const [id, timerMinutes] of [
-        ["plain", undefined],
-        ["timed", 20],
+      for (const [id, timerMinutes, state, error] of [
+        ["plain", undefined, "running", null],
+        ["timed", 20, "running", null],
+        ["stopped", undefined, "failed", "invalid-output"],
       ] as const) {
+        const count = id === "stopped" ? 10 : 8;
+        const seeded =
+          id === "stopped"
+            ? Array.from({ length: 6 }, (_, index) => ({
+                id: `s-${index}`,
+                stem: `Domanda pronta ${index + 1}?`,
+                topicId: "t-kin",
+                options: ["1", "4", "9", "16"],
+                answer: { kind: "mcq", correct: 1, picked: -1 },
+                explanation: "Un calcolo.",
+              }))
+            : written;
         db.prepare(
           "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES(?,'p-fis','t-kin','quiz',?,'fixture','sources',?)",
         ).run(
           `i-${id}`,
-          JSON.stringify({ questions: written, config: { count: 8, feedback: true, types: ["mcq"], timerMinutes }, complete: false }),
+          JSON.stringify({ questions: seeded, config: { count, feedback: true, types: ["mcq"], timerMinutes }, complete: false }),
           now,
         );
         db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES(?,'p-fis',?,?)").run(`a-${id}`, `i-${id}`, now);
         db.prepare(
-          "INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at) VALUES(?,'quiz-build',?,'running',0.3,?,?)",
-        ).run(`j-${id}`, JSON.stringify({ attemptId: `a-${id}` }), now, now);
+          "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES(?,'quiz-build',?,?,0.6,?,?,?)",
+        ).run(`j-${id}`, JSON.stringify({ attemptId: `a-${id}` }), state, error, now, now);
       }
       db.close();
       return {
@@ -118,6 +132,33 @@ test("Consegna says why it waits in every layout, and its tooltip says the same"
         );
       }
     }
+
+    // A quiz that stopped partway (6 of 10 written, failed with invalid-output): counts agree, Consegna stays
+    // disabled with a matching note, the alert explains the failure in plain words, and Q6 offers retry.
+    await page.evaluate(() => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: "md" }));
+    await zoomWindow(app, page, 1280, 1);
+    await page.evaluate(() => {
+      location.hash = "/plans/p-fis/quiz/t-kin?attempt=a-stopped";
+    });
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1, name: "Domanda 1 di 10" })).toBeVisible();
+    const side = page.getByRole("complementary", { name: "Domande" });
+    await expect(side.locator(".px-qz-count")).toHaveText("0 di 10 date");
+    await expect(side.locator(".px-qz-busy")).toHaveText("6 di 10 pronte: mancano 4 domande.");
+    await expect(side.locator(".px-qz-num.is-waiting")).toHaveCount(4);
+    const handIn = side.getByRole("button", { name: "Consegna" });
+    await expect(handIn).toBeDisabled();
+    const stoppedReason = "Prima completa la preparazione del quiz: potrai consegnare quando tutte le domande saranno pronte.";
+    await expect(side.locator(".px-qz-note")).toHaveText(stoppedReason);
+    await expect(handIn).toHaveAttribute("title", stoppedReason);
+    const alert = page.getByRole("alert");
+    await expect(alert).toContainText("Lo strumento ha dato una risposta che non riesco a usare.");
+    await expect(alert.getByText("invalid-output")).toHaveCount(0);
+    await alert.getByRole("button", { name: "Dettagli" }).click();
+    await expect(alert.getByText("invalid-output")).toBeVisible();
+    await saveShot(page, "quiz/partial-stopped-invalid-output.png");
+    await side.getByRole("button", { name: "Domanda 6" }).click();
+    await expect(page.locator(".px-qz-nav").getByRole("button", { name: "Riprova la preparazione" })).toBeEnabled();
   } finally {
     await done();
   }

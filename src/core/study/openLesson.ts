@@ -40,6 +40,7 @@ const WORDING_RULES: Record<Wording, string> = {
 };
 
 type Passage = { id: string; text: string; section_path: string | null };
+type NumberedPassage = Passage & { citation: number };
 
 function passagesFor(db: Database.Database, topicId: string): Passage[] {
   return db
@@ -54,10 +55,12 @@ function passagesFor(db: Database.Database, topicId: string): Passage[] {
 }
 
 function lessonParts(all: Passage[]) {
-  const parts: Passage[][] = [];
-  let current: Passage[] = [];
+  const parts: NumberedPassage[][] = [];
+  let current: NumberedPassage[] = [];
   let size = 0;
-  for (const row of all) {
+  for (let index = 0; index < all.length; index++) {
+    const row = all[index]!;
+    const citation = index + 1;
     for (let offset = 0; offset < row.text.length; offset += PASSAGE_CHARS) {
       const text = row.text.slice(offset, offset + PASSAGE_CHARS);
       if (size + text.length > CONTEXT_CHARS) {
@@ -65,7 +68,7 @@ function lessonParts(all: Passage[]) {
         current = [];
         size = 0;
       }
-      current.push({ ...row, text });
+      current.push({ ...row, text, citation });
       size += text.length;
     }
   }
@@ -73,17 +76,18 @@ function lessonParts(all: Passage[]) {
   return parts;
 }
 
-/** Reference material for the model, under its section headings and without labels it could cite. */
-export function materialText(rows: Array<Pick<Passage, "text" | "section_path">>) {
+/** Reference material for the model, under its section headings, each passage numbered `[Pn]` to match `passageIds`. */
+export function materialText(rows: Array<Pick<Passage, "text" | "section_path"> & { citation?: number }>) {
   let section: string | null = null;
   return rows
-    .map((row) => {
+    .map((row, index) => {
       const heading =
         row.section_path && row.section_path !== section
           ? `### ${row.section_path}\n\n`
           : "";
       section = row.section_path ?? section;
-      return `${heading}${row.text}`;
+      const label = row.citation ?? index + 1;
+      return `${heading}[P${label}] ${row.text}`;
     })
     .join("\n\n");
 }
@@ -549,7 +553,9 @@ function sectionMaterial(all: Passage[], section: string) {
     chosen.push({ ...item, row: { ...item.row, text } });
     size += text.length;
   }
-  return chosen.sort((a, b) => a.index - b.index).map((item) => item.row);
+  return chosen
+    .sort((a, b) => a.index - b.index)
+    .map((item) => ({ ...item.row, citation: item.index + 1 }));
 }
 
 /** Rewrites one ## section of the saved model lesson; the rest of the lesson and its answers stay as they are. */

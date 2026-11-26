@@ -1,14 +1,14 @@
 import { useMemo } from "react";
 import { formulaHtml } from "../../markdown/formulaHtml";
-import { parseMathText } from "./mathString";
+import { parseDisplayMath } from "./displayMath";
 import "katex/dist/katex.min.css";
 import "./MathText.css";
 
-/** A message as the student wrote it: plain text with its `$...$` formulas rendered. */
+/** A message or written answer as the student wrote it: plain text with its formulas drawn. */
 export function MathText({ text }: { text: string }) {
   const parts = useMemo(
     () =>
-      parseMathText(text).map((segment) => {
+      parseDisplayMath(text).map((segment) => {
         if (segment.kind === "text") return { text: segment.text };
         return {
           html: formulaHtml(segment.latex, { displayMode: segment.display === true, strict: "ignore" }),

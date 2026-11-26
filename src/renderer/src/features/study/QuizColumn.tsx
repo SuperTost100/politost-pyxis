@@ -38,6 +38,7 @@ export function QuizColumn({
   hint,
   busyLine,
   busyActivity,
+  stoppedLine,
 }: {
   items: SheetItem[];
   current: number;
@@ -63,6 +64,8 @@ export function QuizColumn({
   busyLine?: string;
   /** What the tool is doing for that work, with how long: under the line, outside its live region. */
   busyActivity?: Activity | null;
+  /** A plain count of what is ready and what is still to come when writing stopped partway. */
+  stoppedLine?: string;
 }) {
   const { t } = useTranslation();
   const given = items.filter((item) => item.given !== "none").length;
@@ -114,6 +117,8 @@ export function QuizColumn({
               </p>
               <ActivityNote activity={busyActivity} className="px-qz-busy-note" />
             </>
+          ) : stoppedLine ? (
+            <p className="px-qz-busy">{stoppedLine}</p>
           ) : null}
           <div className="px-qz-handin">
             <Button

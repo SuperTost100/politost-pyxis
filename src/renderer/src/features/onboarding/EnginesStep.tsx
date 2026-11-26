@@ -71,6 +71,8 @@ export type EnginesState = {
   picking: boolean;
   /** The tools that are connected, by name, for the title. */
   connected: string[];
+  /** Every AI tool setup offers is already connected, so there is no other AI left to invite. */
+  allConnected: boolean;
 };
 
 /**
@@ -142,14 +144,16 @@ export function EnginesStep({
     : null;
   // The names travel as one string, so the page hears a change once rather than on every render.
   const connectedKey = connectedNames.join("\n");
+  const allConnected = connectedNames.length === tools.length;
   useEffect(() => {
     onState({
       ready,
       notice: noticeOpen,
       picking,
       connected: connectedKey ? connectedKey.split("\n") : [],
+      allConnected,
     });
-  }, [ready, noticeOpen, picking, connectedKey, onState]);
+  }, [ready, noticeOpen, picking, connectedKey, allConnected, onState]);
 
   const openedWith = useRef<string | null>(null);
   // Let core choose the models once the set of usable engines is known, and again when it changes.

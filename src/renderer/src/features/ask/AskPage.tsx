@@ -196,6 +196,7 @@ const Reply = memo(function Reply({
         page: cite.locator.page,
         slide: cite.locator.slide,
         chapter: cite.locator.chapter,
+        picture: cite.locator.picture,
         section: cite.label,
         version: cite.version,
       })),

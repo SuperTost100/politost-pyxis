@@ -3,7 +3,7 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { generate } from "../engine/generate";
 import { endConversation } from "../engine/funnel";
-import { systemPrompt, templateVersion } from "../engine/prompts";
+import { partialText, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
 import { interestsLine } from "../profile/context";
 import { retrieve } from "../sources/retrieve";
@@ -318,18 +318,16 @@ export function citeLesson(markdown: string, citable: (label: string) => string 
   return { markdown: text, passageIds, dropped };
 }
 
-/** The lesson rules of the pipeline, with its "do not cite" rule replaced by the agent's citation rule. */
-const NO_CITES =
-  'Do not cite sources, passages or page numbers, and do not mention "the material", "the passages" or "the book": the student reads a lesson, not a commentary on it.';
+/** The pipeline's citation rule, replaced by the agent's tool-backed citation rule. */
+const PIPELINE_CITES = () =>
+  `${partialText("citation")} Put each citation right after the sentence or step it supports, and cite where the lesson states a definition, a law, a formula or a number from the supplied passages; your own explanations, analogies and examples need no citation.`;
 
 export function agentSystem(context: ReturnType<typeof modelContext>, figures: readonly FigureKind[]): string {
   const rules = lessonSystem(context, true, figures);
-  if (!rules.includes(NO_CITES)) throw new Error("lesson-agent-rules");
+  const pipelineCites = PIPELINE_CITES();
+  if (!rules.includes(pipelineCites)) throw new Error("lesson-agent-rules");
   return [
-    rules.replace(
-      NO_CITES,
-      'Do not mention "the material", "the passages" or "the book" in the prose: the student reads a lesson, not a commentary on it. Cite passages as the tool rules below say.',
-    ),
+    rules.replace(pipelineCites, "Cite passages as the tool rules below say."),
     systemPrompt("lesson.agent", { contentLanguage: context.language }),
   ].join("\n\n");
 }

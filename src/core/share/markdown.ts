@@ -162,6 +162,46 @@ function answerLine(
   return answer.accepted[0]?.[0] ?? "";
 }
 
+/** Formats a passage's stored place for an export, localizing `picture N` to `immagine N` in Italian. */
+export function exportPlace(
+  sectionPath: string | null | undefined,
+  locator: { slide?: number; picture?: number } | null | undefined,
+  language: "it" | "en",
+): string {
+  const section = sectionPath?.trim() ?? "";
+  if (locator?.slide == null && locator?.picture != null) {
+    return language === "it" ? `immagine ${locator.picture}` : `picture ${locator.picture}`;
+  }
+  const picture = /^picture (\d+)$/i.exec(section);
+  if (picture) return language === "it" ? `immagine ${picture[1]}` : `picture ${picture[1]}`;
+  return section;
+}
+
+function lessonSources(db: Database.Database, ids: string[], language: "it" | "en"): string[] {
+  if (ids.length === 0) return [];
+  const marks = ids.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `SELECT p.id, p.section_path, p.locator_json, s.title
+       FROM passages p
+       LEFT JOIN sources s ON s.id = p.source_id
+       WHERE p.id IN (${marks})`,
+    )
+    .all(...ids) as Array<{ id: string; section_path: string | null; locator_json: string | null; title: string | null }>;
+  const byId = new Map(
+    rows.map((row) => {
+      const title = row.title?.trim() ?? "";
+      const locator = row.locator_json
+        ? (JSON.parse(row.locator_json) as { slide?: number; picture?: number })
+        : null;
+      const place = exportPlace(row.section_path, locator, language);
+      const label = title && place ? `${title}, ${place}` : title || place;
+      return [row.id, label] as const;
+    }),
+  );
+  return ids.map((id) => byId.get(id) ?? "");
+}
+
 function sectionPaths(db: Database.Database, ids: string[]): string[] {
   if (ids.length === 0) return [];
   const marks = ids.map(() => "?").join(", ");
@@ -197,14 +237,14 @@ export function exportMarkdown(
     if (!topic) throw new Error("topic-missing");
     // A topic in parts exports the parts written so far, in order; any other topic its lesson or its book text.
     const lesson = partsMarkdown(db, input.topicId) ?? readLesson(db, input.planId, input.topicId, input.wording);
-    const labels =
-      planLanguage(db, input.planId) === "Italian" ? smartLabels.it : smartLabels.en;
+    const lang = planLanguage(db, input.planId) === "Italian" ? "it" : "en";
+    const labels = lang === "it" ? smartLabels.it : smartLabels.en;
     return {
       filename,
       markdown: lessonMarkdown(
         topic.title,
         smartTextToMarkdown(lesson.markdown, labels),
-        sectionPaths(db, lesson.passageIds),
+        lessonSources(db, lesson.passageIds, lang),
         words,
       ),
     };

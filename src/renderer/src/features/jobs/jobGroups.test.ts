@@ -116,6 +116,15 @@ describe("jobs list groups", () => {
     expect(general).toMatchObject({ kind: "retry", messageKey: "jobs.failedGeneral" });
   });
 
+  it("offers a plain retry for invalid-output with its own message key", () => {
+    const groups = groupJobs([job("bad", { error: "invalid-output" })], []);
+    expect(groups.problems).toHaveLength(1);
+    expect(groups.problems[0]).toMatchObject({
+      kind: "retry",
+      messageKey: "engines.errors.invalid-output",
+    });
+  });
+
   it("keeps sign-outs of different engines apart, each with its engine", () => {
     const groups = groupJobs(
       [

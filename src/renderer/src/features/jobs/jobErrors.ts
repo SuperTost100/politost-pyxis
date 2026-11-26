@@ -10,10 +10,12 @@ const ENGINE_CODES = new Set([
   "not-logged-in",
   "unsupported",
   "invalid-selection",
+  "invalid-output",
   "cli-failed",
   "refused",
   "quota",
   "model-not-included",
+  "timeout",
   "stream-truncated",
 ]);
 

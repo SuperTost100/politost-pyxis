@@ -3,7 +3,7 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
 import { IpcError } from "../../shared/ipc";
-import { parseLooseJson, parseSmartText, partQuestions, replaceSection, smartSections } from "../../shared/smart-text";
+import { parseLooseJson, parseSmartText, partQuestions, replaceSection, smartSections, stripPassageRefs } from "../../shared/smart-text";
 import { contextHash } from "../chat/sessions";
 import { generate, type GenerateInput } from "../engine/generate";
 import { withSession, type SessionHandle } from "../engine/session-call";
@@ -781,12 +781,14 @@ function fencedBlocks(lines: readonly string[]): Array<{ info: string; from: num
   return blocks;
 }
 
-/** A takeaway block's text: `{"text": ...}`, or a body that is only a string. */
+/** A takeaway block's text: `{"text": ...}`, or a body that is only a string. Citation marks are stripped because the footer renders outside passage context. */
 function takeawayText(body: string): string | null {
   const raw = parseLooseJson(body);
   const text =
     typeof raw === "string" ? raw : raw && typeof raw === "object" ? (raw as { text?: unknown }).text : undefined;
-  return typeof text === "string" && text.trim() ? text.replace(/\s+/g, " ").trim() : null;
+  if (typeof text !== "string") return null;
+  const clean = stripPassageRefs(text).replace(/\s+/g, " ").trim();
+  return clean || null;
 }
 
 /**
@@ -917,10 +919,15 @@ function cutText(text: string, chars: number): string {
  * When the material is still too long, every passage gets an equal share of the budget: its heading at most a quarter
  * of it (none when the share is too small to name it), and its own text the rest, so every passage keeps some text.
  */
-function fittedMaterial(passages: readonly OutlinePassage[], budget: number): string {
-  const rows = passages.map((passage) => ({
+function fittedMaterial(
+  passages: readonly OutlinePassage[],
+  budget: number,
+  citations?: readonly number[],
+): string {
+  const rows = passages.map((passage, index) => ({
     text: passage.text,
     section_path: passage.section && cutText(passage.section, MATERIAL_HEADING_CHARS),
+    citation: citations?.[index] ?? index + 1,
   }));
   const whole = materialText(rows);
   if (whole.length <= budget) return whole;
@@ -929,9 +936,10 @@ function fittedMaterial(passages: readonly OutlinePassage[], budget: number): st
   return materialText(
     rows.map((row) => {
       const section_path = row.section_path && label > 0 ? cutText(row.section_path, label) : null;
-      // "### " and the blank line after a heading, and the blank line before the next passage.
-      const frame = (section_path ? section_path.length + 6 : 0) + 2;
-      return { section_path, text: row.text.slice(0, Math.max(0, share - frame)) };
+      // "### " and the blank line after a heading, "[Pn] " before the passage, and the blank line before the next one.
+      const tag = `[P${row.citation}] `.length;
+      const frame = (section_path ? section_path.length + 6 : 0) + tag + 2;
+      return { section_path, citation: row.citation, text: row.text.slice(0, Math.max(0, share - frame)) };
     }),
   );
 }
@@ -1413,15 +1421,19 @@ export async function rewritePartSection(db: Database.Database, input: PartSecti
             .join("\n\n"),
           Math.max(0, room),
         );
+  // Number each passage to match `saved.passageIds` so any [Pn] in the rewritten section points at the stored passage.
+  const savedIndex = new Map(saved.passageIds.map((id, index) => [id, index + 1]));
+  const material = saved.passageIds.length > 0 ? passages.filter((passage) => savedIndex.has(passage.id)) : passages;
+  const citations = material.map((passage, index) => savedIndex.get(passage.id) ?? index + 1);
   const head = `${asks}${intro}${shown}`;
   let request = head;
-  if (passages.length > 0) {
+  if (material.length > 0) {
     let budget = bound - head.length - label.length;
-    request = `${head}${label}${fittedMaterial(passages, budget)}`;
+    request = `${head}${label}${fittedMaterial(material, budget, citations)}`;
     // Measured as `partRequest` does: a request still over the bound is fitted again with less room for material.
     for (let round = 0; request.length > bound && round < 3; round++) {
       budget -= request.length - bound;
-      request = `${head}${label}${fittedMaterial(passages, budget)}`;
+      request = `${head}${label}${fittedMaterial(material, budget, citations)}`;
     }
   }
   const drawer = await figureRunner(input.python);

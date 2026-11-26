@@ -257,6 +257,22 @@ describe("exportChat", () => {
     );
   });
 
+  it("localizes picture citations in Italian chat exports and keeps picture in English", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      INSERT INTO chats (id, title, created_at, updated_at) VALUES ('cp', 'Grafici', 1, 1);
+      INSERT INTO sources (id, kind, title, status, library, created_at, updated_at) VALUES ('s', 'docx', 'appunti-edo', 'ready', 1, 1, 1);
+      INSERT INTO source_documents (id, source_id, version, tree_json, created_at) VALUES ('d', 's', 1, '{}', 1);
+      INSERT INTO passages (id, source_id, document_id, text, locator_json, section_path, created_at) VALUES
+        ('p1', 's', 'd', 'figura', '{"picture":1}', 'picture 1', 1);
+      INSERT INTO messages (id, chat_id, role, body, created_at) VALUES ('r', 'cp', 'assistant', 'Come nel grafico [P1].', 2);
+      INSERT INTO message_passages (message_id, passage_id, label) VALUES ('r', 'p1', 'P1');
+    `);
+    expect(exportChat(db, "cp", "it").markdown).toContain("- appunti-edo, immagine 1");
+    expect(exportChat(db, "cp", "en").markdown).toContain("- appunti-edo, picture 1");
+    db.close();
+  });
+
   it("writes one line on what a chat tool made in place of its block, and says when it was undone", () => {
     const db = openDatabase(":memory:");
     const id = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
