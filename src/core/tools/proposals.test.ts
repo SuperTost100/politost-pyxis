@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createRunner } from "../jobs/runner";
 import { deleteMap, listMaps, storeMap } from "../maps/store";
@@ -630,6 +630,56 @@ describe("what the security read asked for", () => {
     db.prepare("UPDATE topics SET title = ? WHERE id = ?").run("Ciner‮amatica", topic("Cinematica"));
     const id = (await proposeDeleteTool(db).run(turn({ planId, subject: null }), deleteInput.parse({ kind: "flashcards", topic: "Ciner‮amatica" }))).shown!.resultId;
     expect((toolView(db, "chat", id) as DeleteProposalView).name).toBe("Cineramatica");
+  });
+});
+
+describe("which proposal is later", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  /** A clock that stands still, and random bytes set by the test: ids made now share their millisecond and sort by `fill`. */
+  function oneMillisecond() {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 10, 26, 12));
+    const random = { fill: 0xff };
+    vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation((bytes) => {
+      new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength).fill(random.fill);
+      return bytes;
+    });
+    return random;
+  }
+
+  it("goes by the order they were made, never by the random part of ids made in the same millisecond", async () => {
+    const { db, planId } = fixture();
+    const tool = proposePathTool(db);
+    // Both proposals in one millisecond, and the later one with the smaller id: the random bytes of a uuidv7 decide
+    // the order of ids within a millisecond.
+    const random = oneMillisecond();
+    const a = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 9 }))).shown!.resultId;
+    random.fill = 0x00;
+    const b = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 10 }))).shown!.resultId;
+    expect(b < a).toBe(true);
+    save(db, "chat", a);
+    decideProposal(db, "chat", a, "decline", undefined);
+    save(db, "chat", b);
+    // The later proposal replaced the earlier one: reopened, the earlier one has lapsed, and the later one waits.
+    expect(decideProposal(db, "chat", a, "reopen", undefined).state).toBe("expired");
+    expect((toolView(db, "chat", b) as PathProposalView).state).toBe("pending");
+  });
+
+  it("lets a later pending proposal of the same millisecond expire only the earlier one", async () => {
+    const { db, planId } = fixture();
+    const tool = proposePathTool(db);
+    const random = oneMillisecond();
+    const a = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 9 }))).shown!.resultId;
+    save(db, "chat", a);
+    random.fill = 0x00;
+    const b = (await tool.run(turn({ planId, subject: null }), pathInput.parse({ weekly_hours: 10 }))).shown!.resultId;
+    save(db, "chat", b);
+    expect((toolView(db, "chat", a) as PathProposalView).state).toBe("expired");
+    expect((toolView(db, "chat", b) as PathProposalView).state).toBe("pending");
   });
 });
 
