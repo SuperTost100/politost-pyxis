@@ -43,6 +43,13 @@ describe("linkCitations", () => {
     expect(linkCitations("Nel testo $$a$$ e $$b$$ [P2].", () => true)).toBe(
       "Nel testo $$a$$ e $$b$$[](cite:p2).",
     );
+    expect(linkCitations("> $$x$$ [P1]", () => true)).toBe("> $$x$$\n\n> [](cite:p1)");
+  });
+
+  it("leaves indented code and blockquoted fenced code untouched when separating display math", () => {
+    expect(linkCitations("    $$x$$ [P1]", () => true)).toBe("    $$x$$ [P1]");
+    expect(linkCitations("> ```\n> $$x$$ [P1]\n> ```", () => true)).toBe("> ```\n> $$x$$ [P1]\n> ```");
+    expect(linkCitations("$$x$$ [P1] `c`", () => true)).toBe("$$x$$[](cite:p1) `c`");
   });
 });
 

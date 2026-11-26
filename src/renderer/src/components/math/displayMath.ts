@@ -45,6 +45,12 @@ function readBalancedBackward(text: string, endExclusive: number, open: string, 
   return -1;
 }
 
+const REQUIRED_ARGS: Record<string, number> = {
+  frac: 2, dfrac: 2, tfrac: 2, binom: 2,
+  sqrt: 1, mathbb: 1, mathcal: 1, mathrm: 1, mathbf: 1, mathit: 1, mathsf: 1, text: 1, operatorname: 1,
+  vec: 1, hat: 1, bar: 1, tilde: 1, overline: 1, underline: 1, dot: 1, ddot: 1,
+};
+
 function readCommand(text: string, at: number): { name: string; end: number } | null {
   if (text[at] !== "\\") return null;
   if (at > 0 && text[at - 1] === "\\") return null;
@@ -54,15 +60,24 @@ function readCommand(text: string, at: number): { name: string; end: number } | 
   if (name.length > 1 && !MATH_COMMANDS.has(name)) return null;
   if (name.length === 1 && !/[,;!:]/.test(name)) return null;
   let end = at + match[0].length;
-  // Consume optional [...] and braced {...} arguments belonging to the command (e.g. \sqrt[3]{x}, \frac{1}{2}).
+  const required = REQUIRED_ARGS[name] ?? 0;
+  // Consume optional [...] and braced {...} arguments belonging to the command (e.g. \sqrt[3]{x}, \frac{1}{2}). Spaces are
+  // skipped only before an argument the command still needs, as in \frac{1} {2}, so prose after it stays text.
   if (name === "sqrt" && text[end] === "[") {
     const bracketEnd = readBalanced(text, end, "[", "]");
     if (bracketEnd > end) end = bracketEnd;
   }
-  while (text[end] === "{") {
-    const braceEnd = readBalanced(text, end, "{", "}");
+  let args = 0;
+  for (;;) {
+    let scan = end;
+    if (args < required) {
+      while (text[scan] === " " || text[scan] === "\t") scan += 1;
+    }
+    if (text[scan] !== "{") break;
+    const braceEnd = readBalanced(text, scan, "{", "}");
     if (braceEnd < 0) break;
     end = braceEnd;
+    args += 1;
   }
   return { name, end };
 }
@@ -87,12 +102,10 @@ function readAtomForward(text: string, at: number): number {
   return -1;
 }
 
-/** Reads scripts (^... / _...) and immediate juxtaposed atoms (e.g. 2a_{n}, x^{2}, f(x)) starting at `at`. */
-function readTermForward(text: string, at: number): number {
-  let pos = readAtomForward(text, at);
-  if (pos < 0) return -1;
+/** Reads consecutive scripts (^... / _...) and prime marks starting at `at`. */
+function readScripts(text: string, at: number): number {
+  let pos = at;
   for (;;) {
-    // Superscript or subscript attached to the term.
     if ((text[pos] === "^" || text[pos] === "_") && pos + 1 < text.length) {
       if (text[pos + 1] === "{") {
         const end = readBalanced(text, pos + 1, "{", "}");
@@ -109,9 +122,23 @@ function readTermForward(text: string, at: number): number {
         continue;
       }
     }
-    // Prime marks like y'(x) or f''.
     if (text[pos] === "'") {
       pos += 1;
+      continue;
+    }
+    break;
+  }
+  return pos;
+}
+
+/** Reads scripts (^... / _...) and immediate juxtaposed atoms (e.g. 2a_{n}, x^{2}, f(x)) starting at `at`. */
+function readTermForward(text: string, at: number): number {
+  let pos = readAtomForward(text, at);
+  if (pos < 0) return -1;
+  for (;;) {
+    const scripted = readScripts(text, pos);
+    if (scripted > pos) {
+      pos = scripted;
       continue;
     }
     // Juxtaposed factor without whitespace: 2x, x(t), \frac{1}{2}x^{2}, \alpha\beta, x\,dx.
@@ -131,13 +158,11 @@ const BINARY_OP = /^(?:[+\-*/=<>]|\\(?:pm|mp|cdot|times|div|le|leq|ge|geq|ne|neq
 function expandRight(text: string, startPos: number): number {
   let pos = startPos;
   for (;;) {
-    // Continue any scripts/juxtaposed factors attached directly at `pos`.
-    if ((text[pos] === "^" || text[pos] === "_") && pos + 1 < text.length) {
-      const next = readTermForward(text, pos - 1);
-      if (next > pos) {
-        pos = next;
-        continue;
-      }
+    // Continue any scripts/primes attached directly at `pos` (e.g. a_{n}^{2}, \frac{1}{2}^{2}).
+    const scripted = readScripts(text, pos);
+    if (scripted > pos) {
+      pos = scripted;
+      continue;
     }
     const direct = readTermForward(text, pos);
     if (direct > pos) {
@@ -229,10 +254,17 @@ function expandLeft(text: string, startPos: number, floor: number): number {
   for (;;) {
     let scan = pos;
     while (scan > floor && text[scan - 1] === " ") scan -= 1;
-    // Unary minus directly attached to the start of the formula (e.g. `-x^{2}`).
+    // Unary sign at the start of the formula: attached (`-x^{2}`), or spaced after `=`, `(` or `[` (`y = - x^{2}`). A spaced
+    // sign after anything else is a binary operator, read below, so `a - x^{2}` stays whole and `.../2 + x^{2}` takes no `+`.
     if (scan > floor && (text[scan - 1] === "-" || text[scan - 1] === "+")) {
       const beforeSign = scan - 1;
-      if (beforeSign === floor || /[\s([=]/.test(text[beforeSign - 1]!)) {
+      let left = beforeSign;
+      while (left > floor && text[left - 1] === " ") left -= 1;
+      const unary =
+        scan === pos
+          ? beforeSign === floor || /[\s([=]/.test(text[beforeSign - 1]!)
+          : left > floor && /[([=]/.test(text[left - 1]!);
+      if (unary) {
         pos = beforeSign;
         continue;
       }
@@ -298,10 +330,16 @@ function splitBareLatex(text: string): MathSegment[] {
       continue;
     }
 
-    // Never cross a line break when expanding a bare inline expression.
-    const lineStart = Math.max(floor, text.lastIndexOf("\n", triggerStart) + 1);
+    // Never cross a line break or a protected URL range when expanding a bare inline expression.
+    let urlFloor = 0;
+    let urlCeil = text.length;
+    for (const [from, to] of urls) {
+      if (to <= triggerStart && to > urlFloor) urlFloor = to;
+      if (from >= triggerEnd && from < urlCeil) urlCeil = from;
+    }
+    const lineStart = Math.max(floor, urlFloor, text.lastIndexOf("\n", triggerStart) + 1);
     const lineEndRaw = text.indexOf("\n", triggerEnd);
-    const lineEnd = lineEndRaw < 0 ? text.length : lineEndRaw;
+    const lineEnd = Math.min(urlCeil, lineEndRaw < 0 ? text.length : lineEndRaw);
     const line = text.slice(lineStart, lineEnd);
 
     const relStart = expandLeft(line, triggerStart - lineStart, 0);

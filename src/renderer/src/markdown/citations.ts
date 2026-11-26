@@ -1,3 +1,4 @@
+import { mapOutsideCode } from "../../../shared/outside-code";
 import { PASSAGE_MARK, replaceMarkRuns, splitCitationGroups } from "../../../shared/smart-text";
 
 /** Whether a [Pn] mark names a passage the page knows, such as one stored with the reply. */
@@ -16,40 +17,38 @@ const SINGLE_LINE_DISPLAY = new RegExp(`^([ \\t>]*)(\\$\\$(?:(?!\\$\\$)[^\\n])+\
 
 /**
  * Moves a run of citation marks placed on the same line after a display formula's closing `$$` ("$$x$$ [P1]" or
- * "$$\nx\n$$ [P1]") onto its own paragraph before `replaceMarkRuns` parses the Markdown. Without that, remark-math drops
- * a single-line `$$x$$` to inline math or leaves a multi-line `$$` block unclosed (hiding the mark inside math); with it,
- * the formula stays centered, `rehypeMarks` hides the anchor paragraph, and `citedRanges` still tints the formula.
+ * "$$\nx\n$$ [P1]") onto its own paragraph before `replaceMarkRuns` parses the Markdown. Runs only outside Markdown code
+ * blocks and code spans (`mapOutsideCode`) so indented code and blockquoted fences stay intact. Without this split,
+ * remark-math drops a single-line `$$x$$` to inline math or leaves a multi-line `$$` block unclosed; with it, the formula
+ * stays centered, `rehypeMarks` hides the anchor paragraph, and `citedRanges` still tints the formula.
  */
 function separateFromDisplayMath(markdown: string): string {
-  const lines = markdown.split("\n");
-  let fence: string | null = null;
-  let inMath = false;
-  return lines
-    .map((line) => {
-      const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
-      if (marker) {
-        if (!fence) fence = marker;
-        else if (line.trim()[0] === fence[0] && line.trim().length >= fence.length && /^[`~]+$/.test(line.trim()))
-          fence = null;
-        return line;
-      }
-      if (fence) return line;
-      if (/^[ \t>]*\$\$[ \t]*$/.test(line)) {
-        inMath = !inMath;
-        return line;
-      }
-      if (inMath) {
-        const closing = TRAILING_MARKS.exec(line);
-        if (closing) {
-          inMath = false;
-          return `${closing[1]}${closing[2]}\n\n${closing[1]}${closing[3]}`;
+  return mapOutsideCode(markdown, (chunk, start, end) => {
+    // A chunk edge next to a code span is the middle of a line, which no rewrite below may split.
+    const startsLine = start === 0 || markdown[start - 1] === "\n";
+    const endsLine = end === markdown.length || markdown[end] === "\n" || markdown[end] === "\r";
+    let inMath = false;
+    const lines = chunk.split("\n");
+    return lines
+      .map((line, index) => {
+        if ((index === 0 && !startsLine) || (index === lines.length - 1 && !endsLine)) return line;
+        if (/^[ \t>]*\$\$[ \t]*$/.test(line)) {
+          inMath = !inMath;
+          return line;
         }
-        return line;
-      }
-      const single = SINGLE_LINE_DISPLAY.exec(line);
-      return single ? `${single[1]}${single[2]}\n\n${single[1]}${single[3]}` : line;
-    })
-    .join("\n");
+        if (inMath) {
+          const closing = TRAILING_MARKS.exec(line);
+          if (closing) {
+            inMath = false;
+            return `${closing[1]}${closing[2]}\n\n${closing[1]}${closing[3]}`;
+          }
+          return line;
+        }
+        const single = SINGLE_LINE_DISPLAY.exec(line);
+        return single ? `${single[1]}${single[2]}\n\n${single[1]}${single[3]}` : line;
+      })
+      .join("\n");
+  });
 }
 
 export function linkCitations(markdown: string, known: KnownPassage): string {

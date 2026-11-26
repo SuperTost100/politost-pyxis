@@ -939,6 +939,40 @@ test("Riprova on a failed build shows Pyxis at work in place at once, and a retr
   }
 });
 
+test("a failed first map build shows the translated error and Dettagli even before any map exists, and Riprova builds it", async () => {
+  test.setTimeout(180_000);
+  const theorems = reply(["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"]);
+  const { app, page, userData, errors } = await startApp({
+    PYXIS_E2E_MAP_REPLIES: recorded([{ fail: "engine-missing" }, theorems]),
+    PYXIS_E2E_MAP_DELAY: "1500",
+  });
+  try {
+    await askAndWait(page, "solo i teoremi", "failed");
+    await page.evaluate(() => {
+      location.hash = "#/maps/an/t-real";
+    });
+    const line = recovery(page);
+    await expect(line.locator(".px-notice")).toContainText("Non sono riuscito a creare la mappa. Riprova.");
+    await expect(line.locator(".px-notice")).toContainText("Scegli e prova uno strumento nelle Impostazioni prima di continuare.");
+    await expect(line.locator(".px-notice")).toHaveClass(/\bis-danger\b/);
+    await expect(line.getByRole("button")).toHaveText(["Dettagli", "Riprova", "Chiudi"]);
+    await line.getByRole("button", { name: "Dettagli" }).click();
+    await expect(line.locator(".px-notice-details")).toHaveText("engine-missing");
+    await expectNoAxeViolations(page);
+
+    await line.getByRole("button", { name: "Riprova" }).click();
+    const working = page.locator(".px-map-card .px-map-working");
+    await expect(working).toBeVisible({ timeout: 1000 });
+    await expect(line).toHaveCount(0);
+    await expect(page.locator(".react-flow__node", { hasText: "Permanenza del segno" })).toBeVisible({ timeout: 30_000 });
+    await expect(line).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("Riprendi on a stopped build shows Pyxis at work in place at once", async () => {
   test.setTimeout(180_000);
   const { app, page, userData, errors } = await startApp({

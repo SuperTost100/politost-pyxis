@@ -610,9 +610,9 @@ export function MapPage() {
         .catch(() => undefined);
       // A build the student stopped is not a failure: without a map the empty state says so and offers to resume it.
       // One that found nothing for the request says so next to the request, which the page shows.
-      // With a map on show, the line under the head says how the build ended and offers it again, from the stored build.
-      if (!graph && job.state !== "cancelled" && job.state !== "succeeded" && !(job.state === "failed" && job.error === "map-nothing-matched"))
-        setNotice(t("map.generateFailed"));
+      // A failed build says how it ended in the line under the head, from the stored build, with or without a map.
+      // With a map on show, that line also says how an interrupted build ended and offers it again.
+      if (!graph && job.state === "interrupted") setNotice(t("map.generateFailed"));
     }
   }, [job?.state, jobId, client, scopeKey, t]);
   useEffect(() => {
@@ -1176,10 +1176,15 @@ export function MapPage() {
   }
   // A stopped build asks again with the instruction it had, so it is picked up and not built anew without it.
   const retrying = Boolean(job && ["failed", "cancelled", "interrupted"].includes(job.state));
-  // A map is on show and the scope's last build, still stored, stopped or failed: the line under the head offers it again,
-  // whenever the page opens. A request that found nothing is Attività's "Cambia la richiesta", and says so on its own.
+  // The scope's last build, still stored, failed, or stopped while a map is on show: the line under the head says how it
+  // ended and offers it again, whenever the page opens. Without a map it shows only for a failed build, until Riprova
+  // brings Pyxis at work in its place. A request that found nothing is Attività's "Cambia la richiesta", and says so on its own.
   const recoverable = Boolean(
-    graph && retrying && !building && !nothingMatched && !(job?.state === "failed" && job.error === "map-nothing-matched"),
+    job &&
+      (graph ? retrying : job.state === "failed" && !working) &&
+      !building &&
+      !nothingMatched &&
+      !(job.state === "failed" && job.error === "map-nothing-matched"),
   );
   // `changing` is the student sending other words from the request on show, which that request gives way to.
   async function generateMaps(instruction = retrying ? (job?.instruction ?? "") : "", changing = false) {
@@ -1615,9 +1620,13 @@ export function MapPage() {
               details={job.state === "failed" && job.error?.trim() ? job.error.trim().slice(0, 2000) : undefined}
             >
               {job.state === "failed"
-                ? failure
-                  ? `${t("map.lastFailed")}. ${failure.text}`
-                  : t("map.lastFailed")
+                ? graph
+                  ? failure
+                    ? `${t("map.lastFailed")}. ${failure.text}`
+                    : t("map.lastFailed")
+                  : failure
+                    ? `${t("map.generateFailed")} ${failure.text}`
+                    : t("map.generateFailed")
                 : t(job.state === "cancelled" ? "map.stopped" : "map.lastInterrupted")}
             </Notice>
           </div>
