@@ -3,7 +3,7 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
 import { IpcError } from "../../shared/ipc";
-import { parseLooseJson, parseSmartText, partQuestions, replaceSection, smartSections } from "../../shared/smart-text";
+import { parseLooseJson, parseSmartText, partQuestions, replaceSection, smartSections, stripPassageRefs } from "../../shared/smart-text";
 import { contextHash } from "../chat/sessions";
 import { generate, type GenerateInput } from "../engine/generate";
 import { withSession, type SessionHandle } from "../engine/session-call";
@@ -781,12 +781,14 @@ function fencedBlocks(lines: readonly string[]): Array<{ info: string; from: num
   return blocks;
 }
 
-/** A takeaway block's text: `{"text": ...}`, or a body that is only a string. */
+/** A takeaway block's text: `{"text": ...}`, or a body that is only a string. Citation marks are stripped because the footer renders outside passage context. */
 function takeawayText(body: string): string | null {
   const raw = parseLooseJson(body);
   const text =
     typeof raw === "string" ? raw : raw && typeof raw === "object" ? (raw as { text?: unknown }).text : undefined;
-  return typeof text === "string" && text.trim() ? text.replace(/\s+/g, " ").trim() : null;
+  if (typeof text !== "string") return null;
+  const clean = stripPassageRefs(text).replace(/\s+/g, " ").trim();
+  return clean || null;
 }
 
 /**

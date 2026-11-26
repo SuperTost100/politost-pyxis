@@ -32,6 +32,18 @@ describe("linkCitations", () => {
   it("leaves marks in code alone", () => {
     expect(linkCitations("Usa `a[P1]` qui [P1].", () => true)).toBe("Usa `a[P1]` qui[](cite:p1).");
   });
+
+  it("separates citation marks written on the same line after a display formula's closing $$", () => {
+    expect(linkCitations("Soluzione\n$$y(x)=Ce^{-A(x)}.$$ [P2]", () => true)).toBe(
+      "Soluzione\n$$y(x)=Ce^{-A(x)}.$$\n\n[](cite:p2)",
+    );
+    expect(linkCitations("$$\ny(x)=Ce^{-A(x)}\n$$ [P2].", () => true)).toBe(
+      "$$\ny(x)=Ce^{-A(x)}\n$$\n\n[](cite:p2).",
+    );
+    expect(linkCitations("Nel testo $$a$$ e $$b$$ [P2].", () => true)).toBe(
+      "Nel testo $$a$$ e $$b$$[](cite:p2).",
+    );
+  });
 });
 
 describe("citedPassage", () => {

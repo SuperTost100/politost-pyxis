@@ -1487,4 +1487,19 @@ describe("a lesson in one tool session", () => {
     expect(session(db)).toHaveLength(1);
     db.close();
   });
+
+  it("strips passage citation marks from pyxis-takeaway so the footer never shows literal [Pn]", () => {
+    const reply = partText("1").replace(
+      '{"text":',
+      '{"text":',
+    ).replace(
+      /```pyxis-takeaway\n[\s\S]*?```/,
+      '```pyxis-takeaway\n{"text": "Il fattore integrante è $e^{A(x)}$ [P1] e risolve l’equazione [P2]."}\n```',
+    );
+    const shaped = partShape(reply, { kind: "part", headings: [], last: false });
+    expect(shaped.ok).toBe(true);
+    if (shaped.ok) {
+      expect(shaped.summary).toBe("Il fattore integrante è $e^{A(x)}$ e risolve l’equazione.");
+    }
+  });
 });
