@@ -13,8 +13,8 @@ import { readQuiz, registerQuizJobs, saveQuizDraft } from "../study/quizJobs";
 import { registerQuizGradingJobs, submitQuiz } from "../study/quizGrading";
 import type { MapResultView, QuizResultView } from "../../shared/ipc";
 import { setToolRunner } from "./jobs";
-import { MAP_TOPIC_MAX, mapInput, mapTool } from "./map";
-import { quizInput, quizTool, quizTopic } from "./quiz";
+import { MAP_DESCRIPTION, MAP_TOPIC_MAX, mapInput, mapTool } from "./map";
+import { QUIZ_DESCRIPTION, quizInput, quizTool, quizTopic } from "./quiz";
 import {
   dropStrayToolResults,
   linkToolResults,
@@ -160,6 +160,20 @@ describe("create_map", () => {
     expect(mapInput.safeParse({ topic: " a " }).success).toBe(false);
     expect(mapInput.safeParse({ topic: "x".repeat(MAP_TOPIC_MAX * 2 + 1) }).success).toBe(false);
     expect(mapInput.safeParse({ topic: "Dinamica", subjectId: "chem" }).success).toBe(false);
+  });
+
+  it("asks the model for one line that stays true once the map or the quiz is ready, with no wait and no time", async () => {
+    const db = fixture();
+    jobs(db);
+    const map = (await mapTool(db).run(turn({ planId: null, subject: "Fisica 1" }), mapInput.parse({ topic: "Dinamica" }))).text;
+    const quiz = (await quizTool(db).run(turn({ planId: "mech", subject: null }), quizInput.parse({ topic: "Dinamica" }))).text;
+    // The card under the reply changes when the build ends; the model's sentence does not, so it must hold either way.
+    for (const text of [map, quiz, MAP_DESCRIPTION, QUIZ_DESCRIPTION]) {
+      expect(text).not.toMatch(/\bminutes?\b|\bseconds?\b|a moment/i);
+      expect(text).toMatch(/true (both )?while it is (built|written) and once it is ready/);
+    }
+    for (const text of [map, quiz]) expect(text).toMatch(/never that you are preparing it/);
+    db.close();
   });
 
   it("returns once the build is queued, and the result follows the build to the finished map", async () => {

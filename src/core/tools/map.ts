@@ -29,8 +29,8 @@ export const MAP_DESCRIPTION = [
   "Creates a concept map in Pyxis's Mappe section, under the subject of this chat, built from the student's material on that subject.",
   "Call it when the student asks for a concept map or a mind map of a topic (\"fammi una mappa su…\"), or accepts your offer to make one. Never call it on your own initiative, and never to draw a diagram that explains something in your answer (an automaton, a circuit, a graph of a function): draw those as figures.",
   "Give `topic` as a few words naming what the map covers, in the student's language: it becomes the map's title.",
-  "Pyxis builds the map in the background, which takes a minute or two: the call returns once it has started, and the student sees it in the chat while it is made and when it is ready.",
-  "At most one map per answer. After the call, write one short sentence and do not draw the map or list its concepts.",
+  "Pyxis builds the map in the background: the call returns once the build has started, and the student sees a card under your answer that shows the map at work and then finished.",
+  "At most one map per answer. After the call, write one short sentence that is true both while it is built and once it is ready, such as that they find it below: never that you are preparing it, and never how long it takes. Do not draw the map or list its concepts.",
 ].join(" ");
 
 /** What a map result stores: the job that builds it, where the map goes and the id the finished map takes. */
@@ -97,7 +97,7 @@ export function mapTool(db: Database.Database): Tool {
         return id;
       })();
       return {
-        text: `Pyxis is building the concept map "${topic}" in Mappe, under ${subject.name}. It takes a minute or two, and the student sees it in the chat while it is made. Write one short sentence and do not draw the map or list its concepts.`,
+        text: `Pyxis started building the concept map "${topic}" in Mappe, under ${subject.name}. The student sees it as a card under your answer, at work and then finished. Write one short sentence that is true both while it is built and once it is ready, such as that they find it below: never that you are preparing it, and never how long it takes. Do not draw the map or list its concepts.`,
         shown: { resultId },
       };
     },
