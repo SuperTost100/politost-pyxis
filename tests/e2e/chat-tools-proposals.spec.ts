@@ -286,6 +286,15 @@ test("a new exam is a draft until «Crea l'esame», which starts its build; «Mo
     expect(plan).toHaveLength(1);
     expect(query(userData, `SELECT source_id FROM plan_sources WHERE plan_id = '${plan[0]!.id}'`)).toEqual([{ source_id: "disp" }]);
     await shots(page, "exam-building");
+    // The build stopped from Attività made no path: the card says the creation stopped, never that the exam was made,
+    // and «Riprendi» starts it again.
+    const [build] = query<{ id: string }>(userData, "SELECT id FROM jobs WHERE kind = 'plan-build'");
+    await page.evaluate((jobId) => window.pyxis.invoke("jobs.cancel", { jobId }), build!.id);
+    await expect(reply.getByText("La creazione dell'esame Chimica generale si è fermata prima che il percorso fosse pronto.")).toBeVisible({ timeout: 30000 });
+    await expect(reply.getByText(/^Esame creato/)).toHaveCount(0);
+    await shots(page, "exam-build-stopped");
+    await reply.getByRole("button", { name: "Riprendi" }).click();
+    await expect(reply.getByText("Preparo il percorso…")).toBeVisible({ timeout: 30000 });
     writeFileSync(hold, "");
     // The build ends with the exam ready, not only with the working line gone.
     await expect

@@ -171,6 +171,7 @@ const kind: ProposalKind<ExamRequest, ExamProposal> = {
       created: made
         ? {
             planId: made.planId,
+            jobId: made.jobId,
             // A build that finished counts as done whatever its row says now, as a map's does.
             job: exists && db.prepare("SELECT status FROM plans WHERE id = ?").pluck().get(made.planId) !== "building" ? "done" : state,
             error: state === "failed" ? (job?.error ?? null) : null,

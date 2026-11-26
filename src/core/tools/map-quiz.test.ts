@@ -206,7 +206,8 @@ describe("create_map", () => {
     renameMap(db, { subjectId: "phys" }, mapId, "La mia dinamica");
     expect(finishedToday([jobId])).toEqual([jobId]);
 
-    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true, topic: "La mia dinamica" });
+    // A finished map undone was made: its card says so, not that its creation stopped.
+    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true, stopped: false, topic: "La mia dinamica" });
     expect(listMaps(db, { subjectId: "phys" })).toEqual([]);
     expect(listAllMaps(db)).toEqual([]);
     expect(listAllMaps(db, "dinamica")).toEqual([]);
@@ -230,11 +231,13 @@ describe("create_map", () => {
     const { id, jobId } = await makeMap(db);
     await until(() => jobOf(db, jobId).state === "running", () => jobOf(db, jobId));
     expect(listed([jobId])).toEqual([jobId]);
-    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true });
+    // No map was made: the card says the creation stopped, never that a map left Mappe.
+    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true, stopped: true });
     await until(() => jobOf(db, jobId).state === "cancelled", () => jobOf(db, jobId));
     expect(listed([jobId])).toEqual([]);
+    expect(mapOf(db, id)).toMatchObject({ undone: true, stopped: true });
     gate.release();
-    expect(restoreToolResult(db, "chat", id)).toMatchObject({ undone: false, job: "working" });
+    expect(restoreToolResult(db, "chat", id)).toMatchObject({ undone: false, stopped: false, job: "working" });
     expect(jobOf(db, jobId)).toEqual({ state: "queued", dismissed: 0 });
     await until(() => mapOf(db, id).job === "done", () => mapOf(db, id));
     expect(listMaps(db, { subjectId: "phys" })).toHaveLength(1);
@@ -480,7 +483,7 @@ describe("create_quiz", () => {
     const citations = () => db.prepare("SELECT COUNT(*) FROM item_passages").pluck().get();
     expect(citations()).toBeGreaterThan(0);
 
-    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true });
+    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true, stopped: false });
     expect(unfinishedActivities(db, "mech")).toEqual([]);
     expect(() => readQuiz(db, attemptId)).toThrow("quiz-missing");
     expect(db.prepare("SELECT COUNT(*) FROM items WHERE kind = 'quiz'").pluck().get()).toBe(0);
@@ -504,9 +507,11 @@ describe("create_quiz", () => {
     const { id } = await makeQuiz(db);
     const { attemptId } = quizOf(db, id);
     await until(() => readQuiz(db, attemptId).questions.length > 0, () => readQuiz(db, attemptId));
-    undoToolResult(db, "chat", id);
+    // Its writing stopped half way: the card says the creation stopped, not that a quiz left the exam.
+    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true, stopped: true });
     const build = db.prepare("SELECT id FROM jobs WHERE kind = 'quiz-build'").pluck().get() as string;
     await until(() => jobOf(db, build).state === "cancelled", () => jobOf(db, build));
+    expect(quizOf(db, id)).toMatchObject({ undone: true, stopped: true });
     expect(runner!.list().filter((job) => job.id === build)).toEqual([]);
     gate.release();
     expect(restoreToolResult(db, "chat", id)).toMatchObject({ undone: false, job: "working" });
@@ -523,9 +528,11 @@ describe("create_quiz", () => {
     const { id } = await makeQuiz(db);
     const { attemptId } = quizOf(db, id);
     await until(() => readQuiz(db, attemptId).questions.length > 0, () => readQuiz(db, attemptId));
-    undoToolResult(db, "chat", id);
+    // Its writing stopped half way: the card says the creation stopped, not that a quiz left the exam.
+    expect(undoToolResult(db, "chat", id)).toMatchObject({ undone: true, stopped: true });
     const build = db.prepare("SELECT id FROM jobs WHERE kind = 'quiz-build'").pluck().get() as string;
     await until(() => jobOf(db, build).state === "cancelled", () => jobOf(db, build));
+    expect(quizOf(db, id)).toMatchObject({ undone: true, stopped: true });
     // The student removes the notes' passage on the second principle while the quiz is out of the exam.
     db.prepare("DELETE FROM topic_passages WHERE passage_id = 'p3'").run();
     db.prepare("DELETE FROM passages WHERE id = 'p3'").run();

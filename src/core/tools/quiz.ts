@@ -258,6 +258,7 @@ export function quizView(db: Database.Database, id: string, stored: QuizData, un
     error: state === "failed" ? (job?.error ?? null) : null,
     activity: state === "working" && !undone ? activityOf(build) : null,
     undone: undone !== null,
+    stopped: !!undone && undone.stopped !== null && !body?.complete,
     restorable: !undone || restorableQuiz(db, stored, undone),
     gone: !undone && (!item || !attempt),
     topic: stored.topic,

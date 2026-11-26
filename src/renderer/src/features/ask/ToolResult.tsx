@@ -99,7 +99,7 @@ function stateKey(view: ToolResultView | undefined): string {
   if (view.tool === "propose_path_change" || view.tool === "propose_delete") return view.state;
   if (view.tool === "ask_stronger_model") return "done";
   if (view.tool === "create_flashcards") return view.undone === null ? "done" : "undone";
-  return view.undone ? "undone" : view.gone ? "gone" : view.job;
+  return view.undone ? (view.stopped ? "stopped" : "undone") : view.gone ? "gone" : view.job;
 }
 
 /** «Annulla», «Ripristina» or «Riprova» on a result, with the keyboard kept in the card and the lists it changed refreshed. */
@@ -357,6 +357,19 @@ function Made({
     </Button>
   );
 
+  // «Ferma» stopped the build before it made anything: the line says the creation stopped, and «Riprendi» starts it
+  // again (a restore, which goes on from the step the build reached). Nothing left Mappe or the exam.
+  if (view.undone && view.stopped)
+    return (
+      <Line
+        wide
+        lineRef={after}
+        arriving={arriving}
+        text={t(own("stopped"))}
+        action={view.restorable ? button(t("components.toolResult.resume"), "chats.restoreTool", "rotate-ccw") : undefined}
+        failure={failure}
+      />
+    );
   // What the result went into was deleted while it was undone: nothing can bring it back, so the line says so, alone.
   if (view.undone && !view.restorable) return <Line wide arriving={arriving} text={t(own("unrestorable"))} />;
   if (view.undone)

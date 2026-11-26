@@ -254,13 +254,16 @@ test("an exam chat creates a quiz and a map in one answer: Ferma, a failed build
     await saved.getByRole("button", { name: "Riprova" }).click();
     await expect(saved.getByRole("region", { name: "Mappa creata" })).toBeVisible({ timeout: 30000 });
 
-    // «Ferma» on the quiz at work stops its writing and takes it out of the exam; «Ripristina» goes on with it.
+    // «Ferma» on the quiz at work stops its writing and takes it out of the exam. No quiz was made, so the line says the
+    // writing stopped, not that a quiz left the exam, and «Riprendi» goes on with it.
     await saved.getByRole("button", { name: "Ferma" }).click();
-    await expect(saved.getByText("Quiz annullato: non è più nell’esame.")).toBeVisible();
+    await expect(saved.getByText("La scrittura del quiz si è fermata.")).toBeVisible();
+    await expect(saved.getByText("Quiz annullato", { exact: false })).toHaveCount(0);
     await expect.poll(() => query(userData, "SELECT id FROM attempts")).toHaveLength(0);
-    await saved.getByRole("button", { name: "Ripristina" }).click();
+    await shots(page, "quiz-stopped");
+    await saved.getByRole("button", { name: "Riprendi" }).click();
     await expect(saved.getByText("Creo il quiz…")).toBeVisible();
-    // The keyboard stays at the card: «Ripristina» gives way to «Ferma», which takes the focus.
+    // The keyboard stays at the card: «Riprendi» gives way to «Ferma», which takes the focus.
     await expect(saved.getByRole("button", { name: "Ferma" })).toBeFocused();
 
     // Done: what the quiz holds, about how long it takes and where it is.

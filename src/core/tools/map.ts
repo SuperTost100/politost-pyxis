@@ -127,6 +127,7 @@ export function mapView(db: Database.Database, id: string, data: MapData, undone
     error: state === "failed" ? (job?.error ?? null) : null,
     activity: state === "working" && !undone ? activityOf(data.jobId) : null,
     undone: undone !== null,
+    stopped: !!undone && undone.stopped && !undone.map,
     restorable: !undone || restorableMap(db, data, undone),
     // Deleted in Mappe: after it was made, or while it was built, which gives its build up for good (`deleteMapAndBuilds`).
     gone: !undone && !map && (state === "done" || (job?.dismissed ?? 0) >= GIVEN_UP),

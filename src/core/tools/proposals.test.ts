@@ -307,7 +307,9 @@ describe("propose_exam", () => {
     expect(applied.state).toBe("applied");
     const plan = db.prepare("SELECT id, title, status FROM plans WHERE title = 'Chimica generale'").get() as { id: string; status: string };
     expect(plan.status).toBe("building");
-    expect(applied.created).toMatchObject({ planId: plan.id, job: "working", gone: false });
+    const buildJob = db.prepare("SELECT id FROM jobs WHERE kind = 'plan-build' AND json_extract(params_json, '$.planId') = ?").pluck().get(plan.id);
+    // The card names the build, so a stopped one can be started again from it.
+    expect(applied.created).toMatchObject({ planId: plan.id, jobId: buildJob, job: "working", gone: false });
     expect(db.prepare("SELECT source_id FROM plan_sources WHERE plan_id = ?").pluck().all(plan.id)).toEqual(["disp"]);
     expect(readSessions(db, plan.id).map((session) => session.date)).toEqual([day(NEXT_YEAR, 2, 9)]);
     expect(runner.list().some((job) => job.kind === "plan-build")).toBe(true);
