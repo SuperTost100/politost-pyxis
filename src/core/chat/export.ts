@@ -3,6 +3,7 @@ import {
   mapOutsideCode,
   normalizeMathDelimiters,
 } from "../../shared/math-delimiters";
+import { exportPlace } from "../share/markdown";
 import { chatContext, chatTitle, heldSources, readChat } from "./turn";
 import { visibleText } from "./visible";
 import { safeFileName } from "../../shared/file-name";
@@ -256,10 +257,11 @@ export function exportChat(
             titleOf.get(cite.sourceId) as { title: string } | undefined
           )?.title;
           if (!title) return [];
-          const key = `${cite.sourceId}\n${cite.sectionPath ?? ""}`;
+          const section = exportPlace(cite.sectionPath, cite.locator, language) || null;
+          const key = `${cite.sourceId}\n${section ?? ""}`;
           if (seen.has(key)) return [];
           seen.add(key);
-          return [{ title, section: cite.sectionPath }];
+          return [{ title, section }];
         });
       return {
         role: message.role,

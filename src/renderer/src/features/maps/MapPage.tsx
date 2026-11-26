@@ -1833,7 +1833,12 @@ export function MapPage() {
                                   title: source.title,
                                   slide: source.slide,
                                 })
-                              : source.title}
+                              : source.picture != null
+                                ? t("map.sourcePicture", {
+                                    title: source.title,
+                                    picture: source.picture,
+                                  })
+                                : source.title}
                         </Button>
                       ))}
                       <Button

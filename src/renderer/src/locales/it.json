@@ -1352,6 +1352,7 @@
     "askFailed": "Non sono riuscito ad aprire la chat su questo concetto. Riprova.",
     "sourcePage": "{{title}}, p. {{page}}",
     "sourceSlide": "{{title}}, slide {{slide}}",
+    "sourcePicture": "{{title}}, immagine {{picture}}",
     "lastAdded": "Ho aggiunto «{{label}}» sotto {{parent}}.",
     "lastChanged": "Ho modificato la mappa come hai chiesto.",
     "editing": "Modifico la mappa…",
@@ -4501,6 +4502,7 @@
       "page": "p. {{n}}",
       "slide": "slide {{n}}",
       "chapter": "cap. {{n}}",
+      "picture": "immagine {{n}}",
       "passage": "brano {{n}}"
     },
     "placeAria": "{{title}}, {{place}}",

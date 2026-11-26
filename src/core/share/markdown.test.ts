@@ -308,4 +308,27 @@ describe("markdown export", () => {
     );
     db.close();
   });
+
+  it("localizes picture places in lesson exports by plan language", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      INSERT INTO plans (id,title,status,content_language,created_at,updated_at) VALUES
+        ('it','Analisi 2','ready','it',1,1),
+        ('en','Calculus 2','ready','en',1,1);
+      INSERT INTO topics (id,plan_id,title,position,created_at) VALUES
+        ('ti','it','EDO',0,1),
+        ('te','en','ODE',0,1);
+      INSERT INTO sources (id,title,kind,status,created_at,updated_at) VALUES ('s','appunti-edo','docx','ready',1,1);
+      INSERT INTO passages (id,source_id,text,locator_json,section_path,created_at) VALUES
+        ('p1','s','Testo immagine','{"picture":1}','picture 1',1);
+      INSERT INTO topic_passages (topic_id,passage_id) VALUES ('ti','p1'),('te','p1');
+    `);
+    expect(exportMarkdown(db, { planId: "it", kind: "lesson", topicId: "ti" }).markdown).toContain(
+      "## Fonti\n\n- appunti-edo, immagine 1\n",
+    );
+    expect(exportMarkdown(db, { planId: "en", kind: "lesson", topicId: "te" }).markdown).toContain(
+      "## Sources\n\n- appunti-edo, picture 1\n",
+    );
+    db.close();
+  });
 });

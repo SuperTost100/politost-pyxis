@@ -11,6 +11,7 @@ export type NodeSource = {
   title: string;
   page?: number;
   slide?: number;
+  picture?: number;
 };
 
 /** The distinct sources a map concept comes from, read from its first passages, with the first passage of each. */
@@ -46,6 +47,7 @@ export function useNodeSources(passageIds: readonly string[]): NodeSource[] {
       title,
       page: row.locator.page,
       slide: row.locator.slide,
+      picture: row.locator.picture,
     });
   });
   return result;

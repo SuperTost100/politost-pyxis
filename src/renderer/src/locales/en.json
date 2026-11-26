@@ -1352,6 +1352,7 @@
     "askFailed": "The chat about this concept could not be opened. Try again.",
     "sourcePage": "{{title}}, p. {{page}}",
     "sourceSlide": "{{title}}, slide {{slide}}",
+    "sourcePicture": "{{title}}, picture {{picture}}",
     "lastAdded": "I added “{{label}}” under {{parent}}.",
     "lastChanged": "I changed the map as you asked.",
     "editing": "Changing the map…",
@@ -4501,6 +4502,7 @@
       "page": "p. {{n}}",
       "slide": "slide {{n}}",
       "chapter": "ch. {{n}}",
+      "picture": "picture {{n}}",
       "passage": "passage {{n}}"
     },
     "placeAria": "{{title}}, {{place}}",
