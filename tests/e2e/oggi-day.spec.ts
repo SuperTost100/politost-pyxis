@@ -38,6 +38,16 @@ function reviewedCard(db: DatabaseSync, id: string, owner: { planId: string; top
   );
 }
 
+/**
+ * Waits out the last minute of the local day, so the checks that follow read the same day as data dated now. The app
+ * counts a day from local midnight, and a run that crossed it (macOS arm64, run 45903309544) read today's minutes as
+ * yesterday's.
+ */
+async function clearOfMidnight() {
+  const midnight = new Date().setHours(24, 0, 0, 0);
+  if (midnight - Date.now() < 60_000) await expect.poll(() => Date.now(), { timeout: 70_000 }).toBeGreaterThanOrEqual(midnight);
+}
+
 async function openApp() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-oggi-day-"));
   const app = await launchPyxis({ userData });
@@ -331,6 +341,9 @@ test("the Oggi ring in each state: nothing, part of the day, the day done, over 
           { language, theme },
         );
         await page.setViewportSize({ width, height: 800 });
+        // The run is long, so the minutes studied are dated again before each read: they stay today's past midnight.
+        await clearOfMidnight();
+        db.prepare("UPDATE card_reviews SET reviewed_at = ? WHERE card_id GLOB 'm[0-9]*'").run(Date.now());
         await page.reload();
         const tag = `${state.name}-${language}-${theme}-${width}`;
 

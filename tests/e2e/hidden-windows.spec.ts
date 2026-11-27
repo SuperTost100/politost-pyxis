@@ -17,6 +17,19 @@ type Handle = { draw: (payload: unknown) => Promise<{ image?: string; error?: st
 const drawing = (app: ElectronApplication) =>
   app.evaluate(() => (globalThis as unknown as { pyxisE2eDraw: Handle }).pyxisE2eDraw.windows());
 
+/**
+ * The main windows open now. A window that is closing stays in the list for a moment after its page is gone, and asking
+ * that page for its address then throws "Object has been destroyed" (macOS x64, run 45903309544), so a destroyed window
+ * or page is not counted.
+ */
+const mainWindowCount = (app: ElectronApplication) =>
+  app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows().filter(
+      (window) =>
+        !window.isDestroyed() && !window.webContents.isDestroyed() && window.webContents.getURL().startsWith("pyxis-app://app/index.html"),
+    ).length,
+  );
+
 async function mainWindowClosed(app: ElectronApplication, page: Page) {
   const exited = app.waitForEvent("close", { timeout: 20_000 });
   const main = await app.browserWindow(page);
@@ -106,8 +119,7 @@ test("on macOS, closing the main window leaves the app and its Python window ope
   mkdirSync(pack, { recursive: true });
   cpSync(join(process.cwd(), ".tmp/pyodide"), pack, { recursive: true });
   const app = await launchPyxis({ userData });
-  const mainWindows = () =>
-    app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((window) => window.webContents.getURL().startsWith("pyxis-app://app/index.html")).length);
+  const mainWindows = () => mainWindowCount(app);
   const hiddenWindows = () =>
     app.evaluate(() => (globalThis as unknown as { pyxisE2ePython: { windows: () => number[] } }).pyxisE2ePython.windows().length);
   try {
@@ -149,8 +161,7 @@ test("an activation while the old profile's settings are being copied makes no s
   const hold = join(userData, "first-window-hold");
   writeFileSync(hold, "");
   const app = await launchPyxis({ userData, packaged: false, env: { PYXIS_E2E_FIRST_WINDOW_HOLD: hold } });
-  const mainWindows = () =>
-    app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((window) => window.webContents.getURL().startsWith("pyxis-app://app/index.html")).length);
+  const mainWindows = () => mainWindowCount(app);
   try {
     // The copy is over and recorded, and the main window is waiting on the hold: only the hidden window exists.
     await expect.poll(() => existsSync(marker), { timeout: 30_000 }).toBe(true);
