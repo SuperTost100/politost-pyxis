@@ -7,7 +7,7 @@ import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { PHOTO_NAME, seedFigureChat, seedFollowupsChat, seedOutlineChat, seedSentFilesChat, seedStoppedChat } from "./chat-look-seed";
-import { clickSettled } from "./settled";
+import { atRest, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 
 /*
@@ -352,6 +352,10 @@ test("a sent message shows a photo as a thumbnail that opens the viewer and a do
     await expect(viewer.locator("figcaption a")).toHaveCount(0);
     await expect(viewer.locator(".px-viewer-card img")).toHaveAttribute("alt", `${PHOTO_NAME}, dal tuo messaggio`);
     // A portrait photo in a window 800 px high: the whole card and its caption are on screen, none cut at the foot.
+    // The card takes its size from the viewer's own copy of the photo, which can load after the dialog shows (macOS, run
+    // 45903309544, measured an empty card), and it grows in from the thumbnail: it is measured once loaded and still.
+    await expect(viewer.locator(".px-viewer-card img")).toHaveJSProperty("complete", true);
+    await atRest(viewer.locator(".px-viewer-card"));
     await expect.poll(() => page.evaluate(() => window.innerHeight)).toBeGreaterThan(0);
     const height = await page.evaluate(() => window.innerHeight);
     const captionBox = await viewer.getByText(`${PHOTO_NAME}, dal tuo messaggio`, { exact: true }).boundingBox();
